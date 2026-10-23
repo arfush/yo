@@ -1,0 +1,1041 @@
+package playback
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/url"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/arfush/yonime/internal/animelib"
+	"github.com/arfush/yonime/internal/browser"
+	"github.com/arfush/yonime/internal/kodik"
+	"github.com/arfush/yonime/internal/library"
+	"github.com/arfush/yonime/internal/metadata"
+)
+
+// WindowRect is the physical screen rectangle mpv should occupy. It is the
+// rectangle of the application window before it is hidden.
+type WindowRect struct {
+	X      int
+	Y      int
+	Width  int
+	Height int
+}
+
+// StartOptions configures one playback session.
+type StartOptions struct {
+	Quality int
+	Window  WindowRect
+	// HeaderFonts maps file names to the Inter faces mpv's OSD needs for the
+	// custom window header. The UI owns the embedded fonts; playback installs
+	// them next to the Lua script.
+	HeaderFonts map[string][]byte
+	OnReady     func()
+	OnFinish    func(error)
+}
+
+// Service owns the Kodik browser and the single active mpv session.
+type Service struct {
+	lib      *library.Library
+	resolver *kodik.Resolver
+
+	mu       sync.Mutex
+	session  *Session
+	starting bool
+	closed   bool
+}
+
+// New returns a playback service. mpv is located lazily when Start is called.
+func New(lib *library.Library, manager *browser.Manager) *Service {
+	return &Service{
+		lib:      lib,
+		resolver: kodik.New(manager),
+	}
+}
+
+// Start resolves the selected episode, launches mpv and starts filling the
+// playlist around it. The current episode is resolved before mpv opens; all
+// other episodes are resolved in the background.
+func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options StartOptions) (*Session, error) {
+	if s == nil || s.lib == nil {
+		return nil, errors.New("воспроизведение недоступно")
+	}
+	if plan == nil || len(plan.Episodes) == 0 {
+		return nil, errors.New("нет серий для воспроизведения")
+	}
+	if plan.EpisodeIndex < 0 || plan.EpisodeIndex >= len(plan.Episodes) {
+		return nil, errors.New("некорректная серия")
+	}
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return nil, errors.New("приложение закрывается")
+	}
+	if s.session != nil || s.starting {
+		s.mu.Unlock()
+		return nil, errors.New("видео уже воспроизводится")
+	}
+	s.starting = true
+	s.mu.Unlock()
+
+	// Clear the guard on every failed path. On success the session takes over
+	// below, so another Start can only run after it has finished.
+	started := false
+	defer func() {
+		if started {
+			return
+		}
+		s.mu.Lock()
+		s.starting = false
+		s.mu.Unlock()
+	}()
+
+	token, err := s.lib.Token()
+	if err != nil {
+		return nil, err
+	}
+	sessionCtx, cancel := context.WithCancel(context.Background())
+	session := &Session{
+		service:        s,
+		plan:           plan,
+		options:        options,
+		client:         animelib.New(token),
+		ctx:            sessionCtx,
+		cancel:         cancel,
+		resolved:       make(map[int]*playlistEntry),
+		details:        make(map[int]*animelib.EpisodeDetail),
+		detailFlight:   make(map[int]chan struct{}),
+		chapterSem:     make(chan struct{}, 2),
+		quality:        options.Quality,
+		lastWrite:      time.Time{},
+		lastPos:        plan.ResumeAt,
+		currentEp:      -1,
+		chaptersNoData: make(map[string]bool),
+	}
+	if session.quality <= 0 {
+		session.quality = 1080
+	}
+
+	// Resolve the episode the user asked for before showing an mpv window. If
+	// this fails the application stays visible and shows the error.
+	entry, err := session.resolveEntry(ctx, plan.EpisodeIndex)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	geometry := geometryString(options.Window.X, options.Window.Y, options.Window.Width, options.Window.Height)
+	header, err := installHeaderAssets(options.HeaderFonts)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	mpv, err := startMPV(ctx, geometry, header)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	session.mpv = mpv
+	if err := mpv.load(entry.URL); err != nil {
+		mpv.close()
+		cancel()
+		return nil, fmt.Errorf("запустить видео: %w", err)
+	}
+	session.entries = []*playlistEntry{entry}
+	session.current = 0
+	session.currentEp = plan.EpisodeIndex
+	session.currentNumber = entry.Episode.Number
+	session.resolved[plan.EpisodeIndex] = entry
+	session.resumePending = plan.ResumeAt
+
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		mpv.close()
+		cancel()
+		return nil, errors.New("приложение закрывается")
+	}
+	s.session = session
+	s.starting = false
+	started = true
+	s.mu.Unlock()
+
+	if options.OnReady != nil {
+		options.OnReady()
+	}
+	go session.eventLoop()
+	go session.backgroundLoader()
+	return session, nil
+}
+
+// Active reports whether a playback session is starting or running. It lets the
+// UI keep the application window away while mpv owns the screen, including the
+// short window between Start and the first OnReady callback.
+func (s *Service) Active() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.session != nil || s.starting
+}
+
+// Close stops the active session and the Kodik browser.
+func (s *Service) Close() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return
+	}
+	s.closed = true
+	session := s.session
+	s.session = nil
+	s.mu.Unlock()
+	if session != nil {
+		session.stop()
+	}
+	if s.resolver != nil {
+		_ = s.resolver.Close()
+	}
+}
+
+func (s *Service) clearSession(session *Session) {
+	s.mu.Lock()
+	if s.session == session {
+		s.session = nil
+	}
+	s.mu.Unlock()
+}
+
+type playlistEntry struct {
+	EpisodeIndex int
+	Episode      library.PlaybackEpisode
+	URL          string
+	Kind         string
+	Quality      int
+
+	chapters        []metadata.Chapter
+	chaptersReady   bool
+	chaptersLoading bool
+	chaptersNoData  bool
+}
+
+// Session is one running mpv session with a lazily expanding playlist.
+type Session struct {
+	service *Service
+	plan    *library.PlaybackPlan
+	options StartOptions
+
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	client *animelib.Client
+	mpv    *mpvProcess
+
+	// details caches episode payloads fetched by the parallel batch prefetch so
+	// resolveEntry does not request the same episode twice. detailFlight
+	// deduplicates concurrent fetches of the same episode.
+	detailMu     sync.Mutex
+	details      map[int]*animelib.EpisodeDetail
+	detailFlight map[int]chan struct{}
+
+	mu             sync.Mutex
+	entries        []*playlistEntry
+	resolved       map[int]*playlistEntry
+	current        int
+	currentEp      int
+	currentNumber  string
+	lastPos        float64
+	duration       float64
+	resumePending  float64
+	resumeApplied  bool
+	lastWrite      time.Time
+	waitingForNext bool
+	futureDone     bool
+	suppressFinish bool
+	finished       bool
+
+	loadMu   sync.Mutex
+	ensureMu sync.Mutex
+
+	baseMu     sync.Mutex
+	videoBases []string
+	baseErr    error
+
+	quality int
+
+	chapterSem     chan struct{}
+	chaptersMu     sync.Mutex
+	chaptersNoData map[string]bool
+
+	finishOnce sync.Once
+}
+
+// Stop ends the session without invoking the finish callback. It is used when
+// the application itself is closing.
+func (s *Session) Stop() {
+	if s == nil {
+		return
+	}
+	s.stop()
+}
+
+func (s *Session) stop() {
+	s.mu.Lock()
+	s.suppressFinish = true
+	mpv := s.mpv
+	s.mu.Unlock()
+	s.onFinishProgress()
+	s.cancel()
+	if mpv != nil {
+		mpv.close()
+	}
+	s.finishOnce.Do(func() {
+		s.finished = true
+		s.service.clearSession(s)
+	})
+}
+
+func (s *Session) eventLoop() {
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-s.mpv.done:
+			// The process can disappear before the buffered exit event is
+			// consumed. done is closed after the event is queued and is the
+			// reliable signal that the application must become visible again.
+			s.finish(s.mpv.exitError())
+			return
+		case event := <-s.mpv.out:
+			switch event.Kind {
+			case mpvEventFileLoaded:
+				s.onFileLoaded(event.Position)
+			case mpvEventPlaylistPos:
+				s.onPlaylistPos(event.Position)
+			case mpvEventTimePos:
+				s.onTimePos(event.Seconds)
+			case mpvEventDuration:
+				s.onDuration(event.Seconds)
+			case mpvEventPause:
+				if event.Paused {
+					s.saveProgress(true, 0)
+				}
+			case mpvEventEndFile:
+				s.onEndFile(event)
+			case mpvEventExit:
+				s.finish(event.Err)
+				return
+			}
+		}
+	}
+}
+
+func (s *Session) onFileLoaded(position int) {
+	entry := s.entryAt(position)
+	if entry == nil {
+		return
+	}
+	s.mu.Lock()
+	s.current = position
+	s.currentEp = entry.EpisodeIndex
+	s.currentNumber = entry.Episode.Number
+	s.duration = 0
+	resume := 0.0
+	if !s.resumeApplied && entry.EpisodeIndex == s.plan.EpisodeIndex {
+		resume = s.resumePending
+		s.resumeApplied = true
+	}
+	s.lastPos = resume
+	s.mu.Unlock()
+
+	if resume > 0 {
+		_ = s.mpv.seek(resume)
+	}
+	s.saveProgress(true, resume)
+	// Chapters belong to the file that was just unloaded. Clear them before
+	// the new episode's cached/fetched chapters are applied.
+	_ = s.mpv.setChapters(nil)
+	s.applyChapters(entry)
+	// Resolving previous episodes can take seconds (Kodik) and must never block
+	// the event loop: time-pos/duration events drive progress saving.
+	go s.ensurePrevious(entry.EpisodeIndex)
+	// Keep the forward window sliding: resolving runs in the background and
+	// already-resolved episodes are skipped cheaply.
+	go s.loadForward(entry.EpisodeIndex)
+}
+
+func (s *Session) onPlaylistPos(position int) {
+	s.mu.Lock()
+	s.current = position
+	entry := s.entryAtLocked(position)
+	index := -1
+	if entry != nil {
+		index = entry.EpisodeIndex
+	}
+	s.mu.Unlock()
+	if index >= 0 {
+		go s.ensurePrevious(index)
+	}
+}
+
+func (s *Session) onTimePos(seconds float64) {
+	s.mu.Lock()
+	s.lastPos = seconds
+	s.mu.Unlock()
+	s.saveProgress(false, seconds)
+}
+
+func (s *Session) onDuration(seconds float64) {
+	if seconds <= 0 {
+		return
+	}
+	s.mu.Lock()
+	s.duration = seconds
+	position := s.lastPos
+	number := s.currentNumber
+	s.mu.Unlock()
+	if s.plan.TitleID != 0 && number != "" {
+		_ = s.service.lib.SaveProgress(s.plan.TitleID, number, position, seconds)
+	}
+}
+
+func (s *Session) onEndFile(event mpvEvent) {
+	if event.Reason != "eof" && event.Reason != "quit" {
+		return
+	}
+	s.saveProgress(true, 0)
+
+	s.mu.Lock()
+	entry := s.entryAtLocked(event.Position)
+	if entry == nil {
+		entry = s.entryAtLocked(s.current)
+	}
+	if entry == nil {
+		s.mu.Unlock()
+		return
+	}
+	isLastPlanEpisode := entry.EpisodeIndex == len(s.plan.Episodes)-1
+	hasNextInPlaylist := false
+	for index, candidate := range s.entries {
+		if candidate.EpisodeIndex > entry.EpisodeIndex {
+			hasNextInPlaylist = true
+			_ = index
+			break
+		}
+	}
+	if !hasNextInPlaylist && !isLastPlanEpisode {
+		s.waitingForNext = true
+	}
+	futureDone := s.futureDone
+	mpv := s.mpv
+	s.mu.Unlock()
+
+	if event.Reason == "eof" && isLastPlanEpisode && !hasNextInPlaylist {
+		if mpv != nil {
+			_, _ = mpv.call("quit")
+		}
+		return
+	}
+	if event.Reason == "eof" && !hasNextInPlaylist && futureDone {
+		if mpv != nil {
+			_, _ = mpv.call("quit")
+		}
+	}
+}
+
+func (s *Session) onFinishProgress() {
+	s.saveProgress(true, 0)
+}
+
+func (s *Session) saveProgress(force bool, position float64) {
+	s.mu.Lock()
+	number := s.currentNumber
+	if position <= 0 {
+		position = s.lastPos
+	}
+	duration := s.duration
+	lastWrite := s.lastWrite
+	s.mu.Unlock()
+	if s.plan.TitleID == 0 || number == "" {
+		return
+	}
+	if !force && position < 5 {
+		return
+	}
+	if !force && time.Since(lastWrite) < 5*time.Second {
+		return
+	}
+	if err := s.service.lib.SaveProgress(s.plan.TitleID, number, position, duration); err == nil {
+		s.mu.Lock()
+		s.lastWrite = time.Now()
+		s.mu.Unlock()
+	}
+}
+
+func (s *Session) finish(err error) {
+	s.finishOnce.Do(func() {
+		s.onFinishProgress()
+		s.mu.Lock()
+		s.finished = true
+		suppress := s.suppressFinish
+		s.mu.Unlock()
+		s.cancel()
+		s.service.clearSession(s)
+		if !suppress && s.options.OnFinish != nil {
+			go s.options.OnFinish(err)
+		}
+	})
+}
+
+func (s *Session) entryAt(position int) *playlistEntry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.entryAtLocked(position)
+}
+
+func (s *Session) entryAtLocked(position int) *playlistEntry {
+	if position < 0 || position >= len(s.entries) {
+		return nil
+	}
+	return s.entries[position]
+}
+
+const (
+	// preloadAhead bounds how many upcoming episodes are resolved in advance.
+	// The window slides with playback: loadForward runs again whenever mpv
+	// starts the next file, so a long title is never resolved all at once.
+	preloadAhead = 30
+	// preloadBehind is how many previous episodes stay available for seeking
+	// back without a new request.
+	preloadBehind = 5
+)
+
+// backgroundLoader fills the initial preload window around the selected
+// episode. Previous episodes are also added on demand by ensurePrevious.
+func (s *Session) backgroundLoader() {
+	start := s.plan.EpisodeIndex
+	s.loadForward(start)
+	for index := start - 1; index >= 0 && index >= start-preloadBehind; index-- {
+		if s.ctx.Err() != nil {
+			return
+		}
+		s.resolveAndAdd(index)
+	}
+	s.settleWaiting()
+}
+
+// loadForward resolves the next preloadAhead episodes after currentEp. When the
+// window reaches the end of the plan futureDone is set, which tells onEndFile
+// that no further episode can be appended.
+func (s *Session) loadForward(currentEp int) {
+	last := len(s.plan.Episodes) - 1
+	if last < 0 {
+		return
+	}
+	if currentEp < 0 {
+		currentEp = 0
+	}
+	if currentEp > last {
+		currentEp = last
+	}
+	limit := currentEp + preloadAhead
+	if limit > last {
+		limit = last
+	}
+	pending := make([]int, 0, limit-currentEp)
+	s.mu.Lock()
+	for index := currentEp + 1; index <= limit; index++ {
+		if _, ok := s.resolved[index]; !ok {
+			pending = append(pending, index)
+		}
+	}
+	s.mu.Unlock()
+
+	// AnimeLIB has no batch detail endpoint: the episode list never returns
+	// players and the site itself loads one episode at a time. Fetch the whole
+	// window in a bounded parallel batch instead, then resolve the entries from
+	// the cached payloads without further requests.
+	s.prefetchDetails(pending)
+	for _, index := range pending {
+		if s.ctx.Err() != nil {
+			return
+		}
+		s.resolveAndAdd(index)
+	}
+	if limit < last {
+		return
+	}
+	s.mu.Lock()
+	s.futureDone = true
+	s.mu.Unlock()
+}
+
+// prefetchDetails loads episode payloads for the given indices concurrently and
+// stores them in the session cache. Failures are ignored here; resolveAndAdd
+// retries them sequentially so one bad episode does not drop the window.
+func (s *Session) prefetchDetails(indices []int) {
+	const workers = 4
+	sem := make(chan struct{}, workers)
+	var wg sync.WaitGroup
+	for _, index := range indices {
+		if s.ctx.Err() != nil {
+			break
+		}
+		if index < 0 || index >= len(s.plan.Episodes) {
+			continue
+		}
+		id := s.plan.Episodes[index].ID
+		if id <= 0 {
+			continue
+		}
+		select {
+		case sem <- struct{}{}:
+		case <-s.ctx.Done():
+			wg.Wait()
+			return
+		}
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			ctx, cancel := context.WithTimeout(s.ctx, 90*time.Second)
+			defer cancel()
+			_, _ = s.episodeDetail(ctx, id)
+		}(id)
+	}
+	wg.Wait()
+}
+
+// episodeDetail returns the cached payload for an episode or fetches it once.
+// Concurrent callers for the same id wait for the first fetch instead of
+// issuing duplicate requests.
+func (s *Session) episodeDetail(ctx context.Context, id int) (*animelib.EpisodeDetail, error) {
+	for {
+		s.detailMu.Lock()
+		if cached := s.details[id]; cached != nil {
+			s.detailMu.Unlock()
+			return cached, nil
+		}
+		if flight := s.detailFlight[id]; flight != nil {
+			s.detailMu.Unlock()
+			select {
+			case <-flight:
+				continue
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+		flight := make(chan struct{})
+		s.detailFlight[id] = flight
+		s.detailMu.Unlock()
+
+		detail, err := s.client.EpisodeDetail(ctx, id)
+
+		s.detailMu.Lock()
+		delete(s.detailFlight, id)
+		if err == nil {
+			s.details[id] = detail
+		}
+		close(flight)
+		s.detailMu.Unlock()
+		return detail, err
+	}
+}
+
+// settleWaiting resumes playback when the file that just ended has a resolved
+// successor. If the plan is exhausted and nothing follows, mpv is closed
+// instead of being left open on a finished playlist.
+func (s *Session) settleWaiting() {
+	s.mu.Lock()
+	waiting := s.waitingForNext
+	futureDone := s.futureDone
+	current := s.currentEp
+	var lastEntry *playlistEntry
+	if len(s.entries) > 0 {
+		lastEntry = s.entries[len(s.entries)-1]
+	}
+	mpv := s.mpv
+	s.mu.Unlock()
+	if !waiting {
+		return
+	}
+	if lastEntry != nil && lastEntry.EpisodeIndex > current {
+		// The current file ended before the next item was appended. Start the
+		// now-available next item explicitly; mpv does not resume an ended
+		// playlist by itself.
+		s.startWaitingNext()
+		return
+	}
+	if futureDone && mpv != nil {
+		// Every later episode failed to resolve. Do not leave mpv open at the
+		// end of the playlist; finish the session and return to the app.
+		_, _ = mpv.call("quit")
+	}
+}
+
+func (s *Session) startWaitingNext() {
+	s.mu.Lock()
+	s.waitingForNext = false
+	s.mu.Unlock()
+	_, _ = s.mpv.call("set_property", "pause", false)
+}
+
+// ensurePrevious keeps at least five resolved episodes before the current one.
+func (s *Session) ensurePrevious(currentEp int) {
+	if currentEp <= 0 || s.ctx.Err() != nil {
+		return
+	}
+	s.ensureMu.Lock()
+	defer s.ensureMu.Unlock()
+	s.mu.Lock()
+	before := 0
+	for _, entry := range s.entries {
+		if entry.EpisodeIndex < currentEp {
+			before++
+		}
+	}
+	s.mu.Unlock()
+	if before >= 5 {
+		return
+	}
+	target := currentEp - 5
+	if target < 0 {
+		target = 0
+	}
+	for index := currentEp - 1; index >= target; index-- {
+		if s.ctx.Err() != nil {
+			return
+		}
+		s.resolveAndAdd(index)
+	}
+}
+
+// resolveAndAdd resolves one episode and inserts it into the mpv playlist in
+// episode order. Previous episodes are added on demand, so an insertion may be
+// in the middle of the playlist rather than only at either end.
+func (s *Session) resolveAndAdd(index int) {
+	s.loadMu.Lock()
+	defer s.loadMu.Unlock()
+	if s.ctx.Err() != nil {
+		return
+	}
+	s.mu.Lock()
+	if _, ok := s.resolved[index]; ok {
+		s.mu.Unlock()
+		return
+	}
+	s.mu.Unlock()
+
+	entry, err := s.resolveEntry(s.ctx, index)
+	if err != nil {
+		return
+	}
+
+	s.mu.Lock()
+	if _, ok := s.resolved[index]; ok {
+		s.mu.Unlock()
+		return
+	}
+	insertAt := sort.Search(len(s.entries), func(i int) bool {
+		return s.entries[i].EpisodeIndex >= entry.EpisodeIndex
+	})
+	if insertAt < len(s.entries) && s.entries[insertAt].EpisodeIndex == entry.EpisodeIndex {
+		s.mu.Unlock()
+		return
+	}
+	current := s.current
+	s.resolved[index] = entry
+	s.entries = append(s.entries, nil)
+	copy(s.entries[insertAt+1:], s.entries[insertAt:])
+	s.entries[insertAt] = entry
+	if insertAt <= s.current {
+		s.current++
+	}
+	waiting := s.waitingForNext
+	s.mu.Unlock()
+
+	if err := s.mpv.insert(insertAt, entry.URL); err != nil {
+		// The entry never reached mpv. Roll back the in-memory playlist so
+		// progress attribution and later insert positions stay consistent.
+		s.mu.Lock()
+		if insertAt < len(s.entries) && s.entries[insertAt] == entry {
+			copy(s.entries[insertAt:], s.entries[insertAt+1:])
+			s.entries[len(s.entries)-1] = nil
+			s.entries = s.entries[:len(s.entries)-1]
+		}
+		delete(s.resolved, index)
+		if insertAt <= current && s.current > current {
+			s.current--
+		}
+		s.mu.Unlock()
+		return
+	}
+	if waiting && insertAt > current {
+		_, _ = s.mpv.call("set_property", "playlist-pos", insertAt)
+		s.mu.Lock()
+		s.waitingForNext = false
+		s.mu.Unlock()
+	}
+	go s.prefetchChapters(entry)
+}
+
+func (s *Session) resolveEntry(ctx context.Context, index int) (*playlistEntry, error) {
+	if index < 0 || index >= len(s.plan.Episodes) {
+		return nil, errors.New("некорректный индекс серии")
+	}
+	episode := s.plan.Episodes[index]
+	if episode.ID <= 0 {
+		return nil, fmt.Errorf("у серии %s нет id", episode.Number)
+	}
+	resolveCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	detail, err := s.episodeDetail(resolveCtx, episode.ID)
+	if err != nil {
+		return nil, fmt.Errorf("серия %s: %w", episode.Number, err)
+	}
+
+	var animelibPlayer *animelib.EpisodePlayer
+	var kodikPlayer *animelib.EpisodePlayer
+	for playerIndex := range detail.Players {
+		player := &detail.Players[playerIndex]
+		if !sameTeam(player.TeamName, s.plan.Voice) {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(player.Player)) {
+		case "animelib":
+			if animelibPlayer == nil && len(player.Qualities) > 0 {
+				animelibPlayer = player
+			}
+		case "kodik":
+			if kodikPlayer == nil && player.Src != "" {
+				kodikPlayer = player
+			}
+		}
+	}
+
+	// AnimeLIB always wins when the selected voice has a direct file for this
+	// episode. Kodik is the fallback only for episodes without one.
+	if animelibPlayer != nil {
+		link := pickAnimelibQuality(animelibPlayer.Qualities, s.quality)
+		if link.Href != "" {
+			mediaURL, joinErr := s.joinAnimelib(resolveCtx, link.Href)
+			if joinErr == nil && mediaURL != "" {
+				return &playlistEntry{
+					EpisodeIndex: index,
+					Episode:      episode,
+					URL:          mediaURL,
+					Kind:         "mp4",
+					Quality:      link.Quality,
+				}, nil
+			}
+		}
+	}
+	if kodikPlayer != nil {
+		links, resolveErr := s.service.resolver.Resolve(resolveCtx, kodikPlayer.Src)
+		if resolveErr == nil {
+			mediaURL, quality := kodik.PickQuality(links, s.quality)
+			if mediaURL != "" {
+				return &playlistEntry{
+					EpisodeIndex: index,
+					Episode:      episode,
+					URL:          mediaURL,
+					Kind:         "hls",
+					Quality:      quality,
+				}, nil
+			}
+		} else if resolveCtx.Err() == nil {
+			return nil, fmt.Errorf("озвучка %q для серии %s: %w", s.plan.Voice, episode.Number, resolveErr)
+		}
+	}
+	return nil, fmt.Errorf("озвучка %q недоступна для серии %s", s.plan.Voice, episode.Number)
+}
+
+func (s *Session) joinAnimelib(ctx context.Context, href string) (string, error) {
+	if isAbsoluteURL(href) {
+		return href, nil
+	}
+	bases, err := s.animelibBases(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, base := range bases {
+		if joined := animelib.JoinVideoBase(base, href); joined != "" {
+			return joined, nil
+		}
+	}
+	return "", errors.New("нет видео-серверов AnimeLIB")
+}
+
+func (s *Session) animelibBases(ctx context.Context) ([]string, error) {
+	s.baseMu.Lock()
+	defer s.baseMu.Unlock()
+	if len(s.videoBases) > 0 {
+		return append([]string(nil), s.videoBases...), nil
+	}
+	if s.baseErr != nil && len(s.videoBases) == 0 {
+		// Retry once per session after a transient constants failure.
+	}
+	bases, err := s.client.VideoBases(ctx)
+	if err != nil {
+		s.baseErr = err
+		return nil, err
+	}
+	s.videoBases = bases
+	s.baseErr = nil
+	return append([]string(nil), bases...), nil
+}
+
+func (s *Session) prefetchChapters(entry *playlistEntry) {
+	select {
+	case s.chapterSem <- struct{}{}:
+		defer func() { <-s.chapterSem }()
+	case <-s.ctx.Done():
+		return
+	}
+	s.loadChapters(entry)
+}
+
+func (s *Session) applyChapters(entry *playlistEntry) {
+	if entry == nil {
+		return
+	}
+	go s.prefetchChapters(entry)
+}
+
+func (s *Session) loadChapters(entry *playlistEntry) {
+	if entry == nil {
+		return
+	}
+	s.chaptersMu.Lock()
+	if entry.chaptersReady {
+		chapters := append([]metadata.Chapter(nil), entry.chapters...)
+		s.chaptersMu.Unlock()
+		s.setChaptersIfCurrent(entry, chapters)
+		return
+	}
+	if entry.chaptersLoading {
+		// A prefetch is already fetching this entry. It will apply the result
+		// when the file becomes current.
+		s.chaptersMu.Unlock()
+		return
+	}
+	entry.chaptersLoading = true
+	s.chaptersMu.Unlock()
+	defer func() {
+		s.chaptersMu.Lock()
+		entry.chaptersLoading = false
+		s.chaptersMu.Unlock()
+	}()
+
+	if s.plan.IMDbID == "" || s.plan.Season <= 0 {
+		s.chaptersMu.Lock()
+		entry.chaptersReady = true
+		entry.chaptersNoData = true
+		s.chaptersMu.Unlock()
+		return
+	}
+	if s.plan.TitleID != 0 {
+		if raw, noData, ok := s.service.lib.IntrodbCache(s.plan.TitleID, entry.Episode.Number); ok {
+			if noData {
+				s.chaptersMu.Lock()
+				entry.chaptersReady = true
+				entry.chaptersNoData = true
+				entry.chapters = nil
+				s.chaptersMu.Unlock()
+				return
+			}
+			var cached []metadata.Chapter
+			if json.Unmarshal(raw, &cached) == nil {
+				s.chaptersMu.Lock()
+				entry.chapters = cached
+				entry.chaptersReady = true
+				s.chaptersMu.Unlock()
+				s.setChaptersIfCurrent(entry, cached)
+				return
+			}
+		}
+	}
+	chapters, noData, err := metadata.Chapters(s.ctx, s.plan.IMDbID, s.plan.Season, entry.Episode.Number)
+	if err != nil {
+		// Treat a failed lookup as no data for this session, but do not cache
+		// the failure permanently.
+		s.chaptersMu.Lock()
+		entry.chaptersReady = true
+		entry.chaptersNoData = true
+		s.chaptersMu.Unlock()
+		return
+	}
+	s.chaptersMu.Lock()
+	entry.chapters = chapters
+	entry.chaptersReady = true
+	entry.chaptersNoData = noData
+	s.chaptersMu.Unlock()
+	if s.plan.TitleID != 0 {
+		if noData {
+			_ = s.service.lib.SaveIntrodbCache(s.plan.TitleID, entry.Episode.Number, nil, true)
+		} else if raw, marshalErr := json.Marshal(chapters); marshalErr == nil {
+			_ = s.service.lib.SaveIntrodbCache(s.plan.TitleID, entry.Episode.Number, raw, false)
+		}
+	}
+	s.setChaptersIfCurrent(entry, chapters)
+}
+
+func (s *Session) setChaptersIfCurrent(entry *playlistEntry, chapters []metadata.Chapter) {
+	s.mu.Lock()
+	current := s.currentEp == entry.EpisodeIndex
+	s.mu.Unlock()
+	if current {
+		_ = s.mpv.setChapters(chapters)
+	}
+}
+
+func pickAnimelibQuality(links []animelib.QualityLink, preferred int) animelib.QualityLink {
+	if len(links) == 0 {
+		return animelib.QualityLink{}
+	}
+	if preferred <= 0 {
+		preferred = 1080
+	}
+	sorted := append([]animelib.QualityLink(nil), links...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Quality < sorted[j].Quality })
+	for _, link := range sorted {
+		if link.Quality == preferred {
+			return link
+		}
+	}
+	lower := animelib.QualityLink{}
+	for _, link := range sorted {
+		if link.Quality < preferred {
+			lower = link
+		}
+	}
+	if lower.Quality > 0 {
+		return lower
+	}
+	return sorted[0]
+}
+
+func sameTeam(left, right string) bool {
+	left = strings.TrimSpace(left)
+	right = strings.TrimSpace(right)
+	if left == "" || right == "" {
+		return false
+	}
+	if left == right {
+		return true
+	}
+	return strings.EqualFold(left, right)
+}
+
+func isAbsoluteURL(value string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	return err == nil && parsed.IsAbs()
+}

@@ -1,0 +1,25 @@
+# Build output
+/yonime.exe
+/dist/
+/bin/
+/build/
+*.exe
+*.exe.sha256
+*.part
+
+# Local runtime data
+*.sqlite
+*.sqlite-*
+*.log
+updates.json
+updates.json.*
+
+# Editors and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local environment and secrets
+.env
+.env.*

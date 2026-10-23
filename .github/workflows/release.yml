@@ -1,0 +1,127 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yonime-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: startsWith(github.event.head_commit.message, 'release:')
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      body: ${{ steps.version.outputs.body }}
+    steps:
+      - name: Read release version and notes
+        id: version
+        shell: bash
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          message="$(printf '%s\n' "$COMMIT_MESSAGE" | tr -d '\r')"
+
+          first_line="$(printf '%s\n' "$message" | head -n 1)"
+          if [[ ! "$first_line" =~ ^release:[[:space:]]*(v?[0-9]+(\.[0-9]+){0,3})[[:space:]]*$ ]]; then
+            echo "Commit message must look like: release: 1.2" >&2
+            echo "Optional release notes go on the following lines." >&2
+            exit 1
+          fi
+          version="${BASH_REMATCH[1]}"
+          if [[ "$version" != v* ]]; then
+            version="v$version"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          # Everything after the first line becomes the GitHub release description.
+          # Leading/trailing blank lines are dropped, inner formatting is preserved.
+          notes="$(printf '%s\n' "$message" | tail -n +2 | awk '
+            { line[NR] = $0 }
+            END {
+              first = 0
+              last = 0
+              for (i = 1; i <= NR; i++) {
+                if (line[i] ~ /[^[:space:]]/) {
+                  if (!first) first = i
+                  last = i
+                }
+              }
+              for (i = first; first && i <= last; i++) print line[i]
+            }
+          ')"
+
+          if [[ -n "$notes" ]]; then
+            {
+              echo "body<<YONIME_RELEASE_BODY"
+              printf '%s\n' "$notes"
+              echo "YONIME_RELEASE_BODY"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    needs: prepare
+    if: needs.prepare.outputs.version != ''
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test
+        run: go test ./...
+
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.version != ''
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64, 386]
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build
+        shell: pwsh
+        run: .\build.ps1 -Version $env:VERSION -Repo $env:REPO -Arch "${{ matrix.arch }}"
+      - name: Checksum
+        shell: pwsh
+        run: |
+          $exe = "dist\yonime_${env:VERSION}_${{ matrix.arch }}.exe"
+          $hash = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
+          "$hash  $(Split-Path -Leaf $exe)" | Set-Content -NoNewline "$exe.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yonime-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    needs: [prepare, test, build]
+    if: needs.prepare.outputs.version != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.version }}
+          name: Yonime ${{ needs.prepare.outputs.version }}
+          body: ${{ needs.prepare.outputs.body }}
+          files: dist/*
+          generate_release_notes: ${{ needs.prepare.outputs.body == '' }}
