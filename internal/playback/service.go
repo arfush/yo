@@ -215,11 +215,13 @@ func (s *Service) clearSession(session *Session) {
 }
 
 type playlistEntry struct {
-	EpisodeIndex int
-	Episode      library.PlaybackEpisode
-	URL          string
-	Kind         string
-	Quality      int
+	EpisodeIndex  int
+	Episode       library.PlaybackEpisode
+	URL           string
+	Kind          string
+	Quality       int
+	SubtitleURL   string
+	SubtitleLabel string
 
 	chapters        []metadata.Chapter
 	chaptersReady   bool
@@ -364,6 +366,7 @@ func (s *Session) onFileLoaded(position int) {
 	// the new episode's cached/fetched chapters are applied.
 	_ = s.mpv.setChapters(nil)
 	s.applyChapters(entry)
+	s.applySubtitles(entry)
 	// Resolving previous episodes can take seconds (Kodik) and must never block
 	// the event loop: time-pos/duration events drive progress saving.
 	go s.ensurePrevious(entry.EpisodeIndex)
@@ -802,24 +805,7 @@ func (s *Session) resolveEntry(ctx context.Context, index int) (*playlistEntry, 
 		return nil, fmt.Errorf("серия %s: %w", episode.Number, err)
 	}
 
-	var animelibPlayer *animelib.EpisodePlayer
-	var kodikPlayer *animelib.EpisodePlayer
-	for playerIndex := range detail.Players {
-		player := &detail.Players[playerIndex]
-		if !sameTeam(player.TeamName, s.plan.Voice) {
-			continue
-		}
-		switch strings.ToLower(strings.TrimSpace(player.Player)) {
-		case "animelib":
-			if animelibPlayer == nil && len(player.Qualities) > 0 {
-				animelibPlayer = player
-			}
-		case "kodik":
-			if kodikPlayer == nil && player.Src != "" {
-				kodikPlayer = player
-			}
-		}
-	}
+	animelibPlayer, kodikPlayer := selectVoicePlayers(detail.Players, s.plan.Voice)
 
 	// AnimeLIB always wins when the selected voice has a direct file for this
 	// episode. Kodik is the fallback only for episodes without one.
@@ -828,12 +814,18 @@ func (s *Session) resolveEntry(ctx context.Context, index int) (*playlistEntry, 
 		if link.Href != "" {
 			mediaURL, joinErr := s.joinAnimelib(resolveCtx, link.Href)
 			if joinErr == nil && mediaURL != "" {
+				// Subtitles belong to the player that is actually playing.
+				// Never borrow tracks from another voice or from a Kodik
+				// fallback, where the timings may differ.
+				subtitleURL, subtitleLabel := s.subtitleForPlayer(resolveCtx, animelibPlayer)
 				return &playlistEntry{
-					EpisodeIndex: index,
-					Episode:      episode,
-					URL:          mediaURL,
-					Kind:         "mp4",
-					Quality:      link.Quality,
+					EpisodeIndex:  index,
+					Episode:       episode,
+					URL:           mediaURL,
+					Kind:          "mp4",
+					Quality:       link.Quality,
+					SubtitleURL:   subtitleURL,
+					SubtitleLabel: subtitleLabel,
 				}, nil
 			}
 		}
@@ -908,6 +900,14 @@ func (s *Session) applyChapters(entry *playlistEntry) {
 		return
 	}
 	go s.prefetchChapters(entry)
+}
+
+func (s *Session) applySubtitles(entry *playlistEntry) {
+	if entry == nil || strings.TrimSpace(entry.SubtitleURL) == "" {
+		return
+	}
+	// Missing or broken subtitles must never stop playback.
+	_ = s.mpv.addSubtitle(entry.SubtitleURL, entry.SubtitleLabel)
 }
 
 func (s *Session) loadChapters(entry *playlistEntry) {
@@ -1021,6 +1021,100 @@ func pickAnimelibQuality(links []animelib.QualityLink, preferred int) animelib.Q
 		return lower
 	}
 	return sorted[0]
+}
+
+func selectVoicePlayers(players []animelib.EpisodePlayer, voice string) (*animelib.EpisodePlayer, *animelib.EpisodePlayer) {
+	var animelibPlayer *animelib.EpisodePlayer
+	var kodikPlayer *animelib.EpisodePlayer
+	for playerIndex := range players {
+		player := &players[playerIndex]
+		if !sameTeam(player.TeamName, voice) {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(player.Player)) {
+		case "animelib":
+			if animelibPlayer == nil && len(player.Qualities) > 0 {
+				animelibPlayer = player
+			}
+		case "kodik":
+			if kodikPlayer == nil && player.Src != "" {
+				kodikPlayer = player
+			}
+		}
+	}
+	return animelibPlayer, kodikPlayer
+}
+
+// pickSubtitleTrack enforces the playback preference: ASS first, VTT only when
+// the selected player has no ASS track.
+func pickSubtitleTrack(tracks []animelib.SubtitleTrack) (animelib.SubtitleTrack, bool) {
+	var fallback animelib.SubtitleTrack
+	hasFallback := false
+	for _, track := range tracks {
+		if strings.TrimSpace(track.Src) == "" {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(track.Format)) {
+		case "ass":
+			return track, true
+		case "vtt":
+			if !hasFallback {
+				fallback = track
+				hasFallback = true
+			}
+		}
+	}
+	return fallback, hasFallback
+}
+
+func (s *Session) subtitleForPlayer(ctx context.Context, player *animelib.EpisodePlayer) (string, string) {
+	if player == nil {
+		return "", ""
+	}
+	track, ok := pickSubtitleTrack(player.Subtitles)
+	if !ok {
+		return "", ""
+	}
+	label := strings.ToUpper(strings.TrimSpace(track.Format))
+	src := strings.TrimSpace(track.Src)
+	if isAbsoluteURL(src) {
+		return src, label
+	}
+	bases, err := s.animelibBases(ctx)
+	if err != nil {
+		return "", ""
+	}
+	return resolveRelativeSubtitle(src, player.VideoDomain, bases), label
+}
+
+// resolveRelativeSubtitle joins a relative subtitle path to the video server
+// named by the player's video_domain. The API currently returns absolute
+// subtitle URLs, but relative paths exist in older clients' data.
+func resolveRelativeSubtitle(src, domain string, bases []string) string {
+	src = strings.TrimSpace(src)
+	if src == "" {
+		return ""
+	}
+	if isAbsoluteURL(src) {
+		return src
+	}
+	wantedHost := "video1.cdnlibs.org"
+	switch strings.ToLower(strings.TrimSpace(domain)) {
+	case "secondary_1":
+		wantedHost = "video2.cdnlibs.org"
+	case "secondary_2":
+		wantedHost = "video1.imglib.info"
+	}
+	for _, base := range bases {
+		parsed, err := url.Parse(strings.TrimSpace(base))
+		if err == nil && strings.EqualFold(parsed.Hostname(), wantedHost) {
+			return animelib.JoinVideoBase(base, src)
+		}
+	}
+	if len(bases) > 0 {
+		return animelib.JoinVideoBase(bases[0], src)
+	}
+	return ""
 }
 
 func sameTeam(left, right string) bool {

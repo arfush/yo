@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -285,6 +286,19 @@ func (m *mpvProcess) seek(seconds float64) error {
 		return nil
 	}
 	_, err := m.call("seek", seconds, "absolute")
+	return err
+}
+
+func (m *mpvProcess) addSubtitle(url, title string) error {
+	url = strings.TrimSpace(url)
+	if url == "" {
+		return nil
+	}
+	arguments := []interface{}{"sub-add", url, "select"}
+	if title = strings.TrimSpace(title); title != "" {
+		arguments = append(arguments, title)
+	}
+	_, err := m.call(arguments...)
 	return err
 }
 

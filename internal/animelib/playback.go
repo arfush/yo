@@ -18,13 +18,25 @@ type EpisodePlayer struct {
 	TeamID          int64
 	TeamName        string
 	Src             string
+	VideoDomain     string
 	Qualities       []QualityLink
+	Subtitles       []SubtitleTrack
 }
 
 // QualityLink is one quality offered by the Animelib player.
 type QualityLink struct {
 	Quality int
 	Href    string
+}
+
+// SubtitleTrack is one external subtitle file attached to an Animelib player.
+// The API has no language field, and name/filename are often UUIDs.
+type SubtitleTrack struct {
+	ID       int
+	Format   string
+	Name     string
+	Filename string
+	Src      string
 }
 
 // EpisodeDetail is the data needed to start playback of one episode.
@@ -52,8 +64,9 @@ type episodeDetailResponse struct {
 				ID   int64  `json:"id"`
 				Name string `json:"name"`
 			} `json:"team"`
-			Src   string `json:"src"`
-			Video struct {
+			Src         string `json:"src"`
+			VideoDomain string `json:"video_domain"`
+			Video       struct {
 				Quality []struct {
 					// AnimeLIB has returned this both as a JSON string and as
 					// a number. Decode both forms.
@@ -61,6 +74,13 @@ type episodeDetailResponse struct {
 					Href    string `json:"href"`
 				} `json:"quality"`
 			} `json:"video"`
+			Subtitles []struct {
+				ID       int    `json:"id"`
+				Format   string `json:"format"`
+				Name     string `json:"name"`
+				Filename string `json:"filename"`
+				Src      string `json:"src"`
+			} `json:"subtitles"`
 		} `json:"players"`
 	} `json:"data"`
 }
@@ -118,8 +138,10 @@ func (c *Client) EpisodeDetail(ctx context.Context, episodeID int) (*EpisodeDeta
 			TranslationType: player.TranslationType.ID,
 			TeamID:          player.Team.ID,
 			TeamName:        strings.TrimSpace(player.Team.Name),
-			Src:             normalizeEmbedURL(player.Src),
+			Src:             normalizeURL(player.Src),
+			VideoDomain:     strings.TrimSpace(player.VideoDomain),
 			Qualities:       make([]QualityLink, 0, len(player.Video.Quality)),
+			Subtitles:       make([]SubtitleTrack, 0, len(player.Subtitles)),
 		}
 		for _, quality := range player.Video.Quality {
 			number, ok := qualityNumber(quality.Quality)
@@ -129,6 +151,19 @@ func (c *Client) EpisodeDetail(ctx context.Context, episodeID int) (*EpisodeDeta
 			item.Qualities = append(item.Qualities, QualityLink{
 				Quality: number,
 				Href:    strings.TrimSpace(quality.Href),
+			})
+		}
+		for _, subtitle := range player.Subtitles {
+			src := normalizeURL(subtitle.Src)
+			if src == "" {
+				continue
+			}
+			item.Subtitles = append(item.Subtitles, SubtitleTrack{
+				ID:       subtitle.ID,
+				Format:   strings.ToLower(strings.TrimSpace(subtitle.Format)),
+				Name:     strings.TrimSpace(subtitle.Name),
+				Filename: strings.TrimSpace(subtitle.Filename),
+				Src:      src,
 			})
 		}
 		detail.Players = append(detail.Players, item)
@@ -197,7 +232,7 @@ func qualityNumber(value any) (int, bool) {
 	}
 }
 
-func normalizeEmbedURL(raw string) string {
+func normalizeURL(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return ""
