@@ -1115,7 +1115,7 @@ func (w *titleWindow) layoutFooter(gtx layout.Context) {
 				face,
 				titlePageNoteSize,
 				color.NRGBA{R: 0xf0, G: 0x8a, B: 0x8a, A: 0xff},
-				image.Pt(x, (height-ink.Dy())/2),
+				image.Pt(x, (size.Y-ink.Dy())/2),
 				available,
 			)
 		}
