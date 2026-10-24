@@ -37,17 +37,17 @@ func formatEpisodeNotification(event library.EpisodeNotification) (string, strin
 	case voiceCount == 0:
 		body = "Новая серия уже добавлена!"
 	case event.Preferred && episode != "":
-		body = fmt.Sprintf("%s эп. в твоей озвучке (%s) уже добавлен!", episode, voices)
+		body = fmt.Sprintf("%s эп. в твоей озвучке %s уже добавлен!", episode, voices)
 	case event.Preferred:
-		body = fmt.Sprintf("Новая серия в твоей озвучке (%s) уже добавлена!", voices)
+		body = fmt.Sprintf("Новая серия в твоей озвучке %s уже добавлена!", voices)
 	case episode != "" && voiceCount > 1:
-		body = fmt.Sprintf("%s эп. в озвучках (%s) уже добавлен!", episode, voices)
+		body = fmt.Sprintf("%s эп. в озвучках %s уже добавлен!", episode, voices)
 	case episode != "":
-		body = fmt.Sprintf("%s эп. в озвучке (%s) уже добавлен!", episode, voices)
+		body = fmt.Sprintf("%s эп. в озвучке %s уже добавлен!", episode, voices)
 	case voiceCount > 1:
-		body = fmt.Sprintf("Новая серия в озвучках (%s) уже добавлена!", voices)
+		body = fmt.Sprintf("Новая серия в озвучках %s уже добавлена!", voices)
 	default:
-		body = fmt.Sprintf("Новая серия в озвучке (%s) уже добавлена!", voices)
+		body = fmt.Sprintf("Новая серия в озвучке %s уже добавлена!", voices)
 	}
 	if event.TitleReleased {
 		body = "Тайтл вышел! " + body
