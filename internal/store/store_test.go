@@ -149,6 +149,157 @@ func TestCoverCache(t *testing.T) {
 	}
 }
 
+func TestEpisodeTrackingLifecycle(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "yonime.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	tid, err := db.UpsertTitle(Title{Slug: "tracking", RusName: "Трекинг", Status: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.EnsureHistory(tid, "1", "Озвучка"); err != nil {
+		t.Fatal(err)
+	}
+
+	watches, err := db.ListEpisodeWatches()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(watches) != 1 || watches[0].Tracked {
+		t.Fatalf("fresh history unexpectedly has tracking: %#v", watches)
+	}
+
+	if err := db.SeedEpisodeTracking(tid, "4"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SeedEpisodeTracking(tid, "9"); err != nil {
+		t.Fatal(err)
+	}
+	watches, err = db.ListEpisodeWatches()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !watches[0].Tracked || watches[0].LastEpisode != "4" {
+		t.Fatalf("seed was not preserved: %#v", watches[0])
+	}
+
+	if err := db.SaveEpisodeTracking(tid, EpisodeTracking{
+		LastEpisode:            "5",
+		AnyVoiceNotified:       true,
+		PreferredVoiceNotified: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	watches, err = db.ListEpisodeWatches()
+	if err != nil {
+		t.Fatal(err)
+	}
+	watch := watches[0]
+	if watch.LastEpisode != "5" || !watch.AnyVoiceNotified || !watch.PreferredVoiceNotified {
+		t.Fatalf("tracking flags were not saved: %#v", watch)
+	}
+
+	if err := db.UpdateTitleStatus(tid, 0); err != nil {
+		t.Fatal(err)
+	}
+	history, err := db.ListHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if history[0].Status != 0 {
+		t.Fatalf("cached status = %d, want 0", history[0].Status)
+	}
+
+	// Removing the title from history must remove its notification state too.
+	if err := db.DeleteHistory(tid); err != nil {
+		t.Fatal(err)
+	}
+	watches, err = db.ListEpisodeWatches()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(watches) != 0 {
+		t.Fatalf("deleted history still has watches: %#v", watches)
+	}
+	if _, err := db.EnsureHistory(tid, "5", "Озвучка"); err != nil {
+		t.Fatal(err)
+	}
+	watches, err = db.ListEpisodeWatches()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if watches[0].Tracked {
+		t.Fatalf("re-added title reused deleted tracking: %#v", watches[0])
+	}
+}
+
+func TestClearHistoryDropsEpisodeTracking(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "yonime.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	tid, err := db.UpsertTitle(Title{Slug: "clear-tracking", Status: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.EnsureHistory(tid, "2", "Озвучка"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SaveEpisodeTracking(tid, EpisodeTracking{LastEpisode: "2", AnyVoiceNotified: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ClearHistory(); err != nil {
+		t.Fatal(err)
+	}
+	watches, err := db.ListEpisodeWatches()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(watches) != 0 {
+		t.Fatalf("cleared history still has watches: %#v", watches)
+	}
+}
+
+func TestEpisodeNotificationsDefaultOnAndPersist(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "yonime.sqlite")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !db.EpisodeNotificationsEnabled() {
+		t.Fatal("notifications must be enabled by default")
+	}
+	if err := db.SetEpisodeNotificationsEnabled(false); err != nil {
+		t.Fatal(err)
+	}
+	if db.EpisodeNotificationsEnabled() {
+		t.Fatal("disabled notification setting was not stored")
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if db.EpisodeNotificationsEnabled() {
+		t.Fatal("disabled notification setting did not survive reopen")
+	}
+	if err := db.SetEpisodeNotificationsEnabled(true); err != nil {
+		t.Fatal(err)
+	}
+	if !db.EpisodeNotificationsEnabled() {
+		t.Fatal("enabled notification setting was not stored")
+	}
+}
+
 func TestHistoryKeepsNewestFirst(t *testing.T) {
 	db, err := Open(filepath.Join(t.TempDir(), "yonime.sqlite"))
 	if err != nil {

@@ -50,6 +50,12 @@ CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS episode_tracking (
+    tid                      INTEGER PRIMARY KEY REFERENCES titles(id) ON DELETE CASCADE,
+    last_episode             TEXT    NOT NULL DEFAULT '',
+    any_voice_notified       INTEGER NOT NULL DEFAULT 0,
+    preferred_voice_notified INTEGER NOT NULL DEFAULT 0
+);
 `
 
 // Title is the persisted AnimeLIB metadata plus local display fields. Episode
@@ -80,6 +86,33 @@ type HistoryEntry struct {
 	Duration  float64
 	Voiceover string
 	SortOrder int64
+}
+
+// EpisodeWatch is a title from history together with the episode-tracking row
+// used by the background new-episode checker. Tracked is false when the title
+// has been in history since before notification tracking existed; the checker
+// seeds such a row before it starts sending notifications.
+type EpisodeWatch struct {
+	TitleID   int64
+	Slug      string
+	EngName   string
+	RusName   string
+	Status    int
+	Voiceover string
+
+	Tracked                bool
+	LastEpisode            string
+	AnyVoiceNotified       bool
+	PreferredVoiceNotified bool
+}
+
+// EpisodeTracking is the persisted state of the last episode seen for one
+// title. The two notification flags belong to LastEpisode: they reset when a
+// newer episode appears.
+type EpisodeTracking struct {
+	LastEpisode            string
+	AnyVoiceNotified       bool
+	PreferredVoiceNotified bool
 }
 
 // Store is a SQLite-backed title and history store.
@@ -307,6 +340,92 @@ func (s *Store) SaveProgress(tid int64, episode string, position, duration float
 	return err
 }
 
+// ListEpisodeWatches returns every title in history with its tracking row.
+// The caller decides which statuses should be polled.
+func (s *Store) ListEpisodeWatches() ([]EpisodeWatch, error) {
+	rows, err := s.db.Query(`
+        SELECT t.id, t.slug, t.eng_name, t.rus_name, t.status, h.voiceover,
+               e.tid IS NOT NULL,
+               COALESCE(e.last_episode, ''),
+               COALESCE(e.any_voice_notified, 0),
+               COALESCE(e.preferred_voice_notified, 0)
+        FROM history h
+        JOIN titles t ON t.id = h.tid
+        LEFT JOIN episode_tracking e ON e.tid = t.id
+        ORDER BY h.sort_order ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []EpisodeWatch
+	for rows.Next() {
+		var watch EpisodeWatch
+		var tracked, anyNotified, preferredNotified int
+		if err := rows.Scan(
+			&watch.TitleID, &watch.Slug, &watch.EngName, &watch.RusName, &watch.Status, &watch.Voiceover,
+			&tracked, &watch.LastEpisode, &anyNotified, &preferredNotified,
+		); err != nil {
+			return nil, err
+		}
+		watch.Tracked = tracked != 0
+		watch.AnyVoiceNotified = anyNotified != 0
+		watch.PreferredVoiceNotified = preferredNotified != 0
+		out = append(out, watch)
+	}
+	return out, rows.Err()
+}
+
+// SeedEpisodeTracking starts tracking a title without notifying about episodes
+// that were already available when it was saved. An existing row is kept, so
+// pressing Save again never rewinds the notification state.
+func (s *Store) SeedEpisodeTracking(tid int64, lastEpisode string) error {
+	if tid == 0 {
+		return nil
+	}
+	_, err := s.db.Exec(`
+        INSERT INTO episode_tracking (tid, last_episode)
+        VALUES (?, ?)
+        ON CONFLICT(tid) DO NOTHING`, tid, lastEpisode)
+	return err
+}
+
+// SaveEpisodeTracking updates the latest seen episode and its notification
+// flags.
+func (s *Store) SaveEpisodeTracking(tid int64, tracking EpisodeTracking) error {
+	if tid == 0 {
+		return nil
+	}
+	_, err := s.db.Exec(`
+        INSERT INTO episode_tracking (tid, last_episode, any_voice_notified, preferred_voice_notified)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(tid) DO UPDATE SET
+            last_episode             = excluded.last_episode,
+            any_voice_notified       = excluded.any_voice_notified,
+            preferred_voice_notified = excluded.preferred_voice_notified`,
+		tid, tracking.LastEpisode, boolInt(tracking.AnyVoiceNotified), boolInt(tracking.PreferredVoiceNotified))
+	return err
+}
+
+// DeleteEpisodeTracking stops tracking a title, for example when it completes
+// or leaves history.
+func (s *Store) DeleteEpisodeTracking(tid int64) error {
+	if tid == 0 {
+		return nil
+	}
+	_, err := s.db.Exec("DELETE FROM episode_tracking WHERE tid = ?", tid)
+	return err
+}
+
+// UpdateTitleStatus refreshes the cached status after a background check.
+func (s *Store) UpdateTitleStatus(tid int64, status int) error {
+	if tid == 0 {
+		return nil
+	}
+	_, err := s.db.Exec("UPDATE titles SET status = ?, updated_at = ? WHERE id = ?", status, time.Now().Unix(), tid)
+	return err
+}
+
 // UpdateNames refreshes the localized/English names discovered during
 // playback. Empty values do not overwrite existing names.
 func (s *Store) UpdateNames(tid int64, english, russian string) error {
@@ -334,6 +453,29 @@ func (s *Store) UpdateMetadata(tid int64, imdbID string, season int) error {
             season  = CASE WHEN ? > 0 THEN ? ELSE season END
         WHERE id = ?`,
 		imdbID, imdbID, season, season, tid)
+	return err
+}
+
+// EpisodeNotificationsEnabled reports whether the user wants new-episode
+// notifications. The setting is enabled by default for a fresh database.
+func (s *Store) EpisodeNotificationsEnabled() bool {
+	var value string
+	if err := s.db.QueryRow("SELECT value FROM settings WHERE key = 'episode_notifications'").Scan(&value); err != nil {
+		return true
+	}
+	return value != "0" && value != "false"
+}
+
+// SetEpisodeNotificationsEnabled stores the new-episode notification choice.
+func (s *Store) SetEpisodeNotificationsEnabled(enabled bool) error {
+	value := "1"
+	if !enabled {
+		value = "0"
+	}
+	_, err := s.db.Exec(`
+        INSERT INTO settings (key, value) VALUES ('episode_notifications', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+		value)
 	return err
 }
 
@@ -394,14 +536,21 @@ func (s *Store) SaveIntrodbCache(tid int64, episode string, chapters []byte, noD
 }
 
 // DeleteHistory removes one title from history without deleting its cached
-// metadata.
+// metadata. Its episode tracking goes with it: a deleted title must not keep
+// producing notifications.
 func (s *Store) DeleteHistory(tid int64) error {
+	if _, err := s.db.Exec("DELETE FROM episode_tracking WHERE tid = ?", tid); err != nil {
+		return err
+	}
 	_, err := s.db.Exec("DELETE FROM history WHERE tid = ?", tid)
 	return err
 }
 
 // ClearHistory removes every history row but keeps cached title metadata.
 func (s *Store) ClearHistory() error {
+	if _, err := s.db.Exec("DELETE FROM episode_tracking"); err != nil {
+		return err
+	}
 	_, err := s.db.Exec("DELETE FROM history")
 	return err
 }
@@ -419,6 +568,13 @@ func (s *Store) ReorderHistory(ids []int64) error {
 		}
 	}
 	return tx.Commit()
+}
+
+func boolInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 func (s *Store) nextSortOrder() (int64, error) {
