@@ -263,6 +263,7 @@ type Session struct {
 	futureDone     bool
 	suppressFinish bool
 	finished       bool
+	loadedOnce     bool
 
 	loadMu   sync.Mutex
 	ensureMu sync.Mutex
@@ -347,6 +348,7 @@ func (s *Session) onFileLoaded(position int) {
 	}
 	s.mu.Lock()
 	s.current = position
+	s.loadedOnce = true
 	s.currentEp = entry.EpisodeIndex
 	s.currentNumber = entry.Episode.Number
 	s.duration = 0
@@ -411,6 +413,10 @@ func (s *Session) onDuration(seconds float64) {
 }
 
 func (s *Session) onEndFile(event mpvEvent) {
+	if event.Reason == "error" {
+		s.failUnopened(event.Position)
+		return
+	}
 	if event.Reason != "eof" && event.Reason != "quit" {
 		return
 	}
@@ -452,6 +458,41 @@ func (s *Session) onEndFile(event mpvEvent) {
 			_, _ = mpv.call("quit")
 		}
 	}
+}
+
+// failUnopened returns to the application when mpv could not open the first
+// file. A failed open arrives as end-file with reason "error" and no preceding
+// file-loaded event; without this check mpv would stay on its idle "drop files"
+// screen while the application window remains hidden.
+func (s *Session) failUnopened(position int) {
+	s.mu.Lock()
+	loaded := s.loadedOnce
+	entry := s.entryAtLocked(position)
+	if entry == nil {
+		entry = s.entryAtLocked(s.current)
+	}
+	mpv := s.mpv
+	s.mu.Unlock()
+	if loaded {
+		return
+	}
+
+	s.finish(unopenedError(entry))
+	if mpv != nil {
+		mpv.close()
+	}
+}
+
+func unopenedError(entry *playlistEntry) error {
+	message := "не удалось воспроизвести серию"
+	if entry != nil {
+		if entry.Kind == "hls" {
+			message = fmt.Sprintf("серия %s: сервер Kodik не отвечает, проверьте подключение", entry.Episode.Number)
+		} else {
+			message = fmt.Sprintf("серия %s: не удалось воспроизвести видео", entry.Episode.Number)
+		}
+	}
+	return errors.New(message)
 }
 
 func (s *Session) onFinishProgress() {
