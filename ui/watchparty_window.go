@@ -41,7 +41,6 @@ const (
 	wpRoundSize     = 40
 	wpRoundInset    = 10
 	wpFieldPadX     = 18
-	wpKeySpacing    = 2
 	wpWaitTimeout   = 12 * time.Second
 	wpFeedbackDelay = 3 * time.Second
 	wpShakeDuration = 520 * time.Millisecond
@@ -58,9 +57,6 @@ const (
 	wpWaitSize     = unit.Sp(13.5)
 	wpChipSize     = unit.Sp(11)
 	wpWaitHintSize = unit.Sp(12)
-	// The join field ends with a round button whose label has to fit inside the
-	// circle, so it is a size smaller than the card buttons.
-	wpRoundLabelSize = unit.Sp(10)
 )
 
 const (
@@ -73,7 +69,6 @@ const (
 	wpWaitingText  = "Ожидаем создателя комнаты"
 	wpCreateLabel  = "Создать"
 	wpJoinLabel    = "Присоединиться"
-	wpNextLabel    = "Далее"
 )
 
 var (
@@ -124,6 +119,10 @@ type watchPartyWindow struct {
 	backClick      widget.Clickable
 	backHover      hoverAnim
 	editor         widget.Editor
+	// keyEditor displays the created room key. It is read-only but selectable,
+	// so the key can be copied with Ctrl+C straight from the card.
+	keyEditor widget.Editor
+	keySelect bool
 
 	focusField bool
 	busy       bool
@@ -151,6 +150,8 @@ func newWatchPartyWindow(typo *typography, w *app.Window, party *partyManager) *
 	}
 	screen.editor.SingleLine = true
 	screen.editor.InputHint = key.HintText
+	screen.keyEditor.SingleLine = true
+	screen.keyEditor.ReadOnly = true
 	snapshot := party.Snapshot()
 	switch {
 	case !snapshot.Active:
@@ -260,18 +261,16 @@ func (w *watchPartyWindow) layoutChoice(gtx layout.Context, cardWidth int, px fu
 	join := image.Rect(left+half+gap, top, right, bottom)
 
 	errored, shake := buttonErrorFeedback(gtx.Now, w.errorAt, !w.joinFeedback)
-	if w.layoutActionButton(gtx, create, &w.createButton, wpCreateLabel, true, errored, shake) {
+	// Joining is the primary action; creating a room is secondary, so the pair
+	// does not compete for attention.
+	if w.layoutActionButton(gtx, create, &w.createButton, wpCreateLabel, false, errored, shake) {
 		w.create()
 	}
-	if w.layoutActionButton(gtx, join, &w.joinButton, wpJoinLabel, false, false, 0) {
+	if w.layoutActionButton(gtx, join, &w.joinButton, wpJoinLabel, true, false, 0) {
 		w.openJoin()
 	}
 
-	if w.errorText != "" {
-		face := font.Font{Typeface: fontFamily, Weight: font.Normal}
-		width := right - left
-		drawTruncatedText(gtx, w.typo, w.errorText, face, wpErrorSize, tokenErrorColor1, image.Pt(left, px(wpErrorTop)), width)
-	}
+	drawCenteredError(gtx, w.typo, w.errorText, cardWidth, px)
 	if shake != 0 {
 		// Only the shake needs continuous frames; the red tint can wait for the
 		// frame that clears it.
@@ -340,19 +339,22 @@ func (w *watchPartyWindow) layoutJoin(gtx layout.Context, cardWidth int, px func
 		}
 	}
 
-	face := font.Font{Typeface: fontFamily, Weight: font.Normal}
-	if w.errorText != "" {
-		drawTruncatedText(
-			gtx,
-			w.typo,
-			w.errorText,
-			face,
-			wpErrorSize,
-			tokenErrorColor1,
-			image.Pt(px(wpCardPadding), px(wpErrorTop)),
-			cardWidth-2*px(wpCardPadding),
-		)
+	drawCenteredError(gtx, w.typo, w.errorText, cardWidth, px)
+}
+
+// drawCenteredError paints the feedback line in the middle of the card, between
+// the two action buttons. Long relay errors are shortened to the card width.
+func drawCenteredError(gtx layout.Context, typo *typography, text string, cardWidth int, px func(float32) int) {
+	if text == "" || typo == nil {
+		return
 	}
+	face := font.Font{Typeface: fontFamily, Weight: font.Normal}
+	text = truncateText(gtx, typo, text, face, wpErrorSize, cardWidth-2*px(wpCardPadding))
+	if text == "" {
+		return
+	}
+	_, ink := typo.measure(gtx, text, face, wpErrorSize)
+	typo.draw(gtx, text, face, wpErrorSize, tokenErrorColor1, image.Pt((cardWidth-ink.Dx())/2, px(wpErrorTop)))
 }
 
 // layoutProviderChip draws the provider name next to the title. It toggles on
@@ -453,7 +455,7 @@ func (w *watchPartyWindow) layoutKeyField(gtx layout.Context, rect image.Rectang
 		if editable {
 			w.layoutKeyEditor(gtx, textRect)
 		} else {
-			w.drawKeyText(gtx, textRect, watchparty.NormalizeDisplay(value))
+			w.layoutKeyViewer(gtx, textRect, watchparty.NormalizeDisplay(value))
 		}
 	}
 
@@ -469,17 +471,20 @@ func (w *watchPartyWindow) layoutKeyField(gtx layout.Context, rect image.Rectang
 	stack := op.Offset(round.Min).Push(gtx.Ops)
 	w.drawRoundButton(gtx, round.Size(), hovered, errored, func(gtx layout.Context, center image.Point) {
 		if editable {
-			w.typo.drawCentered(
+			drawChevronRight(
 				gtx,
-				wpNextLabel,
-				font.Font{Typeface: fontFamily, Weight: font.SemiBold},
-				wpRoundLabelSize,
-				color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff},
 				center,
+				roundSize/3,
+				gtx.Dp(unit.Dp(2)),
+				color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff},
 			)
 			return
 		}
-		drawCopyIcon(gtx, center, makeGeometry(gtx, false, false, false, false), color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff})
+		// The key icon sits in a wide field, so it can be drawn larger than a
+		// footer glyph without touching the circle.
+		iconGeometry := makeGeometry(gtx, false, false, false, false)
+		iconGeometry.scale *= 1.5
+		drawCopyIcon(gtx, center, iconGeometry, color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff})
 	})
 	stack.Pop()
 
@@ -551,36 +556,34 @@ func (w *watchPartyWindow) syncEditor() {
 	w.window.Invalidate()
 }
 
-// drawKeyText paints a read-only key with extra letter spacing, so it is easy
-// to read aloud.
-func (w *watchPartyWindow) drawKeyText(gtx layout.Context, rect image.Rectangle, key string) {
-	if key == "" {
+// layoutKeyViewer shows the created room key in a read-only editor. The key is
+// selected as soon as the card opens and the editor keeps keyboard focus, so
+// Ctrl+C copies it immediately; clicking the field also works for mouse users.
+func (w *watchPartyWindow) layoutKeyViewer(gtx layout.Context, rect image.Rectangle, roomKey string) {
+	if roomKey == "" {
 		return
 	}
-	face := font.Font{Typeface: fontFamily, Weight: font.Medium}
-	spacing := gtx.Dp(unit.Dp(wpKeySpacing))
-
-	total := 0
-	widths := make([]int, 0, len(key))
-	for _, r := range key {
-		_, ink := w.typo.measure(gtx, string(r), face, wpKeySize)
-		widths = append(widths, ink.Dx())
-		total += ink.Dx()
+	if w.keyEditor.Text() != roomKey {
+		w.keyEditor.SetText(roomKey)
+		w.keyEditor.SetCaret(0, len(roomKey))
+		w.keySelect = true
 	}
-	if len(widths) > 1 {
-		total += spacing * (len(widths) - 1)
+	if w.keySelect {
+		w.keySelect = false
+		gtx.Execute(key.FocusCmd{Tag: &w.keyEditor})
 	}
-	if total > rect.Dx() {
-		spacing = 0
-	}
-
-	_, lineInk := w.typo.measure(gtx, key, face, wpKeySize)
-	x := rect.Min.X
-	y := rect.Min.Y + (rect.Dy()-lineInk.Dy())/2
-	for index, r := range key {
-		w.typo.draw(gtx, string(r), face, wpKeySize, mainTextColor, image.Pt(x, y))
-		x += widths[index] + spacing
-	}
+	editorGtx := gtx
+	editorGtx.Constraints = layout.Exact(rect.Size())
+	stack := op.Offset(rect.Min).Push(gtx.Ops)
+	w.keyEditor.Layout(
+		editorGtx,
+		w.typo.shaper,
+		font.Font{Typeface: fontFamily, Weight: font.Medium},
+		wpKeySize,
+		colorMaterial(gtx, mainTextColor),
+		colorMaterial(gtx, mainSelectionColor),
+	)
+	stack.Pop()
 }
 
 func (w *watchPartyWindow) drawRoundButton(gtx layout.Context, size image.Point, hovered, errored bool, draw func(layout.Context, image.Point)) {
@@ -701,7 +704,9 @@ func (w *watchPartyWindow) layoutWaiting(gtx layout.Context, snapshot partySnaps
 	}
 
 	if w.animationsRun() {
-		gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(33 * time.Millisecond)})
+		// The mascot animates at display rate on this screen; 30 fps made the
+		// bob look chopped compared to the main window.
+		gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(16 * time.Millisecond)})
 	}
 }
 

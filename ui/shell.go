@@ -374,7 +374,7 @@ func (s *shell) layoutFooter(gtx layout.Context, g geometry) {
 		return
 	}
 	if s.settingsVisible && !g.settingsRect.Empty() {
-		opened := s.layoutFooterControl(gtx, g, g.settingsRect, &s.settings, &s.settingsHover, false, func(gtx layout.Context, local image.Rectangle, progress float32) {
+		opened := s.layoutFooterControl(gtx, g, g.settingsRect, &s.settings, &s.settingsHover, false, func(gtx layout.Context, local image.Rectangle, progress float32, _ color.NRGBA) {
 			icon := mixColor(footerControlIconColor, footerControlHoverIconColor, progress)
 			drawSettingsIcon(gtx, centerOf(local), g, icon)
 		})
@@ -389,18 +389,18 @@ func (s *shell) layoutFooter(gtx layout.Context, g geometry) {
 	}
 	if s.partyVisible && !g.partyRect.Empty() {
 		active := s.partyActive
-		if s.layoutFooterControl(gtx, g, g.partyRect, &s.party, &s.partyHover, active, func(gtx layout.Context, local image.Rectangle, progress float32) {
+		if s.layoutFooterControl(gtx, g, g.partyRect, &s.party, &s.partyHover, active, func(gtx layout.Context, local image.Rectangle, progress float32, background color.NRGBA) {
 			icon := mixColor(footerControlIconColor, footerControlHoverIconColor, progress)
 			if active {
 				icon = mixColor(footerPartyActiveIcon, footerControlHoverIconColor, progress)
 			}
-			drawPeopleIcon(gtx, centerOf(local), g, icon)
+			drawPeopleIcon(gtx, centerOf(local), g, background, icon)
 		}) && s.onParty != nil {
 			s.onParty()
 		}
 	}
 	if s.updateVisible && !g.updateRect.Empty() {
-		if s.layoutFooterControl(gtx, g, g.updateRect, &s.update, &s.updateHover, false, func(gtx layout.Context, local image.Rectangle, progress float32) {
+		if s.layoutFooterControl(gtx, g, g.updateRect, &s.update, &s.updateHover, false, func(gtx layout.Context, local image.Rectangle, progress float32, _ color.NRGBA) {
 			icon := mixColor(footerControlIconColor, footerControlHoverIconColor, progress)
 			drawDownloadIcon(
 				gtx,
@@ -417,7 +417,7 @@ func (s *shell) layoutFooter(gtx layout.Context, g geometry) {
 // layoutFooterControl draws one round footer button and reports a click.
 // active tints the button for a control that is currently holding state, such
 // as an open watch-party room.
-func (s *shell) layoutFooterControl(gtx layout.Context, g geometry, rect image.Rectangle, control *widget.Clickable, hover *hoverAnim, active bool, draw func(layout.Context, image.Rectangle, float32)) bool {
+func (s *shell) layoutFooterControl(gtx layout.Context, g geometry, rect image.Rectangle, control *widget.Clickable, hover *hoverAnim, active bool, draw func(layout.Context, image.Rectangle, float32, color.NRGBA)) bool {
 	if rect.Empty() {
 		return false
 	}
@@ -455,7 +455,7 @@ func (s *shell) layoutFooterControl(gtx layout.Context, g geometry, rect image.R
 			border,
 		)
 		if draw != nil {
-			draw(gtx, local, progress)
+			draw(gtx, local, progress, fill)
 		}
 		return layout.Dimensions{Size: rect.Size()}
 	})

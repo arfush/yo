@@ -1628,10 +1628,20 @@ func drawTruncatedText(gtx layout.Context, typo *typography, text string, face f
 	if maxWidth <= 0 {
 		return
 	}
-	_, ink := typo.measure(gtx, text, face, size)
-	if ink.Dx() <= maxWidth {
-		typo.draw(gtx, text, face, size, col, at)
+	text = truncateText(gtx, typo, text, face, size, maxWidth)
+	if text == "" {
 		return
+	}
+	typo.draw(gtx, text, face, size, col, at)
+}
+
+// truncateText shortens text with a trailing ellipsis until it fits maxWidth.
+func truncateText(gtx layout.Context, typo *typography, text string, face font.Font, size unit.Sp, maxWidth int) string {
+	if maxWidth <= 0 {
+		return ""
+	}
+	if _, ink := typo.measure(gtx, text, face, size); ink.Dx() <= maxWidth {
+		return text
 	}
 
 	const ellipsis = "…"
@@ -1640,17 +1650,16 @@ func drawTruncatedText(gtx layout.Context, typo *typography, text string, face f
 	for low < high {
 		mid := (low + high + 1) / 2
 		candidate := string(runes[:mid]) + ellipsis
-		_, ink = typo.measure(gtx, candidate, face, size)
-		if ink.Dx() <= maxWidth {
+		if _, ink := typo.measure(gtx, candidate, face, size); ink.Dx() <= maxWidth {
 			low = mid
 		} else {
 			high = mid - 1
 		}
 	}
 	if low <= 0 {
-		return
+		return ""
 	}
-	typo.draw(gtx, string(runes[:low])+ellipsis, face, size, col, at)
+	return string(runes[:low]) + ellipsis
 }
 
 func (m *mainWindow) layoutHitArea(gtx layout.Context, rect image.Rectangle, click *widget.Clickable, pointerCursor bool, draw func(layout.Context)) {

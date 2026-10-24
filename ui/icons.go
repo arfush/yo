@@ -141,36 +141,48 @@ func drawSettingsIcon(gtx layout.Context, center image.Point, g geometry, col co
 	strokeCircle(gtx, f32.Pt(cx, cy), g.vec(1.8), width, col)
 }
 
-// drawPeopleIcon paints two people for the watch-party control. It follows the
-// same stroke weight as the gear and the download tray.
-func drawPeopleIcon(gtx layout.Context, center image.Point, g geometry, col color.NRGBA) {
+// drawPeopleIcon paints two people for the watch-party control. The smaller
+// figure stands behind the larger one: its shoulders disappear into the front
+// silhouette, so the glyph reads as a pair watching together instead of two
+// strangers side by side. bg is the control background used for that knockout;
+// it follows the same stroke weight as the gear and the download tray.
+func drawPeopleIcon(gtx layout.Context, center image.Point, g geometry, bg, col color.NRGBA) {
 	width := g.vec(1.3)
 	cx, cy := float32(center.X), float32(center.Y)
 	pt := func(x, y float32) f32.Point {
 		return f32.Pt(cx+g.vec(x), cy+g.vec(y))
 	}
 
-	// Heads. The left one is a touch larger, so the pair does not read as a
-	// single blob at footer size.
-	strokeCircle(gtx, pt(-2.9, -3.1), g.vec(2.0), width, col)
-	strokeCircle(gtx, pt(2.9, -3.1), g.vec(1.8), width, col)
-
-	// Shoulders: two shallow arcs that stop short of each other.
-	var left clip.Path
-	left.Begin(gtx.Ops)
-	left.MoveTo(pt(-6.4, 5.4))
-	left.CubeTo(pt(-6.4, 1.2), pt(-0.7, 1.2), pt(-0.7, 5.4))
-	leftStack := clip.Stroke{Path: left.End(), Width: width}.Op().Push(gtx.Ops)
+	// Back figure: head up and to the right, shoulders running behind the
+	// front figure.
+	strokeCircle(gtx, pt(2.6, -3.6), g.vec(1.85), width, col)
+	var back clip.Path
+	back.Begin(gtx.Ops)
+	back.MoveTo(pt(-0.6, 5.4))
+	back.CubeTo(pt(-0.1, 1.9), pt(6.6, 1.9), pt(6.6, 5.4))
+	backStack := clip.Stroke{Path: back.End(), Width: width}.Op().Push(gtx.Ops)
 	paint.Fill(gtx.Ops, col)
-	leftStack.Pop()
+	backStack.Pop()
 
-	var right clip.Path
-	right.Begin(gtx.Ops)
-	right.MoveTo(pt(0.7, 5.4))
-	right.CubeTo(pt(0.7, 1.5), pt(6.4, 1.5), pt(6.4, 5.4))
-	rightStack := clip.Stroke{Path: right.End(), Width: width}.Op().Push(gtx.Ops)
+	// Front figure: lower and larger. Its filled body covers the shared part of
+	// the back shoulders before the outline goes on top.
+	var body clip.Path
+	body.Begin(gtx.Ops)
+	body.MoveTo(pt(-6.7, 5.4))
+	body.CubeTo(pt(-6.7, 2.1), pt(0.9, 2.1), pt(0.9, 5.4))
+	body.LineTo(pt(0.9, 6.4))
+	body.LineTo(pt(-6.7, 6.4))
+	body.Close()
+	paint.FillShape(gtx.Ops, bg, clip.Outline{Path: body.End()}.Op())
+
+	strokeCircle(gtx, pt(-2.4, -2.4), g.vec(2.15), width, col)
+	var front clip.Path
+	front.Begin(gtx.Ops)
+	front.MoveTo(pt(-6.7, 5.4))
+	front.CubeTo(pt(-6.7, 2.1), pt(0.9, 2.1), pt(0.9, 5.4))
+	frontStack := clip.Stroke{Path: front.End(), Width: width}.Op().Push(gtx.Ops)
 	paint.Fill(gtx.Ops, col)
-	rightStack.Pop()
+	frontStack.Pop()
 }
 
 // drawCopyIcon paints two stacked sheets for the "copy room key" control. The

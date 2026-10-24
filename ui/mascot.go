@@ -8,6 +8,7 @@ import (
 
 	"gioui.org/f32"
 	"gioui.org/layout"
+	"gioui.org/op"
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
 )
@@ -40,15 +41,22 @@ func drawCatgirl(gtx layout.Context, rect image.Rectangle, now time.Time, linkAt
 	}
 	scale := float32(rect.Dx()) / 42
 	phase := float64(now.UnixNano()) / 1e9
-	bob := float32(math.Sin(phase*2*math.Pi/mascotBobPeriod)) * 0.8 * scale
+	bob := float32(math.Sin(phase*2*math.Pi/mascotBobPeriod)) * 0.8
 	wave := float32(math.Sin(phase * 2 * math.Pi / mascotWavePeriod))
 	leftLift := smoothStep(wave*0.5+0.5) * 4.4
 	rightLift := smoothStep(0.5-wave*0.5) * 4.4
 	swipe := linkPawSwipe(now, linkAt)
 	lean := swipe * 1.2
 
-	cx := rect.Min.X + rect.Dx()/2 + int(math.Round(float64(lean*scale)))
-	cy := rect.Min.Y + rect.Dy()/2 + int(math.Round(float64(bob)))
+	cx := rect.Min.X + rect.Dx()/2
+	cy := rect.Min.Y + rect.Dy()/2
+
+	// The bob and the lean are smaller than one device pixel per frame. Rounding
+	// them into the shape coordinates made the character snap between whole
+	// pixels; translating the whole drawing by a fractional affine keeps the
+	// motion continuous.
+	motion := op.Affine(f32.Affine2D{}.Offset(f32.Pt(lean*scale, bob*scale))).Push(gtx.Ops)
+	defer motion.Pop()
 
 	px := func(v float32) int {
 		return int(math.Round(float64(v * scale)))
@@ -57,7 +65,7 @@ func drawCatgirl(gtx layout.Context, rect image.Rectangle, now time.Time, linkAt
 		return image.Rect(cx+px(x0), cy+px(y0), cx+px(x1), cy+px(y1))
 	}
 	pt := func(x, y float32) f32.Point {
-		return f32.Pt(float32(cx+px(x)), float32(cy+px(y)))
+		return f32.Pt(float32(cx)+x*scale, float32(cy)+y*scale)
 	}
 
 	// Tail, tucked behind the dress and clearly visible on the right.
@@ -181,11 +189,16 @@ func linkPawSwipe(now, start time.Time) float32 {
 
 func drawPaw(gtx layout.Context, center f32.Point, scale float32) {
 	radius := float32(math.Max(2, float64(3.0*scale)))
-	point := image.Pt(int(math.Round(float64(center.X))), int(math.Round(float64(center.Y))))
-	fillCircle(gtx, point, int(math.Round(float64(radius))), catPawColor)
+	// Paws move with the wave, so their centers land between pixels. Draw the
+	// circles on the integer grid and slide them by the remainder.
+	base := image.Pt(int(math.Floor(float64(center.X))), int(math.Floor(float64(center.Y))))
+	frac := f32.Pt(center.X-float32(base.X), center.Y-float32(base.Y))
+	stack := op.Affine(f32.Affine2D{}.Offset(frac)).Push(gtx.Ops)
+	defer stack.Pop()
+	fillCircle(gtx, base, int(math.Round(float64(radius))), catPawColor)
 	pad := int(math.Max(1, math.Round(float64(0.7*scale))))
-	fillCircle(gtx, image.Pt(point.X-int(math.Round(float64(1.1*scale))), point.Y+pad), pad, withAlpha(catHairColor, 0xb0))
-	fillCircle(gtx, image.Pt(point.X+int(math.Round(float64(1.1*scale))), point.Y+pad), pad, withAlpha(catHairColor, 0xb0))
+	fillCircle(gtx, image.Pt(base.X-int(math.Round(float64(1.1*scale))), base.Y+pad), pad, withAlpha(catHairColor, 0xb0))
+	fillCircle(gtx, image.Pt(base.X+int(math.Round(float64(1.1*scale))), base.Y+pad), pad, withAlpha(catHairColor, 0xb0))
 }
 
 func fillEllipse(gtx layout.Context, rect image.Rectangle, col color.NRGBA) {

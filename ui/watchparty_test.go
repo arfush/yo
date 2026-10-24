@@ -156,11 +156,9 @@ func TestWatchPartyCardFitsText(t *testing.T) {
 		t.Fatalf("error line at %dpx does not fit the %dpx card", wpErrorTop, wpCardHeight)
 	}
 
-	// The round submit button carries the word "Далее", so the label has to fit
-	// inside the circle with a little breathing room.
-	semiBold := font.Font{Typeface: fontFamily, Weight: font.SemiBold}
-	_, nextInk := typo.measure(gtx, wpNextLabel, semiBold, wpRoundLabelSize)
-	if nextInk.Dx() > wpRoundSize-8 {
-		t.Fatalf("%q is %dpx wide, the %dpx circle leaves %dpx", wpNextLabel, nextInk.Dx(), wpRoundSize, wpRoundSize-8)
+	// The round submit button is an icon now. Its chevron has to stay inside
+	// the circle with the same breathing room the token form uses.
+	if chevron := wpRoundSize / 3; chevron+8 > wpRoundSize {
+		t.Fatalf("%dpx chevron does not fit the %dpx circle", chevron, wpRoundSize)
 	}
 }
