@@ -13,8 +13,11 @@ import (
 
 const (
 	episodeProgressHeight  = unit.Dp(6)
-	episodeProgressLabelSz = unit.Sp(10.5)
+	episodeProgressLabelSz = unit.Sp(11)
 	episodeProgressGap     = unit.Dp(10)
+	// historyProgressGap separates the title line from the progress row in the
+	// history card; the taller card needs a little more air between them.
+	historyProgressGap = unit.Dp(8)
 )
 
 var (
