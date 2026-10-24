@@ -33,6 +33,9 @@ type EpisodeNotification struct {
 // Production leaves it nil and uses the paced background AnimeLIB client.
 type episodeFetcher func(context.Context, string) (*animelib.EpisodeRelease, error)
 
+// episodeCountFetcher is the test seam for the episode-total backfill.
+type episodeCountFetcher func(context.Context, string) (int, error)
+
 // EpisodeNotificationsEnabled reports whether the user wants new-episode
 // notifications.
 func (l *Library) EpisodeNotificationsEnabled() bool {
@@ -105,6 +108,13 @@ func (l *Library) CheckEpisodeNotifications(ctx context.Context, notify func(Epi
 func (l *Library) processEpisodeRelease(watch store.EpisodeWatch, release *animelib.EpisodeRelease, notify func(EpisodeNotification) error) error {
 	if release == nil {
 		return nil
+	}
+	// The episode list length is the total shown by the history progress bar.
+	// It grows when an ongoing title gets a new episode.
+	if release.EpisodeCount > 0 {
+		if err := l.store.UpdateEpisodesTotal(watch.TitleID, release.EpisodeCount); err != nil {
+			return err
+		}
 	}
 	remoteStatus := statusFrom(release.StatusID, release.StatusLabel)
 	if remoteStatus == StatusCompleted {
@@ -237,55 +247,61 @@ func displayTitle(watch store.EpisodeWatch) string {
 	return watch.Slug
 }
 
-// SendTestEpisodeNotifications emits one fake notification for every history
-// title in the ongoing or announced state. The titles, statuses and saved
-// voiceovers are real; only the episode number is invented. It exists solely to
-// exercise notification formatting and Windows delivery and will be removed
-// once the feature has been checked by hand.
-func (l *Library) SendTestEpisodeNotifications(notify func(EpisodeNotification) error) (int, error) {
+// RefreshMissingEpisodeTotals fills the cached episode count for history rows
+// saved before totals were stored. It downloads only what is missing and calls
+// onUpdate after every title so the history list can redraw its progress bars
+// without waiting for the whole library. Ongoing titles are kept current by the
+// notification checker; this backfill mostly covers completed titles.
+func (l *Library) RefreshMissingEpisodeTotals(ctx context.Context, onUpdate func()) error {
 	if l == nil {
-		return 0, errors.New("база данных недоступна")
+		return nil
 	}
-	entries, err := l.store.ListHistory()
+	titles, err := l.History()
 	if err != nil {
-		return 0, err
+		return err
 	}
-	sent := 0
-	for _, entry := range entries {
-		status := Status(entry.Status)
-		if status != StatusOngoing && status != StatusAnnounced {
+	missing := make([]Title, 0, len(titles))
+	for _, title := range titles {
+		if title.EpisodesTotal == 0 && title.Slug != "" {
+			missing = append(missing, title)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+
+	fetch := l.episodeCountFetcher
+	if fetch == nil {
+		token, err := l.readToken()
+		if err != nil {
+			return err
+		}
+		client := animelib.NewBackground(token)
+		fetch = client.EpisodeCount
+	}
+
+	var failures []error
+	for _, title := range missing {
+		if err := ctx.Err(); err != nil {
+			return errors.Join(append(failures, err)...)
+		}
+		total, err := fetch(ctx, title.Slug)
+		if err != nil {
+			failures = append(failures, fmt.Errorf("%s: %w", title.Slug, err))
 			continue
 		}
-		episode := entry.Episode
-		if episode == "" {
-			episode = "1"
+		if total <= 0 {
+			continue
 		}
-		voice := entry.Voiceover
-		if voice == "" {
-			voice = "AnimeLIB"
+		if err := l.store.UpdateEpisodesTotal(title.ID, total); err != nil {
+			failures = append(failures, fmt.Errorf("%s: %w", title.Slug, err))
+			continue
 		}
-		event := EpisodeNotification{
-			Title:         historyDisplayTitle(entry),
-			Episode:       episode,
-			Voiceovers:    []EpisodeVoiceover{{Name: voice}},
-			TitleReleased: status == StatusAnnounced,
+		if onUpdate != nil {
+			onUpdate()
 		}
-		if err := sendNotification(notify, event); err != nil {
-			return sent, err
-		}
-		sent++
 	}
-	return sent, nil
-}
-
-func historyDisplayTitle(entry store.HistoryEntry) string {
-	if entry.RusName != "" {
-		return entry.RusName
-	}
-	if entry.EngName != "" {
-		return entry.EngName
-	}
-	return entry.Slug
+	return errors.Join(failures...)
 }
 
 // seedEpisodeTracking records the latest episode already known when a title is

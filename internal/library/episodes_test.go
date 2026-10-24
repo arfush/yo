@@ -356,51 +356,6 @@ func TestCheckEpisodeNotificationsDisabledSkipsNetwork(t *testing.T) {
 	}
 }
 
-func TestSendTestEpisodeNotificationsUsesHistoryStatuses(t *testing.T) {
-	lib := openEpisodeTestLibrary(t)
-	addEpisodeTestTitle(t, lib, ongoingEpisodeTitle("test-ongoing", "Онгоинг"), "7", "Озвучка A")
-	addEpisodeTestTitle(t, lib, store.Title{
-		Slug:    "test-announced",
-		RusName: "Анонс",
-		Status:  int(StatusAnnounced),
-	}, "", "Озвучка B")
-	addEpisodeTestTitle(t, lib, store.Title{
-		Slug:    "test-completed",
-		RusName: "Завершён",
-		Status:  int(StatusCompleted),
-	}, "3", "Озвучка C")
-
-	var events []EpisodeNotification
-	sent, err := lib.SendTestEpisodeNotifications(func(event EpisodeNotification) error {
-		events = append(events, event)
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sent != 2 || len(events) != 2 {
-		t.Fatalf("sent = %d, events = %d, want 2", sent, len(events))
-	}
-	byTitle := make(map[string]EpisodeNotification, len(events))
-	for _, event := range events {
-		byTitle[event.Title] = event
-	}
-	ongoing, ok := byTitle["Онгоинг"]
-	if !ok || ongoing.Episode != "7" || ongoing.TitleReleased {
-		t.Fatalf("unexpected ongoing test event: %#v", ongoing)
-	}
-	announced, ok := byTitle["Анонс"]
-	if !ok || announced.Episode != "1" || !announced.TitleReleased {
-		t.Fatalf("unexpected announced test event: %#v", announced)
-	}
-	if len(announced.Voiceovers) != 1 || announced.Voiceovers[0].Name != "Озвучка B" {
-		t.Fatalf("announced test event lost its voiceover: %#v", announced)
-	}
-	if _, ok := byTitle["Завершён"]; ok {
-		t.Fatal("completed title produced a test notification")
-	}
-}
-
 func TestSaveSeedsEpisodeTracking(t *testing.T) {
 	lib := openEpisodeTestLibrary(t)
 	title := Title{
@@ -419,5 +374,65 @@ func TestSaveSeedsEpisodeTracking(t *testing.T) {
 	watch := episodeTestWatch(t, lib, saved.ID)
 	if !watch.Tracked || watch.LastEpisode != "3" {
 		t.Fatalf("save did not seed tracking: %#v", watch)
+	}
+}
+
+func TestCheckEpisodeNotificationsUpdatesEpisodeTotal(t *testing.T) {
+	lib := openEpisodeTestLibrary(t)
+	tid := addEpisodeTestTitle(t, lib, ongoingEpisodeTitle("total", "Итого"), "1", "Озвучка")
+	if err := lib.store.SeedEpisodeTracking(tid, "1"); err != nil {
+		t.Fatal(err)
+	}
+	lib.episodeFetcher = fixedEpisodeFetcher(&animelib.EpisodeRelease{
+		StatusID:     animelib.StatusOngoing,
+		Episode:      "2",
+		EpisodeCount: 12,
+		Voiceovers:   []animelib.ReleaseVoiceover{{Name: "Озвучка"}},
+	}, nil)
+
+	if err := lib.CheckEpisodeNotifications(context.Background(), func(EpisodeNotification) error {
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	history, err := lib.History()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 1 || history[0].EpisodesTotal != 12 {
+		t.Fatalf("cached episode total = %#v, want 12", history)
+	}
+}
+
+func TestRefreshMissingEpisodeTotalsBackfillsHistory(t *testing.T) {
+	lib := openEpisodeTestLibrary(t)
+	addEpisodeTestTitle(t, lib, ongoingEpisodeTitle("backfill", "Заполнение"), "1", "Озвучка")
+
+	calls := 0
+	lib.episodeCountFetcher = func(context.Context, string) (int, error) {
+		calls++
+		return 24, nil
+	}
+	updates := 0
+	if err := lib.RefreshMissingEpisodeTotals(context.Background(), func() { updates++ }); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 || updates != 1 {
+		t.Fatalf("calls = %d, updates = %d, want 1/1", calls, updates)
+	}
+	history, err := lib.History()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if history[0].EpisodesTotal != 24 {
+		t.Fatalf("episode total = %d, want 24", history[0].EpisodesTotal)
+	}
+
+	// A second pass has nothing to fetch.
+	if err := lib.RefreshMissingEpisodeTotals(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("backfill fetched cached totals again: %d calls", calls)
 	}
 }

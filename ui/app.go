@@ -431,17 +431,7 @@ func (a *application) openSettings() {
 		}
 		return nil
 	}
-	settings.onTest = a.sendTestEpisodeNotifications
 	a.showWindow(a.window, settings)
-}
-
-// sendTestEpisodeNotifications is the temporary hand-test hook for the
-// notification pipeline. It uses only titles already in history.
-func (a *application) sendTestEpisodeNotifications() (int, error) {
-	if a.library == nil {
-		return 0, fmt.Errorf("база данных недоступна")
-	}
-	return a.library.SendTestEpisodeNotifications(a.notifyEpisode)
 }
 
 func (a *application) downloadAndApply(ctx context.Context, release updates.Release, report func(downloadProgress)) error {
@@ -562,6 +552,11 @@ func (a *application) startEpisodeLoop(w *app.Window) {
 
 	go func() {
 		defer close(a.episodeDone)
+		// History saved before episode totals were cached needs one slow
+		// backfill pass. It shares the checker goroutine and its context, so a
+		// disabled feature or a closed window stops it before the database is
+		// closed.
+		a.backfillEpisodeTotals(w)
 		timer := time.NewTimer(episodeCheckStartupDelay)
 		defer timer.Stop()
 		for {
@@ -614,6 +609,28 @@ func (a *application) cancelEpisodePass() {
 	}
 }
 
+// backfillEpisodeTotals fills the cached episode count for older history rows.
+// It runs before the regular checker so a fresh install of this build draws its
+// progress bars without the user opening every title first.
+func (a *application) backfillEpisodeTotals(w *app.Window) {
+	if a.library == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(a.episodeCtx, 30*time.Minute)
+	defer cancel()
+	refresh := func() {
+		if a.main != nil {
+			a.main.requestHistoryRefresh()
+		}
+		if w != nil {
+			w.Invalidate()
+		}
+	}
+	if err := a.library.RefreshMissingEpisodeTotals(ctx, refresh); err != nil && !errors.Is(err, context.Canceled) {
+		fmt.Fprintln(os.Stderr, "yonime: подсчёт серий:", err)
+	}
+}
+
 func (a *application) checkEpisodeNotifications(w *app.Window) {
 	if a.library == nil {
 		return
@@ -631,6 +648,10 @@ func (a *application) checkEpisodeNotifications(w *app.Window) {
 
 	if err := a.library.CheckEpisodeNotifications(ctx, a.notifyEpisode); err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintln(os.Stderr, "yonime: проверка новых серий:", err)
+	}
+	if a.main != nil {
+		// A new episode also updates the cached total shown in history.
+		a.main.requestHistoryRefresh()
 	}
 	if w != nil {
 		// Cached statuses may have changed from ongoing to completed.
@@ -925,11 +946,7 @@ func (a *application) handleWatchResult(result watchResult) {
 	}
 	if a.library != nil && title.item.id != 0 {
 		episode, resumeAt, duration := a.library.Progress(title.item.id)
-		title.item.resumeAt = resumeAt
-		title.item.duration = duration
-		if index := episodeIndex(title.item, episode); index >= 0 {
-			title.selectedEpisode = index
-		}
+		title.applyProgress(episode, resumeAt, duration)
 		if a.main != nil {
 			a.main.refreshHistory(title.item.id)
 		}

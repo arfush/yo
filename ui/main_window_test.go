@@ -84,6 +84,22 @@ func TestNoteWindowPressClearsSelectionOutsideCard(t *testing.T) {
 	}
 }
 
+func TestBackgroundHistoryRefreshWaitsForDragEnd(t *testing.T) {
+	m := &mainWindow{refreshRequests: make(chan struct{}, 1)}
+	m.drag.active = true
+	m.requestHistoryRefresh()
+	m.updateHistoryRefresh()
+	if !m.refreshPending {
+		t.Fatal("refresh during a drag should wait")
+	}
+
+	m.drag.active = false
+	m.updateHistoryRefresh()
+	if m.refreshPending {
+		t.Fatal("refresh stayed pending after the drag ended")
+	}
+}
+
 func TestShortcutMatchesLatinAndCyrillicK(t *testing.T) {
 	for _, name := range []key.Name{"K", "k", "Л", "л"} {
 		if !isCtrlK(name) {

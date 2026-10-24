@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"image"
 	"image/color"
 	"math"
@@ -17,33 +16,28 @@ import (
 )
 
 const (
-	settingsPadX            = unit.Dp(28)
-	settingsPadTop          = unit.Dp(30)
-	settingsTitleSize       = unit.Sp(21)
-	settingsLabelSize       = unit.Sp(14)
-	settingsNoteSize        = unit.Sp(11.5)
-	settingsButtonSize      = unit.Sp(12)
-	settingsButtonHeight    = unit.Dp(34)
-	settingsPanelRadius     = unit.Dp(10)
-	settingsPanelHeight     = unit.Dp(84)
-	settingsPanelPadX       = unit.Dp(18)
-	settingsPanelPadTop     = unit.Dp(15)
-	settingsToggleWidth     = unit.Dp(42)
-	settingsToggleHeight    = unit.Dp(24)
-	settingsTestPanelGap    = unit.Dp(18)
-	settingsTestPanelHeight = unit.Dp(132)
+	settingsPadX         = unit.Dp(28)
+	settingsPadTop       = unit.Dp(30)
+	settingsTitleSize    = unit.Sp(21)
+	settingsLabelSize    = unit.Sp(14)
+	settingsNoteSize     = unit.Sp(11.5)
+	settingsButtonSize   = unit.Sp(12)
+	settingsButtonHeight = unit.Dp(34)
+	settingsPanelRadius  = unit.Dp(10)
+	settingsPanelHeight  = unit.Dp(84)
+	settingsPanelPadX    = unit.Dp(18)
+	settingsPanelPadTop  = unit.Dp(15)
+	settingsToggleWidth  = unit.Dp(42)
+	settingsToggleHeight = unit.Dp(24)
 )
 
 var (
-	settingsToggleOnColor  = color.NRGBA{R: 0x8b, G: 0x5c, B: 0xf6, A: 0xff}
-	settingsToggleOffFill  = color.NRGBA{R: 0x1b, G: 0x19, B: 0x24, A: 0xff}
-	settingsToggleOffEdge  = color.NRGBA{R: 0x3a, G: 0x34, B: 0x4a, A: 0xff}
-	settingsToggleKnob     = color.NRGBA{R: 0xf4, G: 0xf2, B: 0xfa, A: 0xff}
-	settingsToggleKnobOff  = color.NRGBA{R: 0x9b, G: 0x94, B: 0xad, A: 0xff}
-	settingsErrorText      = color.NRGBA{R: 0xf0, G: 0x8a, B: 0x8a, A: 0xff}
-	settingsSuccessText    = color.NRGBA{R: 0x8d, G: 0xd6, B: 0xa8, A: 0xff}
-	settingsTestNoteColor  = color.NRGBA{R: 0x8d, G: 0x87, B: 0x9b, A: 0xff}
-	settingsTestLabelColor = color.NRGBA{R: 0xa9, G: 0xa2, B: 0xb9, A: 0xff}
+	settingsToggleOnColor = color.NRGBA{R: 0x8b, G: 0x5c, B: 0xf6, A: 0xff}
+	settingsToggleOffFill = color.NRGBA{R: 0x1b, G: 0x19, B: 0x24, A: 0xff}
+	settingsToggleOffEdge = color.NRGBA{R: 0x3a, G: 0x34, B: 0x4a, A: 0xff}
+	settingsToggleKnob    = color.NRGBA{R: 0xf4, G: 0xf2, B: 0xfa, A: 0xff}
+	settingsToggleKnobOff = color.NRGBA{R: 0x9b, G: 0x94, B: 0xad, A: 0xff}
+	settingsErrorText     = color.NRGBA{R: 0xf0, G: 0x8a, B: 0x8a, A: 0xff}
 )
 
 type settingsWindow struct {
@@ -55,12 +49,8 @@ type settingsWindow struct {
 	toggleHover hoverAnim
 	backClick   widget.Clickable
 	backHover   hoverAnim
-	testClick   widget.Clickable
-	testHover   hoverAnim
 
-	errorText   string
-	testMessage string
-	testError   bool
+	errorText string
 
 	// hidden reports that the window is parked in the notification area, so
 	// hover transitions stop requesting frames.
@@ -68,7 +58,6 @@ type settingsWindow struct {
 
 	onBack   func()
 	onToggle func(bool) error
-	onTest   func() (int, error)
 }
 
 func newSettingsWindow(typo *typography, enabled bool) *settingsWindow {
@@ -110,12 +99,6 @@ func (w *settingsWindow) layout(gtx layout.Context) {
 	panel := image.Rect(padX, panelTop, size.X-padX, panelTop+gtx.Dp(settingsPanelHeight))
 	if !panel.Empty() {
 		w.layoutNotificationPanel(gtx, panel)
-	}
-
-	testTop := panel.Max.Y + gtx.Dp(settingsTestPanelGap)
-	testPanel := image.Rect(padX, testTop, size.X-padX, testTop+gtx.Dp(settingsTestPanelHeight))
-	if !testPanel.Empty() && testPanel.Max.Y+gtx.Dp(settingsButtonHeight) < size.Y {
-		w.layoutTestPanel(gtx, testPanel)
 	}
 }
 
@@ -165,102 +148,6 @@ func (w *settingsWindow) layoutNotificationPanel(gtx layout.Context, rect image.
 	w.layoutClickableDraw(gtx, rect, &w.toggleClick, func(gtx layout.Context) {
 		w.drawToggle(gtx, toggle.Sub(rect.Min), hover)
 	})
-}
-
-func (w *settingsWindow) layoutTestPanel(gtx layout.Context, rect image.Rectangle) {
-	radius := gtx.Dp(settingsPanelRadius)
-	fillRounded(gtx, titlePanelBorder, rect, radius)
-	fillRounded(gtx, titlePanelFill, rect.Inset(gtx.Dp(unit.Dp(1))), radius-gtx.Dp(unit.Dp(1)))
-
-	left := rect.Min.X + gtx.Dp(settingsPanelPadX)
-	top := rect.Min.Y + gtx.Dp(settingsPanelPadTop)
-	sectionFace := font.Font{Typeface: fontFamily, Weight: font.Medium}
-	w.typo.draw(
-		gtx,
-		"ТЕСТ УВЕДОМЛЕНИЙ",
-		sectionFace,
-		settingsNoteSize,
-		settingsTestLabelColor,
-		image.Pt(left, top),
-	)
-	note := "Отправит тестовые уведомления для тайтлов из истории"
-	drawTruncatedText(
-		gtx,
-		w.typo,
-		note,
-		font.Font{Typeface: fontFamily, Weight: font.Normal},
-		settingsNoteSize,
-		settingsTestNoteColor,
-		image.Pt(left, top+gtx.Dp(unit.Dp(21))),
-		rect.Max.X-gtx.Dp(settingsPanelPadX)-left,
-	)
-	drawTruncatedText(
-		gtx,
-		w.typo,
-		"в статусе онгоинг или анонс.",
-		font.Font{Typeface: fontFamily, Weight: font.Normal},
-		settingsNoteSize,
-		settingsTestNoteColor,
-		image.Pt(left, top+gtx.Dp(unit.Dp(37))),
-		rect.Max.X-gtx.Dp(settingsPanelPadX)-left,
-	)
-
-	buttonWidth := gtx.Dp(unit.Dp(245))
-	buttonHeight := gtx.Dp(settingsButtonHeight)
-	button := image.Rect(left, rect.Max.Y-gtx.Dp(settingsPanelPadTop)-buttonHeight, left+buttonWidth, rect.Max.Y-gtx.Dp(settingsPanelPadTop))
-	if button.Max.X > rect.Max.X-gtx.Dp(settingsPanelPadX) {
-		button.Max.X = rect.Max.X - gtx.Dp(settingsPanelPadX)
-	}
-	clicked := w.layoutSettingsButton(gtx, button, &w.testClick, &w.testHover, func(gtx layout.Context) {
-		w.typo.paintCentered(
-			gtx,
-			"Отправить тестовые уведомления",
-			font.Font{Typeface: fontFamily, Weight: font.Medium},
-			settingsButtonSize,
-			titleButtonText,
-			f32.Pt(float32(button.Dx())/2, float32(button.Dy())/2),
-			gtx.Dp(unit.Dp(9)),
-		)
-	})
-	if clicked {
-		w.runTestNotification()
-	}
-
-	if w.testMessage != "" {
-		col := settingsSuccessText
-		if w.testError {
-			col = settingsErrorText
-		}
-		drawTruncatedText(
-			gtx,
-			w.typo,
-			w.testMessage,
-			font.Font{Typeface: fontFamily, Weight: font.Normal},
-			settingsNoteSize,
-			col,
-			image.Pt(button.Max.X+gtx.Dp(unit.Dp(14)), button.Min.Y+(button.Dy()-gtx.Dp(unit.Dp(15)))/2),
-			rect.Max.X-gtx.Dp(settingsPanelPadX)-button.Max.X-gtx.Dp(unit.Dp(14)),
-		)
-	}
-}
-
-func (w *settingsWindow) runTestNotification() {
-	w.testMessage = ""
-	w.testError = false
-	if w.onTest == nil {
-		return
-	}
-	sent, err := w.onTest()
-	if err != nil {
-		w.testMessage = err.Error()
-		w.testError = true
-		return
-	}
-	if sent == 0 {
-		w.testMessage = "Нет подходящих тайтлов"
-		return
-	}
-	w.testMessage = fmt.Sprintf("Отправлено: %d", sent)
 }
 
 func (w *settingsWindow) setEnabled(enabled bool) {

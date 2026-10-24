@@ -136,6 +136,10 @@ type titleWindow struct {
 	selectedVoice   int
 	selectedEpisode int
 	selectedQuality int
+	// progressEpisode is the saved episode whose playback position fills the
+	// header progress bar. Selecting another episode clears the fill until that
+	// episode is watched.
+	progressEpisode int
 
 	backClick  widget.Clickable
 	saveClick  widget.Clickable
@@ -177,12 +181,19 @@ func newTitleWindow(typo *typography, item historyTitle, preferredQuality int) *
 	if len(item.episodes) == 0 {
 		selectedEpisode = -1
 	}
+	// The bar belongs to the episode whose position was saved, not to the
+	// fallback selection used when that episode is missing from the voiceover.
+	progressEpisode := selectedEpisode
+	if index := episodeIndex(item, item.episodeLabel); index >= 0 {
+		progressEpisode = index
+	}
 	w := &titleWindow{
 		typo:            typo,
 		item:            item,
 		selectedVoice:   selectedVoice,
 		selectedEpisode: selectedEpisode,
 		selectedQuality: titleQualityIndex(preferredQuality),
+		progressEpisode: progressEpisode,
 		tooltipIndex:    -1,
 	}
 	w.voiceList.Axis = layout.Vertical
@@ -212,6 +223,56 @@ func (w *titleWindow) applySaved(item historyTitle) {
 	w.item.slug = item.slug
 	w.item.coverPath = item.coverPath
 	w.item.coverNeedsRetry = item.coverNeedsRetry
+}
+
+// applyProgress adopts the saved position after playback ends.
+func (w *titleWindow) applyProgress(episode string, resumeAt, duration float64) {
+	w.item.resumeAt = resumeAt
+	w.item.duration = duration
+	if index := episodeIndex(w.item, episode); index >= 0 {
+		w.selectedEpisode = index
+		w.progressEpisode = index
+	}
+}
+
+// layoutHeaderProgress paints the watched-episode bar under the original title.
+// rect ends at the columns below the header, so a short window simply skips it.
+func (w *titleWindow) layoutHeaderProgress(gtx layout.Context, rect image.Rectangle) {
+	label := episodeProgressLabel(w.item.currentEpisodeLabel(), w.item.totalEpisodes())
+	barHeight := gtx.Dp(episodeProgressHeight)
+	if label == "" || rect.Empty() {
+		return
+	}
+	labelFace := font.Font{Typeface: fontFamily, Weight: font.Normal}
+	_, labelInk := w.typo.measure(gtx, label, labelFace, episodeProgressLabelSz)
+	if rect.Dy() < max(barHeight, labelInk.Dy()) {
+		return
+	}
+	gap := gtx.Dp(episodeProgressGap)
+	barWidth := rect.Dx() * 28 / 100
+	if barWidth < gtx.Dp(unit.Dp(120)) {
+		barWidth = gtx.Dp(unit.Dp(120))
+	}
+	if maxBar := rect.Dx() - gap - labelInk.Dx(); barWidth > maxBar {
+		barWidth = maxBar
+	}
+	if barWidth < gtx.Dp(unit.Dp(56)) {
+		return
+	}
+	bar := image.Rect(rect.Min.X, rect.Min.Y, rect.Min.X+barWidth, rect.Min.Y+barHeight)
+	progress := float32(0)
+	if w.selectedEpisode == w.progressEpisode {
+		progress = episodeProgressValue(w.item.resumeAt, w.item.duration)
+	}
+	drawEpisodeProgressBar(gtx, bar, progress)
+	w.typo.draw(
+		gtx,
+		label,
+		labelFace,
+		episodeProgressLabelSz,
+		episodeProgressLabelCol,
+		image.Pt(bar.Max.X+gap, bar.Min.Y+(barHeight-labelInk.Dy())/2),
+	)
 }
 
 func (w *titleWindow) setWatching(value bool) {
@@ -303,8 +364,9 @@ func (w *titleWindow) layout(gtx layout.Context) {
 		drawStatusPill(gtx, w.typo, statusRect, w.item.status)
 	}
 
+	headerProgressTop := titleTop + max(titleInk.Dy(), statusHeight) + gtx.Dp(12)
 	if w.item.original != "" {
-		originalTop := titleTop + max(titleInk.Dy(), statusHeight) + gtx.Dp(16)
+		originalTop := headerProgressTop
 		drawTruncatedText(
 			gtx,
 			w.typo,
@@ -315,9 +377,17 @@ func (w *titleWindow) layout(gtx layout.Context) {
 			image.Pt(headerX, originalTop),
 			size.X-padX-headerX,
 		)
+		_, originalInk := w.typo.measure(
+			gtx,
+			w.item.original,
+			font.Font{Typeface: fontFamily, Weight: font.Normal},
+			titlePageOriginalSize,
+		)
+		headerProgressTop = originalTop + originalInk.Dy() + gtx.Dp(8)
 	}
 
 	columnsTop := poster.Max.Y + gtx.Dp(titlePageColumnsGapTop)
+	w.layoutHeaderProgress(gtx, image.Rect(headerX, headerProgressTop, size.X-padX, columnsTop))
 	if w.item.status == statusAnnounced {
 		w.drawAnnouncement(gtx, image.Rect(padX, columnsTop, size.X-padX, size.Y))
 		return

@@ -45,11 +45,17 @@ type historyTitle struct {
 	coverPath       string
 	coverNeedsRetry bool
 	episodes        []string
-	voices          []voiceover
-	imdbID          string
-	season          int
-	resumeAt        float64
-	duration        float64
+	// episodesTotal is the cached count used by history rows, where the episode
+	// list itself is not loaded.
+	episodesTotal int
+	// episodeLabel is the saved episode number for a history row that has no
+	// episode list in memory.
+	episodeLabel string
+	voices       []voiceover
+	imdbID       string
+	season       int
+	resumeAt     float64
+	duration     float64
 
 	selectedVoice   int
 	selectedEpisode int
@@ -57,6 +63,23 @@ type historyTitle struct {
 
 func (t historyTitle) episodeCount() int {
 	return len(t.episodes)
+}
+
+// totalEpisodes prefers the freshly loaded list and falls back to the cached
+// count so history rows can draw the progress bar without opening the title.
+func (t historyTitle) totalEpisodes() int {
+	if len(t.episodes) > 0 {
+		return len(t.episodes)
+	}
+	return t.episodesTotal
+}
+
+// currentEpisodeLabel returns the episode the progress bar refers to.
+func (t historyTitle) currentEpisodeLabel() string {
+	if t.selectedEpisode >= 0 && t.selectedEpisode < len(t.episodes) {
+		return t.episodes[t.selectedEpisode]
+	}
+	return t.episodeLabel
 }
 
 // titleFromLibrary converts the API/storage model into the compact model used
@@ -73,6 +96,8 @@ func titleFromLibrary(item library.Title) historyTitle {
 		coverPath:       item.CoverPath,
 		coverNeedsRetry: item.CoverNeedsRetry,
 		episodes:        append([]string(nil), item.Episodes...),
+		episodesTotal:   item.EpisodesTotal,
+		episodeLabel:    item.SelectedEpisode,
 		voices:          make([]voiceover, 0, len(item.Voiceovers)),
 		imdbID:          item.IMDbID,
 		season:          item.Season,
@@ -108,20 +133,21 @@ func titleFromLibrary(item library.Title) historyTitle {
 // model so the title window can persist it when Save is pressed.
 func libraryTitleFromHistory(item historyTitle) library.Title {
 	title := library.Title{
-		ID:         item.id,
-		AnimeID:    item.animeID,
-		Slug:       item.slug,
-		Russian:    item.title,
-		Original:   item.original,
-		Status:     library.Status(item.status),
-		CoverURL:   item.coverURL,
-		CoverPath:  item.coverPath,
-		Episodes:   append([]string(nil), item.episodes...),
-		IMDbID:     item.imdbID,
-		Season:     item.season,
-		ResumeAt:   item.resumeAt,
-		Duration:   item.duration,
-		Voiceovers: make([]library.Voiceover, 0, len(item.voices)),
+		ID:            item.id,
+		AnimeID:       item.animeID,
+		Slug:          item.slug,
+		Russian:       item.title,
+		Original:      item.original,
+		Status:        library.Status(item.status),
+		CoverURL:      item.coverURL,
+		CoverPath:     item.coverPath,
+		Episodes:      append([]string(nil), item.episodes...),
+		EpisodesTotal: item.totalEpisodes(),
+		IMDbID:        item.imdbID,
+		Season:        item.season,
+		ResumeAt:      item.resumeAt,
+		Duration:      item.duration,
+		Voiceovers:    make([]library.Voiceover, 0, len(item.voices)),
 	}
 	for _, voice := range item.voices {
 		title.Voiceovers = append(title.Voiceovers, library.Voiceover{

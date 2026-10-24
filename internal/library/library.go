@@ -44,6 +44,7 @@ type Title struct {
 	CoverPath       string
 	CoverNeedsRetry bool
 	Episodes        []string
+	EpisodesTotal   int
 	Voiceovers      []Voiceover
 	SelectedVoice   string
 	SelectedEpisode string
@@ -62,6 +63,9 @@ type Library struct {
 	// episodeFetcher is nil in production. Tests replace it with a local
 	// function so the notification checker never touches AnimeLIB.
 	episodeFetcher episodeFetcher
+	// episodeCountFetcher is the lightweight counterpart used to backfill
+	// episode totals for history saved before totals were cached.
+	episodeCountFetcher episodeCountFetcher
 }
 
 // Open opens the local database and returns a library. The token is read lazily
@@ -326,6 +330,8 @@ func (l *Library) restoreSelection(title *Title) error {
 	voice, episode := chooseSelection(*title, "", "")
 	if entry != nil {
 		voice, episode = chooseSelection(*title, entry.Voiceover, entry.Episode)
+		title.ResumeAt = entry.ResumeAt
+		title.Duration = entry.Duration
 	}
 	if entry == nil {
 		if _, err := l.store.EnsureHistory(title.ID, episode, voice); err != nil {
@@ -354,21 +360,23 @@ func storedTitleFromData(data *animelib.TitleData) store.Title {
 		russian = english
 	}
 	return store.Title{
-		Slug:    data.SlugURL,
-		EngName: english,
-		RusName: russian,
-		Status:  int(statusFrom(data.StatusID, data.StatusLabel)),
+		Slug:          data.SlugURL,
+		EngName:       english,
+		RusName:       russian,
+		Status:        int(statusFrom(data.StatusID, data.StatusLabel)),
+		EpisodesTotal: len(data.Episodes),
 	}
 }
 
 func storedTitleFromLibrary(title Title) store.Title {
 	return store.Title{
-		Slug:    title.Slug,
-		EngName: title.Original,
-		RusName: title.Russian,
-		IMDbID:  title.IMDbID,
-		Season:  int64(title.Season),
-		Status:  int(title.Status),
+		Slug:          title.Slug,
+		EngName:       title.Original,
+		RusName:       title.Russian,
+		IMDbID:        title.IMDbID,
+		Season:        int64(title.Season),
+		Status:        int(title.Status),
+		EpisodesTotal: len(title.Episodes),
 	}
 }
 
@@ -396,6 +404,7 @@ func titleFromData(stored store.Title, data *animelib.TitleData) Title {
 	title.Status = statusFrom(data.StatusID, data.StatusLabel)
 	title.CoverURL = coverURL(data.Cover)
 	title.Episodes = append([]string(nil), data.Episodes...)
+	title.EpisodesTotal = len(title.Episodes)
 	title.Voiceovers = make([]Voiceover, 0, len(data.Voiceovers))
 	for _, voice := range data.Voiceovers {
 		title.Voiceovers = append(title.Voiceovers, Voiceover{
@@ -421,16 +430,17 @@ func titleFromData(stored store.Title, data *animelib.TitleData) Title {
 
 func titleFromStore(stored store.Title) Title {
 	title := Title{
-		ID:         stored.ID,
-		Slug:       stored.Slug,
-		Russian:    stored.RusName,
-		Original:   stored.EngName,
-		IMDbID:     stored.IMDbID,
-		Season:     int(stored.Season),
-		Status:     Status(stored.Status),
-		Episodes:   []string{},
-		Voiceovers: []Voiceover{},
-		UpdatedAt:  stored.UpdatedAt,
+		ID:            stored.ID,
+		Slug:          stored.Slug,
+		Russian:       stored.RusName,
+		Original:      stored.EngName,
+		IMDbID:        stored.IMDbID,
+		Season:        int(stored.Season),
+		Status:        Status(stored.Status),
+		Episodes:      []string{},
+		EpisodesTotal: stored.EpisodesTotal,
+		Voiceovers:    []Voiceover{},
+		UpdatedAt:     stored.UpdatedAt,
 	}
 	if title.Russian == "" {
 		title.Russian = stored.EngName

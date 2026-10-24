@@ -39,7 +39,7 @@ const (
 	mainHistoryHeight    = unit.Dp(28)
 	mainListGap          = unit.Dp(6)
 	mainHistoryTailSpace = unit.Dp(14)
-	mainRowHeight        = unit.Dp(60)
+	mainRowHeight        = unit.Dp(76)
 	mainRowRadius        = unit.Dp(12)
 	mainRowPadding       = unit.Dp(10)
 	mainDragHandleWidth  = unit.Dp(20)
@@ -174,6 +174,12 @@ type mainWindow struct {
 	loadResults       chan titleLoadResult
 	coverResults      chan coverResult
 	invalidate        func()
+	// refreshRequests lets background work (episode totals, notification
+	// checks) ask the UI thread to reload history without touching its slices.
+	refreshRequests chan struct{}
+	// refreshPending remembers a request that arrived while a row was being
+	// dragged: rebuilding the list mid-drag would drop the preview order.
+	refreshPending bool
 	// hidden reports that the window is parked in the notification area. The
 	// mascot and spinner clocks stop scheduling frames while it is true.
 	hidden        func() bool
@@ -202,16 +208,17 @@ func newMainWindow(typo *typography, lib *library.Library, history []library.Tit
 		displayHistory = append(displayHistory, titleFromLibrary(item))
 	}
 	m := &mainWindow{
-		typo:          typo,
-		library:       lib,
-		history:       displayHistory,
-		rows:          make([]historyRow, len(displayHistory)),
-		selected:      -1,
-		loadingTarget: -1,
-		loadResults:   make(chan titleLoadResult, 4),
-		coverResults:  make(chan coverResult, 16),
-		drag:          dragState{index: -1},
-		placeholder:   newPlaceholderState(),
+		typo:            typo,
+		library:         lib,
+		history:         displayHistory,
+		rows:            make([]historyRow, len(displayHistory)),
+		selected:        -1,
+		loadingTarget:   -1,
+		loadResults:     make(chan titleLoadResult, 4),
+		coverResults:    make(chan coverResult, 16),
+		refreshRequests: make(chan struct{}, 1),
+		drag:            dragState{index: -1},
+		placeholder:     newPlaceholderState(),
 	}
 	m.editor.SingleLine = true
 	m.editor.InputHint = key.HintURL
@@ -325,6 +332,7 @@ func (m *mainWindow) layout(gtx layout.Context) {
 	m.updateLoading(gtx)
 	m.updateCovers(gtx)
 	m.updateUndoDelete(gtx)
+	m.updateHistoryRefresh()
 	focused := gtx.Focused(&m.editor)
 	m.setInputFocused(focused)
 	m.placeholder.update(gtx, m.editor.Len(), focused)
@@ -741,8 +749,35 @@ func (m *mainWindow) finishLoading(gtx layout.Context, result titleLoadResult) {
 	gtx.Execute(op.InvalidateCmd{})
 }
 
+// requestHistoryRefresh asks the layout loop to reload history from the
+// database. It is safe to call from background goroutines.
+func (m *mainWindow) requestHistoryRefresh() {
+	select {
+	case m.refreshRequests <- struct{}{}:
+	default:
+	}
+	if m.invalidate != nil {
+		m.invalidate()
+	}
+}
+
+// updateHistoryRefresh applies a background refresh request on the UI thread.
+func (m *mainWindow) updateHistoryRefresh() {
+	select {
+	case <-m.refreshRequests:
+		m.refreshPending = true
+	default:
+	}
+	if !m.refreshPending || m.drag.active {
+		return
+	}
+	m.refreshPending = false
+	m.refreshHistory(0)
+}
+
 // refreshHistory reloads the visible history after a title is saved from the
-// title window and highlights the saved entry.
+// title window and highlights the saved entry. A zero id keeps the current
+// selection, which is what background refreshes use.
 func (m *mainWindow) refreshHistory(selectedID int64) {
 	if m.library == nil {
 		return
@@ -758,11 +793,17 @@ func (m *mainWindow) refreshHistory(selectedID int64) {
 	}
 	m.history = m.visibleHistory(m.history)
 	m.rows = make([]historyRow, len(m.history))
-	m.selected = -1
-	for index := range m.history {
-		if m.history[index].id == selectedID {
-			m.selected = index
-			break
+	if selectedID == 0 {
+		if m.selected >= len(m.history) {
+			m.selected = -1
+		}
+	} else {
+		m.selected = -1
+		for index := range m.history {
+			if m.history[index].id == selectedID {
+				m.selected = index
+				break
+			}
 		}
 	}
 	m.loadError = ""
@@ -1292,15 +1333,67 @@ func (m *mainWindow) drawHistoryRowCard(gtx layout.Context, rect image.Rectangle
 	if titleRight < geom.titleX {
 		titleRight = geom.play.Min.X - gtx.Dp(unit.Dp(14))
 	}
-	m.drawTruncated(
-		gtx,
-		item.title,
-		font.Font{Typeface: fontFamily, Weight: font.SemiBold},
-		mainRowTitleSize,
-		mainTextColor,
-		image.Pt(geom.titleX, (rowRect.Dy()-gtx.Dp(unit.Dp(17)))/2),
-		titleRight-geom.titleX,
-	)
+	titleFace := font.Font{Typeface: fontFamily, Weight: font.SemiBold}
+	_, titleInk := m.typo.measure(gtx, item.title, titleFace, mainRowTitleSize)
+	label := episodeProgressLabel(item.currentEpisodeLabel(), item.totalEpisodes())
+	labelFace := font.Font{Typeface: fontFamily, Weight: font.Normal}
+	var labelInk image.Rectangle
+	if label != "" {
+		_, labelInk = m.typo.measure(gtx, label, labelFace, episodeProgressLabelSz)
+	}
+	if label == "" {
+		m.drawTruncated(
+			gtx,
+			item.title,
+			titleFace,
+			mainRowTitleSize,
+			mainTextColor,
+			image.Pt(geom.titleX, (rowRect.Dy()-titleInk.Dy())/2),
+			titleRight-geom.titleX,
+		)
+	} else {
+		barHeight := gtx.Dp(episodeProgressHeight)
+		progressGap := gtx.Dp(unit.Dp(6))
+		progressHeight := max(barHeight, labelInk.Dy())
+		blockTop := (rowRect.Dy() - (titleInk.Dy() + progressGap + progressHeight)) / 2
+		m.drawTruncated(
+			gtx,
+			item.title,
+			titleFace,
+			mainRowTitleSize,
+			mainTextColor,
+			image.Pt(geom.titleX, blockTop),
+			titleRight-geom.titleX,
+		)
+
+		barTop := blockTop + titleInk.Dy() + progressGap + (progressHeight-barHeight)/2
+		labelGap := gtx.Dp(episodeProgressGap)
+		barWidth := rowRect.Dx() * 28 / 100
+		if maxBar := titleRight - geom.titleX - labelGap - labelInk.Dx(); barWidth > maxBar {
+			barWidth = maxBar
+		}
+		if barWidth >= gtx.Dp(unit.Dp(56)) {
+			bar := image.Rect(geom.titleX, barTop, geom.titleX+barWidth, barTop+barHeight)
+			drawEpisodeProgressBar(gtx, bar, episodeProgressValue(item.resumeAt, item.duration))
+			m.typo.draw(
+				gtx,
+				label,
+				labelFace,
+				episodeProgressLabelSz,
+				episodeProgressLabelCol,
+				image.Pt(bar.Max.X+labelGap, barTop+(barHeight-labelInk.Dy())/2),
+			)
+		} else {
+			m.typo.draw(
+				gtx,
+				label,
+				labelFace,
+				episodeProgressLabelSz,
+				episodeProgressLabelCol,
+				image.Pt(titleRight-labelInk.Dx(), barTop+(barHeight-labelInk.Dy())/2),
+			)
+		}
+	}
 	m.drawStatus(gtx, geom.status, item.status)
 
 	if vis.itemLoading {

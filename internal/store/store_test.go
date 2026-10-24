@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"path/filepath"
 	"testing"
 )
@@ -42,6 +43,31 @@ func TestStorePersistsTitlesAndHistory(t *testing.T) {
 	}
 	if history[0].RusName != "Ван-Пис" {
 		t.Fatalf("history title was not decoded: %#v", history[0])
+	}
+
+	upserted, err := db.UpsertTitle(Title{Slug: "12--one-piece-anime", EpisodesTotal: 1100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if upserted != id {
+		t.Fatalf("upsert id = %d, want %d", upserted, id)
+	}
+	history, err = db.ListHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if history[0].EpisodesTotal != 1100 {
+		t.Fatalf("episode total after upsert = %d, want 1100", history[0].EpisodesTotal)
+	}
+	if err := db.UpdateEpisodesTotal(id, 1101); err != nil {
+		t.Fatal(err)
+	}
+	history, err = db.ListHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if history[0].EpisodesTotal != 1101 {
+		t.Fatalf("episode total = %d, want 1101", history[0].EpisodesTotal)
 	}
 
 	if err := db.SaveSelection(id, "2", "AniLibria.TV"); err != nil {
@@ -327,5 +353,56 @@ func TestHistoryKeepsNewestFirst(t *testing.T) {
 	}
 	if history[0].RusName != "third" || history[2].RusName != "first" {
 		t.Fatalf("unexpected order: %s, %s, %s", history[0].RusName, history[1].RusName, history[2].RusName)
+	}
+}
+
+func TestOpenAddsEpisodesTotalToLegacyDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.sqlite")
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = raw.Exec(`CREATE TABLE titles (
+		id INTEGER PRIMARY KEY,
+		slug TEXT UNIQUE NOT NULL,
+		eng_name TEXT NOT NULL DEFAULT '',
+		rus_name TEXT NOT NULL DEFAULT '',
+		imdb_id TEXT NOT NULL DEFAULT '',
+		season INTEGER NOT NULL DEFAULT 0,
+		status INTEGER NOT NULL DEFAULT 0,
+		updated_at INTEGER NOT NULL DEFAULT 0
+	)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec("INSERT INTO titles (slug, rus_name) VALUES ('legacy', 'Старое')"); err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	title, err := db.GetTitle("legacy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if title == nil || title.RusName != "Старое" || title.EpisodesTotal != 0 {
+		t.Fatalf("legacy title = %#v", title)
+	}
+	if err := db.UpdateEpisodesTotal(title.ID, 13); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := db.GetTitle("legacy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated == nil || updated.EpisodesTotal != 13 {
+		t.Fatalf("episode total = %#v, want 13", updated)
 	}
 }

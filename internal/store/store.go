@@ -15,14 +15,15 @@ import (
 
 const schemaSQL = `
 CREATE TABLE IF NOT EXISTS titles (
-    id            INTEGER PRIMARY KEY,
-    slug          TEXT    UNIQUE NOT NULL,
-    eng_name      TEXT    NOT NULL DEFAULT '',
-    rus_name      TEXT    NOT NULL DEFAULT '',
-    imdb_id       TEXT    NOT NULL DEFAULT '',
-    season        INTEGER NOT NULL DEFAULT 0,
-    status        INTEGER NOT NULL DEFAULT 0,
-    updated_at    INTEGER NOT NULL DEFAULT 0
+    id             INTEGER PRIMARY KEY,
+    slug           TEXT    UNIQUE NOT NULL,
+    eng_name       TEXT    NOT NULL DEFAULT '',
+    rus_name       TEXT    NOT NULL DEFAULT '',
+    imdb_id        TEXT    NOT NULL DEFAULT '',
+    season         INTEGER NOT NULL DEFAULT 0,
+    status         INTEGER NOT NULL DEFAULT 0,
+    episodes_total INTEGER NOT NULL DEFAULT 0,
+    updated_at     INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS history (
     tid        INTEGER PRIMARY KEY REFERENCES titles(id) ON DELETE CASCADE,
@@ -60,16 +61,19 @@ CREATE TABLE IF NOT EXISTS episode_tracking (
 
 // Title is the persisted AnimeLIB metadata plus local display fields. Episode
 // lists and the remote cover URL are intentionally not stored: they are fetched
-// again every time the title page is opened.
+// again every time the title page is opened. EpisodesTotal is only the cached
+// number of episodes so history rows can draw a progress bar without a network
+// request.
 type Title struct {
-	ID        int64
-	Slug      string
-	EngName   string
-	RusName   string
-	IMDbID    string
-	Season    int64
-	Status    int
-	UpdatedAt int64
+	ID            int64
+	Slug          string
+	EngName       string
+	RusName       string
+	IMDbID        string
+	Season        int64
+	Status        int
+	EpisodesTotal int
+	UpdatedAt     int64
 }
 
 // CoverCache records the local cover file and the last download attempt.
@@ -139,7 +143,48 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	// The first build stored no episode totals. Adding the column in place
+	// keeps an existing database usable without a migration framework.
+	if err := ensureTitleColumns(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return &Store{db: db}, nil
+}
+
+// ensureTitleColumns adds columns introduced after the first public schema.
+func ensureTitleColumns(db *sql.DB) error {
+	rows, err := db.Query("PRAGMA table_info(titles)")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	hasEpisodesTotal := false
+	for rows.Next() {
+		var (
+			cid        int
+			name       string
+			kind       string
+			notNull    int
+			defaultV   sql.NullString
+			primaryKey int
+		)
+		if err := rows.Scan(&cid, &name, &kind, &notNull, &defaultV, &primaryKey); err != nil {
+			return err
+		}
+		if name == "episodes_total" {
+			hasEpisodesTotal = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if hasEpisodesTotal {
+		return nil
+	}
+	_, err = db.Exec("ALTER TABLE titles ADD COLUMN episodes_total INTEGER NOT NULL DEFAULT 0")
+	return err
 }
 
 // Close closes the underlying database.
@@ -156,16 +201,17 @@ func (s *Store) UpsertTitle(title Title) (int64, error) {
 		title.UpdatedAt = time.Now().Unix()
 	}
 	_, err := s.db.Exec(`
-        INSERT INTO titles (slug, eng_name, rus_name, imdb_id, season, status, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO titles (slug, eng_name, rus_name, imdb_id, season, status, episodes_total, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(slug) DO UPDATE SET
-            eng_name   = CASE WHEN excluded.eng_name != '' THEN excluded.eng_name ELSE titles.eng_name END,
-            rus_name   = CASE WHEN excluded.rus_name != '' THEN excluded.rus_name ELSE titles.rus_name END,
-            imdb_id    = CASE WHEN excluded.imdb_id != '' THEN excluded.imdb_id ELSE titles.imdb_id END,
-            season     = CASE WHEN excluded.season != 0 THEN excluded.season ELSE titles.season END,
-            status     = excluded.status,
-            updated_at = excluded.updated_at
-    `, title.Slug, title.EngName, title.RusName, title.IMDbID, title.Season, title.Status, title.UpdatedAt)
+            eng_name       = CASE WHEN excluded.eng_name != '' THEN excluded.eng_name ELSE titles.eng_name END,
+            rus_name       = CASE WHEN excluded.rus_name != '' THEN excluded.rus_name ELSE titles.rus_name END,
+            imdb_id        = CASE WHEN excluded.imdb_id != '' THEN excluded.imdb_id ELSE titles.imdb_id END,
+            season         = CASE WHEN excluded.season != 0 THEN excluded.season ELSE titles.season END,
+            status         = excluded.status,
+            episodes_total = CASE WHEN excluded.episodes_total > 0 THEN excluded.episodes_total ELSE titles.episodes_total END,
+            updated_at     = excluded.updated_at
+    `, title.Slug, title.EngName, title.RusName, title.IMDbID, title.Season, title.Status, title.EpisodesTotal, title.UpdatedAt)
 	if err != nil {
 		return 0, err
 	}
@@ -179,7 +225,7 @@ func (s *Store) UpsertTitle(title Title) (int64, error) {
 // GetTitle returns a cached title by slug.
 func (s *Store) GetTitle(slug string) (*Title, error) {
 	row := s.db.QueryRow(`
-        SELECT id, slug, eng_name, rus_name, imdb_id, season, status, updated_at
+        SELECT id, slug, eng_name, rus_name, imdb_id, season, status, episodes_total, updated_at
         FROM titles WHERE slug = ?`, slug)
 	return scanTitle(row)
 }
@@ -230,7 +276,7 @@ func (s *Store) SaveCoverFailure(tid int64) error {
 // ListHistory returns titles in the user's order, newest first.
 func (s *Store) ListHistory() ([]HistoryEntry, error) {
 	rows, err := s.db.Query(`
-        SELECT t.id, t.slug, t.eng_name, t.rus_name, t.imdb_id, t.season, t.status, t.updated_at,
+        SELECT t.id, t.slug, t.eng_name, t.rus_name, t.imdb_id, t.season, t.status, t.episodes_total, t.updated_at,
                h.episode, h.resume_at, h.duration, h.voiceover, h.sort_order
         FROM history h
         JOIN titles t ON t.id = h.tid
@@ -245,7 +291,7 @@ func (s *Store) ListHistory() ([]HistoryEntry, error) {
 		var entry HistoryEntry
 		err := rows.Scan(
 			&entry.ID, &entry.Slug, &entry.EngName, &entry.RusName, &entry.IMDbID, &entry.Season,
-			&entry.Status, &entry.UpdatedAt,
+			&entry.Status, &entry.EpisodesTotal, &entry.UpdatedAt,
 			&entry.Episode, &entry.ResumeAt, &entry.Duration, &entry.Voiceover, &entry.SortOrder,
 		)
 		if err != nil {
@@ -414,6 +460,16 @@ func (s *Store) DeleteEpisodeTracking(tid int64) error {
 		return nil
 	}
 	_, err := s.db.Exec("DELETE FROM episode_tracking WHERE tid = ?", tid)
+	return err
+}
+
+// UpdateEpisodesTotal refreshes the cached number of episodes after a
+// background check found a newly released episode.
+func (s *Store) UpdateEpisodesTotal(tid int64, total int) error {
+	if tid == 0 || total <= 0 {
+		return nil
+	}
+	_, err := s.db.Exec("UPDATE titles SET episodes_total = ?, updated_at = ? WHERE id = ?", total, time.Now().Unix(), tid)
 	return err
 }
 
@@ -592,7 +648,7 @@ func scanTitle(row *sql.Row) (*Title, error) {
 	var title Title
 	err := row.Scan(
 		&title.ID, &title.Slug, &title.EngName, &title.RusName, &title.IMDbID, &title.Season,
-		&title.Status, &title.UpdatedAt,
+		&title.Status, &title.EpisodesTotal, &title.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil

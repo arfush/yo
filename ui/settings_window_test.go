@@ -16,7 +16,6 @@ func TestSettingsWindowLayoutDoesNotOverflow(t *testing.T) {
 	}
 	for _, enabled := range []bool{true, false} {
 		settings := newSettingsWindow(typo, enabled)
-		settings.testMessage = "Отправлено: 3"
 
 		gtx := layout.Context{
 			Ops:         new(op.Ops),

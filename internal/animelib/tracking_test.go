@@ -47,6 +47,9 @@ func TestLatestEpisodeSelectsNewestAndDetectsKodikOnlyVoice(t *testing.T) {
 	if release.Episode != "10" || release.EpisodeID != 103 {
 		t.Fatalf("latest episode = %q/%d, want 10/103", release.Episode, release.EpisodeID)
 	}
+	if release.EpisodeCount != 3 {
+		t.Fatalf("episode count = %d, want 3", release.EpisodeCount)
+	}
 	if detailRequests != 1 {
 		t.Fatalf("detail requested %d times, want 1", detailRequests)
 	}

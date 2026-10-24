@@ -21,9 +21,10 @@ type EpisodeRelease struct {
 	StatusID    int
 	StatusLabel string
 
-	Episode    string
-	EpisodeID  int
-	Voiceovers []ReleaseVoiceover
+	Episode      string
+	EpisodeID    int
+	EpisodeCount int
+	Voiceovers   []ReleaseVoiceover
 }
 
 // LatestEpisode resolves a title and asks only for the latest episode's player
@@ -51,6 +52,7 @@ func (c *Client) LatestEpisode(ctx context.Context, input string) (*EpisodeRelea
 	if err != nil {
 		return nil, err
 	}
+	release.EpisodeCount = len(uniqueEpisodeNumbers(list))
 	item, number, ok := latestEpisode(list)
 	if !ok {
 		return release, nil
@@ -64,6 +66,25 @@ func (c *Client) LatestEpisode(ctx context.Context, input string) (*EpisodeRelea
 	}
 	release.Voiceovers = releaseVoiceovers(detail.Players)
 	return release, nil
+}
+
+// EpisodeCount returns how many episodes AnimeLIB currently lists for a title.
+// It is a two-request lookup used to backfill history rows that predate the
+// cached episode total.
+func (c *Client) EpisodeCount(ctx context.Context, input string) (int, error) {
+	slug, err := ParseInput(input)
+	if err != nil {
+		return 0, err
+	}
+	title, err := c.resolve(ctx, slug)
+	if err != nil {
+		return 0, err
+	}
+	list, err := c.fetchEpisodeList(ctx, title.SlugURL)
+	if err != nil {
+		return 0, err
+	}
+	return len(uniqueEpisodeNumbers(list)), nil
 }
 
 // latestEpisode returns the last episode in display order. AnimeLIB's flat list

@@ -70,6 +70,53 @@ func TestPosterInitialUsesFirstLetter(t *testing.T) {
 	}
 }
 
+func TestEpisodeProgressLabelAndValue(t *testing.T) {
+	if got := episodeProgressLabel("2", 28); got != "2 / 28 эп." {
+		t.Fatalf("episodeProgressLabel = %q", got)
+	}
+	if got := episodeProgressLabel("", 28); got != "" {
+		t.Fatalf("label without an episode = %q, want empty", got)
+	}
+	if got := episodeProgressLabel("2", 0); got != "" {
+		t.Fatalf("label without a total = %q, want empty", got)
+	}
+	if got := episodeProgressValue(300, 1200); got < 0.24 || got > 0.26 {
+		t.Fatalf("progress = %v, want 0.25", got)
+	}
+	if got := episodeProgressValue(0, 1200); got != 0 {
+		t.Fatalf("unwatched progress = %v, want 0", got)
+	}
+	if got := episodeProgressValue(1200, 0); got != 0 {
+		t.Fatalf("unknown duration progress = %v, want 0", got)
+	}
+	if got := episodeProgressValue(1800, 1200); got != 1 {
+		t.Fatalf("progress past the end = %v, want 1", got)
+	}
+}
+
+func TestHistoryTitleEpisodeProgressSource(t *testing.T) {
+	loaded := historyTitle{
+		episodes:        []string{"1", "2", "3"},
+		episodesTotal:   12,
+		selectedEpisode: 1,
+		episodeLabel:    "1",
+	}
+	if got := loaded.totalEpisodes(); got != 3 {
+		t.Fatalf("loaded total = %d, want the fresh list length", got)
+	}
+	if got := loaded.currentEpisodeLabel(); got != "2" {
+		t.Fatalf("loaded current = %q, want 2", got)
+	}
+
+	cached := historyTitle{episodesTotal: 28, episodeLabel: "5", selectedEpisode: -1}
+	if got := cached.totalEpisodes(); got != 28 {
+		t.Fatalf("cached total = %d, want 28", got)
+	}
+	if got := cached.currentEpisodeLabel(); got != "5" {
+		t.Fatalf("cached current = %q, want 5", got)
+	}
+}
+
 func TestDeleteEditorWord(t *testing.T) {
 	var editor widget.Editor
 	editor.SetText("hello brave world")
