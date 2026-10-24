@@ -36,22 +36,43 @@ const (
 
 var animeURLPattern = regexp.MustCompile(`(?i)/anime/([^/?#]+)`)
 
+// backgroundRequestInterval keeps the new-episode checker well below
+// AnimeLIB's 100-requests-per-minute limit while leaving budget for the UI.
+const backgroundRequestInterval = time.Second
+
 // Client is a small, concurrency-safe AnimeLIB API client.
 type Client struct {
 	token   string
 	baseURL string
 	http    *http.Client
 	sem     chan struct{}
+	// pace serializes background requests so a large library cannot exhaust
+	// the shared rate-limit window in one burst.
+	pace        time.Duration
+	paceMu      sync.Mutex
+	lastRequest time.Time
 }
 
 // New returns a client. An empty token is allowed while the token-entry UI is
 // not implemented yet; protected requests will then fail with a useful error.
 func New(token string) *Client {
+	return newClient(token, 0)
+}
+
+// NewBackground returns a client that spaces every request at least one second
+// apart. It is used by the periodic new-episode checker, which must not starve
+// foreground title loads.
+func NewBackground(token string) *Client {
+	return newClient(token, backgroundRequestInterval)
+}
+
+func newClient(token string, pace time.Duration) *Client {
 	return &Client{
 		token:   strings.TrimSpace(token),
 		baseURL: strings.TrimRight(apiBaseURL, "/"),
 		http:    &http.Client{Timeout: 25 * time.Second},
 		sem:     make(chan struct{}, 10),
+		pace:    pace,
 	}
 }
 
@@ -546,6 +567,32 @@ func (c *Client) fetchEpisodeList(ctx context.Context, slugURL string) ([]Episod
 	return response.Data, nil
 }
 
+// waitPace pauses background checks so consecutive requests stay at least one
+// pace interval apart. The mutex makes the delay hold even if a caller starts
+// several lookups at once.
+func (c *Client) waitPace(ctx context.Context) error {
+	if c.pace <= 0 {
+		return nil
+	}
+	c.paceMu.Lock()
+	defer c.paceMu.Unlock()
+
+	if !c.lastRequest.IsZero() {
+		wait := c.pace - time.Since(c.lastRequest)
+		if wait > 0 {
+			timer := time.NewTimer(wait)
+			defer timer.Stop()
+			select {
+			case <-timer.C:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+	}
+	c.lastRequest = time.Now()
+	return nil
+}
+
 func (c *Client) get(ctx context.Context, endpoint string, siteID int) ([]byte, error) {
 	if c.token == "" {
 		return nil, errors.New("не найден токен AnimeLIB (animelib_token.txt в папке данных Yonime)")
@@ -556,6 +603,9 @@ func (c *Client) get(ctx context.Context, endpoint string, siteID int) ([]byte, 
 		// happens before the semaphore slot is taken, so paused requests do not
 		// block the queue.
 		if err := waitForRateLimit(ctx); err != nil {
+			return nil, err
+		}
+		if err := c.waitPace(ctx); err != nil {
 			return nil, err
 		}
 		select {
