@@ -40,14 +40,19 @@ curl https://yonime-watchparty.<ваш-аккаунт>.workers.dev/health
 
 1. `wrangler deploy` — получить адрес.
 2. Проверить `/health`.
-3. В GitHub-репозитории открыть **Settings → Secrets and variables → Actions →
-   Variables** и создать переменную
-   `WATCHPARTY_CLOUDFLARE_URL=https://yonime-watchparty.<ваш-аккаунт>.workers.dev`.
-4. Собрать релиз (`release: vX.Y`). `build.ps1` берёт переменную из окружения и
-   передаёт её в `-ldflags -X watchparty.CloudflareURL`, поэтому все три
-   архитектуры выйдут с уже подключённым реле.
+3. Записать адрес в один из двух источников:
+   - переменная `WATCHPARTY_CLOUDFLARE_URL` (локально — в окружении, в CI —
+     GitHub **Settings → Secrets and variables → Actions → Variables**);
+   - или `cloudflare_url` в `watchplay.json` в корне репозитория.
+4. Собрать релиз (`release: vX.Y`). `build.ps1` передаёт значение в
+   `-ldflags -X watchparty.CloudflareURL`, поэтому все три архитектуры выйдут с
+   уже подключённым реле.
 
-Локальная сборка делает то же самое через переменную окружения:
+Переменная окружения важнее файла: если она задана, `watchplay.json` не
+используется и не меняется. Образцы (`example.workers.dev`) сборка пропускает и
+предупреждает об этом — так релиз не уедет с нерабочим реле.
+
+Локальная сборка:
 
 ```powershell
 $env:WATCHPARTY_CLOUDFLARE_URL = "https://yonime-watchparty.<ваш-аккаунт>.workers.dev"
