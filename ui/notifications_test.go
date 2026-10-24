@@ -25,7 +25,7 @@ func TestFormatEpisodeNotification(t *testing.T) {
 				},
 			},
 			wantTitle: "Ван-Пис",
-			wantBody:  "1080 эп. в озвучке (AniLibria.TV) уже добавлен!",
+			wantBody:  "1080 эп. в озвучке AniLibria.TV уже добавлен!",
 		},
 		{
 			name: "kodik fallback is mentioned",
@@ -35,7 +35,7 @@ func TestFormatEpisodeNotification(t *testing.T) {
 				Voiceovers: []library.EpisodeVoiceover{{Name: "AniLibria.TV", KodikOnly: true}},
 			},
 			wantTitle: "Ван-Пис",
-			wantBody:  "5 эп. в озвучке (AniLibria.TV) уже добавлен! Доступно в Kodik.",
+			wantBody:  "5 эп. в озвучке AniLibria.TV уже добавлен! Доступно в Kodik.",
 		},
 		{
 			name: "announced title has been released",
@@ -46,7 +46,7 @@ func TestFormatEpisodeNotification(t *testing.T) {
 				TitleReleased: true,
 			},
 			wantTitle: "Анонс",
-			wantBody:  "Тайтл вышел! 1 эп. в озвучке (AniLibria.TV) уже добавлен!",
+			wantBody:  "Тайтл вышел! 1 эп. в озвучке AniLibria.TV уже добавлен!",
 		},
 		{
 			name: "preferred voice follow-up",
@@ -57,7 +57,7 @@ func TestFormatEpisodeNotification(t *testing.T) {
 				Preferred:  true,
 			},
 			wantTitle: "Ван-Пис",
-			wantBody:  "5 эп. в твоей озвучке (AniLibria.TV) уже добавлен!",
+			wantBody:  "5 эп. в твоей озвучке AniLibria.TV уже добавлен!",
 		},
 		{
 			name: "preferred voice after announced release",
@@ -69,7 +69,7 @@ func TestFormatEpisodeNotification(t *testing.T) {
 				Preferred:     true,
 			},
 			wantTitle: "Анонс",
-			wantBody:  "Тайтл вышел! 1 эп. в твоей озвучке (AniLibria.TV) уже добавлен!",
+			wantBody:  "Тайтл вышел! 1 эп. в твоей озвучке AniLibria.TV уже добавлен!",
 		},
 		{
 			name: "several voiceovers are listed",
@@ -82,7 +82,7 @@ func TestFormatEpisodeNotification(t *testing.T) {
 				},
 			},
 			wantTitle: "Тайтл",
-			wantBody:  "2 эп. в озвучках (A, B) уже добавлен! Доступно в Kodik.",
+			wantBody:  "2 эп. в озвучках A, B уже добавлен! Доступно в Kodik.",
 		},
 		{
 			name: "missing title falls back to a generic one",
@@ -91,7 +91,7 @@ func TestFormatEpisodeNotification(t *testing.T) {
 				Voiceovers: []library.EpisodeVoiceover{{Name: "A"}},
 			},
 			wantTitle: "Новая серия",
-			wantBody:  "1 эп. в озвучке (A) уже добавлен!",
+			wantBody:  "1 эп. в озвучке A уже добавлен!",
 		},
 		{
 			name: "missing voiceover still reports the episode",
@@ -119,7 +119,7 @@ func TestFormatEpisodeNotification(t *testing.T) {
 				Voiceovers: []library.EpisodeVoiceover{{Name: "A"}},
 			},
 			wantTitle: "Тайтл",
-			wantBody:  "Новая серия в озвучке (A) уже добавлена!",
+			wantBody:  "Новая серия в озвучке A уже добавлена!",
 		},
 	}
 	for _, test := range tests {

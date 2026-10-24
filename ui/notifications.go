@@ -61,8 +61,7 @@ func formatEpisodeNotification(event library.EpisodeNotification) (string, strin
 
 // notificationVoiceovers returns the comma-separated team names, their count
 // and whether Kodik is needed for any of them. Kodik is mentioned separately
-// instead of being glued to the name, so the voiceover stays inside one pair of
-// parentheses.
+// instead of being glued to the name, so the voiceover list stays readable.
 func notificationVoiceovers(voices []library.EpisodeVoiceover) (string, int, bool) {
 	labels := make([]string, 0, len(voices))
 	kodik := false
