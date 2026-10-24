@@ -59,6 +59,9 @@ type Library struct {
 	store     *store.Store
 	tokenPath string
 	covers    *coverManager
+	// episodeFetcher is nil in production. Tests replace it with a local
+	// function so the notification checker never touches AnimeLIB.
+	episodeFetcher episodeFetcher
 }
 
 // Open opens the local database and returns a library. The token is read lazily
@@ -208,6 +211,9 @@ func (l *Library) Save(title Title, voice, episode string) (Title, error) {
 		return Title{}, err
 	}
 	if err := l.store.SaveSelection(id, saved.SelectedEpisode, saved.SelectedVoice); err != nil {
+		return Title{}, err
+	}
+	if err := l.seedEpisodeTracking(saved); err != nil {
 		return Title{}, err
 	}
 	l.applyCover(&saved)
