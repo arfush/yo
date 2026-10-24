@@ -77,6 +77,9 @@ func startMPV(ctx context.Context, geometry string, header headerAssets) (*mpvPr
 		"--ytdl=no",
 		"--osc=yes",
 		"--title=Yonime",
+		// Watch-party guests seek in small steps; without exact seeking mpv
+		// rounds to the nearest keyframe and the correction overshoots.
+		"--hr-seek=yes",
 		"--http-header-fields=Referer: https://v5.animelib.org/,Origin: https://v5.animelib.org",
 		"--background-color=#0d0e14",
 	}

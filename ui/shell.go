@@ -29,20 +29,26 @@ type shell struct {
 	close    widget.Clickable
 	update   widget.Clickable
 	settings widget.Clickable
+	party    widget.Clickable
 
 	minimizeHover hoverAnim
 	maximizeHover hoverAnim
 	closeHover    hoverAnim
 	updateHover   hoverAnim
 	settingsHover hoverAnim
+	partyHover    hoverAnim
 
 	// updateVisible is set by the application when the cached release is newer
 	// than the running version. The settings control is always present on the
-	// main screen; the update control appears to its left when needed.
+	// main screen; the party and update controls appear to its left.
 	settingsVisible bool
 	updateVisible   bool
-	onUpdate        func()
-	onSettings      func()
+	partyVisible    bool
+	// partyActive lights the watch-party control while a room is open.
+	partyActive bool
+	onUpdate    func()
+	onSettings  func()
+	onParty     func()
 
 	content layout.Widget
 	// hidden reports that the window is parked in the notification area, so the
@@ -83,7 +89,7 @@ func (s *shell) animationsRun() bool {
 }
 
 func (s *shell) layout(gtx layout.Context, w *app.Window) {
-	g := makeGeometry(gtx, s.cfg.Mode != app.Windowed, s.settingsVisible, s.updateVisible)
+	g := makeGeometry(gtx, s.cfg.Mode != app.Windowed, s.settingsVisible, s.partyVisible, s.updateVisible)
 	// The watcher registered last frame has already collected presses for this
 	// frame. Reading it before the content lets a press outside the selected
 	// history card clear the highlight before row click handlers run.
@@ -368,7 +374,7 @@ func (s *shell) layoutFooter(gtx layout.Context, g geometry) {
 		return
 	}
 	if s.settingsVisible && !g.settingsRect.Empty() {
-		opened := s.layoutFooterControl(gtx, g, g.settingsRect, &s.settings, &s.settingsHover, func(gtx layout.Context, local image.Rectangle, progress float32) {
+		opened := s.layoutFooterControl(gtx, g, g.settingsRect, &s.settings, &s.settingsHover, false, func(gtx layout.Context, local image.Rectangle, progress float32) {
 			icon := mixColor(footerControlIconColor, footerControlHoverIconColor, progress)
 			drawSettingsIcon(gtx, centerOf(local), g, icon)
 		})
@@ -381,8 +387,20 @@ func (s *shell) layoutFooter(gtx layout.Context, g geometry) {
 			return
 		}
 	}
+	if s.partyVisible && !g.partyRect.Empty() {
+		active := s.partyActive
+		if s.layoutFooterControl(gtx, g, g.partyRect, &s.party, &s.partyHover, active, func(gtx layout.Context, local image.Rectangle, progress float32) {
+			icon := mixColor(footerControlIconColor, footerControlHoverIconColor, progress)
+			if active {
+				icon = mixColor(footerPartyActiveIcon, footerControlHoverIconColor, progress)
+			}
+			drawPeopleIcon(gtx, centerOf(local), g, icon)
+		}) && s.onParty != nil {
+			s.onParty()
+		}
+	}
 	if s.updateVisible && !g.updateRect.Empty() {
-		if s.layoutFooterControl(gtx, g, g.updateRect, &s.update, &s.updateHover, func(gtx layout.Context, local image.Rectangle, progress float32) {
+		if s.layoutFooterControl(gtx, g, g.updateRect, &s.update, &s.updateHover, false, func(gtx layout.Context, local image.Rectangle, progress float32) {
 			icon := mixColor(footerControlIconColor, footerControlHoverIconColor, progress)
 			drawDownloadIcon(
 				gtx,
@@ -397,7 +415,9 @@ func (s *shell) layoutFooter(gtx layout.Context, g geometry) {
 }
 
 // layoutFooterControl draws one round footer button and reports a click.
-func (s *shell) layoutFooterControl(gtx layout.Context, g geometry, rect image.Rectangle, control *widget.Clickable, hover *hoverAnim, draw func(layout.Context, image.Rectangle, float32)) bool {
+// active tints the button for a control that is currently holding state, such
+// as an open watch-party room.
+func (s *shell) layoutFooterControl(gtx layout.Context, g geometry, rect image.Rectangle, control *widget.Clickable, hover *hoverAnim, active bool, draw func(layout.Context, image.Rectangle, float32)) bool {
 	if rect.Empty() {
 		return false
 	}
@@ -421,6 +441,10 @@ func (s *shell) layoutFooterControl(gtx layout.Context, g geometry, rect image.R
 		local := image.Rect(0, 0, rect.Dx(), rect.Dy())
 		fill := mixColor(footerControlFillColor, footerControlHoverFill, progress)
 		border := mixColor(footerControlBorderColor, footerControlHoverBorder, progress)
+		if active {
+			fill = mixColor(footerPartyActiveFill, footerControlHoverFill, progress)
+			border = mixColor(footerPartyActiveBorder, footerControlHoverBorder, progress)
+		}
 		radius := g.px(float32(mainControlRadius))
 		fillRounded(gtx, fill, local, radius)
 		strokeRoundedRect(

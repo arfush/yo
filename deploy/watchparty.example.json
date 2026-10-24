@@ -1,0 +1,5 @@
+{
+  "cloudflare_url": "https://yonime-watchparty.example.workers.dev",
+  "supabase_url": "https://abcdefghijkl.supabase.co",
+  "supabase_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}

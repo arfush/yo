@@ -184,6 +184,17 @@ func (s *Service) Active() bool {
 	return s.session != nil || s.starting
 }
 
+// Current returns the running session, if any. The watch-party guest loop uses
+// it to keep mpv in step with the host.
+func (s *Service) Current() *Session {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.session
+}
+
 // Close stops the active session and the Kodik browser.
 func (s *Service) Close() {
 	if s == nil {
@@ -256,6 +267,7 @@ type Session struct {
 	currentNumber  string
 	lastPos        float64
 	duration       float64
+	paused         bool
 	resumePending  float64
 	resumeApplied  bool
 	lastWrite      time.Time
@@ -328,6 +340,9 @@ func (s *Session) eventLoop() {
 			case mpvEventDuration:
 				s.onDuration(event.Seconds)
 			case mpvEventPause:
+				s.mu.Lock()
+				s.paused = event.Paused
+				s.mu.Unlock()
 				if event.Paused {
 					s.saveProgress(true, 0)
 				}

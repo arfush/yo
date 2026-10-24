@@ -63,6 +63,12 @@ var (
 	footerControlHoverBorder    = color.NRGBA{R: 0x4a, G: 0x3c, B: 0x69, A: 0xff}
 	footerControlIconColor      = color.NRGBA{R: 0xa9, G: 0xa2, B: 0xb9, A: 0xff}
 	footerControlHoverIconColor = color.NRGBA{R: 0xd7, G: 0xc9, B: 0xff, A: 0xff}
+
+	// A room that is still open keeps the watch-party control dim green, so the
+	// main screen shows that a session exists.
+	footerPartyActiveFill   = color.NRGBA{R: 0x16, G: 0x27, B: 0x1e, A: 0xff}
+	footerPartyActiveBorder = color.NRGBA{R: 0x2c, G: 0x5a, B: 0x40, A: 0xff}
+	footerPartyActiveIcon   = color.NRGBA{R: 0x6c, G: 0xc8, B: 0x95, A: 0xff}
 )
 
 // geometry holds every chrome measurement converted from device-independent
@@ -90,6 +96,7 @@ type geometry struct {
 
 	footerCenterY int
 	settingsRect  image.Rectangle
+	partyRect     image.Rectangle
 	updateRect    image.Rectangle
 
 	// iconCenter and the hover measurements are local to a control hitbox.
@@ -143,7 +150,7 @@ func (g geometry) hoverRect() image.Rectangle {
 	)
 }
 
-func makeGeometry(gtx layout.Context, maximized, settingsVisible, updateVisible bool) geometry {
+func makeGeometry(gtx layout.Context, maximized, settingsVisible, partyVisible, updateVisible bool) geometry {
 	size := gtx.Constraints.Max
 	scale := gtx.Metric.PxPerDp
 	if scale == 0 {
@@ -182,13 +189,18 @@ func makeGeometry(gtx layout.Context, maximized, settingsVisible, updateVisible 
 	controlRight := size.X - g.border - g.px(15)
 	controlTop := g.footerCenterY - controlSize/2
 	controlBottom := g.footerCenterY + controlSize/2
-	// Settings is the rightmost footer button. The update control appears to
-	// its left only while a newer release is available.
+	// Settings is the rightmost footer button. The watch-party control sits to
+	// its left, and the update control appears left of that only while a newer
+	// release is available.
 	if settingsVisible {
 		g.settingsRect = image.Rect(controlRight-controlSize, controlTop, controlRight, controlBottom)
-		updateRight := g.settingsRect.Min.X - g.px(float32(mainControlGap))
+		nextRight := g.settingsRect.Min.X - g.px(float32(mainControlGap))
+		if partyVisible {
+			g.partyRect = image.Rect(nextRight-controlSize, controlTop, nextRight, controlBottom)
+			nextRight = g.partyRect.Min.X - g.px(float32(mainControlGap))
+		}
 		if updateVisible {
-			g.updateRect = image.Rect(updateRight-controlSize, controlTop, updateRight, controlBottom)
+			g.updateRect = image.Rect(nextRight-controlSize, controlTop, nextRight, controlBottom)
 		}
 	}
 

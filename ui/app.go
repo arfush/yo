@@ -30,6 +30,7 @@ import (
 	"github.com/arfush/yonime/internal/updater"
 	"github.com/arfush/yonime/internal/updates"
 	"github.com/arfush/yonime/internal/version"
+	"github.com/arfush/yonime/internal/watchparty"
 )
 
 const (
@@ -77,6 +78,7 @@ type application struct {
 	mpvManager     *mpv.Manager
 	library        *library.Library
 	playback       *playback.Service
+	party          *partyManager
 	main           *mainWindow
 	active         windowScreen
 	window         *app.Window
@@ -127,6 +129,9 @@ type watchResult struct {
 	err            error
 	historyItem    *historyTitle
 	historyFailure bool
+	// party marks a playback session that the watch-party guest loop started.
+	// Its failures belong to the room screen, not to the history rows.
+	party bool
 }
 
 func newApp() (*application, error) {
@@ -210,6 +215,7 @@ func newApp() (*application, error) {
 	}
 	state := updateStore.State()
 	app.updatesAvailable.Store(state.Available)
+	app.party = newPartyManager(app)
 	return app, nil
 }
 
@@ -232,6 +238,7 @@ func (a *application) attachWindow(w *app.Window) {
 	}
 	a.shell.onUpdate = a.openUpdate
 	a.shell.onSettings = a.openSettings
+	a.shell.onParty = a.openWatchParty
 	a.startTray()
 	a.prepare(w)
 	a.startUpdateLoop(w)
@@ -432,6 +439,64 @@ func (a *application) openSettings() {
 		return nil
 	}
 	a.showWindow(a.window, settings)
+}
+
+// openWatchParty shows the room card. When a room is still open the screen
+// reopens on the created (host) or waiting (guest) form with the same key.
+func (a *application) openWatchParty() {
+	if a.window == nil {
+		return
+	}
+	if a.party == nil {
+		a.party = newPartyManager(a)
+	}
+	screen := newWatchPartyWindow(a.shell.typo, a.window, a.party)
+	screen.hidden = a.windowHidden
+	screen.onBack = func() {
+		if a.window == nil {
+			return
+		}
+		a.showWindow(a.window, a.main)
+		a.window.Invalidate()
+	}
+	a.showWindow(a.window, screen)
+}
+
+// startPartyPlayback opens the title the host is watching and starts mpv close
+// to the extrapolated host position. The guest drift loop then corrects the
+// remaining difference.
+func (a *application) startPartyPlayback(state watchparty.State) error {
+	if a.library == nil || a.playback == nil {
+		return fmt.Errorf("воспроизведение недоступно")
+	}
+	// The host may jump to another episode or voice while the guest is still
+	// playing. mpv can only run one session, so the old one has to go first.
+	if a.playback.Active() {
+		if current := a.playback.Current(); current != nil {
+			current.Stop()
+		}
+		deadline := time.Now().Add(3 * time.Second)
+		for a.playback.Active() && time.Now().Before(deadline) {
+			time.Sleep(50 * time.Millisecond)
+		}
+		if a.playback.Active() {
+			return fmt.Errorf("mpv не успел завершить прошлую серию")
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	title, err := a.library.Load(ctx, state.TitleSlug)
+	if err != nil {
+		return err
+	}
+	quality := a.library.PreferredQuality()
+	startAt := 0.0
+	if a.party != nil {
+		if position, ok := a.party.ExpectedPosition(); ok {
+			startAt = position
+		}
+	}
+	return a.startPlayback(title, state.Voice, state.Episode, quality, nil, true, startAt)
 }
 
 func (a *application) downloadAndApply(ctx context.Context, release updates.Release, report func(downloadProgress)) error {
@@ -675,8 +740,11 @@ func (a *application) notifyEpisode(event library.EpisodeNotification) error {
 // their footer.
 func (a *application) syncFooterControls() {
 	release := a.updatesAvailable.Load()
-	a.shell.settingsVisible = a.active == a.main
-	a.shell.updateVisible = a.active == a.main && a.updateAvailable(release)
+	onMain := a.active == a.main
+	a.shell.settingsVisible = onMain
+	a.shell.partyVisible = onMain
+	a.shell.partyActive = onMain && a.party != nil && a.party.HasRoom()
+	a.shell.updateVisible = onMain && a.updateAvailable(release)
 }
 
 // updateAvailable applies the same rule to the footer button and the update
@@ -735,7 +803,7 @@ func (a *application) openTitle(item historyTitle) {
 		if a.library == nil {
 			return fmt.Errorf("база данных недоступна")
 		}
-		return a.startPlayback(libraryTitleFromHistory(title.item), voice, episode, quality, nil)
+		return a.startPlayback(libraryTitleFromHistory(title.item), voice, episode, quality, nil, false, 0)
 	}
 	a.showWindow(a.window, title)
 }
@@ -765,7 +833,7 @@ func (a *application) playFromHistory(item historyTitle) historyPlayResult {
 	}
 	quality := a.library.PreferredQuality()
 	returnItem := item
-	err := a.startPlayback(libraryTitleFromHistory(item), voice, episode, quality, &returnItem)
+	err := a.startPlayback(libraryTitleFromHistory(item), voice, episode, quality, &returnItem, false, 0)
 	if err != nil {
 		a.main.loadError = err.Error()
 		a.main.playing = false
@@ -780,7 +848,7 @@ func (a *application) playFromHistory(item historyTitle) historyPlayResult {
 
 // startPlayback builds the plan and launches mpv in the background. The
 // application window is hidden only after mpv has accepted the first file.
-func (a *application) startPlayback(title library.Title, voice, episode string, quality int, historyItem *historyTitle) error {
+func (a *application) startPlayback(title library.Title, voice, episode string, quality int, historyItem *historyTitle, partyGuest bool, startAt float64) error {
 	if a.library == nil || a.playback == nil {
 		return fmt.Errorf("воспроизведение недоступно")
 	}
@@ -806,7 +874,7 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 			// first; the saved voice and episode are restored during the load.
 			loaded, loadErr := a.library.Load(ctx, title.Slug)
 			if loadErr != nil {
-				a.deliverWatch(watchResult{err: loadErr, historyFailure: true})
+				a.deliverWatch(watchResult{err: loadErr, historyFailure: true, party: partyGuest})
 				return
 			}
 			title = loaded
@@ -816,10 +884,15 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 		}
 		plan, err := a.library.PlaybackPlan(ctx, title, voice, episode)
 		if err != nil {
-			a.deliverWatch(watchResult{err: err, historyItem: historyItem})
+			a.deliverWatch(watchResult{err: err, historyItem: historyItem, party: partyGuest})
 			return
 		}
-		_, err = a.playback.Start(ctx, plan, playback.StartOptions{
+		if partyGuest {
+			// The room owns the position: a guest must not resume from its own
+			// history, which would start the file in the wrong place.
+			plan.ResumeAt = startAt
+		}
+		session, err := a.playback.Start(ctx, plan, playback.StartOptions{
 			Quality:     quality,
 			Window:      window,
 			HeaderFonts: headerFonts(),
@@ -833,11 +906,15 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 			OnFinish: func(err error) {
 				a.hidden.Store(false)
 				showAppWindow()
-				a.deliverWatch(watchResult{finished: true, err: err, historyItem: historyItem})
+				a.deliverWatch(watchResult{finished: true, err: err, historyItem: historyItem, party: partyGuest})
 			},
 		})
 		if err != nil {
-			a.deliverWatch(watchResult{err: err, historyItem: historyItem})
+			a.deliverWatch(watchResult{err: err, historyItem: historyItem, party: partyGuest})
+			return
+		}
+		if !partyGuest && a.party != nil {
+			a.party.hostStarted(session, title, voice, episode)
 		}
 	}()
 	return nil
@@ -868,6 +945,18 @@ func (a *application) processWatchResults(gtx layout.Context) {
 }
 
 func (a *application) handleWatchResult(result watchResult) {
+	if result.party {
+		// A room-driven session never touches the history rows; the room screen
+		// owns the feedback and decides whether to try again.
+		if a.party != nil {
+			if result.err != nil && !result.finished {
+				a.party.guestFailed(result.err)
+			} else if result.finished {
+				a.party.guestFinished()
+			}
+		}
+		return
+	}
 	if result.historyFailure {
 		// Loading the title for a direct Play from history failed before mpv
 		// could start. Stay on the main window and show the reason: there is
@@ -1005,6 +1094,10 @@ func (a *application) showWindow(w *app.Window, screen windowScreen) {
 
 func (a *application) close() {
 	a.stopEpisodeLoop()
+	if a.party != nil {
+		a.party.Close()
+		a.party = nil
+	}
 	if a.tray != nil {
 		a.tray.close()
 		a.tray = nil

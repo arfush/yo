@@ -17,14 +17,15 @@ import (
 const dirName = "yonime"
 
 const (
-	databaseName  = "yonime.sqlite"
-	tokenName     = "animelib_token.txt"
-	profileName   = "browser"
-	coversName    = "covers"
-	mpvName       = "mpv"
-	updatesName   = "updates.json"
-	updateDirName = "update"
-	updateLogName = "update.log"
+	databaseName   = "yonime.sqlite"
+	tokenName      = "animelib_token.txt"
+	profileName    = "browser"
+	coversName     = "covers"
+	mpvName        = "mpv"
+	updatesName    = "updates.json"
+	updateDirName  = "update"
+	updateLogName  = "update.log"
+	watchPartyName = "watchparty.json"
 )
 
 // Dir returns the per-user data directory and creates it when necessary.
@@ -107,6 +108,12 @@ func DatabasePath() (string, error) {
 // TokenPath returns the AnimeLIB token path inside the data directory.
 func TokenPath() (string, error) {
 	return path(tokenName)
+}
+
+// WatchPartyConfigPath returns the relay configuration the user edits after
+// deploying the Worker or the Supabase project.
+func WatchPartyConfigPath() (string, error) {
+	return path(watchPartyName)
 }
 
 // BrowserProfileDir returns the persistent Chromium profile path. The profile

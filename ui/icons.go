@@ -141,6 +141,65 @@ func drawSettingsIcon(gtx layout.Context, center image.Point, g geometry, col co
 	strokeCircle(gtx, f32.Pt(cx, cy), g.vec(1.8), width, col)
 }
 
+// drawPeopleIcon paints two people for the watch-party control. It follows the
+// same stroke weight as the gear and the download tray.
+func drawPeopleIcon(gtx layout.Context, center image.Point, g geometry, col color.NRGBA) {
+	width := g.vec(1.3)
+	cx, cy := float32(center.X), float32(center.Y)
+	pt := func(x, y float32) f32.Point {
+		return f32.Pt(cx+g.vec(x), cy+g.vec(y))
+	}
+
+	// Heads. The left one is a touch larger, so the pair does not read as a
+	// single blob at footer size.
+	strokeCircle(gtx, pt(-2.9, -3.1), g.vec(2.0), width, col)
+	strokeCircle(gtx, pt(2.9, -3.1), g.vec(1.8), width, col)
+
+	// Shoulders: two shallow arcs that stop short of each other.
+	var left clip.Path
+	left.Begin(gtx.Ops)
+	left.MoveTo(pt(-6.4, 5.4))
+	left.CubeTo(pt(-6.4, 1.2), pt(-0.7, 1.2), pt(-0.7, 5.4))
+	leftStack := clip.Stroke{Path: left.End(), Width: width}.Op().Push(gtx.Ops)
+	paint.Fill(gtx.Ops, col)
+	leftStack.Pop()
+
+	var right clip.Path
+	right.Begin(gtx.Ops)
+	right.MoveTo(pt(0.7, 5.4))
+	right.CubeTo(pt(0.7, 1.5), pt(6.4, 1.5), pt(6.4, 5.4))
+	rightStack := clip.Stroke{Path: right.End(), Width: width}.Op().Push(gtx.Ops)
+	paint.Fill(gtx.Ops, col)
+	rightStack.Pop()
+}
+
+// drawCopyIcon paints two stacked sheets for the "copy room key" control. The
+// back sheet is an open corner so the glyph stays readable on the gradient
+// button, where a knockout fill would leave a dark patch.
+func drawCopyIcon(gtx layout.Context, center image.Point, g geometry, col color.NRGBA) {
+	width := g.vec(1.3)
+	cx, cy := float32(center.X), float32(center.Y)
+	half := g.vec(4.8)
+	inner := half * 0.5
+
+	var back clip.Path
+	back.Begin(gtx.Ops)
+	back.MoveTo(f32.Pt(cx-half, cy+inner))
+	back.LineTo(f32.Pt(cx-half, cy-half))
+	back.LineTo(f32.Pt(cx+inner, cy-half))
+	stack := clip.Stroke{Path: back.End(), Width: width}.Op().Push(gtx.Ops)
+	paint.Fill(gtx.Ops, col)
+	stack.Pop()
+
+	front := image.Rect(
+		int(math.Round(float64(cx-inner))),
+		int(math.Round(float64(cy-inner))),
+		int(math.Round(float64(cx+half))),
+		int(math.Round(float64(cy+half))),
+	)
+	strokeRoundedRect(gtx, front, float32(g.px(1.4)), width, col)
+}
+
 func strokeCircle(gtx layout.Context, center f32.Point, radius, width float32, col color.NRGBA) {
 	if radius <= 0 {
 		return

@@ -5,6 +5,7 @@ go 1.26.5
 require (
 	gioui.org v0.10.3
 	github.com/bodgit/sevenzip v1.6.5
+	github.com/coder/websocket v1.8.15
 	github.com/dexterlb/mpvipc v0.0.0-20260722094525-0cf47d745b36
 	github.com/mxschmitt/playwright-go v0.6201.1
 	golang.org/x/image v0.47.0
