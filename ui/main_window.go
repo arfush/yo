@@ -1216,7 +1216,7 @@ func (m *mainWindow) layoutHistoryEmpty(gtx layout.Context, rect image.Rectangle
 	drawTruncatedText(
 		gtx,
 		m.typo,
-		m.loadError,
+		upperFirst(m.loadError),
 		face,
 		mainHistoryCountSize,
 		mainMutedColor,

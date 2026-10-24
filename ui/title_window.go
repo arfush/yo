@@ -1100,16 +1100,23 @@ func (w *titleWindow) layoutFooter(gtx layout.Context) {
 			statusRight = watchRect.Min.X - gtx.Dp(unit.Dp(18))
 		}
 		if statusRight > statusLeft {
-			_, ink := w.typo.measure(gtx, w.watchError, font.Font{Typeface: fontFamily, Weight: font.Normal}, titlePageNoteSize)
+			face := font.Font{Typeface: fontFamily, Weight: font.Normal}
+			message := upperFirst(w.watchError)
+			_, ink := w.typo.measure(gtx, message, face, titlePageNoteSize)
+			available := statusRight - statusLeft
+			x := statusLeft
+			if ink.Dx() <= available {
+				x += (available - ink.Dx()) / 2
+			}
 			drawTruncatedText(
 				gtx,
 				w.typo,
-				w.watchError,
-				font.Font{Typeface: fontFamily, Weight: font.Normal},
+				message,
+				face,
 				titlePageNoteSize,
 				color.NRGBA{R: 0xf0, G: 0x8a, B: 0x8a, A: 0xff},
-				image.Pt(statusLeft, (height-ink.Dy())/2),
-				statusRight-statusLeft,
+				image.Pt(x, (height-ink.Dy())/2),
+				available,
 			)
 		}
 	}

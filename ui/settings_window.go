@@ -136,7 +136,7 @@ func (w *settingsWindow) layoutNotificationPanel(gtx layout.Context, rect image.
 		drawTruncatedText(
 			gtx,
 			w.typo,
-			w.errorText,
+			upperFirst(w.errorText),
 			font.Font{Typeface: fontFamily, Weight: font.Normal},
 			settingsNoteSize,
 			settingsErrorText,

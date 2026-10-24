@@ -484,12 +484,12 @@ func (s *Session) failUnopened(position int) {
 }
 
 func unopenedError(entry *playlistEntry) error {
-	message := "не удалось воспроизвести серию"
+	message := "Не удалось воспроизвести серию"
 	if entry != nil {
 		if entry.Kind == "hls" {
-			message = fmt.Sprintf("серия %s: сервер Kodik не отвечает, проверьте подключение", entry.Episode.Number)
+			message = "Сервер Kodik не отвечает, проверьте подключение"
 		} else {
-			message = fmt.Sprintf("серия %s: не удалось воспроизвести видео", entry.Episode.Number)
+			message = "Не удалось воспроизвести видео"
 		}
 	}
 	return errors.New(message)
