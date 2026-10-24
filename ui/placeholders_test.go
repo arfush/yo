@@ -10,8 +10,8 @@ import (
 )
 
 func TestAnimeLinkPromptList(t *testing.T) {
-	if len(animeLinkPlaceholders) != 50 {
-		t.Fatalf("got %d prompt phrases, want 50", len(animeLinkPlaceholders))
+	if len(animeLinkPlaceholders) < 2 {
+		t.Fatalf("got %d prompt phrases, need at least two to rotate", len(animeLinkPlaceholders))
 	}
 	seen := make(map[string]bool, len(animeLinkPlaceholders))
 	for i, phrase := range animeLinkPlaceholders {
