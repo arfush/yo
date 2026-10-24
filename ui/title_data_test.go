@@ -127,6 +127,26 @@ func TestHistoryTitleEpisodeProgressSource(t *testing.T) {
 	}
 }
 
+func TestMovieHidesEpisodeProgressLabel(t *testing.T) {
+	film := historyTitle{
+		movie:           true,
+		episodes:        []string{"1"},
+		episodesTotal:   1,
+		selectedEpisode: 0,
+	}
+	if got := film.progressLabel(); got != "" {
+		t.Fatalf("film progress label = %q, want empty", got)
+	}
+	series := historyTitle{
+		episodes:        []string{"1", "2", "3"},
+		episodesTotal:   3,
+		selectedEpisode: 1,
+	}
+	if got := series.progressLabel(); got != "2 / 3 эп." {
+		t.Fatalf("series progress label = %q, want 2 / 3 эп.", got)
+	}
+}
+
 func TestDeleteEditorWord(t *testing.T) {
 	var editor widget.Editor
 	editor.SetText("hello brave world")

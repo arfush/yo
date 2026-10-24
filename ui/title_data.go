@@ -83,6 +83,15 @@ func (t historyTitle) currentEpisodeLabel() string {
 	return t.episodeLabel
 }
 
+// progressLabel is the "current / total эп." caption next to the progress bar.
+// A film has a single playable file, so the episode counter would be noise.
+func (t historyTitle) progressLabel() string {
+	if t.movie {
+		return ""
+	}
+	return episodeProgressLabel(t.currentEpisodeLabel(), t.totalEpisodes())
+}
+
 // titleFromLibrary converts the API/storage model into the compact model used
 // by the existing widgets.
 func titleFromLibrary(item library.Title) historyTitle {

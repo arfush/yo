@@ -237,15 +237,23 @@ func (w *titleWindow) applyProgress(episode string, resumeAt, duration float64) 
 
 // layoutHeaderProgress paints the watched-episode bar under the original title.
 // rect ends at the columns below the header, so a short window simply skips it.
+// A film has no series counter, so only its progress bar is drawn.
 func (w *titleWindow) layoutHeaderProgress(gtx layout.Context, rect image.Rectangle) {
-	label := episodeProgressLabel(w.item.currentEpisodeLabel(), w.item.totalEpisodes())
+	label := w.item.progressLabel()
 	barHeight := gtx.Dp(episodeProgressHeight)
-	if label == "" || rect.Empty() {
+	if rect.Empty() || (!w.item.movie && label == "") {
 		return
 	}
 	labelFace := font.Font{Typeface: fontFamily, Weight: font.Normal}
-	_, labelInk := w.typo.measure(gtx, label, labelFace, episodeProgressLabelSz)
-	if rect.Dy() < max(barHeight, labelInk.Dy()) {
+	var labelInk image.Rectangle
+	if label != "" {
+		_, labelInk = w.typo.measure(gtx, label, labelFace, episodeProgressLabelSz)
+	}
+	requiredHeight := barHeight
+	if labelInk.Dy() > requiredHeight {
+		requiredHeight = labelInk.Dy()
+	}
+	if rect.Dy() < requiredHeight {
 		return
 	}
 	gap := gtx.Dp(episodeProgressGap)
@@ -253,7 +261,11 @@ func (w *titleWindow) layoutHeaderProgress(gtx layout.Context, rect image.Rectan
 	if barWidth < gtx.Dp(unit.Dp(120)) {
 		barWidth = gtx.Dp(unit.Dp(120))
 	}
-	if maxBar := rect.Dx() - gap - labelInk.Dx(); barWidth > maxBar {
+	maxBar := rect.Dx()
+	if labelInk.Dx() > 0 {
+		maxBar -= gap + labelInk.Dx()
+	}
+	if barWidth > maxBar {
 		barWidth = maxBar
 	}
 	if barWidth < gtx.Dp(unit.Dp(56)) {
@@ -265,6 +277,9 @@ func (w *titleWindow) layoutHeaderProgress(gtx layout.Context, rect image.Rectan
 		progress = episodeProgressValue(w.item.resumeAt, w.item.duration)
 	}
 	drawEpisodeProgressBar(gtx, bar, progress)
+	if label == "" {
+		return
+	}
 	w.typo.draw(
 		gtx,
 		label,
