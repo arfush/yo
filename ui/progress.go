@@ -16,8 +16,9 @@ const (
 	episodeProgressLabelSz = unit.Sp(11)
 	episodeProgressGap     = unit.Dp(10)
 	// historyProgressGap separates the title line from the progress row in the
-	// history card; the taller card needs a little more air between them.
-	historyProgressGap = unit.Dp(8)
+	// history card. It matches the space a 52dp poster leaves around the block,
+	// so the bar sits low in the card instead of hugging the title.
+	historyProgressGap = unit.Dp(18)
 )
 
 var (

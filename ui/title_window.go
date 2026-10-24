@@ -383,7 +383,7 @@ func (w *titleWindow) layout(gtx layout.Context) {
 			font.Font{Typeface: fontFamily, Weight: font.Normal},
 			titlePageOriginalSize,
 		)
-		headerProgressTop = originalTop + originalInk.Dy() + gtx.Dp(16)
+		headerProgressTop = originalTop + originalInk.Dy() + gtx.Dp(24)
 	}
 
 	columnsTop := poster.Max.Y + gtx.Dp(titlePageColumnsGapTop)
