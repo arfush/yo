@@ -1,17 +1,17 @@
-// The relay is deployed with `wrangler deploy` from this directory.
-// Free plan: 100k requests/day is far more than a room needs; one room costs
-// one request for the host socket and one per guest socket.
+# The relay is deployed with `wrangler deploy` from this directory.
+# Free plan: 100k requests/day is far more than a room needs; one room costs
+# one request for the host socket and one per guest socket.
 name = "yonime-watchparty"
 main = "src/worker.js"
 compatibility_date = "2025-04-01"
 
-// rooms are addressed by the room key, so every key gets its own object.
+# Rooms are addressed by the room key, so every key gets its own object.
 [[durable_objects.bindings]]
 name = "ROOMS"
 class_name = "Room"
 
-// Free-plan Durable Objects must use SQLite-backed storage. The relay keeps no
-// persistent data, but the class still has to be declared this way.
+# Free-plan Durable Objects must use SQLite-backed storage. The relay keeps no
+# persistent data, but the class still has to be declared this way.
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Room"]

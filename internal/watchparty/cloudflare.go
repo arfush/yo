@@ -22,17 +22,26 @@ func dialCloudflare(ctx context.Context, cfg Config, key string, role Role) (tra
 	})
 	if err != nil {
 		if resp != nil {
-			switch resp.StatusCode {
-			case http.StatusBadRequest:
-				return nil, fmt.Errorf("сервер отклонил ключ комнаты")
-			case http.StatusNotFound:
-				return nil, fmt.Errorf("комната не найдена")
-			}
-			return nil, fmt.Errorf("сервер комнаты ответил %d", resp.StatusCode)
+			return nil, handshakeError(resp.StatusCode)
 		}
 		return nil, fmt.Errorf("не удалось подключиться к комнате")
 	}
 	return &cloudflareTransport{wsTransport: newWSTransport(conn)}, nil
+}
+
+// handshakeError explains why the Worker refused the WebSocket upgrade. A 200
+// means the address is alive but serves something else, which is what an
+// undeployed or replaced Worker looks like.
+func handshakeError(status int) error {
+	switch status {
+	case http.StatusBadRequest:
+		return fmt.Errorf("сервер отклонил ключ комнаты")
+	case http.StatusNotFound:
+		return fmt.Errorf("комната не найдена")
+	case http.StatusOK:
+		return fmt.Errorf("по адресу реле работает не комната (ответ 200)")
+	}
+	return fmt.Errorf("сервер комнаты ответил %d", status)
 }
 
 type cloudflareTransport struct {
