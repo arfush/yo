@@ -129,6 +129,9 @@ type watchResult struct {
 	err            error
 	historyItem    *historyTitle
 	historyFailure bool
+	// titleID is the history row the session wrote progress to. A link-opened
+	// title gets an id only when playback tracks it.
+	titleID int64
 	// party marks a playback session that the watch-party guest loop started.
 	// Its failures belong to the room screen, not to the history rows.
 	party bool
@@ -882,9 +885,18 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 			fresh := titleFromLibrary(loaded)
 			historyItem = &fresh
 		}
+		// Watching a title is enough to keep its progress. A link-opened title
+		// has no history row until Save, and a party guest has to keep the
+		// title and voice they watched together, so both get tracked before
+		// mpv starts writing positions.
+		trackedID := int64(0)
+		if id, trackErr := a.library.TrackViewing(title, voice, episode); trackErr == nil && id != 0 {
+			trackedID = id
+			title.ID = id
+		}
 		plan, err := a.library.PlaybackPlan(ctx, title, voice, episode)
 		if err != nil {
-			a.deliverWatch(watchResult{err: err, historyItem: historyItem, party: partyGuest})
+			a.deliverWatch(watchResult{err: err, historyItem: historyItem, titleID: trackedID, party: partyGuest})
 			return
 		}
 		if partyGuest {
@@ -906,11 +918,11 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 			OnFinish: func(err error) {
 				a.hidden.Store(false)
 				showAppWindow()
-				a.deliverWatch(watchResult{finished: true, err: err, historyItem: historyItem, party: partyGuest})
+				a.deliverWatch(watchResult{finished: true, err: err, historyItem: historyItem, titleID: trackedID, party: partyGuest})
 			},
 		})
 		if err != nil {
-			a.deliverWatch(watchResult{err: err, historyItem: historyItem, party: partyGuest})
+			a.deliverWatch(watchResult{err: err, historyItem: historyItem, titleID: trackedID, party: partyGuest})
 			return
 		}
 		if !partyGuest && a.party != nil {
@@ -946,14 +958,20 @@ func (a *application) processWatchResults(gtx layout.Context) {
 
 func (a *application) handleWatchResult(result watchResult) {
 	if result.party {
-		// A room-driven session never touches the history rows; the room screen
-		// owns the feedback and decides whether to try again.
+		// A room-driven session keeps its progress like any other playback, so
+		// the list has to show the new position (and the title a guest watched
+		// for the first time) once mpv closes.
 		if a.party != nil {
 			if result.err != nil && !result.finished {
 				a.party.guestFailed(result.err)
 			} else if result.finished {
-				a.party.guestFinished()
+				// A guest that closed the player leaves the room instead of
+				// sitting on the waiting card with the party control lit.
+				a.party.guestFinished(result.err)
 			}
+		}
+		if result.finished && a.main != nil {
+			a.main.requestHistoryRefresh()
 		}
 		return
 	}
@@ -1033,6 +1051,11 @@ func (a *application) handleWatchResult(result watchResult) {
 	if !result.finished {
 		return
 	}
+	if result.titleID != 0 && title.item.id == 0 {
+		// Playback tracked a link-opened title in history; adopt the row so the
+		// progress refresh and a later Save use the same entry.
+		title.item.id = result.titleID
+	}
 	if a.library != nil && title.item.id != 0 {
 		episode, resumeAt, duration := a.library.Progress(title.item.id)
 		title.applyProgress(episode, resumeAt, duration)
@@ -1063,6 +1086,20 @@ func (a *application) downloadSavedCover(saved library.Title) {
 			a.main.invalidate()
 		}
 	}()
+}
+
+// leaveParty closes the room and returns to the main screen. A guest that
+// closes the player leaves the room this way, so the party control stops
+// glowing instead of keeping a room nobody follows any more.
+func (a *application) leaveParty() {
+	if a.party != nil {
+		a.party.Delete()
+	}
+	if a.window == nil {
+		return
+	}
+	a.showWindow(a.window, a.main)
+	a.window.Invalidate()
 }
 
 func (a *application) showWindow(w *app.Window, screen windowScreen) {

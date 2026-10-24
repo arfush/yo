@@ -96,6 +96,57 @@ func TestStorePersistsTitlesAndHistory(t *testing.T) {
 	}
 }
 
+// TestTrackViewingKeepsProgress covers a title that is watched before it is
+// saved: tracking has to create the row, and tracking it again must keep the
+// saved position while following the new voiceover.
+func TestTrackViewingKeepsProgress(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "yonime.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	id, err := db.UpsertTitle(Title{Slug: "42--tracked", RusName: "Отслеживаемый"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.TrackViewing(id, "3", "AniLibria.TV"); err != nil {
+		t.Fatal(err)
+	}
+	entry, err := db.GetHistory(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry == nil {
+		t.Fatal("tracking did not create a history row")
+	}
+	if entry.Episode != "3" || entry.Voiceover != "AniLibria.TV" {
+		t.Fatalf("tracked history = %#v, want episode 3 with AniLibria.TV", entry)
+	}
+
+	if err := db.SaveProgress(id, "3", 120, 1440); err != nil {
+		t.Fatal(err)
+	}
+	// A watch-party guest keeps the host's voiceover without losing its own
+	// saved position.
+	if err := db.TrackViewing(id, "4", "Studio Band"); err != nil {
+		t.Fatal(err)
+	}
+	entry, err = db.GetHistory(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.Voiceover != "Studio Band" {
+		t.Fatalf("voiceover = %q, want Studio Band", entry.Voiceover)
+	}
+	if entry.ResumeAt != 120 || entry.Duration != 1440 {
+		t.Fatalf("position = %v/%v, want 120/1440", entry.ResumeAt, entry.Duration)
+	}
+	if entry.Episode != "3" {
+		t.Fatalf("episode = %q, tracking must not rewrite it", entry.Episode)
+	}
+}
+
 func TestMovieFlagIsPersistedInHistory(t *testing.T) {
 	db, err := Open(filepath.Join(t.TempDir(), "yonime.sqlite"))
 	if err != nil {

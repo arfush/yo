@@ -383,6 +383,30 @@ func (s *Store) SaveSelection(tid int64, episode, voiceover string) error {
 	return err
 }
 
+// TrackViewing makes sure a title that is about to play has a history row. A
+// title opened from a link has no row until it is saved, but watching it must
+// still keep progress. An existing row keeps its episode and saved position;
+// only the voiceover follows what is being watched now.
+func (s *Store) TrackViewing(tid int64, episode, voiceover string) error {
+	if tid == 0 {
+		return nil
+	}
+	if voiceover != "" {
+		if _, err := s.db.Exec(`UPDATE history SET voiceover = ? WHERE tid = ?`, voiceover, tid); err != nil {
+			return err
+		}
+	}
+	existing, err := s.GetHistory(tid)
+	if err != nil {
+		return err
+	}
+	if existing != nil {
+		return nil
+	}
+	_, err = s.EnsureHistory(tid, episode, voiceover)
+	return err
+}
+
 // SaveProgress updates the current episode and playback position. A zero
 // duration keeps the previous duration, which is useful while mpv has not
 // reported it yet.

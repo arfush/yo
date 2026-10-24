@@ -236,6 +236,22 @@ func (l *Library) Token() (string, error) {
 	return l.readToken()
 }
 
+// TrackViewing records that a title is being watched: the title row is created
+// if needed and the history row is ensured, so progress survives even for a
+// link-opened title that was never saved and for a title a watch-party guest
+// only saw through the room. The saved position is kept.
+func (l *Library) TrackViewing(title Title, voice, episode string) (int64, error) {
+	stored := storedTitleFromLibrary(title)
+	id, err := l.store.UpsertTitle(stored)
+	if err != nil {
+		return 0, fmt.Errorf("не удалось сохранить тайтл: %w", err)
+	}
+	if err := l.store.TrackViewing(id, episode, voice); err != nil {
+		return id, err
+	}
+	return id, nil
+}
+
 // SaveSelection persists the voiceover and episode selected in the title
 // window.
 func (l *Library) SaveSelection(tid int64, voice, episode string) error {

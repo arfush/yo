@@ -37,6 +37,57 @@ func TestChoiceFallsBackToCompleteVoiceAndEpisode(t *testing.T) {
 	}
 }
 
+// TestTrackViewingTracksUnseenTitles covers a watch-party guest: the title may
+// be new for them and only known from the room, but it still has to land in
+// their history with the host's voice and keep the progress mpv writes.
+func TestTrackViewingTracksUnseenTitles(t *testing.T) {
+	dir := t.TempDir()
+	lib, err := Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = lib.Close() })
+
+	id, err := lib.TrackViewing(Title{Slug: "party-title", Russian: "Парти-тайтл"}, "AniLibria.TV", "5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id == 0 {
+		t.Fatal("tracking did not persist the title")
+	}
+	entry, err := lib.store.GetHistory(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry == nil {
+		t.Fatal("tracking did not create the history row")
+	}
+	if entry.Voiceover != "AniLibria.TV" || entry.Episode != "5" {
+		t.Fatalf("history = %#v, want the host's voice and episode", entry)
+	}
+
+	if err := lib.SaveProgress(id, "5", 300, 1440); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lib.TrackViewing(Title{Slug: "party-title", Russian: "Парти-тайтл"}, "Studio Band", "6"); err != nil {
+		t.Fatal(err)
+	}
+	episode, resumeAt, _ := lib.Progress(id)
+	if resumeAt != 300 {
+		t.Fatalf("resume = %v, want the saved 300", resumeAt)
+	}
+	if episode != "5" {
+		t.Fatalf("episode = %q, tracking must not drop the saved episode", episode)
+	}
+	entry, err = lib.store.GetHistory(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.Voiceover != "Studio Band" {
+		t.Fatalf("voiceover = %q, want the newly watched one", entry.Voiceover)
+	}
+}
+
 func TestCoverCacheFailureIsRetriedAndThenReused(t *testing.T) {
 	var requests int32
 	var failing atomic.Bool

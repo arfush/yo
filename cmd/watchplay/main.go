@@ -46,8 +46,8 @@ const (
 	minRate        = 0.94
 	maxRate        = 1.06
 
-	// A guest whose mpv failed to start retries after a pause; a player the
-	// guest closed on purpose stays closed until the host changes the media.
+	// A guest whose mpv failed retries after a pause; closing the player on
+	// purpose leaves the room, exactly like the desktop app.
 	retryCooldown = 45 * time.Second
 )
 
@@ -281,6 +281,10 @@ type app struct {
 
 	// rate is only touched by the guest loop goroutine.
 	rate float64
+
+	// leave closes the command loop when the guest's player is closed. The
+	// guest then leaves the room instead of waiting for the host.
+	leave func()
 }
 
 func (a *app) host(ctx context.Context, cfg watchparty.Config, provider watchparty.Provider, args []string) error {
@@ -333,6 +337,13 @@ func (a *app) guest(ctx context.Context, cfg watchparty.Config, provider watchpa
 	}
 	defer room.Close()
 	a.role = "гость"
+	// Closing mpv ends the session: the command loop stops and the room is
+	// closed by the deferred Close above.
+	ctx, leave := context.WithCancel(ctx)
+	defer leave()
+	a.mu.Lock()
+	a.leave = leave
+	a.mu.Unlock()
 	fmt.Printf("Комната: %s\n", room.Key)
 	fmt.Println("Ожидаю создателя комнаты…")
 
@@ -667,16 +678,24 @@ func (a *app) guestFailed(state watchparty.State, err error) {
 }
 
 func (a *app) guestFinished(state watchparty.State, err error) {
+	if err == nil {
+		// Closing the player is how a guest leaves the room. Waiting for the
+		// host here kept a room alive that nobody was watching any more.
+		fmt.Println("\nПлеер закрыт — выхожу из комнаты.")
+		a.mu.Lock()
+		leave := a.leave
+		a.mu.Unlock()
+		if leave != nil {
+			leave()
+		}
+		return
+	}
 	a.mu.Lock()
 	a.done = state
-	// A zero cooldown keeps this media closed until the host moves on.
-	a.doneAt = time.Time{}
+	a.doneAt = time.Now()
 	a.mu.Unlock()
-	if err != nil {
-		fmt.Printf("\nmpv: %v\n", err)
-	}
-	fmt.Println("Плеер закрылся; жду, пока создатель сменит серию.")
-	fmt.Println("Вернуть его на текущую серию: reopen")
+	fmt.Printf("\nmpv: %v\n", err)
+	fmt.Println("Плеер закрылся с ошибкой; попробую открыть его снова.")
 }
 
 func (a *app) control(action func(*playback.Session) error) error {

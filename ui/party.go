@@ -456,19 +456,30 @@ func (m *partyManager) guestFailed(err error) {
 	m.invalidate()
 }
 
-// guestFinished is called when a guest's mpv exits on its own, either because
-// the guest closed it or because the queue ran out.
-func (m *partyManager) guestFinished() {
+// guestFinished is called when a guest's mpv exits on its own. Closing the
+// player is how a guest leaves the room, so a clean exit drops the key and
+// returns to the main screen instead of waiting for the host forever. A crash
+// keeps the room and is retried after a pause.
+func (m *partyManager) guestFinished(err error) {
 	if m == nil {
+		return
+	}
+	if err == nil {
+		if m.app != nil {
+			m.app.leaveParty()
+			return
+		}
+		m.Delete()
 		return
 	}
 	m.mu.Lock()
 	if m.guestRunning.Started() {
 		m.guestDone = m.guestRunning
-		// A zero time keeps this playback closed until the host moves on.
-		m.guestDoneAt = time.Time{}
+		m.guestDoneAt = time.Now()
 	}
 	m.guestRunning = watchparty.State{}
+	m.guestStarting = false
+	m.notice = "Плеер закрылся, пробую снова"
 	m.mu.Unlock()
 	m.invalidate()
 }
