@@ -107,6 +107,16 @@ func (m *partyManager) Provider() watchparty.Provider {
 	return m.provider
 }
 
+// HasProviderChoice reports whether the chip has anything to switch to. The
+// official build ships a single relay, so the chip stays a plain label there
+// instead of a control that leads nowhere.
+func (m *partyManager) HasProviderChoice() bool {
+	if m == nil {
+		return false
+	}
+	return m.cfg.Configured(watchparty.Cloudflare) && m.cfg.Configured(watchparty.Supabase)
+}
+
 // SetProvider switches the chip while no room is open.
 func (m *partyManager) SetProvider(provider watchparty.Provider) {
 	if m == nil {

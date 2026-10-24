@@ -44,6 +44,26 @@ if ($Repo) {
     $ldflags += " -X github.com/arfush/yonime/internal/updates.Repository=$Repo"
 }
 
+# Watch-party relays are deployed once and baked into the official build so the
+# shipped exe needs no watchparty.json. Set the variables to ship a relay; when
+# they are empty the build behaves like a plain source build.
+$watchPartyFlags = @(
+    @{ Env = "WATCHPARTY_CLOUDFLARE_URL"; Symbol = "CloudflareURL" },
+    @{ Env = "WATCHPARTY_SUPABASE_URL"; Symbol = "SupabaseURL" },
+    @{ Env = "WATCHPARTY_SUPABASE_KEY"; Symbol = "SupabaseKey" }
+)
+foreach ($flag in $watchPartyFlags) {
+    $value = [Environment]::GetEnvironmentVariable($flag.Env)
+    if (-not $value) {
+        continue
+    }
+    $value = $value.Trim()
+    if (-not $value) {
+        continue
+    }
+    $ldflags += " -X github.com/arfush/yonime/internal/watchparty.$($flag.Symbol)=$value"
+}
+
 $env:CGO_ENABLED = "0"
 $env:GOOS = "windows"
 $env:GOARCH = $Arch

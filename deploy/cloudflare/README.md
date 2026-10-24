@@ -32,9 +32,35 @@ curl https://yonime-watchparty.<ваш-аккаунт>.workers.dev/health
 # ok
 ```
 
-## Подключение клиента
+## Как это попадает к пользователям
 
-Создайте файл `%APPDATA%\yonime\watchparty.json`:
+Реле разворачивается **один раз**, а его адрес вшивается в сборку: пользователи
+получают exe, в котором комнату можно создать без единого файла настроек и без
+ключей. Порядок для автора сборки:
+
+1. `wrangler deploy` — получить адрес.
+2. Проверить `/health`.
+3. В GitHub-репозитории открыть **Settings → Secrets and variables → Actions →
+   Variables** и создать переменную
+   `WATCHPARTY_CLOUDFLARE_URL=https://yonime-watchparty.<ваш-аккаунт>.workers.dev`.
+4. Собрать релиз (`release: vX.Y`). `build.ps1` берёт переменную из окружения и
+   передаёт её в `-ldflags -X watchparty.CloudflareURL`, поэтому все три
+   архитектуры выйдут с уже подключённым реле.
+
+Локальная сборка делает то же самое через переменную окружения:
+
+```powershell
+$env:WATCHPARTY_CLOUDFLARE_URL = "https://yonime-watchparty.<ваш-аккаунт>.workers.dev"
+.\build.ps1 -Version 1.0 -Arch amd64
+```
+
+Адрес не секретный: он виден в exe и в трафике. Подменять его на этапе
+эксплуатации не нужно — новые адреса приезжают с обновлением приложения.
+
+## Подключение клиента без своей сборки
+
+Для исходников, форков и своих реле адрес можно задать файлом
+`%APPDATA%\yonime\watchparty.json`:
 
 ```json
 {
@@ -42,11 +68,11 @@ curl https://yonime-watchparty.<ваш-аккаунт>.workers.dev/health
 }
 ```
 
-`https://` писать можно: клиент сам переводит адрес в `wss://`. После
-перезапуска Yonime в форме «Совместный просмотр» будет доступен провайдер
-**Cloudflare**.
+`https://` писать можно: клиент сам переводит адрес в `wss://`. Файл перекрывает
+вшитое значение; после перезапуска Yonime в форме «Совместный просмотр» будет
+доступен провайдер **Cloudflare**.
 
-Если вы собираете свой exe, адрес можно вшить на этапе сборки:
+Вшить адрес вручную тоже можно:
 
 ```bash
 go build -ldflags "-X github.com/arfush/yonime/internal/watchparty.CloudflareURL=https://yonime-watchparty.example.workers.dev" ./cmd/yonime

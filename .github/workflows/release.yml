@@ -88,6 +88,11 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
       REPO: ${{ github.repository }}
+      # Repository variables: a relay deployed once is baked into every exe, so
+      # users can create rooms without any configuration file.
+      WATCHPARTY_CLOUDFLARE_URL: ${{ vars.WATCHPARTY_CLOUDFLARE_URL }}
+      WATCHPARTY_SUPABASE_URL: ${{ vars.WATCHPARTY_SUPABASE_URL }}
+      WATCHPARTY_SUPABASE_KEY: ${{ vars.WATCHPARTY_SUPABASE_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

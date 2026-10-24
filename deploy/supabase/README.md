@@ -2,7 +2,7 @@
 
 Реле на Supabase Realtime: каждая комната — это публичный broadcast-канал
 `realtime:watchparty:<КЛЮЧ>`. Ни таблиц, ни RLS-политик, ни edge-функций
-создавать не нужно: достаточно `anon`-ключа проекта.
+создавать не нужно: достаточно publishable-ключа проекта.
 
 ## Что понадобится
 
@@ -13,43 +13,67 @@
 ## Настройка
 
 1. Создайте проект на <https://supabase.com/dashboard>.
-2. Откройте **Project Settings → API** и скопируйте:
+2. Откройте **Project Settings → API Keys** и скопируйте:
    - **Project URL**, например `https://abcdefghijkl.supabase.co`;
-   - **anon public** ключ (`eyJhbGciOi...`).
+   - **publishable** ключ `sb_publishable_...` (в проектах, созданных до
+     перехода на новые ключи, — legacy **anon public** `eyJhbGciOi...`).
 3. Больше ничего включать не нужно. Broadcast-каналы доступны из коробки;
    Realtime уже включён на новом проекте.
+
+Ключ передаётся как `apikey` в запросе. `Authorization: Bearer` с
+publishable-ключом не используется — так требует новый формат ключей.
 
 Проверить, что Realtime отвечает:
 
 ```bash
-curl "https://abcdefghijkl.supabase.co/realtime/v1/websocket?apikey=<ANON>&vsn=1.0.0"
+curl "https://abcdefghijkl.supabase.co/realtime/v1/websocket?apikey=<PUBLISHABLE>&vsn=1.0.0"
 # ожидаемо: 101 Switching Protocols (curl может ругнуться на протокол — это нормально)
 ```
 
-## Подключение клиента
+## Как это попадает к пользователям
 
-Создайте файл `%APPDATA%\yonime\watchparty.json`:
+Обычно своё реле на Supabase никто не поднимает: официальная сборка уже несёт
+адрес Cloudflare, а Supabase в ней — резерв. Если вы всё же хотите поставлять
+своё реле, его настройки вшиваются один раз, как и у Cloudflare:
+
+1. В GitHub-репозитории открыть **Settings → Secrets and variables → Actions →
+   Variables** и создать `WATCHPARTY_SUPABASE_URL` и
+   `WATCHPARTY_SUPABASE_KEY`.
+2. Собрать релиз: `build.ps1` передаст их в
+   `-ldflags -X watchparty.SupabaseURL` и `watchparty.SupabaseKey`.
+
+Локально — переменные окружения с теми же именами перед `build.ps1`.
+
+Внимание на квоту: проект **общий для всех пользователей сборки**, поэтому 2
+млн сообщений в месяц делятся на всех — это примерно 37 часов просмотра в
+сутки суммарно. Для публичной сборки основным реле должен быть Cloudflare.
+
+## Подключение клиента без своей сборки
+
+Для исходников и форков настройки задаются файлом
+`%APPDATA%\yonime\watchparty.json`:
 
 ```json
 {
   "supabase_url": "https://abcdefghijkl.supabase.co",
-  "supabase_key": "eyJhbGciOi..."
+  "supabase_key": "sb_publishable_..."
 }
 ```
 
 После перезапуска Yonime в форме «Совместный просмотр» будет доступен провайдер
-**Supabase**.
+**Supabase**. Файл перекрывает вшитые значения.
 
 Для сборки с вшитым ключом:
 
 ```bash
 go build -ldflags "\
  -X github.com/arfush/yonime/internal/watchparty.SupabaseURL=https://abcdefghijkl.supabase.co \
- -X github.com/arfush/yonime/internal/watchparty.SupabaseKey=eyJhbGciOi..." ./cmd/yonime
+ -X github.com/arfush/yonime/internal/watchparty.SupabaseKey=sb_publishable_..." ./cmd/yonime
 ```
 
-`anon`-ключ публичный: он всё равно лежит в клиенте и в исходниках любого
-веб-приложения. Не вшивайте `service_role` — он даёт полный доступ к базе.
+Publishable-ключ публичный: он и должен лежать в клиенте. Не вшивайте
+`sb_secret_...` и `service_role` — они дают полный доступ к проекту и для
+публичных каналов не нужны.
 
 ## Почему это бесплатно и не съедает квоту
 
@@ -87,5 +111,7 @@ select 1;
   канал — для комнаты это недостижимо.
 - Публичный канал может слушать любой, кто знает ключ. Ключ и есть пароль
   комнаты, поэтому не публикуйте его в открытых чатах.
+- Публичное Realtime-подключение живёт не дольше 24 часов. Клиент
+  переподключается сам, так что длинный марафон не прервётся.
 - Отдельного «списка участников» нет: клиент считает комнату живой, пока
   создатель присылает якоря.

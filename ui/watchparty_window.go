@@ -355,8 +355,8 @@ func (w *watchPartyWindow) layoutJoin(gtx layout.Context, cardWidth int, px func
 	}
 }
 
-// layoutProviderChip draws the provider name next to the title and toggles it
-// on click.
+// layoutProviderChip draws the provider name next to the title. It toggles on
+// click only when a second relay is configured for this build.
 func (w *watchPartyWindow) layoutProviderChip(gtx layout.Context, cardWidth int, px func(float32) int) {
 	label := w.party.Provider().Label()
 	titleFace := font.Font{Typeface: fontFamily, Weight: font.Bold}
@@ -379,8 +379,12 @@ func (w *watchPartyWindow) layoutProviderChip(gtx layout.Context, cardWidth int,
 		return
 	}
 
-	clicked := w.providerButton.Clicked(gtx)
-	hovered := w.providerButton.Hovered()
+	clickable := w.party.HasProviderChoice()
+	var clicked, hovered bool
+	if clickable {
+		clicked = w.providerButton.Clicked(gtx)
+		hovered = w.providerButton.Hovered()
+	}
 
 	stack := op.Offset(chip.Min).Push(gtx.Ops)
 	rect := image.Rectangle{Max: chip.Size()}
@@ -393,6 +397,10 @@ func (w *watchPartyWindow) layoutProviderChip(gtx layout.Context, cardWidth int,
 	fillRounded(gtx, fill, rect.Inset(px(1)), max(1, radius-px(1)))
 	w.typo.drawCentered(gtx, label, face, wpChipSize, firstRunProgressText, image.Pt(chipWidth/2, chipHeight/2))
 	stack.Pop()
+
+	if !clickable {
+		return
+	}
 
 	btnGtx := gtx
 	btnGtx.Constraints = layout.Exact(chip.Size())
