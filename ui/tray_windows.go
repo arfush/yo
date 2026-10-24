@@ -41,11 +41,19 @@ const (
 	smCXSmIcon = 49
 
 	notifyAdd    = 0
+	notifyModify = 1
 	notifyDelete = 2
 
 	notifyFlagMessage = 0x0001
 	notifyFlagIcon    = 0x0002
 	notifyFlagTip     = 0x0004
+	notifyFlagInfo    = 0x0010
+
+	// NIIF_NONE keeps the status icon out of the toast. The series name and
+	// text already carry the meaning, and the large blue "i" looks out of place
+	// next to the app icon. The string fields are limited by the fixed arrays
+	// in NOTIFYICONDATAW.
+	notifyInfoNone = 0x00000000
 
 	mfString    = 0x0000
 	mfSeparator = 0x0800
@@ -172,6 +180,10 @@ type tray struct {
 	ready   chan error
 	done    chan struct{}
 	closing sync.Once
+
+	// notifyMu serializes Shell_NotifyIcon calls from the checker goroutine and
+	// the tray thread.
+	notifyMu sync.Mutex
 }
 
 func traySupported() bool { return true }
@@ -419,8 +431,46 @@ func (t *tray) notify(command uint32, icon windows.Handle) bool {
 	if tip, err := windows.UTF16FromString(trayTip); err == nil {
 		copy(data.Tip[:], tip)
 	}
+	t.notifyMu.Lock()
+	defer t.notifyMu.Unlock()
 	ok, _, _ := procShellNotifyIconW.Call(uintptr(command), uintptr(unsafe.Pointer(&data)))
 	return ok != 0
+}
+
+// notifyMessage shows a standard Windows notification through the existing
+// tray icon. NIF_INFO is queued by Explorer; on Windows 10/11 it appears in the
+// notification center like any other application toast.
+func (t *tray) notifyMessage(title, body string) error {
+	if t == nil || t.hwnd == 0 {
+		return errors.New("уведомления Windows недоступны")
+	}
+	data := notifyIconData{
+		Wnd:       t.hwnd,
+		ID:        1,
+		Flags:     notifyFlagInfo,
+		InfoFlags: notifyInfoNone,
+	}
+	data.Size = uint32(unsafe.Sizeof(data))
+	if value, err := windows.UTF16FromString(title); err == nil {
+		copy(data.InfoTitle[:], value)
+	}
+	// The shell draws the title and body as adjacent lines. A leading newline
+	// leaves a small visual gap between the series name and the episode text.
+	// One UTF-16 unit is reserved for it inside the fixed szInfo array.
+	if body != "" {
+		body = "\n" + trimNotificationText(body, maxNotificationBody-1)
+	}
+	if value, err := windows.UTF16FromString(body); err == nil {
+		copy(data.Info[:], value)
+	}
+
+	t.notifyMu.Lock()
+	defer t.notifyMu.Unlock()
+	ok, _, _ := procShellNotifyIconW.Call(uintptr(notifyModify), uintptr(unsafe.Pointer(&data)))
+	if ok == 0 {
+		return errors.New("Windows не принял уведомление")
+	}
+	return nil
 }
 
 // iconHandle converts the embedded PNG into the small icon Explorer expects.

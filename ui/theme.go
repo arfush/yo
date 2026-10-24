@@ -89,6 +89,7 @@ type geometry struct {
 	logo          image.Rectangle
 
 	footerCenterY int
+	settingsRect  image.Rectangle
 	updateRect    image.Rectangle
 
 	// iconCenter and the hover measurements are local to a control hitbox.
@@ -142,7 +143,7 @@ func (g geometry) hoverRect() image.Rectangle {
 	)
 }
 
-func makeGeometry(gtx layout.Context, maximized, updateVisible bool) geometry {
+func makeGeometry(gtx layout.Context, maximized, settingsVisible, updateVisible bool) geometry {
 	size := gtx.Constraints.Max
 	scale := gtx.Metric.PxPerDp
 	if scale == 0 {
@@ -179,14 +180,16 @@ func makeGeometry(gtx layout.Context, maximized, updateVisible bool) geometry {
 	g.footerCenterY = (g.footerTop + g.footerBottom) / 2
 	controlSize := g.px(float32(mainControlSize))
 	controlRight := size.X - g.border - g.px(15)
-	// The update control is the only footer button and sits at the right edge.
-	if updateVisible {
-		g.updateRect = image.Rect(
-			controlRight-controlSize,
-			g.footerCenterY-controlSize/2,
-			controlRight,
-			g.footerCenterY+controlSize/2,
-		)
+	controlTop := g.footerCenterY - controlSize/2
+	controlBottom := g.footerCenterY + controlSize/2
+	// Settings is the rightmost footer button. The update control appears to
+	// its left only while a newer release is available.
+	if settingsVisible {
+		g.settingsRect = image.Rect(controlRight-controlSize, controlTop, controlRight, controlBottom)
+		updateRight := g.settingsRect.Min.X - g.px(float32(mainControlGap))
+		if updateVisible {
+			g.updateRect = image.Rect(updateRight-controlSize, controlTop, updateRight, controlBottom)
+		}
 	}
 
 	logoSize := g.px(24)

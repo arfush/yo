@@ -3,6 +3,7 @@ package ui
 import (
 	"image"
 	"image/color"
+	"math"
 
 	"gioui.org/f32"
 	"gioui.org/layout"
@@ -112,6 +113,67 @@ func drawDownloadIcon(gtx layout.Context, center image.Point, g geometry, col co
 	strokeLine(gtx, f32.Pt(float32(left), float32(trayTop)), f32.Pt(float32(left), float32(tray)), width, col)
 	strokeLine(gtx, f32.Pt(float32(left), float32(tray)), f32.Pt(float32(right), float32(tray)), width, col)
 	strokeLine(gtx, f32.Pt(float32(right), float32(tray)), f32.Pt(float32(right), float32(trayTop)), width, col)
+}
+
+// drawSettingsIcon paints the footer gear. Eight short teeth surround a double
+// outline ring, which stays legible at the 34dp footer button size.
+func drawSettingsIcon(gtx layout.Context, center image.Point, g geometry, col color.NRGBA) {
+	cx, cy := float32(center.X), float32(center.Y)
+	width := g.vec(1.25)
+	ring := g.vec(4.4)
+	toothInner := g.vec(5.0)
+	toothOuter := g.vec(6.8)
+	toothWidth := g.vec(1.8)
+
+	for index := 0; index < 8; index++ {
+		angle := float64(index) * math.Pi / 4
+		dirX := float32(math.Cos(angle))
+		dirY := float32(math.Sin(angle))
+		strokeLine(
+			gtx,
+			f32.Pt(cx+dirX*toothInner, cy+dirY*toothInner),
+			f32.Pt(cx+dirX*toothOuter, cy+dirY*toothOuter),
+			toothWidth,
+			col,
+		)
+	}
+	strokeCircle(gtx, f32.Pt(cx, cy), ring, width, col)
+	strokeCircle(gtx, f32.Pt(cx, cy), g.vec(1.8), width, col)
+}
+
+func strokeCircle(gtx layout.Context, center f32.Point, radius, width float32, col color.NRGBA) {
+	if radius <= 0 {
+		return
+	}
+	const kappa = 0.5522847498
+	k := radius * kappa
+	var path clip.Path
+	path.Begin(gtx.Ops)
+	path.MoveTo(f32.Pt(center.X+radius, center.Y))
+	path.CubeTo(
+		f32.Pt(center.X+radius, center.Y+k),
+		f32.Pt(center.X+k, center.Y+radius),
+		f32.Pt(center.X, center.Y+radius),
+	)
+	path.CubeTo(
+		f32.Pt(center.X-k, center.Y+radius),
+		f32.Pt(center.X-radius, center.Y+k),
+		f32.Pt(center.X-radius, center.Y),
+	)
+	path.CubeTo(
+		f32.Pt(center.X-radius, center.Y-k),
+		f32.Pt(center.X-k, center.Y-radius),
+		f32.Pt(center.X, center.Y-radius),
+	)
+	path.CubeTo(
+		f32.Pt(center.X+k, center.Y-radius),
+		f32.Pt(center.X+radius, center.Y-k),
+		f32.Pt(center.X+radius, center.Y),
+	)
+	path.Close()
+	stack := clip.Stroke{Path: path.End(), Width: width}.Op().Push(gtx.Ops)
+	paint.Fill(gtx.Ops, col)
+	stack.Pop()
 }
 
 func strokeLine(gtx layout.Context, from, to f32.Point, width float32, col color.NRGBA) {

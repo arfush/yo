@@ -28,16 +28,21 @@ type shell struct {
 	maximize widget.Clickable
 	close    widget.Clickable
 	update   widget.Clickable
+	settings widget.Clickable
 
 	minimizeHover hoverAnim
 	maximizeHover hoverAnim
 	closeHover    hoverAnim
 	updateHover   hoverAnim
+	settingsHover hoverAnim
 
 	// updateVisible is set by the application when the cached release is newer
-	// than the running version. The control is the only footer button.
-	updateVisible bool
-	onUpdate      func()
+	// than the running version. The settings control is always present on the
+	// main screen; the update control appears to its left when needed.
+	settingsVisible bool
+	updateVisible   bool
+	onUpdate        func()
+	onSettings      func()
 
 	content layout.Widget
 	// hidden reports that the window is parked in the notification area, so the
@@ -78,7 +83,7 @@ func (s *shell) animationsRun() bool {
 }
 
 func (s *shell) layout(gtx layout.Context, w *app.Window) {
-	g := makeGeometry(gtx, s.cfg.Mode != app.Windowed, s.updateVisible)
+	g := makeGeometry(gtx, s.cfg.Mode != app.Windowed, s.settingsVisible, s.updateVisible)
 	// The watcher registered last frame has already collected presses for this
 	// frame. Reading it before the content lets a press outside the selected
 	// history card clear the highlight before row click handlers run.
@@ -361,6 +366,20 @@ func (s *shell) layoutFooter(gtx layout.Context, g geometry) {
 		s.footer(fgtx)
 		clipStack.Pop()
 		return
+	}
+	if s.settingsVisible && !g.settingsRect.Empty() {
+		opened := s.layoutFooterControl(gtx, g, g.settingsRect, &s.settings, &s.settingsHover, func(gtx layout.Context, local image.Rectangle, progress float32) {
+			icon := mixColor(footerControlIconColor, footerControlHoverIconColor, progress)
+			drawSettingsIcon(gtx, centerOf(local), g, icon)
+		})
+		if opened {
+			if s.onSettings != nil {
+				s.onSettings()
+			}
+			// Opening settings replaces the main footer immediately; do not
+			// paint the update control on top of the new screen.
+			return
+		}
 	}
 	if s.updateVisible && !g.updateRect.Empty() {
 		if s.layoutFooterControl(gtx, g, g.updateRect, &s.update, &s.updateHover, func(gtx layout.Context, local image.Rectangle, progress float32) {

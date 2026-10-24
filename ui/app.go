@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -29,6 +30,16 @@ import (
 	"github.com/arfush/yonime/internal/updater"
 	"github.com/arfush/yonime/internal/updates"
 	"github.com/arfush/yonime/internal/version"
+)
+
+const (
+	// episodeCheckInterval is deliberately slow: the checker walks the whole
+	// saved library and every title costs three AnimeLIB requests.
+	episodeCheckInterval = 10 * time.Minute
+	// episodeCheckStartupDelay lets the window, token check and update check
+	// settle before the first background pass starts spending the shared
+	// AnimeLIB rate-limit window.
+	episodeCheckStartupDelay = 10 * time.Second
 )
 
 // Run starts the Yonime desktop application.
@@ -81,6 +92,19 @@ type application struct {
 	quitting atomic.Bool
 
 	watchResults chan watchResult
+
+	// The new-episode checker is one background goroutine. Its context cancels
+	// an in-flight pass when the user disables notifications or closes the app;
+	// the stop/done pair prevents the database from being closed underneath it.
+	episodeCtx        context.Context
+	episodeCancel     context.CancelFunc
+	episodeWake       chan struct{}
+	episodeStop       chan struct{}
+	episodeDone       chan struct{}
+	episodeMu         sync.Mutex
+	episodeStarted    bool
+	episodePassMu     sync.Mutex
+	episodePassCancel context.CancelFunc
 
 	tokenPath         string
 	browserProfileDir string
@@ -161,6 +185,7 @@ func newApp() (*application, error) {
 		return nil, fmt.Errorf("load history: %w", err)
 	}
 	manager := browser.New()
+	episodeCtx, episodeCancel := context.WithCancel(context.Background())
 	app := &application{
 		shell:             newShell(typo, icon),
 		browserManager:    manager,
@@ -170,6 +195,11 @@ func newApp() (*application, error) {
 		main:              newMainWindow(typo, lib, history),
 		icon:              icon,
 		watchResults:      make(chan watchResult, 8),
+		episodeCtx:        episodeCtx,
+		episodeCancel:     episodeCancel,
+		episodeWake:       make(chan struct{}, 1),
+		episodeStop:       make(chan struct{}),
+		episodeDone:       make(chan struct{}),
 		tokenPath:         tokenPath,
 		browserProfileDir: profileDir,
 		updateStore:       updateStore,
@@ -201,9 +231,11 @@ func (a *application) attachWindow(w *app.Window) {
 		return a.playFromHistory(item)
 	}
 	a.shell.onUpdate = a.openUpdate
+	a.shell.onSettings = a.openSettings
 	a.startTray()
 	a.prepare(w)
 	a.startUpdateLoop(w)
+	a.startEpisodeLoop(w)
 }
 
 // windowHidden reports whether the window is parked in the notification area.
@@ -372,6 +404,46 @@ func (a *application) openUpdate() {
 	a.showWindow(a.window, screen)
 }
 
+// openSettings shows the notification preferences. Changing the toggle takes
+// effect immediately; enabling it also starts a checker pass without waiting
+// for the regular timer.
+func (a *application) openSettings() {
+	if a.window == nil || a.library == nil {
+		return
+	}
+	settings := newSettingsWindow(a.shell.typo, a.library.EpisodeNotificationsEnabled())
+	settings.hidden = a.windowHidden
+	settings.onBack = func() {
+		if a.window == nil {
+			return
+		}
+		a.showWindow(a.window, a.main)
+		a.window.Invalidate()
+	}
+	settings.onToggle = func(enabled bool) error {
+		if err := a.library.SetEpisodeNotificationsEnabled(enabled); err != nil {
+			return err
+		}
+		if enabled {
+			a.triggerEpisodeCheck()
+		} else {
+			a.cancelEpisodePass()
+		}
+		return nil
+	}
+	settings.onTest = a.sendTestEpisodeNotifications
+	a.showWindow(a.window, settings)
+}
+
+// sendTestEpisodeNotifications is the temporary hand-test hook for the
+// notification pipeline. It uses only titles already in history.
+func (a *application) sendTestEpisodeNotifications() (int, error) {
+	if a.library == nil {
+		return 0, fmt.Errorf("база данных недоступна")
+	}
+	return a.library.SendTestEpisodeNotifications(a.notifyEpisode)
+}
+
 func (a *application) downloadAndApply(ctx context.Context, release updates.Release, report func(downloadProgress)) error {
 	report(downloadProgress{Preparing: true})
 	target, err := os.Executable()
@@ -476,11 +548,113 @@ func (a *application) checkForUpdates(w *app.Window) {
 	}
 }
 
-// syncUpdateButton recalculates the footer control before every frame. The
-// cached release is shown immediately after launch, without waiting for a
-// network check.
-func (a *application) syncUpdateButton() {
+// startEpisodeLoop runs the new-episode checker in the background. A single
+// goroutine owns every pass, so a slow library cannot overlap two walks of the
+// same tracking table.
+func (a *application) startEpisodeLoop(w *app.Window) {
+	a.episodeMu.Lock()
+	if a.episodeStarted {
+		a.episodeMu.Unlock()
+		return
+	}
+	a.episodeStarted = true
+	a.episodeMu.Unlock()
+
+	go func() {
+		defer close(a.episodeDone)
+		timer := time.NewTimer(episodeCheckStartupDelay)
+		defer timer.Stop()
+		for {
+			select {
+			case <-a.episodeStop:
+				return
+			case <-timer.C:
+			case <-a.episodeWake:
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+			}
+			a.checkEpisodeNotifications(w)
+			timer.Reset(episodeCheckInterval)
+		}
+	}()
+}
+
+// stopEpisodeLoop cancels an in-flight AnimeLIB pass and waits for the checker
+// goroutine before close() destroys the database.
+func (a *application) stopEpisodeLoop() {
+	a.episodeMu.Lock()
+	started := a.episodeStarted
+	a.episodeStarted = false
+	a.episodeMu.Unlock()
+	if !started {
+		return
+	}
+	a.episodeCancel()
+	close(a.episodeStop)
+	<-a.episodeDone
+}
+
+func (a *application) triggerEpisodeCheck() {
+	select {
+	case a.episodeWake <- struct{}{}:
+	default:
+	}
+}
+
+func (a *application) cancelEpisodePass() {
+	a.episodePassMu.Lock()
+	cancel := a.episodePassCancel
+	a.episodePassMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+func (a *application) checkEpisodeNotifications(w *app.Window) {
+	if a.library == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(a.episodeCtx, 30*time.Minute)
+	a.episodePassMu.Lock()
+	a.episodePassCancel = cancel
+	a.episodePassMu.Unlock()
+	defer func() {
+		cancel()
+		a.episodePassMu.Lock()
+		a.episodePassCancel = nil
+		a.episodePassMu.Unlock()
+	}()
+
+	if err := a.library.CheckEpisodeNotifications(ctx, a.notifyEpisode); err != nil && !errors.Is(err, context.Canceled) {
+		fmt.Fprintln(os.Stderr, "yonime: проверка новых серий:", err)
+	}
+	if w != nil {
+		// Cached statuses may have changed from ongoing to completed.
+		w.Invalidate()
+	}
+}
+
+// notifyEpisode is the delivery callback shared by the checker and the
+// temporary test button.
+func (a *application) notifyEpisode(event library.EpisodeNotification) error {
+	if a.tray == nil {
+		return fmt.Errorf("уведомления Windows недоступны")
+	}
+	title, body := formatEpisodeNotification(event)
+	return a.tray.notifyMessage(title, body)
+}
+
+// syncFooterControls recalculates the footer controls before every frame. The
+// cached update is shown immediately after launch, without waiting for a
+// network check. Settings belongs to the main screen only: other screens own
+// their footer.
+func (a *application) syncFooterControls() {
 	release := a.updatesAvailable.Load()
+	a.shell.settingsVisible = a.active == a.main
 	a.shell.updateVisible = a.active == a.main && a.updateAvailable(release)
 }
 
@@ -813,6 +987,7 @@ func (a *application) showWindow(w *app.Window, screen windowScreen) {
 }
 
 func (a *application) close() {
+	a.stopEpisodeLoop()
 	if a.tray != nil {
 		a.tray.close()
 		a.tray = nil
@@ -859,7 +1034,7 @@ func (a *application) run(w *app.Window) error {
 		case app.FrameEvent:
 			gtx := app.NewContext(&ops, e)
 			a.processWatchResults(gtx)
-			a.syncUpdateButton()
+			a.syncFooterControls()
 			a.shell.layout(gtx, w)
 			e.Frame(gtx.Ops)
 		case app.ConfigEvent:
