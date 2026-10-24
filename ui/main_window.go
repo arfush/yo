@@ -1335,13 +1335,16 @@ func (m *mainWindow) drawHistoryRowCard(gtx layout.Context, rect image.Rectangle
 	}
 	titleFace := font.Font{Typeface: fontFamily, Weight: font.SemiBold}
 	_, titleInk := m.typo.measure(gtx, item.title, titleFace, mainRowTitleSize)
-	label := episodeProgressLabel(item.currentEpisodeLabel(), item.totalEpisodes())
+	label := item.progressLabel()
 	labelFace := font.Font{Typeface: fontFamily, Weight: font.Normal}
 	var labelInk image.Rectangle
 	if label != "" {
 		_, labelInk = m.typo.measure(gtx, label, labelFace, episodeProgressLabelSz)
 	}
-	if label == "" {
+	// A film has no episode counter, but its watch progress bar still belongs
+	// in the row. Series without a known episode keep the old title-only layout.
+	showProgress := item.movie || label != ""
+	if !showProgress {
 		m.drawTruncated(
 			gtx,
 			item.title,
@@ -1354,7 +1357,10 @@ func (m *mainWindow) drawHistoryRowCard(gtx layout.Context, rect image.Rectangle
 	} else {
 		barHeight := gtx.Dp(episodeProgressHeight)
 		progressGap := gtx.Dp(historyProgressGap)
-		progressHeight := max(barHeight, labelInk.Dy())
+		progressHeight := barHeight
+		if labelInk.Dy() > progressHeight {
+			progressHeight = labelInk.Dy()
+		}
 		blockTop := (rowRect.Dy() - (titleInk.Dy() + progressGap + progressHeight)) / 2
 		m.drawTruncated(
 			gtx,
@@ -1369,21 +1375,27 @@ func (m *mainWindow) drawHistoryRowCard(gtx layout.Context, rect image.Rectangle
 		barTop := blockTop + titleInk.Dy() + progressGap + (progressHeight-barHeight)/2
 		labelGap := gtx.Dp(episodeProgressGap)
 		barWidth := rowRect.Dx() * 28 / 100
-		if maxBar := titleRight - geom.titleX - labelGap - labelInk.Dx(); barWidth > maxBar {
+		maxBar := titleRight - geom.titleX
+		if labelInk.Dx() > 0 {
+			maxBar -= labelGap + labelInk.Dx()
+		}
+		if barWidth > maxBar {
 			barWidth = maxBar
 		}
 		if barWidth >= gtx.Dp(unit.Dp(56)) {
 			bar := image.Rect(geom.titleX, barTop, geom.titleX+barWidth, barTop+barHeight)
 			drawEpisodeProgressBar(gtx, bar, episodeProgressValue(item.resumeAt, item.duration))
-			m.typo.draw(
-				gtx,
-				label,
-				labelFace,
-				episodeProgressLabelSz,
-				episodeProgressLabelCol,
-				image.Pt(bar.Max.X+labelGap, barTop+(barHeight-labelInk.Dy())/2),
-			)
-		} else {
+			if label != "" {
+				m.typo.draw(
+					gtx,
+					label,
+					labelFace,
+					episodeProgressLabelSz,
+					episodeProgressLabelCol,
+					image.Pt(bar.Max.X+labelGap, barTop+(barHeight-labelInk.Dy())/2),
+				)
+			}
+		} else if label != "" {
 			m.typo.draw(
 				gtx,
 				label,

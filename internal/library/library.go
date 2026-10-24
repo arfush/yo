@@ -207,7 +207,6 @@ func (l *Library) Save(title Title, voice, episode string) (Title, error) {
 	// the returned title so the open window can continue using it.
 	saved := titleFromData(stored, nil)
 	saved.AnimeID = title.AnimeID
-	saved.IsMovie = title.IsMovie
 	saved.CoverURL = title.CoverURL
 	saved.CoverPath = title.CoverPath
 	saved.Episodes = append([]string(nil), title.Episodes...)
@@ -373,6 +372,7 @@ func storedTitleFromData(data *animelib.TitleData) store.Title {
 		RusName:       russian,
 		Status:        int(statusFrom(data.StatusID, data.StatusLabel)),
 		EpisodesTotal: len(data.Episodes),
+		IsMovie:       data.IsMovie(),
 	}
 }
 
@@ -385,6 +385,7 @@ func storedTitleFromLibrary(title Title) store.Title {
 		Season:        int64(title.Season),
 		Status:        int(title.Status),
 		EpisodesTotal: len(title.Episodes),
+		IsMovie:       title.IsMovie,
 	}
 }
 
@@ -448,6 +449,7 @@ func titleFromStore(stored store.Title) Title {
 		Status:        Status(stored.Status),
 		Episodes:      []string{},
 		EpisodesTotal: stored.EpisodesTotal,
+		IsMovie:       stored.IsMovie,
 		Voiceovers:    []Voiceover{},
 		UpdatedAt:     stored.UpdatedAt,
 	}

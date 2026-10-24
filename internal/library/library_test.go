@@ -416,8 +416,15 @@ func TestCoverNameMatchesURL(t *testing.T) {
 
 func TestTitleFromDataDetectsMovie(t *testing.T) {
 	film := &animelib.TitleData{Title: animelib.Title{TypeID: animelib.TypeMovie, TypeLabel: "Фильм"}}
-	if title := titleFromData(store.Title{}, film); !title.IsMovie {
+	title := titleFromData(store.Title{}, film)
+	if !title.IsMovie {
 		t.Fatal("film type was not propagated to the library title")
+	}
+	if stored := storedTitleFromData(film); !stored.IsMovie {
+		t.Fatal("film type was not persisted")
+	}
+	if restored := titleFromData(store.Title{IsMovie: true}, nil); !restored.IsMovie {
+		t.Fatal("film type was not restored from storage")
 	}
 	series := &animelib.TitleData{Title: animelib.Title{TypeID: 16, TypeLabel: "TV Сериал"}}
 	if title := titleFromData(store.Title{}, series); title.IsMovie {

@@ -96,6 +96,36 @@ func TestStorePersistsTitlesAndHistory(t *testing.T) {
 	}
 }
 
+func TestMovieFlagIsPersistedInHistory(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "yonime.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	id, err := db.UpsertTitle(Title{Slug: "film", RusName: "Фильм", EpisodesTotal: 1, IsMovie: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.EnsureHistory(id, "1", "Озвучка"); err != nil {
+		t.Fatal(err)
+	}
+	title, err := db.GetTitle("film")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if title == nil || !title.IsMovie {
+		t.Fatalf("title movie flag = %#v, want true", title)
+	}
+	history, err := db.ListHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 1 || !history[0].IsMovie {
+		t.Fatalf("history movie flag was not loaded: %#v", history)
+	}
+}
+
 func TestUpdateNamesPreservesEmptyValues(t *testing.T) {
 	db, err := Open(filepath.Join(t.TempDir(), "yonime.sqlite"))
 	if err != nil {
@@ -405,7 +435,7 @@ func TestOpenAddsEpisodesTotalToLegacyDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if title == nil || title.RusName != "Старое" || title.EpisodesTotal != 0 {
+	if title == nil || title.RusName != "Старое" || title.EpisodesTotal != 0 || title.IsMovie {
 		t.Fatalf("legacy title = %#v", title)
 	}
 	if err := db.UpdateEpisodesTotal(title.ID, 13); err != nil {
