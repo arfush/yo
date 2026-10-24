@@ -77,6 +77,12 @@ func open(ctx context.Context, cfg Config, provider Provider, key string, role R
 	}
 	runCtx, cancel := context.WithCancel(context.Background())
 	session.cancel = cancel
+	// The caller publishes its first anchor as soon as Create or Join returns,
+	// often before the reader goroutine has run. Attach the socket here so that
+	// publish does not lose the race and report a missing connection.
+	session.mu.Lock()
+	session.conn = conn
+	session.mu.Unlock()
 	go session.run(runCtx, conn)
 	return session, nil
 }

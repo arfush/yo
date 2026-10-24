@@ -44,7 +44,10 @@ func dialSupabase(ctx context.Context, cfg Config, key string, role Role, name s
 		if resp != nil && resp.StatusCode >= 400 {
 			return nil, fmt.Errorf("Supabase отклонил подключение (%d)", resp.StatusCode)
 		}
-		return nil, fmt.Errorf("не удалось подключиться к Supabase")
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, errors.New("Supabase не ответил вовремя")
+		}
+		return nil, fmt.Errorf("не удалось подключиться к Supabase: %w", err)
 	}
 	t := &supabaseTransport{
 		wsTransport: newWSTransport(conn),

@@ -35,8 +35,12 @@ type StartOptions struct {
 	// custom window header. The UI owns the embedded fonts; playback installs
 	// them next to the Lua script.
 	HeaderFonts map[string][]byte
-	OnReady     func()
-	OnFinish    func(error)
+	// Title overrides the mpv window title. The desktop window keeps the
+	// default; the watch-party console client adds the role so a host and a
+	// guest on one machine can tell their players apart.
+	Title    string
+	OnReady  func()
+	OnFinish func(error)
 }
 
 // Service owns the Kodik browser and the single active mpv session.
@@ -134,7 +138,7 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 		cancel()
 		return nil, err
 	}
-	mpv, err := startMPV(ctx, geometry, header)
+	mpv, err := startMPV(ctx, geometry, header, options.Title)
 	if err != nil {
 		cancel()
 		return nil, err

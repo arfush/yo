@@ -279,3 +279,35 @@ func TestCreateNeedsAConfiguredProvider(t *testing.T) {
 		t.Fatal("Create accepted Supabase without an anon key")
 	}
 }
+
+// TestHostPublishesRightAfterCreate keeps the first anchor from being lost to
+// the goroutine that attaches the socket: a host publishes as soon as Create
+// returns, and a guest waiting for that anchor would otherwise sit on the
+// waiting screen until the next heartbeat.
+func TestHostPublishesRightAfterCreate(t *testing.T) {
+	hub := newTestHub(t)
+	cfg := Config{CloudflareURL: hub.url}
+
+	host, err := Create(context.Background(), cfg, Cloudflare)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer host.Close()
+
+	// No sleep and no wait for the reader goroutine: this is exactly what the
+	// host loop does when a room opens during playback.
+	want := State{TitleSlug: "demo-title", Episode: "1", Playing: true, Position: 10}
+	if err := host.Publish(want); err != nil {
+		t.Fatalf("Publish right after Create: %v", err)
+	}
+
+	guest, err := Join(context.Background(), cfg, Cloudflare, host.Key)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+	defer guest.Close()
+	waitFor(t, 3*time.Second, func() bool {
+		state, ok := guest.State()
+		return ok && state.TitleSlug == want.TitleSlug
+	})
+}

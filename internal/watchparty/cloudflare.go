@@ -3,6 +3,7 @@ package watchparty
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -24,7 +25,10 @@ func dialCloudflare(ctx context.Context, cfg Config, key string, role Role) (tra
 		if resp != nil {
 			return nil, handshakeError(resp.StatusCode)
 		}
-		return nil, fmt.Errorf("не удалось подключиться к комнате")
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, errors.New("реле не ответило вовремя")
+		}
+		return nil, fmt.Errorf("не удалось подключиться к комнате: %w", err)
 	}
 	return &cloudflareTransport{wsTransport: newWSTransport(conn)}, nil
 }

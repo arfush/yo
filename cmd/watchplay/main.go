@@ -271,12 +271,21 @@ type app struct {
 	done     watchparty.State
 	doneAt   time.Time
 
+	// epoch identifies the newest local player. A finish callback from a
+	// session that has already been replaced must not clear its successor.
+	epoch int
+
+	// role names the mpv window, so a host and a guest started on one machine
+	// do not look like two identical players.
+	role string
+
 	// rate is only touched by the guest loop goroutine.
 	rate float64
 }
 
 func (a *app) host(ctx context.Context, cfg watchparty.Config, provider watchparty.Provider, args []string) error {
 	slug, voice, episode := args[0], args[1], args[2]
+	a.role = "создатель"
 
 	roomCtx, roomCancel := context.WithTimeout(ctx, roomTimeout)
 	room, err := watchparty.Create(roomCtx, cfg, provider)
@@ -323,6 +332,7 @@ func (a *app) guest(ctx context.Context, cfg watchparty.Config, provider watchpa
 		return err
 	}
 	defer room.Close()
+	a.role = "гость"
 	fmt.Printf("Комната: %s\n", room.Key)
 	fmt.Println("Ожидаю создателя комнаты…")
 
@@ -336,10 +346,24 @@ func (a *app) guest(ctx context.Context, cfg watchparty.Config, provider watchpa
 // session for the sync loops.
 func (a *app) start(ctx context.Context, plan *library.PlaybackPlan, resumeAt float64, onFinish func(error)) (*playback.Session, error) {
 	plan.ResumeAt = resumeAt
+	title := "Yonime"
+	if a.role != "" {
+		title += " — " + a.role
+	}
+	a.mu.Lock()
+	a.epoch++
+	epoch := a.epoch
+	a.mu.Unlock()
 	options := playback.StartOptions{
 		Quality: a.lib.PreferredQuality(),
+		Title:   title,
 		OnFinish: func(err error) {
 			a.mu.Lock()
+			if a.epoch != epoch {
+				// A newer player already owns the room; this one is history.
+				a.mu.Unlock()
+				return
+			}
 			a.session = nil
 			a.mu.Unlock()
 			if onFinish != nil {
@@ -358,6 +382,12 @@ func (a *app) start(ctx context.Context, plan *library.PlaybackPlan, resumeAt fl
 		return nil, err
 	}
 	a.mu.Lock()
+	if a.epoch != epoch {
+		// The player exited (or was replaced) while Start was returning. The
+		// finish callback has already reported it, so do not resurrect it.
+		a.mu.Unlock()
+		return session, nil
+	}
 	a.session = session
 	a.meta = mediaMeta{
 		slug:    plan.Slug,
@@ -558,6 +588,11 @@ func (a *app) restartGuest(ctx context.Context, room *watchparty.Session, state 
 			a.guestFailed(state, err)
 			return
 		}
+		if a.current() == nil {
+			// mpv died before Start returned; the finish callback has already
+			// told the user, so do not claim the episode is playing.
+			return
+		}
 		fmt.Printf("\nСмотрю: %s, серия %s, озвучка %s\n", plan.Russian, plan.Episode, plan.Voice)
 	}()
 }
@@ -640,7 +675,8 @@ func (a *app) guestFinished(state watchparty.State, err error) {
 	if err != nil {
 		fmt.Printf("\nmpv: %v\n", err)
 	}
-	fmt.Println("mpv закрыт; жду, пока создатель сменит серию.")
+	fmt.Println("Плеер закрылся; жду, пока создатель сменит серию.")
+	fmt.Println("Вернуть его на текущую серию: reopen")
 }
 
 func (a *app) control(action func(*playback.Session) error) error {
@@ -656,7 +692,7 @@ func (a *app) printCommands(host bool) {
 	if host {
 		fmt.Println("Команды: pause, play, seek <сек|+сек|-сек>, status, quit")
 	} else {
-		fmt.Println("Команды: status, quit (воспроизведением управляет создатель комнаты)")
+		fmt.Println("Команды: status, reopen, quit (воспроизведением управляет создатель комнаты)")
 	}
 	fmt.Println()
 }
@@ -687,7 +723,7 @@ func (a *app) commands(ctx context.Context, room *watchparty.Session, host bool)
 				<-ctx.Done()
 				return nil
 			}
-			if !a.runCommand(line, room, host) {
+			if !a.runCommand(ctx, line, room, host) {
 				return nil
 			}
 		}
@@ -695,7 +731,7 @@ func (a *app) commands(ctx context.Context, room *watchparty.Session, host bool)
 }
 
 // runCommand executes one typed command and reports whether to keep going.
-func (a *app) runCommand(line string, room *watchparty.Session, host bool) bool {
+func (a *app) runCommand(ctx context.Context, line string, room *watchparty.Session, host bool) bool {
 	fields := strings.Fields(strings.TrimSpace(line))
 	if len(fields) == 0 {
 		return true
@@ -705,6 +741,28 @@ func (a *app) runCommand(line string, room *watchparty.Session, host bool) bool 
 		a.printCommands(host)
 	case "status", "st":
 		a.printStatus(room, host)
+	case "reopen":
+		if host {
+			fmt.Println("Команда только для гостя: свой плеер создатель открывает заново самим запуском.")
+			return true
+		}
+		if a.current() != nil {
+			fmt.Println("Плеер уже открыт.")
+			return true
+		}
+		state, ok := room.State()
+		if !ok || !state.Started() {
+			fmt.Println("Создатель ещё не включил серию.")
+			return true
+		}
+		// Forget the finish so the guest loop starts this media again instead
+		// of treating the closed player as a deliberate exit.
+		a.mu.Lock()
+		a.done = watchparty.State{}
+		a.doneAt = time.Time{}
+		a.mu.Unlock()
+		fmt.Println("Открываю плеер заново…")
+		a.restartGuest(ctx, room, state)
 	case "pause", "play":
 		if !host {
 			fmt.Println("Воспроизведением управляет создатель комнаты.")

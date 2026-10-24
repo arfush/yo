@@ -61,10 +61,14 @@ type mpvProcess struct {
 	lastErr         error
 }
 
-func startMPV(ctx context.Context, geometry string, header headerAssets) (*mpvProcess, error) {
+func startMPV(ctx context.Context, geometry string, header headerAssets, title string) (*mpvProcess, error) {
 	path, err := findMPV()
 	if err != nil {
 		return nil, err
+	}
+	title = strings.TrimSpace(title)
+	if title == "" {
+		title = "Yonime"
 	}
 	pipe := mpvPipePath("yonime-mpv-" + strconv.Itoa(os.Getpid()) + "-" + strconv.FormatInt(time.Now().UnixNano(), 36))
 	args := []string{
@@ -76,7 +80,7 @@ func startMPV(ctx context.Context, geometry string, header headerAssets) (*mpvPr
 		"--input-terminal=no",
 		"--ytdl=no",
 		"--osc=yes",
-		"--title=Yonime",
+		"--title=" + title,
 		// Watch-party guests seek in small steps; without exact seeking mpv
 		// rounds to the nearest keyframe and the correction overshoots.
 		"--hr-seek=yes",
@@ -87,12 +91,18 @@ func startMPV(ctx context.Context, geometry string, header headerAssets) (*mpvPr
 		args = append(args, "--geometry="+geometry)
 	}
 	if header.ScriptPath != "" {
+		scriptOpts := "yonime-header-version=" + version.String() + ",osc-windowcontrols=no,osc-boxvideo=yes"
+		if title != "Yonime" {
+			// The Lua header draws its own title, so the role has to be
+			// passed there as well as in the native window title.
+			scriptOpts += ",title=" + title
+		}
 		args = append(args,
 			"--title-bar=no",
 			"--border=yes",
 			"--window-dragging=yes",
 			"--script="+header.ScriptPath,
-			"--script-opts=yonime-header-version="+version.String()+",osc-windowcontrols=no,osc-boxvideo=yes",
+			"--script-opts="+scriptOpts,
 		)
 		if header.FontsDir != "" {
 			args = append(args, "--osd-fonts-dir="+header.FontsDir, "--osd-font=Inter")
