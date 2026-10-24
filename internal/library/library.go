@@ -287,9 +287,15 @@ func (l *Library) SaveIntrodbCache(tid int64, episode string, chapters []byte, n
 	return l.store.SaveIntrodbCache(tid, episode, chapters, noData)
 }
 
-// DeleteHistory removes one title from the visible history.
+// DeleteHistory removes one title from the visible history and drops its cached
+// cover. Title metadata stays in the database, but the cover file would
+// otherwise stay on disk forever after the history row is gone.
 func (l *Library) DeleteHistory(tid int64) error {
-	return l.store.DeleteHistory(tid)
+	if err := l.store.DeleteHistory(tid); err != nil {
+		return err
+	}
+	l.removeCover(tid)
+	return nil
 }
 
 // ClearHistory removes every title from the visible history.

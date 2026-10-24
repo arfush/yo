@@ -101,3 +101,29 @@ func TestCropPosterKeepsWideSourceCentered(t *testing.T) {
 		t.Fatalf("left edge = %d, want 100 (centered crop)", got)
 	}
 }
+
+func TestForgetPosterDropsOnlyThatPath(t *testing.T) {
+	path := writeTestPoster(t, 40, 60)
+	other := writeTestPoster(t, 40, 60)
+	if posterForRect(path, 20, 30) == nil || posterForRect(other, 20, 30) == nil {
+		t.Fatal("posterForRect returned nil")
+	}
+
+	forgetPoster(path)
+
+	posterImages.Lock()
+	_, keptDecoded := posterImages.byPath[other]
+	_, droppedDecoded := posterImages.byPath[path]
+	posterImages.Unlock()
+	if droppedDecoded || !keptDecoded {
+		t.Fatalf("decoded cache: path dropped = %v, other kept = %v", droppedDecoded, keptDecoded)
+	}
+
+	posterFits.Lock()
+	_, keptFit := posterFits.byKey[posterFitKey{path: other, width: 20, height: 30}]
+	_, droppedFit := posterFits.byKey[posterFitKey{path: path, width: 20, height: 30}]
+	posterFits.Unlock()
+	if droppedFit || !keptFit {
+		t.Fatalf("resized cache: path dropped = %v, other kept = %v", droppedFit, keptFit)
+	}
+}

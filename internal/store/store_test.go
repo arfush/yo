@@ -173,6 +173,19 @@ func TestCoverCache(t *testing.T) {
 	if cover == nil || cover.Filename != "cover.jpg" || cover.FailedAt == 0 {
 		t.Fatalf("failure removed the cached filename: %#v", cover)
 	}
+	if err := db.DeleteCoverCache(id); err != nil {
+		t.Fatal(err)
+	}
+	cover, err = db.GetCoverCache(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cover != nil {
+		t.Fatalf("cover cache was not deleted: %#v", cover)
+	}
+	if err := db.DeleteCoverCache(id); err != nil {
+		t.Fatalf("deleting a missing cover cache failed: %v", err)
+	}
 }
 
 func TestEpisodeTrackingLifecycle(t *testing.T) {

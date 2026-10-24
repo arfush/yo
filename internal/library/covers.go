@@ -383,6 +383,23 @@ func (c *coverManager) markFailure(tid int64) {
 	_ = c.db.SaveCoverFailure(tid)
 }
 
+// removeCover deletes the cached cover file and its cache row. A title that was
+// never downloaded, or whose row already disappeared, is ignored: deleting a
+// history entry must not fail because the cover is missing.
+func (l *Library) removeCover(tid int64) {
+	if l == nil || l.covers == nil || tid == 0 {
+		return
+	}
+	cache, err := l.covers.db.GetCoverCache(tid)
+	if err == nil && cache != nil && cache.Filename != "" {
+		name := filepath.Base(cache.Filename)
+		if name != "" && name != "." {
+			_ = os.Remove(filepath.Join(l.covers.dir, name))
+		}
+	}
+	_ = l.covers.db.DeleteCoverCache(tid)
+}
+
 // coverName builds the local filename from the filename in the cover URL. The
 // detected extension is appended only when the URL does not carry one.
 func coverName(sourceURL, ext string) string {

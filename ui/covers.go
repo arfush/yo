@@ -122,6 +122,26 @@ func cropPoster(src image.Image, width, height int) image.Image {
 	return dst
 }
 
+// forgetPoster drops the decoded and resized copies of a cover that was removed
+// from disk. The UI lifetime caches would otherwise keep the old image when a
+// title with the same file name is added again.
+func forgetPoster(path string) {
+	if path == "" {
+		return
+	}
+	posterImages.Lock()
+	delete(posterImages.byPath, path)
+	posterImages.Unlock()
+
+	posterFits.Lock()
+	for key := range posterFits.byKey {
+		if key.path == path {
+			delete(posterFits.byKey, key)
+		}
+	}
+	posterFits.Unlock()
+}
+
 func drawPosterArt(gtx layout.Context, typo *typography, rect image.Rectangle, item historyTitle, initialSize unit.Sp) {
 	if rect.Empty() {
 		return

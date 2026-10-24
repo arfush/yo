@@ -259,6 +259,13 @@ func (s *Store) SaveCoverSuccess(tid int64, filename string) error {
 	return err
 }
 
+// DeleteCoverCache forgets the cached cover of a title. The caller removes the
+// file itself, because only the library knows the cover directory.
+func (s *Store) DeleteCoverCache(tid int64) error {
+	_, err := s.db.Exec("DELETE FROM cover_cache WHERE tid = ?", tid)
+	return err
+}
+
 // SaveCoverFailure remembers a failed cover download so a later title open can
 // retry it. An already cached filename is kept: the previous cover stays
 // visible until a replacement has been downloaded successfully.

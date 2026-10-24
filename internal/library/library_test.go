@@ -3,6 +3,7 @@ package library
 import (
 	"bytes"
 	"context"
+	"errors"
 	"image"
 	"image/color"
 	"image/png"
@@ -111,6 +112,73 @@ func TestCoverCacheFailureIsRetriedAndThenReused(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&requests); got != before {
 		t.Fatalf("cached cover made another HTTP request: %d -> %d", before, got)
+	}
+}
+
+func TestDeleteHistoryRemovesCachedCover(t *testing.T) {
+	var imageData bytes.Buffer
+	img := image.NewRGBA(image.Rect(0, 0, 4, 6))
+	for y := 0; y < 6; y++ {
+		for x := 0; x < 4; x++ {
+			img.Set(x, y, color.NRGBA{R: 0x40, G: 0x80, B: 0xc0, A: 0xff})
+		}
+	}
+	if err := png.Encode(&imageData, img); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(imageData.Bytes())
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	lib, err := Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = lib.Close() })
+
+	tid, err := lib.store.UpsertTitle(store.Title{Slug: "delete-cover"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lib.store.EnsureHistory(tid, "1", "Озвучка"); err != nil {
+		t.Fatal(err)
+	}
+	coverPath, err := lib.RefreshCover(context.Background(), tid, server.URL+"/cover.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(coverPath); err != nil {
+		t.Fatalf("cover was not written: %v", err)
+	}
+
+	if err := lib.DeleteHistory(tid); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(coverPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("cover file still exists after deletion: %v", err)
+	}
+	cache, err := lib.store.GetCoverCache(tid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cache != nil {
+		t.Fatalf("cover cache row still exists: %#v", cache)
+	}
+	history, err := lib.store.ListHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 0 {
+		t.Fatalf("history was not cleared: %#v", history)
+	}
+
+	// Undo is not modelled here, but deleting twice must stay harmless: the
+	// second call has no cover file or cache row left to remove.
+	if err := lib.DeleteHistory(tid); err != nil {
+		t.Fatalf("repeated delete failed: %v", err)
 	}
 }
 

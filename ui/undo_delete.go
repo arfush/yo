@@ -275,9 +275,13 @@ func (m *mainWindow) finalizeHistoryDeletes() {
 		if item.item.id == 0 {
 			continue
 		}
-		if err := m.library.DeleteHistory(item.item.id); err != nil && firstErr == nil {
-			firstErr = err
+		if err := m.library.DeleteHistory(item.item.id); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
 		}
+		forgetPoster(item.item.coverPath)
 	}
 	if firstErr != nil {
 		m.loadError = firstErr.Error()
