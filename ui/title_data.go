@@ -38,6 +38,7 @@ type historyTitle struct {
 	title           string
 	original        string
 	status          titleStatus
+	movie           bool // hides the episode grid: a film has no series to pick from.
 	poster1         color.NRGBA
 	poster2         color.NRGBA
 	initial         string
@@ -92,6 +93,7 @@ func titleFromLibrary(item library.Title) historyTitle {
 		title:           item.Russian,
 		original:        item.Original,
 		status:          titleStatus(item.Status),
+		movie:           item.IsMovie,
 		coverURL:        item.CoverURL,
 		coverPath:       item.CoverPath,
 		coverNeedsRetry: item.CoverNeedsRetry,
@@ -139,6 +141,7 @@ func libraryTitleFromHistory(item historyTitle) library.Title {
 		Russian:       item.title,
 		Original:      item.original,
 		Status:        library.Status(item.status),
+		IsMovie:       item.movie,
 		CoverURL:      item.coverURL,
 		CoverPath:     item.coverPath,
 		Episodes:      append([]string(nil), item.episodes...),

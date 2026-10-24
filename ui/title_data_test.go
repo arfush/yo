@@ -44,6 +44,16 @@ func TestVoiceoverKodikFlagSurvivesConversion(t *testing.T) {
 	}
 }
 
+func TestMovieFlagSurvivesConversion(t *testing.T) {
+	title := titleFromLibrary(library.Title{Russian: "Фильм", IsMovie: true})
+	if !title.movie {
+		t.Fatal("movie flag was lost in titleFromLibrary")
+	}
+	if back := libraryTitleFromHistory(title); !back.IsMovie {
+		t.Fatal("movie flag was lost on the way back")
+	}
+}
+
 func TestEpisodeRangeLabel(t *testing.T) {
 	tests := []struct {
 		episodes []string

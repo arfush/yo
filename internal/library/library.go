@@ -40,6 +40,7 @@ type Title struct {
 	Russian         string
 	Original        string
 	Status          Status
+	IsMovie         bool
 	CoverURL        string
 	CoverPath       string
 	CoverNeedsRetry bool
@@ -206,6 +207,7 @@ func (l *Library) Save(title Title, voice, episode string) (Title, error) {
 	// the returned title so the open window can continue using it.
 	saved := titleFromData(stored, nil)
 	saved.AnimeID = title.AnimeID
+	saved.IsMovie = title.IsMovie
 	saved.CoverURL = title.CoverURL
 	saved.CoverPath = title.CoverPath
 	saved.Episodes = append([]string(nil), title.Episodes...)
@@ -408,6 +410,7 @@ func titleFromData(stored store.Title, data *animelib.TitleData) Title {
 		title.Russian = title.Original
 	}
 	title.Status = statusFrom(data.StatusID, data.StatusLabel)
+	title.IsMovie = data.IsMovie()
 	title.CoverURL = coverURL(data.Cover)
 	title.Episodes = append([]string(nil), data.Episodes...)
 	title.EpisodesTotal = len(title.Episodes)

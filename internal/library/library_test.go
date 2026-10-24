@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/arfush/yonime/internal/animelib"
 	"github.com/arfush/yonime/internal/store"
 )
 
@@ -410,6 +411,17 @@ func TestCoverNameMatchesURL(t *testing.T) {
 	}
 	if coverNameMatches("other.jpg", "https://example.com/x/abc.jpg") {
 		t.Fatal("different filename should not match")
+	}
+}
+
+func TestTitleFromDataDetectsMovie(t *testing.T) {
+	film := &animelib.TitleData{Title: animelib.Title{TypeID: animelib.TypeMovie, TypeLabel: "Фильм"}}
+	if title := titleFromData(store.Title{}, film); !title.IsMovie {
+		t.Fatal("film type was not propagated to the library title")
+	}
+	series := &animelib.TitleData{Title: animelib.Title{TypeID: 16, TypeLabel: "TV Сериал"}}
+	if title := titleFromData(store.Title{}, series); title.IsMovie {
+		t.Fatal("TV series was detected as a film")
 	}
 }
 

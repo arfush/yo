@@ -65,7 +65,7 @@ func TestFetchLoadsAllEpisodesAndVoiceAvailabilityEveryCall(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/anime/refresh-test":
-			fmt.Fprint(w, `{"data":{"id":7,"name":"Refresh Test","rus_name":"Обновление","eng_name":"Refresh Test","slug":"refresh-test","slug_url":"refresh-test","status":{"id":1,"label":"Онгоинг"},"cover":{"default":"https://example.com/cover.jpg"},"teams":[{"id":10,"name":"Team A"},{"id":11,"name":"Team K"}]}}`)
+			fmt.Fprint(w, `{"data":{"id":7,"name":"Refresh Test","rus_name":"Обновление","eng_name":"Refresh Test","slug":"refresh-test","slug_url":"refresh-test","status":{"id":1,"label":"Онгоинг"},"type":{"id":16,"label":"TV Сериал"},"cover":{"default":"https://example.com/cover.jpg"},"teams":[{"id":10,"name":"Team A"},{"id":11,"name":"Team K"}]}}`)
 		case r.URL.Path == "/api/episodes":
 			atomic.AddInt32(&listRequests, 1)
 			if got := r.URL.Query().Get("anime_id"); got != "refresh-test" {
@@ -120,6 +120,9 @@ func TestFetchLoadsAllEpisodesAndVoiceAvailabilityEveryCall(t *testing.T) {
 	}
 	if len(first.Episodes) != 3 || first.Episodes[1] != "106" {
 		t.Fatalf("unexpected episodes: %#v", first.Episodes)
+	}
+	if first.TypeID != 16 || first.TypeLabel != "TV Сериал" || first.IsMovie() {
+		t.Fatalf("unexpected title type: %#v", first.Title)
 	}
 
 	voices := make(map[string]Voiceover, len(first.Voiceovers))
@@ -199,6 +202,27 @@ func TestFetchSkipsEpisodesForAnnouncedTitle(t *testing.T) {
 	}
 	if len(data.Episodes) != 0 || len(data.Voiceovers) != 0 {
 		t.Fatalf("announced title should have no episodes: %#v", data)
+	}
+}
+
+func TestTitleIsMovie(t *testing.T) {
+	tests := []struct {
+		typeID int
+		label  string
+		want   bool
+	}{
+		{typeID: TypeMovie, label: "Фильм", want: true},
+		{typeID: TypeMovie, want: true},
+		{label: "Короткометражный фильм", want: true},
+		{label: "Movie", want: true},
+		{typeID: 16, label: "TV Сериал", want: false},
+		{label: "OVA", want: false},
+	}
+	for _, test := range tests {
+		title := Title{TypeID: test.typeID, TypeLabel: test.label}
+		if got := title.IsMovie(); got != test.want {
+			t.Fatalf("IsMovie(%d, %q) = %v, want %v", test.typeID, test.label, got, test.want)
+		}
 	}
 }
 

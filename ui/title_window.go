@@ -676,6 +676,10 @@ func (w *titleWindow) layoutTitlePanel(gtx layout.Context, rect image.Rectangle)
 	labelFace := font.Font{Typeface: fontFamily, Weight: font.Medium}
 	_, labelInk := w.typo.measure(gtx, "СЕРИИ", labelFace, titlePageSectionSize)
 	labelY := rect.Min.Y + gtx.Dp(unit.Dp(13))
+	if w.item.movie {
+		w.layoutMoviePanel(gtx, rect, labelFace, labelInk, labelY, compact)
+		return
+	}
 	episodesLabel := episodeRangeLabel(w.item.episodes)
 	w.typo.draw(gtx, episodesLabel, labelFace, titlePageSectionSize, mainMutedColor, image.Pt(innerX, labelY))
 
@@ -746,6 +750,53 @@ func (w *titleWindow) layoutTitlePanel(gtx layout.Context, rect image.Rectangle)
 			image.Pt(innerX, noteTop+gtx.Dp(unit.Dp(14))),
 		)
 	}
+}
+
+// layoutMoviePanel leaves only the quality preference for a film. A movie has
+// no episode list to choose from, so the block sits at the top of the panel
+// instead of being anchored to the bottom above the episode grid.
+func (w *titleWindow) layoutMoviePanel(gtx layout.Context, rect image.Rectangle, face font.Font, labelInk image.Rectangle, labelY int, compact bool) {
+	innerX := rect.Min.X + gtx.Dp(unit.Dp(16))
+	innerRight := rect.Max.X - gtx.Dp(unit.Dp(16))
+	qualityHeight := gtx.Dp(titlePageQualityHeight)
+	if compact {
+		qualityHeight = gtx.Dp(unit.Dp(30))
+	}
+	qualityTop := labelY + labelInk.Dy() + gtx.Dp(unit.Dp(13))
+	if qualityTop+qualityHeight > rect.Max.Y {
+		return
+	}
+	w.typo.draw(
+		gtx,
+		"ПРЕДПОЧТИТЕЛЬНОЕ КАЧЕСТВО",
+		face,
+		titlePageSectionSize,
+		mainMutedColor,
+		image.Pt(innerX, labelY),
+	)
+	w.layoutQualities(gtx, image.Rect(innerX, qualityTop, innerRight, qualityTop+qualityHeight))
+	if compact {
+		return
+	}
+
+	noteTop := qualityTop + qualityHeight + gtx.Dp(unit.Dp(14))
+	noteFace := font.Font{Typeface: fontFamily, Weight: font.Normal}
+	w.typo.draw(
+		gtx,
+		"Если выбранное качество недоступно,",
+		noteFace,
+		titlePageNoteSize,
+		mainFaintColor,
+		image.Pt(innerX, noteTop),
+	)
+	w.typo.draw(
+		gtx,
+		"будет автоматически включено ближайшее меньшее.",
+		noteFace,
+		titlePageNoteSize,
+		mainFaintColor,
+		image.Pt(innerX, noteTop+gtx.Dp(unit.Dp(14))),
+	)
 }
 
 func (w *titleWindow) layoutEpisodes(gtx layout.Context, rect image.Rectangle) {

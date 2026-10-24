@@ -32,6 +32,9 @@ const (
 	StatusOngoing   = 1
 	StatusCompleted = 2
 	StatusAnnounced = 3
+	// TypeMovie is the AnimeLIB title-type id for films. The label is checked
+	// as a fallback because other sites in the network may use different ids.
+	TypeMovie = 17
 )
 
 var animeURLPattern = regexp.MustCompile(`(?i)/anime/([^/?#]+)`)
@@ -87,8 +90,20 @@ type Title struct {
 	Shikimori   string
 	StatusID    int
 	StatusLabel string
+	TypeID      int
+	TypeLabel   string
 	Cover       Cover
 	Teams       []Team
+}
+
+// IsMovie reports whether AnimeLIB classifies the title as a film. Films have
+// no episode list to choose from, so the title page only shows the quality.
+func (t Title) IsMovie() bool {
+	if t.TypeID == TypeMovie {
+		return true
+	}
+	label := strings.ToLower(strings.TrimSpace(t.TypeLabel))
+	return strings.Contains(label, "фильм") || strings.Contains(label, "movie")
 }
 
 // Team is one translation team attached to a title. Availability is queried
@@ -136,6 +151,10 @@ type titleResponse struct {
 			ID    int    `json:"id"`
 			Label string `json:"label"`
 		} `json:"status"`
+		Type struct {
+			ID    int    `json:"id"`
+			Label string `json:"label"`
+		} `json:"type"`
 		Cover Cover  `json:"cover"`
 		Teams []Team `json:"teams"`
 	} `json:"data"`
@@ -543,6 +562,8 @@ func (c *Client) resolve(ctx context.Context, rawSlug string) (*Title, error) {
 				Shikimori:   data.Shikimori,
 				StatusID:    data.Status.ID,
 				StatusLabel: data.Status.Label,
+				TypeID:      data.Type.ID,
+				TypeLabel:   data.Type.Label,
 				Cover:       data.Cover,
 				Teams:       data.Teams,
 			}, nil
