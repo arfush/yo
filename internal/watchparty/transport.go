@@ -25,6 +25,10 @@ const (
 	messageHello   = "hello"
 	messageState   = "state"
 	messageControl = "control"
+	// messageClose is an intentional host exit: guests must not wait for a
+	// reconnect. messageBye only reports that the socket disappeared, so it
+	// starts the grace window instead of ending the room.
+	messageClose   = "close"
 	messageBye     = "bye"
 	messageError   = "error"
 	messageWelcome = "welcome"

@@ -163,18 +163,36 @@ func TestWatchPartyCardFitsText(t *testing.T) {
 	}
 }
 
+func TestWaitingTimeoutOnlyAppliesToUnknownHost(t *testing.T) {
+	now := time.Now()
+	stale := now.Add(-wpWaitTimeout - time.Second)
+
+	if !waitingTimedOut(now, stale, partySnapshot{}) {
+		t.Fatal("a key that never reached a host should time out")
+	}
+	if waitingTimedOut(now, stale, partySnapshot{HostEverSeen: true}) {
+		t.Fatal("the grace window must not look like a wrong room key")
+	}
+	if waitingTimedOut(now, stale, partySnapshot{HostSeen: true}) {
+		t.Fatal("a present host must keep the waiting screen alive")
+	}
+	if waitingTimedOut(now, now, partySnapshot{}) {
+		t.Fatal("the timeout fired before the window elapsed")
+	}
+}
+
 func TestRoomClosedShowsJoinFormWithReason(t *testing.T) {
 	screen := newWatchPartyWindow(nil, nil, &partyManager{provider: watchparty.Cloudflare})
 	screen.mode = wpWaiting
 	screen.busy = true
 	screen.editor.SetText("YOFBQOPGZ")
 
-	screen.roomClosed(hostLeftNotice)
+	screen.roomClosed(hostClosedNotice)
 
 	if screen.mode != wpJoin {
 		t.Fatalf("mode = %d, want the join form", screen.mode)
 	}
-	if screen.errorText != hostLeftNotice {
+	if screen.errorText != hostClosedNotice {
 		t.Fatalf("error = %q, want the host-left reason", screen.errorText)
 	}
 	if screen.joinFeedback {
@@ -190,10 +208,10 @@ func TestRoomClosedShowsJoinFormWithReason(t *testing.T) {
 
 func TestHostGoneLeavesANotice(t *testing.T) {
 	party := &partyManager{provider: watchparty.Cloudflare}
-	party.hostGone()
+	party.hostGone(hostLostNotice)
 
-	if got := party.takeClosedNotice(); got != hostLeftNotice {
-		t.Fatalf("notice = %q, want the host-left reason", got)
+	if got := party.takeClosedNotice(); got != hostLostNotice {
+		t.Fatalf("notice = %q, want the host-lost reason", got)
 	}
 	if got := party.takeClosedNotice(); got != "" {
 		t.Fatalf("notice repeated: %q", got)
@@ -202,13 +220,13 @@ func TestHostGoneLeavesANotice(t *testing.T) {
 
 func TestPartyWindowStartsWithTheHostLeftReason(t *testing.T) {
 	party := &partyManager{provider: watchparty.Cloudflare}
-	party.closedNotice = hostLeftNotice
+	party.closedNotice = hostClosedNotice
 
 	screen := newWatchPartyWindow(nil, nil, party)
 	if screen.mode != wpJoin {
 		t.Fatalf("mode = %d, want the join form", screen.mode)
 	}
-	if screen.errorText != hostLeftNotice {
+	if screen.errorText != hostClosedNotice {
 		t.Fatalf("error = %q, want the host-left reason", screen.errorText)
 	}
 	if got := party.takeClosedNotice(); got != "" {

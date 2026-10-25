@@ -929,9 +929,10 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 			plan.ResumeAt = startAt
 		}
 		session, err := a.playback.Start(ctx, plan, playback.StartOptions{
-			Quality:     quality,
-			Window:      window,
-			HeaderFonts: headerFonts(),
+			Quality:          quality,
+			Window:           window,
+			HeaderFonts:      headerFonts(),
+			HeaderBadgeWidth: a.shell.badgeWidth,
 			OnReady: func() {
 				a.hidden.Store(true)
 				hideAppWindow()

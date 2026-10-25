@@ -91,7 +91,14 @@ func startMPV(ctx context.Context, geometry string, header headerAssets, title s
 		args = append(args, "--geometry="+geometry)
 	}
 	if header.ScriptPath != "" {
-		scriptOpts := "yonime-header-version=" + version.String() + ",osc-windowcontrols=no,osc-boxvideo=yes"
+		// The header script owns the top video margin, so the OSC must not
+		// apply boxvideo margins on its own; doing both made the bottom bar
+		// appear inconsistently. windowcontrols are hidden because the script
+		// draws its own.
+		scriptOpts := "yonime-header-version=" + version.String() + ",osc-windowcontrols=no"
+		if header.BadgeWidth > 0 {
+			scriptOpts += ",yonime-header-badge-width=" + strconv.FormatFloat(float64(header.BadgeWidth), 'f', -1, 32)
+		}
 		if title != "Yonime" {
 			// The Lua header draws its own title, so the role has to be
 			// passed there as well as in the native window title.

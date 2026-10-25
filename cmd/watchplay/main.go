@@ -522,22 +522,26 @@ func (a *app) guestLoop(ctx context.Context, room *watchparty.Session) {
 			return
 		case <-ticker.C:
 		}
-		if !room.HostSeen() {
-			if hostSeen {
-				// The relay said bye, reported host:false or the anchor went
-				// silent: the room is over, exactly like in the desktop app.
-				fmt.Println("\nСоздатель закрыл комнату — выхожу.")
-				a.stopGuest()
-				a.mu.Lock()
-				leave := a.leave
-				a.mu.Unlock()
-				if leave != nil {
-					leave()
-				}
-				return
+		if room.HostGone() {
+			// The host closed the room or its reconnect grace window expired.
+			// A brief disconnect keeps the guest playing on the last anchor,
+			// exactly like in the desktop app.
+			fmt.Println("\nСоздатель комнаты вышел — выхожу.")
+			a.stopGuest()
+			a.mu.Lock()
+			leave := a.leave
+			a.mu.Unlock()
+			if leave != nil {
+				leave()
 			}
-			// The first greeting has not arrived yet; nothing to follow.
-			continue
+			return
+		}
+		if !room.HostSeen() {
+			// The first greeting has not arrived, or the host is inside its
+			// reconnect window; keep following the last anchor either way.
+			if !hostSeen {
+				continue
+			}
 		}
 		hostSeen = true
 		state, ok := room.State()

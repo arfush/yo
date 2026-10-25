@@ -206,7 +206,7 @@ func (fr *firstRun) layout(gtx layout.Context) {
 	}
 
 	if state == firstRunError {
-		fr.typo.draw(gtx, fr.errorText, face, firstRunErrorSize, firstRunErrorColor, image.Pt(px(firstRunCardPadding), errorTop))
+		fr.typo.draw(gtx, upperFirst(fr.errorText), face, firstRunErrorSize, firstRunErrorColor, image.Pt(px(firstRunCardPadding), errorTop))
 	}
 
 	button := image.Rect(

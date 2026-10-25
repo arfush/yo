@@ -22,9 +22,14 @@ const (
 // same event earlier through bye; this covers Supabase and a host that hangs
 // instead of closing its socket.
 //
-// Both values are variables so tests can shorten the wait.
+// A reported disconnect is not final: the host keeps a grace window to come
+// back after a Wi-Fi hiccup, and guests keep watching the last anchor meanwhile.
+// Only the explicit close message or an expired grace window ends the room.
+//
+// All three values are variables so tests can shorten the waits.
 var (
 	hostSilence   = 15 * time.Second
+	hostGrace     = 30 * time.Second
 	hostWatchTick = time.Second
 )
 
@@ -38,17 +43,19 @@ type Session struct {
 
 	cfg Config
 
-	mu        sync.Mutex
-	conn      transport
-	state     State
-	hasState  bool
-	hostSeen  bool
-	lastHost  time.Time
-	closed    bool
-	lastErr   error
-	lastHello time.Time
-	source    func() (State, bool)
-	clock     Clock
+	mu         sync.Mutex
+	conn       transport
+	state      State
+	hasState   bool
+	hostSeen   bool
+	lastHost   time.Time
+	hostLostAt time.Time
+	hostGone   bool
+	closed     bool
+	lastErr    error
+	lastHello  time.Time
+	source     func() (State, bool)
+	clock      Clock
 
 	updates chan Update
 
@@ -114,11 +121,21 @@ func (s *Session) State() (State, bool) {
 	return s.state, s.hasState
 }
 
-// HostSeen reports whether the host has answered at least once.
+// HostSeen reports whether the host is currently answering. It turns false as
+// soon as the relay reports a disconnect, even though the grace window keeps
+// the room alive.
 func (s *Session) HostSeen() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.hostSeen
+}
+
+// HostGone reports whether the room is over: the host closed it explicitly or
+// the reconnect grace window expired.
+func (s *Session) HostGone() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.hostGone
 }
 
 // Err returns the last relay problem.
@@ -188,6 +205,11 @@ func (s *Session) Close() error {
 		// Only the host's departure ends the room. A guest saying bye would be
 		// broadcast on Supabase and make the remaining guests think the host
 		// left; the relay notices a guest socket closing on its own.
+		//
+		// close means "the host chose to leave", so guests must not wait for a
+		// reconnect. bye is kept for older clients and for Cloudflare, which
+		// also synthesises it when a socket drops without warning.
+		_ = s.write(message{Type: messageClose})
 		_ = s.write(message{Type: messageBye})
 	}
 
@@ -283,6 +305,8 @@ func (s *Session) handle(msg message) {
 		s.hasState = true
 		s.hostSeen = true
 		s.lastHost = time.Now()
+		s.hostLostAt = time.Time{}
+		s.hostGone = false
 		s.mu.Unlock()
 		s.clock.Add(state.Anchor, time.Now().UnixMilli())
 		if first {
@@ -299,14 +323,25 @@ func (s *Session) handle(msg message) {
 		s.hostSeen = seen
 		if seen {
 			s.lastHost = time.Now()
+			s.hostLostAt = time.Time{}
+			s.hostGone = false
+		} else if previous {
+			s.hostLostAt = time.Now()
 		}
 		s.mu.Unlock()
 		if seen && !previous {
 			s.notify(Update{Kind: UpdateHostSeen})
 		}
-		if !seen && previous {
-			s.notify(Update{Kind: UpdateHostLeft})
+	case messageClose:
+		if s.Role != Guest {
+			return
 		}
+		s.mu.Lock()
+		s.hostSeen = false
+		s.hostLostAt = time.Time{}
+		s.hostGone = true
+		s.mu.Unlock()
+		s.notify(Update{Kind: UpdateHostClosed})
 	case messageHello:
 		if s.Role == Host {
 			s.publishSoon()
@@ -317,10 +352,15 @@ func (s *Session) handle(msg message) {
 		}
 		s.notify(Update{Kind: UpdateControl, Control: *msg.Control})
 	case messageBye:
+		// bye is also synthesised by Cloudflare when a socket drops, so it
+		// starts the reconnect grace instead of ending the room. The explicit
+		// close message above is the only immediate ending.
 		s.mu.Lock()
-		s.hostSeen = false
+		if s.hostSeen {
+			s.hostSeen = false
+			s.hostLostAt = time.Now()
+		}
 		s.mu.Unlock()
-		s.notify(Update{Kind: UpdateHostLeft})
 	case messageError:
 		text := msg.Error
 		if text == "" {
@@ -333,7 +373,8 @@ func (s *Session) handle(msg message) {
 // watchHost notices a host that stopped answering. The relay protocol has no
 // disconnect event on Supabase, so a guest would otherwise wait forever on the
 // last anchor; Cloudflare also benefits when a host freezes instead of closing
-// its socket.
+// its socket. A disconnect starts the grace window rather than ending the room,
+// so a short network drop does not throw the guests out of the episode.
 func (s *Session) watchHost(ctx context.Context) {
 	ticker := time.NewTicker(hostWatchTick)
 	defer ticker.Stop()
@@ -345,16 +386,22 @@ func (s *Session) watchHost(ctx context.Context) {
 		case now = <-ticker.C:
 		}
 		s.mu.Lock()
-		stale := s.Role == Guest &&
-			!s.closed &&
-			s.hostSeen &&
-			!s.lastHost.IsZero() &&
-			now.Sub(s.lastHost) >= hostSilence
-		if stale {
+		if s.Role == Guest && !s.closed && s.hostSeen && !s.lastHost.IsZero() &&
+			now.Sub(s.lastHost) >= hostSilence {
 			s.hostSeen = false
+			s.hostLostAt = now
+		}
+		expired := s.Role == Guest &&
+			!s.closed &&
+			!s.hostGone &&
+			!s.hostLostAt.IsZero() &&
+			now.Sub(s.hostLostAt) >= hostGrace
+		if expired {
+			s.hostGone = true
+			s.hostLostAt = time.Time{}
 		}
 		s.mu.Unlock()
-		if stale {
+		if expired {
 			s.notify(Update{Kind: UpdateHostLeft})
 		}
 	}

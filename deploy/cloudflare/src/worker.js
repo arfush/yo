@@ -11,7 +11,8 @@
 //	{t:"state", state:{...}}    host publishes an anchor
 //	{t:"control", control:{}}   guest asks the host to pause/play/seek
 //	{t:"welcome", host:true}    relay reports whether the host is present
-//	{t:"bye"}                   host left
+//	{t:"close"}                 host closed the room on purpose
+//	{t:"bye"}                   host socket dropped; guests start a grace window
 //	{t:"error", error:"..."}    relay refused something
 
 const KEY_LENGTH = 9;
@@ -112,6 +113,12 @@ export class Room {
         case "state":
           this.lastState = event.data;
           this.broadcast(message, socket);
+          break;
+        case "close":
+          // The host chose to end the room; guests must not wait for the
+          // reconnect grace window that a bare "bye" starts.
+          this.broadcast(message, socket);
+          this.dropHost(socket);
           break;
         case "bye":
           this.dropHost(socket);

@@ -120,8 +120,12 @@ const (
 	UpdateState UpdateKind = iota
 	// UpdateHostSeen fires the first time the host answers.
 	UpdateHostSeen
-	// UpdateHostLeft fires when the relay reports the host is gone.
+	// UpdateHostLeft fires when the reconnect grace window expires without the
+	// host coming back.
 	UpdateHostLeft
+	// UpdateHostClosed fires when the host explicitly closes the room, which
+	// ends it immediately.
+	UpdateHostClosed
 	// UpdateControl is a guest playback command the host should apply.
 	UpdateControl
 	// UpdateError reports a relay problem that the UI may want to show.

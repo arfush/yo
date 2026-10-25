@@ -59,6 +59,10 @@ type shell struct {
 	rateLimit rateLimitBanner
 	// footer lets a screen own the footer area, such as the title window.
 	footer layout.Widget
+	// badgeWidth is the measured version-badge ink width in dp. Playback
+	// forwards it to mpv so both headers draw the same pill instead of
+	// estimating it from a character table.
+	badgeWidth float32
 	// overlay is drawn after the chrome so a dragged history card can move
 	// across the whole window, including over the header and footer.
 	overlay func(layout.Context, image.Point)
@@ -266,6 +270,9 @@ func (s *shell) layoutBadge(gtx layout.Context, g geometry) int {
 	_, ink := s.typo.measure(gtx, badgeText, face, badgeSize)
 	if ink.Empty() {
 		return g.badgeX
+	}
+	if gtx.Metric.PxPerDp > 0 {
+		s.badgeWidth = float32(ink.Dx()) / gtx.Metric.PxPerDp
 	}
 
 	border := g.leastPx(1)

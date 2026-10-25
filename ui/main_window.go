@@ -1111,7 +1111,7 @@ func (m *mainWindow) layoutHistoryHeader(gtx layout.Context, rect image.Rectangl
 		drawTruncatedText(
 			gtx,
 			m.typo,
-			m.loadError,
+			upperFirst(m.loadError),
 			font.Font{Typeface: fontFamily, Weight: font.Normal},
 			mainClearSize,
 			mainDangerColor,

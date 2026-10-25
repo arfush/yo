@@ -357,7 +357,7 @@ func drawCenteredError(gtx layout.Context, typo *typography, text string, cardWi
 		return
 	}
 	face := font.Font{Typeface: fontFamily, Weight: font.Normal}
-	text = truncateText(gtx, typo, text, face, wpErrorSize, cardWidth-2*px(wpCardPadding))
+	text = upperFirst(truncateText(gtx, typo, text, face, wpErrorSize, cardWidth-2*px(wpCardPadding)))
 	if text == "" {
 		return
 	}
@@ -378,8 +378,25 @@ func (w *watchPartyWindow) layoutProviderChip(gtx layout.Context, cardWidth int,
 	chipTop := px(wpTitleTop) + (titleInk.Dy()-chipHeight)/2
 
 	face := font.Font{Typeface: fontFamily, Weight: font.Medium}
-	_, ink := w.typo.measure(gtx, label, face, wpChipSize)
-	chipWidth := ink.Dx() + 2*px(wpChipPadX)
+	// Size the chip from the widest relay name rather than the current one so
+	// switching Cloudflare/Supabase does not resize neighbouring elements.
+	labels := []string{label}
+	if w.party.HasProviderChoice() {
+		labels = nil
+		for _, provider := range watchparty.Providers() {
+			labels = append(labels, provider.Label())
+		}
+	}
+	chipInk := 0
+	for _, name := range labels {
+		if _, ink := w.typo.measure(gtx, name, face, wpChipSize); ink.Dx() > chipInk {
+			chipInk = ink.Dx()
+		}
+	}
+	if chipInk == 0 {
+		return
+	}
+	chipWidth := chipInk + 2*px(wpChipPadX)
 	maxWidth := cardWidth - 2*px(wpCardPadding) - titleInk.Dx() - px(12)
 	if maxWidth <= 0 || chipWidth > maxWidth {
 		return
@@ -670,16 +687,21 @@ func (w *watchPartyWindow) drawActionButton(gtx layout.Context, size image.Point
 	w.typo.drawCentered(gtx, label, face, wpButtonSize, labelColor, center)
 }
 
+// waitingTimedOut reports whether the joined key never reached a host. A room
+// whose host was seen at least once is governed by the reconnect grace window
+// in the session, not by the join form's "room not found" timeout.
+func waitingTimedOut(now, since time.Time, snapshot partySnapshot) bool {
+	if snapshot.HostSeen || snapshot.HostEverSeen {
+		return false
+	}
+	return now.Sub(since) > wpWaitTimeout
+}
+
 func (w *watchPartyWindow) layoutWaiting(gtx layout.Context, snapshot partySnapshot) {
 	if w.waitSince.IsZero() {
 		w.waitSince = gtx.Now
 	}
-	if snapshot.HostSeen {
-		// A host that answered once may pause, reload or lose the socket; the
-		// "room not found" timeout only applies to a key that never reached
-		// anyone.
-		w.waitSince = gtx.Now
-	} else if gtx.Now.Sub(w.waitSince) > wpWaitTimeout {
+	if waitingTimedOut(gtx.Now, w.waitSince, snapshot) {
 		w.party.Delete()
 		w.mode = wpJoin
 		w.waitSince = time.Time{}
@@ -708,7 +730,7 @@ func (w *watchPartyWindow) layoutWaiting(gtx layout.Context, snapshot partySnaps
 	w.typo.drawCentered(gtx, wpWaitingText, face, wpWaitSize, firstRunSubtitleColor, image.Pt(centerX, bottom+gtx.Dp(unit.Dp(26))))
 
 	if snapshot.Notice != "" {
-		w.typo.drawCentered(gtx, snapshot.Notice, face, wpWaitHintSize, tokenErrorColor1, image.Pt(centerX, bottom+gtx.Dp(unit.Dp(48))))
+		w.typo.drawCentered(gtx, upperFirst(snapshot.Notice), face, wpWaitHintSize, tokenErrorColor1, image.Pt(centerX, bottom+gtx.Dp(unit.Dp(48))))
 	}
 
 	if w.animationsRun() {

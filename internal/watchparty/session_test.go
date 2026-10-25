@@ -86,6 +86,13 @@ func (h *testHub) serve(w http.ResponseWriter, r *http.Request) {
 				for _, guest := range guests {
 					h.write(guest, data)
 				}
+			case messageClose:
+				h.mu.Lock()
+				guests := h.guestList()
+				h.mu.Unlock()
+				for _, guest := range guests {
+					h.send(guest, message{Type: messageClose})
+				}
 			case messageBye:
 				h.dropHost(conn)
 			}
@@ -148,6 +155,18 @@ func (h *testHub) dropHost(conn *websocket.Conn) {
 		h.host = nil
 	}
 	h.last = nil
+	guests := h.guestList()
+	h.mu.Unlock()
+	for _, guest := range guests {
+		h.send(guest, message{Type: messageBye})
+	}
+}
+
+// signalBye mimics Cloudflare reporting a dropped host socket without the host
+// actually closing the room, which is exactly the network hiccup the grace
+// window has to survive.
+func (h *testHub) signalBye() {
+	h.mu.Lock()
 	guests := h.guestList()
 	h.mu.Unlock()
 	for _, guest := range guests {
@@ -276,7 +295,58 @@ func TestGuestLearnsWhenTheHostLeaves(t *testing.T) {
 	if err := host.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	waitFor(t, 5*time.Second, func() bool { return !guest.HostSeen() })
+	// An intentional close carries the explicit close message, so it must not
+	// wait for the reconnect grace window.
+	waitFor(t, time.Second, guest.HostGone)
+	if guest.HostSeen() {
+		t.Fatal("the host is still marked as present after an explicit close")
+	}
+}
+
+func TestHostGetsAReconnectWindow(t *testing.T) {
+	oldSilence, oldGrace, oldTick := hostSilence, hostGrace, hostWatchTick
+	hostSilence, hostGrace, hostWatchTick = 150*time.Millisecond, 250*time.Millisecond, 20*time.Millisecond
+	t.Cleanup(func() {
+		hostSilence, hostGrace, hostWatchTick = oldSilence, oldGrace, oldTick
+	})
+
+	hub := newTestHub(t)
+	cfg := Config{CloudflareURL: hub.url}
+
+	host, err := Create(context.Background(), cfg, Cloudflare)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer host.Close()
+	guest, err := Join(context.Background(), cfg, Cloudflare, host.Key)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+	defer guest.Close()
+
+	waitFor(t, 3*time.Second, guest.HostSeen)
+	hub.signalBye()
+	waitFor(t, time.Second, func() bool { return !guest.HostSeen() })
+	// The guest keeps the room and the last anchor during the grace window.
+	if guest.HostGone() {
+		t.Fatal("a dropped socket ended the room immediately")
+	}
+
+	// The host comes back before the window expires and publishes a fresh
+	// anchor; the room must continue as if nothing happened.
+	want := State{TitleSlug: "demo-title", Episode: "2", Playing: true, Position: 42}
+	if err := host.Publish(want); err != nil {
+		t.Fatalf("Publish after reconnect: %v", err)
+	}
+	waitFor(t, time.Second, guest.HostSeen)
+	time.Sleep(300 * time.Millisecond)
+	if guest.HostGone() {
+		t.Fatal("the room ended even though the host reconnected")
+	}
+
+	// A second drop with no recovery ends the room after the window.
+	hub.signalBye()
+	waitFor(t, 2*time.Second, guest.HostGone)
 }
 
 func TestGuestLeavesWithoutAnnouncingIt(t *testing.T) {
@@ -347,10 +417,10 @@ func TestGuestControlReachesTheHost(t *testing.T) {
 }
 
 func TestGuestNoticesASilentHost(t *testing.T) {
-	oldSilence, oldTick := hostSilence, hostWatchTick
-	hostSilence, hostWatchTick = 120*time.Millisecond, 20*time.Millisecond
+	oldSilence, oldGrace, oldTick := hostSilence, hostGrace, hostWatchTick
+	hostSilence, hostGrace, hostWatchTick = 120*time.Millisecond, 150*time.Millisecond, 20*time.Millisecond
 	t.Cleanup(func() {
-		hostSilence, hostWatchTick = oldSilence, oldTick
+		hostSilence, hostGrace, hostWatchTick = oldSilence, oldGrace, oldTick
 	})
 
 	hub := newTestHub(t)
@@ -368,9 +438,14 @@ func TestGuestNoticesASilentHost(t *testing.T) {
 	defer guest.Close()
 
 	// The test hub never publishes heartbeats, so the greeting is the last
-	// thing the guest hears and the watchdog has to declare the host gone.
+	// thing the guest hears. The silence watchdog starts the grace window and
+	// the room only ends once it expires.
 	waitFor(t, 3*time.Second, guest.HostSeen)
 	waitFor(t, 3*time.Second, func() bool { return !guest.HostSeen() })
+	if guest.HostGone() {
+		t.Fatal("silence ended the room before the grace window expired")
+	}
+	waitFor(t, 3*time.Second, guest.HostGone)
 }
 
 func TestJoinRejectsAMistypedKey(t *testing.T) {

@@ -50,8 +50,11 @@ type partySnapshot struct {
 	Active   bool
 	Started  bool
 	HostSeen bool
-	State    watchparty.State
-	Notice   string
+	// HostEverSeen stays true across a reconnect grace window, so the waiting
+	// screen does not mistake a dropped host for a wrong room key.
+	HostEverSeen bool
+	State        watchparty.State
+	Notice       string
 }
 
 type hostMeta struct {
@@ -75,7 +78,10 @@ type partyManager struct {
 	hasState bool
 	started  bool
 	hostSeen bool
-	notice   string
+	// hostEverSeen keeps the waiting screen from treating a reconnect window
+	// as a wrong key.
+	hostEverSeen bool
+	notice       string
 	// closedNotice explains why the last guest room disappeared. The party
 	// screen consumes it on the UI goroutine, so the fields it mutates stay
 	// owned by layout.
@@ -244,6 +250,7 @@ func (m *partyManager) Delete() {
 	m.hasState = false
 	m.started = false
 	m.hostSeen = false
+	m.hostEverSeen = false
 	m.notice = ""
 	// hostSession/hostMeta describe the running mpv session, not the room:
 	// keep them so a room created later can publish the current episode.
@@ -284,12 +291,13 @@ func (m *partyManager) Snapshot() partySnapshot {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	snapshot := partySnapshot{
-		Provider: m.provider,
-		Key:      "",
-		Started:  m.started,
-		HostSeen: m.hostSeen,
-		State:    m.state,
-		Notice:   m.notice,
+		Provider:     m.provider,
+		Key:          "",
+		Started:      m.started,
+		HostSeen:     m.hostSeen,
+		HostEverSeen: m.hostEverSeen,
+		State:        m.state,
+		Notice:       m.notice,
 	}
 	if m.session != nil {
 		snapshot.Active = true
@@ -335,6 +343,7 @@ func (m *partyManager) adopt(session *watchparty.Session) {
 	m.hasState = false
 	m.started = false
 	m.hostSeen = false
+	m.hostEverSeen = false
 	m.notice = ""
 	// hostSession/hostMeta describe the running mpv session, not the room: a
 	// room created in the middle of an episode publishes it right away.
@@ -377,7 +386,7 @@ func (m *partyManager) consume(session *watchparty.Session, stop chan struct{}) 
 			return
 		}
 		var control watchparty.Control
-		hostGone := false
+		goneNotice := ""
 		m.mu.Lock()
 		switch update.Kind {
 		case watchparty.UpdateState:
@@ -385,15 +394,25 @@ func (m *partyManager) consume(session *watchparty.Session, stop chan struct{}) 
 			m.hasState = true
 			m.started = update.State.Started()
 			m.hostSeen = true
+			m.hostEverSeen = true
 			m.notice = ""
 		case watchparty.UpdateHostSeen:
 			m.hostSeen = true
+			m.hostEverSeen = true
 		case watchparty.UpdateHostLeft:
+			// The grace window expired: the host had its chance to reconnect,
+			// so the room is over and the guest returns to the join form.
 			m.hostSeen = false
-			m.notice = hostLeftNotice
-			// A guest has nobody to wait for: the room closes right away
-			// instead of sitting on the last anchor.
-			hostGone = session.Role == watchparty.Guest
+			m.notice = hostLostNotice
+			if session.Role == watchparty.Guest {
+				goneNotice = hostLostNotice
+			}
+		case watchparty.UpdateHostClosed:
+			m.hostSeen = false
+			m.notice = hostClosedNotice
+			if session.Role == watchparty.Guest {
+				goneNotice = hostClosedNotice
+			}
 		case watchparty.UpdateControl:
 			control = update.Control
 		case watchparty.UpdateError:
@@ -405,8 +424,8 @@ func (m *partyManager) consume(session *watchparty.Session, stop chan struct{}) 
 		started := m.started
 		m.mu.Unlock()
 
-		if hostGone {
-			m.hostGone()
+		if goneNotice != "" {
+			m.hostGone(goneNotice)
 			return
 		}
 		if update.Kind == watchparty.UpdateControl {
@@ -428,17 +447,21 @@ func (m *partyManager) consume(session *watchparty.Session, stop chan struct{}) 
 	}
 }
 
-// hostLeftNotice explains why a guest room disappeared.
-const hostLeftNotice = "Создатель закрыл комнату"
+// The two reasons a guest room disappears: the host closed it on purpose, or
+// the reconnect grace window expired after the host dropped out.
+const (
+	hostClosedNotice = "Создатель закрыл комнату"
+	hostLostNotice   = "Создатель комнаты вышел"
+)
 
-// hostGone tears the guest room down the moment the host is gone. mpv is
-// stopped without the finish callback, so the window has to be restored here;
-// the party screen then shows the join form with the reason.
-func (m *partyManager) hostGone() {
+// hostGone tears the guest room down once the host is definitively gone. mpv
+// is stopped without the finish callback, so the window has to be restored
+// here; the party screen then shows the join form with the reason.
+func (m *partyManager) hostGone(notice string) {
 	m.stopGuest()
 	m.Delete()
 	m.mu.Lock()
-	m.closedNotice = hostLeftNotice
+	m.closedNotice = notice
 	m.mu.Unlock()
 	m.invalidate()
 }

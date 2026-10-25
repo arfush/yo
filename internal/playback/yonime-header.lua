@@ -17,6 +17,10 @@ local options = {
     height = 52,
     -- Font family loaded from the fonts directory passed by the launcher.
     font = "Inter",
+    -- Exact ink width of the version text in dp, measured by Gio. Zero means
+    -- the launcher had no measurement (the console client) and the character
+    -- advance table below is used instead.
+    badge_width = 0,
 }
 
 opt.read_options(options, "yonime-header")
@@ -25,6 +29,7 @@ local HEADER_HEIGHT = tonumber(options.height) or 52
 local HEADER_FONT = options.font or "Inter"
 local TITLE = options.title or "Yonime"
 local VERSION = options.version or ""
+local BADGE_WIDTH = tonumber(options.badge_width) or 0
 
 -- Palette copied from ui/theme.go.
 local COLORS = {
@@ -308,13 +313,16 @@ local function render()
         color_tag(COLORS.title), TITLE
     ))
 
-    -- Version badge. ASS cannot measure text, so the width comes from the
-    -- same character advances the badge text needs at 11 sp.
+    -- Version badge. ASS cannot measure text, so the launcher passes the
+    -- width Gio measured; the character advance table is only a fallback.
     if VERSION ~= "" then
         local badge_height = px(20)
         local border = least_px(1)
         local pad = px(7)
         local text_width = badge_text_width() * s
+        if BADGE_WIDTH > 0 then
+            text_width = BADGE_WIDTH * s
+        end
         local badge_x = px(110)
         local badge_y = state.titleY - badge_height / 2
         local badge_width = text_width + 2 * pad + 2 * border
@@ -485,9 +493,33 @@ local function request_refresh()
     end
 end
 
+-- mpv shows its OSC on mouse_move, but the custom header's own mouse areas and
+-- extra OSD overlay make that wake-up unreliable in some builds. Ask the OSC
+-- to show itself whenever the pointer actually moves; show_osc() restarts the
+-- hide timer, so the throttled nudge keeps the bottom panel visible while the
+-- mouse is in motion and lets it fade normally afterwards.
+local last_mouse = nil
+local last_osc_show = 0
+local function nudge_osc(pos)
+    if not pos or not pos.x or not pos.y then
+        return
+    end
+    if last_mouse and last_mouse.x == pos.x and last_mouse.y == pos.y then
+        return
+    end
+    last_mouse = { x = pos.x, y = pos.y }
+    local now = mp.get_time()
+    if now - last_osc_show < 0.2 then
+        return
+    end
+    last_osc_show = now
+    mp.commandv("script-message", "osc-show")
+end
+
 -- mouse-pos is in OSD/window coordinates.
 local function update_hover()
     local pos = mp.get_property_native("mouse-pos")
+    nudge_osc(pos)
     if not pos or not state.visible or state.fullscreen then
         set_hovered(nil)
         return
