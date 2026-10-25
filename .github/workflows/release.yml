@@ -109,6 +109,16 @@ jobs:
           $exe = "dist\yonime_${env:VERSION}_${{ matrix.arch }}.exe"
           $hash = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
           "$hash  $(Split-Path -Leaf $exe)" | Set-Content -NoNewline "$exe.sha256"
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --version=6.7.1 --no-progress --limit-output -y
+      - name: Build installer
+        shell: pwsh
+        run: |
+          .\installer.ps1 -Version $env:VERSION -Arch "${{ matrix.arch }}"
+          $setup = "dist\yonime_${env:VERSION}_${{ matrix.arch }}_setup.exe"
+          $hash = (Get-FileHash -Algorithm SHA256 $setup).Hash.ToLower()
+          "$hash  $(Split-Path -Leaf $setup)" | Set-Content -NoNewline "$setup.sha256"
       - uses: actions/upload-artifact@v4
         with:
           name: yonime-${{ matrix.arch }}

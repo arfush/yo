@@ -110,6 +110,7 @@ ui/                    Gio-интерфейс, шрифты, иконки, тр�
   platform_*.go        Win32-интеграция и заглушки для других ОС
   *_test.go            тесты UI-логики без запуска окна
 deploy/                реле для Cloudflare DO и Supabase, образец конфигурации
+installer/              Inno Setup: установщик в %LOCALAPPDATA%\Programs\Yonime
 docs/                  техническая документация (watchparty.md)
 .github/workflows/     релизный workflow
 ```
@@ -220,6 +221,9 @@ go test ./internal/playback -run TestName -v
 
 # Сборка (Windows GUI, без консоли)
 .\build.ps1 -Version 1.0 -Arch amd64
+
+# Установщик (нужен Inno Setup 6; собирается из dist\yonime_v1.0_amd64.exe)
+.\installer.ps1 -Version 1.0 -Arch amd64
 
 # Или через make
 mingw32-make build VERSION=1.0 ARCH=amd64
