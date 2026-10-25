@@ -19,12 +19,24 @@ import (
 //go:embed yonime-header.lua
 var headerScript []byte
 
-const headerScriptName = "yonime-header.lua"
+//go:embed yonime-input.conf
+var guestInputConf []byte
 
-// headerAssets are the files mpv needs for the custom window header.
+const (
+	headerScriptName   = "yonime-header.lua"
+	guestInputConfName = "yonime-input.conf"
+	// guestInputSection is enabled only while a watch-party guest cannot
+	// control the timeline. Keeping the section in a real input.conf lets mpv
+	// keep every other binding untouched.
+	guestInputSection = "yonime-no-timeline"
+)
+
+// headerAssets are the files mpv needs for the custom window header and the
+// guest input section.
 type headerAssets struct {
-	ScriptPath string
-	FontsDir   string
+	ScriptPath    string
+	InputConfPath string
+	FontsDir      string
 	// BadgeWidth is the version-label width in dp, or zero when the caller has
 	// no Gio measurement to share.
 	BadgeWidth float32
@@ -47,7 +59,11 @@ func installHeaderAssets(fonts map[string][]byte) (headerAssets, error) {
 	if err := writeFileIfChanged(scriptPath, headerScript); err != nil {
 		return headerAssets{}, fmt.Errorf("установить заголовок mpv: %w", err)
 	}
-	assets := headerAssets{ScriptPath: scriptPath}
+	inputConfPath := filepath.Join(dir, guestInputConfName)
+	if err := writeFileIfChanged(inputConfPath, guestInputConf); err != nil {
+		return headerAssets{}, fmt.Errorf("установить настройки ввода mpv: %w", err)
+	}
+	assets := headerAssets{ScriptPath: scriptPath, InputConfPath: inputConfPath}
 	if len(fonts) == 0 {
 		return assets, nil
 	}

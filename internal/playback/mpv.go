@@ -85,11 +85,10 @@ func inputLockArgs(locked bool) []string {
 	if !locked {
 		return nil
 	}
-	return []string{
-		"--input-default-bindings=no",
-		"--input-vo-keyboard=no",
-		"--osc=no",
-	}
+	// The timeline is blocked by the yonime-no-timeline input section, not by
+	// disabling every binding. Only the OSC has to go: its buttons and seek bar
+	// would bypass the section.
+	return []string{"--osc=no"}
 }
 
 func startMPV(ctx context.Context, geometry string, header headerAssets, title string, inputLocked bool) (*mpvProcess, error) {
@@ -122,6 +121,9 @@ func startMPV(ctx context.Context, geometry string, header headerAssets, title s
 		args = append(args, "--geometry="+geometry)
 	}
 	args = append(args, inputLockArgs(inputLocked)...)
+	if header.InputConfPath != "" {
+		args = append(args, "--input-conf="+header.InputConfPath)
+	}
 	if header.ScriptPath != "" {
 		// The header script owns the top video margin, so the OSC must not
 		// apply boxvideo margins on its own; doing both made the bottom bar
@@ -182,6 +184,14 @@ func startMPV(ctx context.Context, geometry string, header headerAssets, title s
 		return nil, fmt.Errorf("не удалось подключиться к mpv: %w", openErr)
 	}
 	m.conn = conn
+	if inputLocked {
+		if _, err := conn.Call("enable-section", guestInputSection); err != nil {
+			_ = conn.Close()
+			_ = cmd.Process.Kill()
+			_, _ = cmd.Process.Wait()
+			return nil, fmt.Errorf("включить блокировку перемотки mpv: %w", err)
+		}
+	}
 	m.events, m.stopEvents = conn.NewEventListener()
 	for id, property := range map[int64]string{
 		1: "time-pos",

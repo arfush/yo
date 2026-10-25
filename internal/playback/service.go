@@ -39,10 +39,8 @@ type StartOptions struct {
 	// The Lua header uses it to size its pill exactly like the app's header;
 	// zero means the script falls back to its character table.
 	HeaderBadgeWidth float32
-	// InputLocked disables mpv's built-in keyboard and mouse bindings as well
-	// as the OSC. Guests use it when the host does not allow them to control
-	// playback, so pausing or seeking is impossible instead of being undone by
-	// the drift loop a moment later.
+	// InputLocked blocks timeline control in mpv for a watch-party guest whose
+	// host keeps playback to itself. Other player controls stay available.
 	InputLocked bool
 	// Title overrides the mpv window title. The desktop window keeps the
 	// default; the watch-party console client adds the role so a host and a
@@ -291,8 +289,8 @@ type Session struct {
 	suppressFinish bool
 	finished       bool
 	loadedOnce     bool
-	// inputLocked mirrors the mpv input properties so the guest loop only
-	// sends the three set_property commands when the setting changes.
+	// inputLocked mirrors the mpv input section so the guest loop only toggles
+	// it when the setting changes.
 	inputLocked bool
 
 	loadMu   sync.Mutex
