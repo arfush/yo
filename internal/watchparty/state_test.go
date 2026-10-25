@@ -147,12 +147,12 @@ func TestGuestCannotPublish(t *testing.T) {
 	}
 }
 
-func TestProviderToggle(t *testing.T) {
-	if Cloudflare.Next() != Supabase || Supabase.Next() != Cloudflare {
-		t.Fatal("provider chip does not toggle between the two backends")
-	}
+func TestProviderValidation(t *testing.T) {
 	if !Cloudflare.Valid() || !Supabase.Valid() || Provider("x").Valid() {
 		t.Fatal("Provider.Valid() is wrong")
+	}
+	if Cloudflare.Label() == "" || Supabase.Label() == "" {
+		t.Fatal("a known provider needs a label")
 	}
 }
 

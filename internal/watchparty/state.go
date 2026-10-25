@@ -18,7 +18,7 @@ func (p Provider) Valid() bool {
 	return p == Cloudflare || p == Supabase
 }
 
-// Label is the short name shown in the provider chip.
+// Label is the short name shown in the settings.
 func (p Provider) Label() string {
 	switch p {
 	case Cloudflare:
@@ -27,14 +27,6 @@ func (p Provider) Label() string {
 		return "Supabase"
 	}
 	return string(p)
-}
-
-// Next returns the backend reached by clicking the provider chip.
-func (p Provider) Next() Provider {
-	if p == Cloudflare {
-		return Supabase
-	}
-	return Cloudflare
 }
 
 // Role tells the relay who owns the playback state.

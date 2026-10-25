@@ -112,8 +112,8 @@ func TestPartySnapshotFallsBackToSelectedProvider(t *testing.T) {
 }
 
 // TestWatchPartyCardFitsText keeps the manually placed card from overflowing:
-// the provider chip has to fit next to the title and every description has to
-// stay above the action row.
+// the title has to fit the card and every description has to stay above the
+// action row.
 func TestWatchPartyCardFitsText(t *testing.T) {
 	typo, err := newTypography()
 	if err != nil {
@@ -124,15 +124,12 @@ func TestWatchPartyCardFitsText(t *testing.T) {
 		Metric: unit.Metric{PxPerDp: 1, PxPerSp: 1},
 	}
 	bold := font.Font{Typeface: fontFamily, Weight: font.Bold}
-	medium := font.Font{Typeface: fontFamily, Weight: font.Medium}
 	normal := font.Font{Typeface: fontFamily, Weight: font.Normal}
 	width := wpCardWidth - 2*wpCardPadding
 
 	_, titleInk := typo.measure(gtx, wpTitleChoice, bold, wpTitleSize)
-	_, chipInk := typo.measure(gtx, "Cloudflare", medium, wpChipSize)
-	row := titleInk.Dx() + 2*wpChipPadX + chipInk.Dx() + 12
-	if row > width {
-		t.Fatalf("title and provider chip need %dpx, card content allows %dpx", row, width)
+	if titleInk.Dx() > width {
+		t.Fatalf("title needs %dpx, card content allows %dpx", titleInk.Dx(), width)
 	}
 
 	advance := int(float64(gtx.Sp(wpDescSize))*1.25) + 1

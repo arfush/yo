@@ -130,7 +130,7 @@ func preferredProvider(cfg watchparty.Config, saved string) watchparty.Provider 
 	return watchparty.Cloudflare
 }
 
-// Provider returns the backend shown in the chip.
+// Provider returns the relay a new room is created on.
 func (m *partyManager) Provider() watchparty.Provider {
 	if m == nil {
 		return watchparty.Cloudflare
@@ -140,9 +140,9 @@ func (m *partyManager) Provider() watchparty.Provider {
 	return m.provider
 }
 
-// HasProviderChoice reports whether the chip has anything to switch to. The
-// official build ships a single relay, so the chip stays a plain label there
-// instead of a control that leads nowhere.
+// HasProviderChoice reports whether the settings have anything to switch to.
+// The official build ships a single relay, so the row stays hidden there
+// instead of being a control that leads nowhere.
 func (m *partyManager) HasProviderChoice() bool {
 	if m == nil {
 		return false
@@ -150,8 +150,8 @@ func (m *partyManager) HasProviderChoice() bool {
 	return m.cfg.Configured(watchparty.Cloudflare) && m.cfg.Configured(watchparty.Supabase)
 }
 
-// SetProvider switches the chip while no room is open and remembers the
-// choice, so the next room starts with the same relay.
+// SetProvider remembers the relay chosen in the settings, so the next room
+// starts with the same backend.
 func (m *partyManager) SetProvider(provider watchparty.Provider) {
 	if m == nil {
 		return

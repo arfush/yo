@@ -35,9 +35,6 @@ const (
 	wpErrorTop     = 232
 	wpLinkTop      = 232
 
-	wpChipHeight = 22
-	wpChipPadX   = 8
-
 	wpRoundSize     = 40
 	wpRoundInset    = 10
 	wpFieldPadX     = 18
@@ -55,7 +52,6 @@ const (
 	wpErrorSize    = unit.Sp(12.5)
 	wpLinkSize     = unit.Sp(12)
 	wpWaitSize     = unit.Sp(13.5)
-	wpChipSize     = unit.Sp(11)
 	wpWaitHintSize = unit.Sp(12)
 )
 
@@ -107,16 +103,15 @@ type watchPartyWindow struct {
 
 	mode watchPartyMode
 
-	providerButton widget.Clickable
-	createButton   widget.Clickable
-	joinButton     widget.Clickable
-	copyButton     widget.Clickable
-	nextButton     widget.Clickable
-	deleteButton   widget.Clickable
-	leaveButton    widget.Clickable
-	backClick      widget.Clickable
-	backHover      hoverAnim
-	editor         widget.Editor
+	createButton widget.Clickable
+	joinButton   widget.Clickable
+	copyButton   widget.Clickable
+	nextButton   widget.Clickable
+	deleteButton widget.Clickable
+	leaveButton  widget.Clickable
+	backClick    widget.Clickable
+	backHover    hoverAnim
+	editor       widget.Editor
 	// keyEditor displays the created room key. It is read-only but selectable,
 	// so the key can be copied with Ctrl+C straight from the card.
 	keyEditor widget.Editor
@@ -251,7 +246,6 @@ func (w *watchPartyWindow) layoutCardText(gtx layout.Context, cardWidth int, px 
 
 func (w *watchPartyWindow) layoutChoice(gtx layout.Context, cardWidth int, px func(float32) int) {
 	w.layoutCardText(gtx, cardWidth, px, wpTitleChoice, wpDescChoice)
-	w.layoutProviderChip(gtx, cardWidth, px)
 
 	gap := px(wpButtonGap)
 	left := px(wpCardPadding)
@@ -361,85 +355,6 @@ func drawCenteredError(gtx layout.Context, typo *typography, text string, cardWi
 	}
 	_, ink := typo.measure(gtx, text, face, wpErrorSize)
 	typo.draw(gtx, text, face, wpErrorSize, tokenErrorColor1, image.Pt((cardWidth-ink.Dx())/2, px(wpErrorTop)))
-}
-
-// layoutProviderChip draws the provider name next to the title. It toggles on
-// click only when a second relay is configured for this build.
-func (w *watchPartyWindow) layoutProviderChip(gtx layout.Context, cardWidth int, px func(float32) int) {
-	label := w.party.Provider().Label()
-	titleFace := font.Font{Typeface: fontFamily, Weight: font.Bold}
-	_, titleInk := w.typo.measure(gtx, wpTitleChoice, titleFace, wpTitleSize)
-	chipHeight := px(wpChipHeight)
-	if chipHeight <= 0 {
-		return
-	}
-	chipTop := px(wpTitleTop) + (titleInk.Dy()-chipHeight)/2
-
-	face := font.Font{Typeface: fontFamily, Weight: font.Medium}
-	// Size the chip from the widest relay name rather than the current one so
-	// switching Cloudflare/Supabase does not resize neighbouring elements.
-	labels := []string{label}
-	if w.party.HasProviderChoice() {
-		labels = nil
-		for _, provider := range watchparty.Providers() {
-			labels = append(labels, provider.Label())
-		}
-	}
-	chipInk := 0
-	for _, name := range labels {
-		if _, ink := w.typo.measure(gtx, name, face, wpChipSize); ink.Dx() > chipInk {
-			chipInk = ink.Dx()
-		}
-	}
-	if chipInk == 0 {
-		return
-	}
-	chipWidth := chipInk + 2*px(wpChipPadX)
-	maxWidth := cardWidth - 2*px(wpCardPadding) - titleInk.Dx() - px(12)
-	if maxWidth <= 0 || chipWidth > maxWidth {
-		return
-	}
-	chip := image.Rect(cardWidth-px(wpCardPadding)-chipWidth, chipTop, cardWidth-px(wpCardPadding), chipTop+chipHeight)
-	if chip.Empty() {
-		return
-	}
-
-	clickable := w.party.HasProviderChoice()
-	var clicked, hovered bool
-	if clickable {
-		clicked = w.providerButton.Clicked(gtx)
-		hovered = w.providerButton.Hovered()
-	}
-
-	stack := op.Offset(chip.Min).Push(gtx.Ops)
-	rect := image.Rectangle{Max: chip.Size()}
-	radius := chipHeight / 2
-	fillRounded(gtx, tokenDomainBorder, rect, radius)
-	fill := tokenDomainFill
-	if hovered {
-		fill = tokenDomainFillHover
-	}
-	fillRounded(gtx, fill, rect.Inset(px(1)), max(1, radius-px(1)))
-	w.typo.drawCentered(gtx, label, face, wpChipSize, firstRunProgressText, image.Pt(chipWidth/2, chipHeight/2))
-	stack.Pop()
-
-	if !clickable {
-		return
-	}
-
-	btnGtx := gtx
-	btnGtx.Constraints = layout.Exact(chip.Size())
-	stack = op.Offset(chip.Min).Push(gtx.Ops)
-	w.providerButton.Layout(btnGtx, func(gtx layout.Context) layout.Dimensions {
-		pointer.CursorPointer.Add(gtx.Ops)
-		return layout.Dimensions{Size: chip.Size()}
-	})
-	stack.Pop()
-
-	if clicked {
-		w.party.SetProvider(w.party.Provider().Next())
-		w.window.Invalidate()
-	}
 }
 
 // layoutKeyField draws the rounded field with either a copy or a submit button
