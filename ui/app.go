@@ -109,10 +109,10 @@ type application struct {
 	// Starting a new session bumps it, so a loop left over from a replaced
 	// session can no longer publish or clear the new one's activity.
 	presenceSeq atomic.Uint64
-	main           *mainWindow
-	active         windowScreen
-	window         *app.Window
-	icon           image.Image
+	main        *mainWindow
+	active      windowScreen
+	window      *app.Window
+	icon        image.Image
 	// tray is the notification-area icon. It stays nil when the platform has no
 	// notification area or when creating the icon failed; the close button then
 	// keeps ending the process.
@@ -1265,6 +1265,9 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 		defer a.playbackStarting.Store(false)
 		ctx, cancel := context.WithTimeout(context.Background(), playbackStartTimeout)
 		defer cancel()
+		// Playback start must not sit in a rate-limit pause: the row spinner
+		// would look hung. Fail fast and let the header show the countdown.
+		ctx = animelib.FailFastOnRateLimit(ctx)
 		if len(title.Voiceovers) == 0 || len(title.Episodes) == 0 {
 			// History rows keep only the saved selection, never the episode
 			// list or the voiceovers. Reload them from AnimeLIB so a direct
@@ -1291,7 +1294,7 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 		}
 		plan, err := a.library.PlaybackPlan(ctx, title, voice, episode)
 		if err != nil {
-			a.deliverWatch(watchResult{err: playbackStartError(err), historyItem: historyItem, titleID: trackedID, party: partyGuest})
+			a.deliverWatch(startFailureResult(err, historyItem, trackedID, partyGuest))
 			return
 		}
 		if partyGuest {
@@ -1331,7 +1334,7 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 			},
 		})
 		if err != nil {
-			a.deliverWatch(watchResult{err: playbackStartError(err), historyItem: historyItem, titleID: trackedID, party: partyGuest})
+			a.deliverWatch(startFailureResult(err, historyItem, trackedID, partyGuest))
 			return
 		}
 		a.trackPresence(session, title, plan, stopPresence)
@@ -1423,7 +1426,31 @@ func playbackStartError(err error) error {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return fmt.Errorf("не удалось начать воспроизведение за %s — попробуйте ещё раз", playbackStartTimeout)
 	}
+	if errors.Is(err, animelib.ErrRateLimited) {
+		if remaining := animelib.RateLimitRemaining(); remaining > 0 {
+			return fmt.Errorf("AnimeLIB временно ограничил запросы — попробуйте снова через %s", rateLimitWaitLabel(remaining))
+		}
+		return errors.New("AnimeLIB временно ограничил запросы — попробуйте снова чуть позже")
+	}
 	return err
+}
+
+// startFailureResult turns a failed playback start into a watch result. A
+// rate-limit pause on a direct Play from history keeps the user on the main
+// window: the row spinner stops and the header keeps showing the countdown,
+// instead of opening the title page for an error that will clear by itself.
+func startFailureResult(err error, historyItem *historyTitle, titleID int64, partyGuest bool) watchResult {
+	result := watchResult{
+		err:         playbackStartError(err),
+		historyItem: historyItem,
+		titleID:     titleID,
+		party:       partyGuest,
+	}
+	if historyItem != nil && errors.Is(err, animelib.ErrRateLimited) {
+		result.historyItem = nil
+		result.historyFailure = true
+	}
+	return result
 }
 
 func (a *application) deliverWatch(result watchResult) {

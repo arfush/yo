@@ -2,13 +2,43 @@ package ui
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/arfush/yonime/internal/animelib"
 	"github.com/arfush/yonime/internal/library"
 	"github.com/arfush/yonime/internal/updates"
 )
+
+func TestStartFailureResultKeepsRateLimitOnMainWindow(t *testing.T) {
+	rateErr := fmt.Errorf("load: %w", animelib.ErrRateLimited)
+	item := &historyTitle{id: 7}
+
+	result := startFailureResult(rateErr, item, 7, false)
+	if !result.historyFailure {
+		t.Fatal("rate-limited history play must stay on the main window")
+	}
+	if result.historyItem != nil {
+		t.Fatal("history item must be dropped so the title page does not open")
+	}
+	if result.err == nil || !strings.Contains(result.err.Error(), "AnimeLIB") {
+		t.Fatalf("err = %v, want a user-facing rate-limit message", result.err)
+	}
+
+	result = startFailureResult(rateErr, nil, 0, false)
+	if result.historyFailure || result.historyItem != nil {
+		t.Fatal("title-page playback must keep its normal error path")
+	}
+
+	result = startFailureResult(errors.New("boom"), item, 7, false)
+	if result.historyFailure || result.historyItem != item {
+		t.Fatal("unrelated errors must keep the history item")
+	}
+}
 
 func TestAutoUpdateSafe(t *testing.T) {
 	tests := []struct {

@@ -650,7 +650,7 @@ func (c *Client) get(ctx context.Context, endpoint string, siteID int) ([]byte, 
 			noteRateLimit(sentAt, parseRetryAfter(retryAfter))
 			continue
 		case status >= http.StatusOK && status < http.StatusMultipleChoices:
-			noteRateLimitSuccess()
+			noteRateLimitSuccess(sentAt)
 			return body, nil
 		default:
 			snippet := strings.TrimSpace(string(body))

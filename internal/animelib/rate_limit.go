@@ -2,12 +2,33 @@ package animelib
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
+
+// ErrRateLimited reports that a request hit AnimeLIB's limit while the caller
+// asked not to wait for the pause to end. Callers can show the pause and let
+// the user retry instead of keeping a spinner alive for up to a minute.
+var ErrRateLimited = errors.New("animelib: rate limited")
+
+type failFastRateLimitKey struct{}
+
+// FailFastOnRateLimit marks ctx so requests return ErrRateLimited instead of
+// sleeping through an active pause. Playback start uses it to stop the spinner
+// and show the header countdown; background loads keep waiting as before.
+func FailFastOnRateLimit(ctx context.Context) context.Context {
+	return context.WithValue(ctx, failFastRateLimitKey{}, true)
+}
+
+func failFastOnRateLimit(ctx context.Context) bool {
+	value, _ := ctx.Value(failFastRateLimitKey{}).(bool)
+	return value
+}
 
 // AnimeLIB allows 100 requests per fixed 60-second window. The window starts
 // with the first request after the previous one ended: X-Ratelimit-Remaining
@@ -28,6 +49,10 @@ var (
 	rateLimitMu          sync.Mutex
 	rateLimitUntil       time.Time
 	rateLimitWindowStart time.Time
+	// rateLimitPauseStart is when the current pause began. Successful answers
+	// from requests that were already in flight when the 429 arrived must not
+	// hide the notice.
+	rateLimitPauseStart time.Time
 	// rateLimitCleared stays false from the moment a 429 shows the header
 	// notice until the first successful answer (or a UI dismissal) hides it.
 	rateLimitCleared = true
@@ -76,12 +101,16 @@ func DismissRateLimitNotice() {
 
 // waitForRateLimit blocks until the current pause (if any) is over. It is
 // called before every request so a single 429 throttles the whole batch,
-// including requests that were queued up at the same time.
+// including requests that were queued up at the same time. A context marked
+// with FailFastOnRateLimit returns ErrRateLimited instead of blocking.
 func waitForRateLimit(ctx context.Context) error {
 	for {
 		remaining := RateLimitRemaining()
 		if remaining <= 0 {
 			return ctx.Err()
+		}
+		if failFastOnRateLimit(ctx) {
+			return fmt.Errorf("%w: %s left", ErrRateLimited, remaining.Round(time.Second))
 		}
 		timer := time.NewTimer(remaining)
 		select {
@@ -152,6 +181,7 @@ func noteRateLimit(sentAt time.Time, retryAfter time.Duration) time.Duration {
 		pause = maxRateLimitPause
 	}
 	rateLimitUntil = now.Add(pause)
+	rateLimitPauseStart = now
 	rateLimitCleared = false
 	notify := rateLimitNotify
 	rateLimitMu.Unlock()
@@ -162,19 +192,25 @@ func noteRateLimit(sentAt time.Time, retryAfter time.Duration) time.Duration {
 	return pause
 }
 
-// noteRateLimitSuccess runs when AnimeLIB answers without a rate limit. The
-// header notice disappears on the first successful answer, even while the
-// shared cool-down is still winding down for requests that were already in
-// flight. The pause itself is only released once it has fully elapsed: a
-// response that was sent before the 429 does not prove the server-side window
-// has rolled over.
-func noteRateLimitSuccess() {
+// noteRateLimitSuccess runs when AnimeLIB answers without a rate limit. A
+// success from a request sent before the 429 started, or one that arrives
+// while the pause is still parking other requests, must not hide the notice:
+// the user would see a hung spinner with no countdown. Once the pause has
+// elapsed, a successful answer hides it as usual.
+func noteRateLimitSuccess(sentAt time.Time) {
 	rateLimitMu.Lock()
+	if !rateLimitPauseStart.IsZero() && sentAt.Before(rateLimitPauseStart) {
+		rateLimitMu.Unlock()
+		return
+	}
+	if time.Now().Before(rateLimitUntil) {
+		rateLimitMu.Unlock()
+		return
+	}
 	hideNotice := !rateLimitCleared
 	rateLimitCleared = true
-	if !time.Now().Before(rateLimitUntil) {
-		rateLimitUntil = time.Time{}
-	}
+	rateLimitUntil = time.Time{}
+	rateLimitPauseStart = time.Time{}
 	notify := rateLimitNotify
 	rateLimitMu.Unlock()
 
@@ -188,6 +224,7 @@ func resetRateLimit() {
 	rateLimitMu.Lock()
 	rateLimitUntil = time.Time{}
 	rateLimitWindowStart = time.Time{}
+	rateLimitPauseStart = time.Time{}
 	rateLimitCleared = true
 	rateLimitMu.Unlock()
 }

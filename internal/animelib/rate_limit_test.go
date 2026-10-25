@@ -2,6 +2,7 @@ package animelib
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -137,7 +138,7 @@ func TestRateLimitNoticeLifecycle(t *testing.T) {
 		t.Fatal("notice cleared before a request got through, want pending")
 	}
 
-	noteRateLimitSuccess()
+	noteRateLimitSuccess(time.Now())
 	if RateLimitNoticePending() {
 		t.Fatal("notice pending after a successful request, want clear")
 	}
@@ -150,7 +151,7 @@ func TestRateLimitNoticeLifecycle(t *testing.T) {
 	}
 }
 
-func TestSuccessHidesNoticeBeforePauseEnds(t *testing.T) {
+func TestSuccessHidesNoticeOnlyAfterThePause(t *testing.T) {
 	resetRateLimit()
 	defer resetRateLimit()
 
@@ -159,20 +160,30 @@ func TestSuccessHidesNoticeBeforePauseEnds(t *testing.T) {
 		t.Fatal("notice not pending after a 429, want pending")
 	}
 
-	// A response that was already in flight succeeds while queued requests
-	// still wait out the pause: the header text must disappear right away.
-	noteRateLimitSuccess()
-	if RateLimitNoticePending() {
-		t.Fatal("notice pending after a successful request, want clear")
-	}
-	if RateLimitRemaining() <= 0 {
-		t.Fatal("pause should stay active for requests that were already queued")
+	// A request that was already in flight when the 429 arrived may still
+	// succeed. It must not hide the countdown: queued requests are still
+	// parked, and the user needs to see why nothing is happening.
+	noteRateLimitSuccess(time.Now().Add(-time.Second))
+	if !RateLimitNoticePending() {
+		t.Fatal("notice hidden by a success from before the pause, want pending")
 	}
 
-	// A later 429 from the queue brings the notice back.
-	noteRateLimit(time.Time{}, 0)
+	// A success during the pause is not proof the window rolled over either.
+	noteRateLimitSuccess(time.Now())
 	if !RateLimitNoticePending() {
-		t.Fatal("notice did not return after a fresh 429")
+		t.Fatal("notice hidden while the pause is active, want pending")
+	}
+
+	// Once the pause is over, a successful answer hides the notice.
+	rateLimitMu.Lock()
+	rateLimitUntil = time.Now().Add(-time.Millisecond)
+	rateLimitMu.Unlock()
+	noteRateLimitSuccess(time.Now())
+	if RateLimitNoticePending() {
+		t.Fatal("notice pending after the pause ended, want clear")
+	}
+	if RateLimitRemaining() != 0 {
+		t.Fatalf("RateLimitRemaining() = %v after the pause, want 0", RateLimitRemaining())
 	}
 }
 
@@ -211,6 +222,60 @@ func TestWaitForRateLimitStopsOnContext(t *testing.T) {
 	}
 	if elapsed := time.Since(start); elapsed > time.Second {
 		t.Fatalf("waitForRateLimit took %v, want it to stop with the context", elapsed)
+	}
+}
+
+func TestWaitForRateLimitFailsFastWhenRequested(t *testing.T) {
+	resetRateLimit()
+	defer resetRateLimit()
+
+	noteRateLimit(time.Time{}, time.Hour)
+	ctx := FailFastOnRateLimit(context.Background())
+
+	start := time.Now()
+	err := waitForRateLimit(ctx)
+	if !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("waitForRateLimit = %v, want ErrRateLimited", err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("waitForRateLimit took %v, want an immediate error", elapsed)
+	}
+
+	// Without an active pause the marker changes nothing.
+	resetRateLimit()
+	if err := waitForRateLimit(ctx); err != nil {
+		t.Fatalf("waitForRateLimit without a pause = %v, want nil", err)
+	}
+}
+
+// TestGetFailsFastOnRateLimitWhenRequested keeps playback start from hiding in
+// a retry loop: the spinner has to stop and the header shows the countdown.
+func TestGetFailsFastOnRateLimitWhenRequested(t *testing.T) {
+	resetRateLimit()
+	defer resetRateLimit()
+
+	var requests int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requests, 1)
+		http.Error(w, "slow down", http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	client := New("token")
+	client.baseURL = server.URL
+	client.http = server.Client()
+
+	ctx := FailFastOnRateLimit(context.Background())
+	start := time.Now()
+	_, err := client.get(ctx, server.URL, 1)
+	if !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("get = %v, want ErrRateLimited", err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("get took %v, want an immediate error", elapsed)
+	}
+	if got := atomic.LoadInt32(&requests); got != 1 {
+		t.Fatalf("server saw %d requests, want 1", got)
 	}
 }
 
