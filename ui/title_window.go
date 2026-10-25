@@ -185,6 +185,21 @@ func (w *titleWindow) canChangeUserStatus() bool {
 	return w.item.status != statusAnnounced
 }
 
+// showsUserStatus reports whether the title already has a history row. A
+// link-opened title must not advertise the default "В планах" pill before the
+// user saves it; playback tracking also assigns an id, after which the pill is
+// meaningful again.
+func (w *titleWindow) showsUserStatus() bool {
+	return w.item.id != 0
+}
+
+// hasEpisodeColumns reports whether the voiceover and episode panel should be
+// laid out. A title without a loaded episode list has nothing to choose from,
+// so the columns and the preferred-quality block are omitted entirely.
+func (w *titleWindow) hasEpisodeColumns() bool {
+	return len(w.item.episodes) > 0
+}
+
 func (w *titleWindow) layoutOverlay(gtx layout.Context, origin image.Point) {
 	if !w.statusMenu.open {
 		return
@@ -408,38 +423,45 @@ func (w *titleWindow) layout(gtx layout.Context) {
 	)
 	drawStatusPill(gtx, w.typo, releaseRect, w.item.status)
 
-	statusGap := gtx.Dp(mainStatusGap)
-	userRect := image.Rect(
-		releaseRect.Max.X+statusGap,
-		statusLineTop,
-		releaseRect.Max.X+statusGap+statusWidth,
-		statusLineTop+statusHeight,
-	)
-	userClicked := w.userStatusClick.Clicked(gtx)
-	statusStack := op.Offset(userRect.Min).Push(gtx.Ops)
-	statusGtx := gtx
-	statusGtx.Constraints = layout.Exact(userRect.Size())
-	w.userStatusClick.Layout(statusGtx, func(gtx layout.Context) layout.Dimensions {
-		if w.canChangeUserStatus() {
-			pointer.CursorPointer.Add(gtx.Ops)
+	if w.showsUserStatus() {
+		statusGap := gtx.Dp(mainStatusGap)
+		userRect := image.Rect(
+			releaseRect.Max.X+statusGap,
+			statusLineTop,
+			releaseRect.Max.X+statusGap+statusWidth,
+			statusLineTop+statusHeight,
+		)
+		userClicked := w.userStatusClick.Clicked(gtx)
+		statusStack := op.Offset(userRect.Min).Push(gtx.Ops)
+		statusGtx := gtx
+		statusGtx.Constraints = layout.Exact(userRect.Size())
+		w.userStatusClick.Layout(statusGtx, func(gtx layout.Context) layout.Dimensions {
+			if w.canChangeUserStatus() {
+				pointer.CursorPointer.Add(gtx.Ops)
+			}
+			drawUserStatusPill(gtx, w.typo, image.Rect(0, 0, userRect.Dx(), userRect.Dy()), w.item.userStatus, true)
+			return layout.Dimensions{Size: userRect.Size()}
+		})
+		statusStack.Pop()
+		if userClicked && w.canChangeUserStatus() {
+			w.statusMenu.show(userRect, w.item.userStatus, w.item.id, userRect.Dx(), userRect.Dy())
+			gtx.Execute(op.InvalidateCmd{})
 		}
-		drawUserStatusPill(gtx, w.typo, image.Rect(0, 0, userRect.Dx(), userRect.Dy()), w.item.userStatus, true)
-		return layout.Dimensions{Size: userRect.Size()}
-	})
-	statusStack.Pop()
-	if userClicked && w.canChangeUserStatus() {
-		w.statusMenu.show(userRect, w.item.userStatus, w.item.id, userRect.Dx(), userRect.Dy())
-		gtx.Execute(op.InvalidateCmd{})
 	}
 
-	// Keep the bar at its old, slightly lower position now that the status row
-	// occupies the line where the English title used to be.
-	headerProgressTop := statusLineTop + statusHeight + gtx.Dp(18)
+	// Keep the bar below the status row, with enough breathing room that it
+	// reads as a separate block rather than part of the pill line.
+	headerProgressTop := statusLineTop + statusHeight + gtx.Dp(22)
 
 	columnsTop := poster.Max.Y + gtx.Dp(titlePageColumnsGapTop)
 	w.layoutHeaderProgress(gtx, image.Rect(headerX, headerProgressTop, size.X-padX, columnsTop))
 	if w.item.status == statusAnnounced {
 		w.drawAnnouncement(gtx, image.Rect(padX, columnsTop, size.X-padX, size.Y))
+		return
+	}
+	if !w.hasEpisodeColumns() {
+		// Nothing is loaded to choose from: omit both columns and the quality
+		// preference instead of painting an empty panel.
 		return
 	}
 	// The voice column reaches the content bottom, so its rows disappear under

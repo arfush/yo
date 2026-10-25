@@ -56,12 +56,15 @@ const (
 	mainHistoryCountSize = unit.Sp(11.5)
 	mainClearSize        = unit.Sp(11.5)
 	mainRowTitleSize     = unit.Sp(14)
-	mainStatusSize       = unit.Sp(10)
+	// Status pills are deliberately 10% larger than the original 10sp/23dp/9dp
+	// set: the release and user tags carry real information and were too easy
+	// to skim in a history row.
+	mainStatusSize       = unit.Sp(11)
 	mainPosterTitleSize  = unit.Sp(15)
 	mainInputTextSize    = unit.Sp(14)
 	mainHintTextSize     = unit.Sp(10)
-	mainStatusHeight     = unit.Dp(23)
-	mainStatusPaddingX   = unit.Dp(9)
+	mainStatusHeight     = unit.Dp(25.3)
+	mainStatusPaddingX   = unit.Dp(9.9)
 	mainStatusGap        = unit.Dp(6)
 	mainFilterSize       = unit.Sp(10.5)
 	mainFilterPaddingX   = unit.Dp(10)

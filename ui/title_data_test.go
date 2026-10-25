@@ -147,6 +147,28 @@ func TestMovieHidesEpisodeProgressLabel(t *testing.T) {
 	}
 }
 
+func TestTitlePageHidesUserStatusUntilTracked(t *testing.T) {
+	window := &titleWindow{item: historyTitle{}}
+	if window.showsUserStatus() {
+		t.Fatal("an unsaved title must not show the default user-status pill")
+	}
+	window.item.id = 42
+	if !window.showsUserStatus() {
+		t.Fatal("a tracked or saved title must show the user-status pill")
+	}
+}
+
+func TestTitlePageHidesEpisodeColumnsWithoutEpisodes(t *testing.T) {
+	window := &titleWindow{item: historyTitle{}}
+	if window.hasEpisodeColumns() {
+		t.Fatal("a title without loaded episodes must hide the voice and episode columns")
+	}
+	window.item.episodes = []string{"1"}
+	if !window.hasEpisodeColumns() {
+		t.Fatal("a title with loaded episodes must show the voice and episode columns")
+	}
+}
+
 func TestDeleteEditorWord(t *testing.T) {
 	var editor widget.Editor
 	editor.SetText("hello brave world")

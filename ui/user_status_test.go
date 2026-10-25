@@ -107,3 +107,17 @@ func TestPlaceUserStatusMenuFlipsAbove(t *testing.T) {
 		t.Fatalf("menu = %v, want it above anchor %v", menu, anchor)
 	}
 }
+
+func TestPlaceUserStatusMenuCentersOnAnchor(t *testing.T) {
+	bounds := image.Rect(0, 0, 800, 600)
+	anchor := image.Rect(100, 100, 180, 123)
+	menu := placeUserStatusMenu(anchor, 120, 100, 7, 8, bounds)
+	anchorCenter := anchor.Min.X + anchor.Dx()/2
+	menuCenter := menu.Min.X + menu.Dx()/2
+	if menuCenter != anchorCenter {
+		t.Fatalf("menu center = %d, want anchor center %d (menu %v, anchor %v)", menuCenter, anchorCenter, menu, anchor)
+	}
+	if menu.Min.Y <= anchor.Max.Y {
+		t.Fatalf("menu = %v, want it below anchor %v", menu, anchor)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/color"
 
+	"gioui.org/f32"
 	"gioui.org/font"
 	"gioui.org/layout"
 	"gioui.org/op"
@@ -183,7 +184,26 @@ func drawPill(gtx layout.Context, typo *typography, rect image.Rectangle, label 
 	fillRounded(gtx, borderColor, rect, radius)
 	fillRounded(gtx, fillColor, rect.Inset(gtx.Dp(unit.Dp(1))), radius-gtx.Dp(unit.Dp(1)))
 	face := font.Font{Typeface: fontFamily, Weight: font.Medium}
-	typo.drawCentered(gtx, label, face, size, textColor, centerOf(rect))
+	// Center the box from the top of the label ink to its baseline, not the
+	// full ink box: the descender of "р" in "Смотрю" must not lift the whole
+	// label above the pill's middle.
+	glyphs, ink := typo.measure(gtx, label, face, size)
+	if len(glyphs) == 0 || ink.Empty() {
+		return
+	}
+	capHeight := int(glyphs[0].Y) - ink.Min.Y
+	if capHeight <= 0 || capHeight > ink.Dy() {
+		capHeight = ink.Dy()
+	}
+	typo.paintCentered(
+		gtx,
+		label,
+		face,
+		size,
+		textColor,
+		f32.Pt(float32(rect.Min.X)+float32(rect.Dx())/2, float32(rect.Min.Y)+float32(rect.Dy())/2),
+		capHeight,
+	)
 }
 
 const (
@@ -313,9 +333,10 @@ func (m *userStatusMenu) layout(gtx layout.Context, typo *typography, origin ima
 }
 
 // placeUserStatusMenu prefers to open below the pill and flips above it when
-// the footer would clip the panel.
+// the footer would clip the panel. Horizontally the panel is centered on the
+// pill rather than aligned to its left edge.
 func placeUserStatusMenu(anchor image.Rectangle, width, height, drop, margin int, bounds image.Rectangle) image.Rectangle {
-	x := anchor.Min.X
+	x := anchor.Min.X + (anchor.Dx()-width)/2
 	y := anchor.Max.Y + drop
 	if x+width > bounds.Max.X-margin {
 		x = bounds.Max.X - margin - width

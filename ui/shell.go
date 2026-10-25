@@ -295,22 +295,35 @@ func (s *shell) layoutHeaderError(gtx layout.Context, g geometry, badgeRight int
 		return
 	}
 	face := font.Font{Typeface: fontFamily, Weight: font.Medium}
-	_, ink := s.typo.measure(gtx, s.errorText, face, mainClearSize)
-	width := ink.Dx()
-	if width > right-left {
-		width = right - left
+	label := truncateText(gtx, s.typo, s.errorText, face, mainClearSize, right-left)
+	if label == "" {
+		return
 	}
-	x := left + (right-left-width)/2
-	y := g.headerCenterY - ink.Dy()/2
-	drawTruncatedText(
+	glyphs, ink := s.typo.measure(gtx, label, face, mainClearSize)
+	if len(glyphs) == 0 || ink.Empty() {
+		return
+	}
+	// The error is nudged 2% of the window width to the left of the exact
+	// midpoint, as requested for the header layout.
+	shift := int(math.Round(float64(g.size.X) * 0.02))
+	x := left + (right-left-ink.Dx())/2 - shift
+	if x < left {
+		x = left
+	}
+	// Match the baseline-to-ink-top middle of "Yonime" instead of centering the
+	// full ink box: descenders such as "у" would otherwise lift the sentence.
+	capHeight := int(glyphs[0].Y) - ink.Min.Y
+	if capHeight <= 0 || capHeight > ink.Dy() {
+		capHeight = ink.Dy()
+	}
+	s.typo.paintCentered(
 		gtx,
-		s.typo,
-		s.errorText,
+		label,
 		face,
 		mainClearSize,
 		mainDangerColor,
-		image.Pt(x, y),
-		width,
+		f32.Pt(float32(x)+float32(ink.Dx())/2, float32(g.headerCenterY)),
+		capHeight,
 	)
 }
 
