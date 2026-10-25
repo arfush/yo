@@ -67,7 +67,7 @@ func TestPresenceDetailsKeepsTheEpisodeWhenTheTitleIsLong(t *testing.T) {
 	}
 }
 
-func TestPresenceActivityUsesExternalCover(t *testing.T) {
+func TestPresenceActivityUsesPaddedExternalCover(t *testing.T) {
 	presence := Presence{Title: "Фрирен", Cover: "https://s4.anilist.co/cover.jpg"}
 	activity := presence.activity()
 
@@ -77,6 +77,9 @@ func TestPresenceActivityUsesExternalCover(t *testing.T) {
 	if activity["details"] != "Фрирен" {
 		t.Fatalf("details = %v", activity["details"])
 	}
+	if activity["name"] != "Фрирен" {
+		t.Fatalf("name = %v, want the title instead of the app name", activity["name"])
+	}
 	if activity["status_display_type"] != statusDisplayDetails {
 		t.Fatalf("status_display_type = %v, want %d", activity["status_display_type"], statusDisplayDetails)
 	}
@@ -84,8 +87,19 @@ func TestPresenceActivityUsesExternalCover(t *testing.T) {
 	if !ok {
 		t.Fatalf("assets = %#v, want a map", activity["assets"])
 	}
-	if assets["large_image"] != "https://s4.anilist.co/cover.jpg" {
-		t.Fatalf("large_image = %v", assets["large_image"])
+	want := "https://i0.wp.com/s4.anilist.co/cover.jpg?lb=512%2C512"
+	if assets["large_image"] != want {
+		t.Fatalf("large_image = %v, want %v", assets["large_image"], want)
+	}
+}
+
+// TestArtworkURLKeepsUnknownCover guards the fallback: if a future source is
+// not an absolute URL, Discord gets it unchanged instead of a broken proxy URL.
+func TestArtworkURLKeepsUnknownCover(t *testing.T) {
+	for _, cover := range []string{"", "asset-key", "ftp://example.com/cover.jpg"} {
+		if got := artworkURL(cover); got != cover {
+			t.Fatalf("artworkURL(%q) = %q, want it unchanged", cover, got)
+		}
 	}
 }
 
@@ -129,6 +143,9 @@ func TestClientSendsSetActivityFrame(t *testing.T) {
 	}
 	if frame.Args.Activity["details"] != "Фрирен 5/12" {
 		t.Fatalf("details = %v", frame.Args.Activity["details"])
+	}
+	if frame.Args.Activity["name"] != "Фрирен" {
+		t.Fatalf("name = %v", frame.Args.Activity["name"])
 	}
 }
 
