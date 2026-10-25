@@ -113,6 +113,7 @@ type watchPartyWindow struct {
 	copyButton     widget.Clickable
 	nextButton     widget.Clickable
 	deleteButton   widget.Clickable
+	leaveButton    widget.Clickable
 	backClick      widget.Clickable
 	backHover      hoverAnim
 	editor         widget.Editor
@@ -716,15 +717,69 @@ func (w *watchPartyWindow) layoutWaiting(gtx layout.Context, snapshot partySnaps
 	face := font.Font{Typeface: fontFamily, Weight: font.Normal}
 	w.typo.drawCentered(gtx, wpWaitingText, face, wpWaitSize, firstRunSubtitleColor, image.Pt(centerX, bottom+gtx.Dp(unit.Dp(26))))
 
-	if snapshot.Notice != "" {
+	notice := snapshot.Notice != ""
+	if notice {
 		w.typo.drawCentered(gtx, upperFirst(snapshot.Notice), face, wpWaitHintSize, tokenErrorColor1, image.Pt(centerX, bottom+gtx.Dp(unit.Dp(48))))
 	}
+	w.layoutLeaveLink(gtx, centerX, bottom, notice, face)
 
 	if w.animationsRun() {
 		// The mascot animates at display rate on this screen; 30 fps made the
 		// bob look chopped compared to the main window.
 		gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(16 * time.Millisecond)})
 	}
+}
+
+// layoutLeaveLink paints a small link under the waiting text. It closes the
+// guest's room instead of merely hiding the card, which is what "Вернуться"
+// does, so a host that never starts a title cannot keep the guest trapped.
+func (w *watchPartyWindow) layoutLeaveLink(gtx layout.Context, centerX, bottom int, notice bool, face font.Font) {
+	const label = "Выйти"
+	_, ink := w.typo.measure(gtx, label, face, wpWaitHintSize)
+	linkWidth := ink.Dx() + gtx.Dp(unit.Dp(20))
+	linkHeight := ink.Dy() + gtx.Dp(unit.Dp(10))
+	if linkWidth <= 0 || linkHeight <= 0 {
+		return
+	}
+	centerY := bottom + gtx.Dp(unit.Dp(50))
+	if notice {
+		centerY = bottom + gtx.Dp(unit.Dp(74))
+	}
+	rect := image.Rect(
+		centerX-linkWidth/2,
+		centerY-linkHeight/2,
+		centerX-linkWidth/2+linkWidth,
+		centerY+linkHeight/2,
+	)
+	if rect.Empty() {
+		return
+	}
+
+	clicked := w.leaveButton.Clicked(gtx)
+	col := wpLinkColor
+	if w.leaveButton.Hovered() {
+		col = wpLinkHoverColor
+	}
+	w.typo.drawCentered(gtx, label, face, wpWaitHintSize, col, centerOf(rect))
+	btnGtx := gtx
+	btnGtx.Constraints = layout.Exact(rect.Size())
+	stack := op.Offset(rect.Min).Push(gtx.Ops)
+	w.leaveButton.Layout(btnGtx, func(gtx layout.Context) layout.Dimensions {
+		pointer.CursorPointer.Add(gtx.Ops)
+		return layout.Dimensions{Size: rect.Size()}
+	})
+	stack.Pop()
+
+	if !clicked {
+		return
+	}
+	w.party.Delete()
+	w.mode = wpChoice
+	w.waitSince = time.Time{}
+	w.errorText = ""
+	w.errorAt = time.Time{}
+	w.editor.SetText("")
+	w.window.Invalidate()
 }
 
 func (w *watchPartyWindow) layoutFooter(gtx layout.Context) {

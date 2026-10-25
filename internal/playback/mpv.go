@@ -78,7 +78,21 @@ func headerScriptOpts(badgeWidth float32, title string) string {
 	return opts
 }
 
-func startMPV(ctx context.Context, geometry string, header headerAssets, title string) (*mpvProcess, error) {
+// inputLockArgs disables the player's built-in controls for a guest whose host
+// does not allow shared control. The Lua header keeps its own close, minimise
+// and maximise bindings, so a guest can still leave.
+func inputLockArgs(locked bool) []string {
+	if !locked {
+		return nil
+	}
+	return []string{
+		"--input-default-bindings=no",
+		"--input-vo-keyboard=no",
+		"--osc=no",
+	}
+}
+
+func startMPV(ctx context.Context, geometry string, header headerAssets, title string, inputLocked bool) (*mpvProcess, error) {
 	path, err := findMPV()
 	if err != nil {
 		return nil, err
@@ -107,6 +121,7 @@ func startMPV(ctx context.Context, geometry string, header headerAssets, title s
 	if geometry != "" {
 		args = append(args, "--geometry="+geometry)
 	}
+	args = append(args, inputLockArgs(inputLocked)...)
 	if header.ScriptPath != "" {
 		// The header script owns the top video margin, so the OSC must not
 		// apply boxvideo margins on its own; doing both made the bottom bar

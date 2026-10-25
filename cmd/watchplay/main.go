@@ -327,7 +327,7 @@ func (a *app) host(ctx context.Context, cfg watchparty.Config, provider watchpar
 		return err
 	}
 
-	if _, err := a.start(loadCtx, plan, plan.ResumeAt, nil); err != nil {
+	if _, err := a.start(loadCtx, plan, plan.ResumeAt, false, nil); err != nil {
 		return err
 	}
 	fmt.Printf("Смотрю: %s, серия %s, озвучка %s\n", plan.Russian, plan.Episode, plan.Voice)
@@ -370,7 +370,7 @@ func (a *app) guest(ctx context.Context, cfg watchparty.Config, provider watchpa
 
 // start launches mpv through the regular playback service and remembers the
 // session for the sync loops.
-func (a *app) start(ctx context.Context, plan *library.PlaybackPlan, resumeAt float64, onFinish func(error)) (*playback.Session, error) {
+func (a *app) start(ctx context.Context, plan *library.PlaybackPlan, resumeAt float64, inputLocked bool, onFinish func(error)) (*playback.Session, error) {
 	plan.ResumeAt = resumeAt
 	title := "Yonime"
 	if a.role != "" {
@@ -381,8 +381,9 @@ func (a *app) start(ctx context.Context, plan *library.PlaybackPlan, resumeAt fl
 	epoch := a.epoch
 	a.mu.Unlock()
 	options := playback.StartOptions{
-		Quality: a.lib.PreferredQuality(),
-		Title:   title,
+		Quality:     a.lib.PreferredQuality(),
+		Title:       title,
+		InputLocked: inputLocked,
 		OnFinish: func(err error) {
 			a.mu.Lock()
 			if a.epoch != epoch {
@@ -444,14 +445,16 @@ func (a *app) hostState() (watchparty.State, bool) {
 	if number == "" {
 		number = meta.episode
 	}
+	control := a.lib.SharedControlEnabled()
 	return watchparty.State{
-		TitleSlug:    meta.slug,
-		TitleName:    meta.name,
-		Voice:        meta.voice,
-		Episode:      number,
-		EpisodeIndex: index,
-		Playing:      !session.Paused(),
-		Position:     session.LivePosition(),
+		TitleSlug:      meta.slug,
+		TitleName:      meta.name,
+		Voice:          meta.voice,
+		Episode:        number,
+		EpisodeIndex:   index,
+		Playing:        !session.Paused(),
+		Position:       session.LivePosition(),
+		ControlEnabled: &control,
 	}, true
 }
 
@@ -631,7 +634,7 @@ func (a *app) restartGuest(ctx context.Context, room *watchparty.Session, state 
 		if want, _, ok := room.ExpectedPosition(time.Now()); ok {
 			position = want
 		}
-		if _, err := a.start(startCtx, plan, position, func(err error) {
+		if _, err := a.start(startCtx, plan, position, !a.guestControlAllowed(state), func(err error) {
 			a.guestFinished(state, err)
 		}); err != nil {
 			a.guestFailed(state, err)
@@ -646,9 +649,20 @@ func (a *app) restartGuest(ctx context.Context, room *watchparty.Session, state 
 	}()
 }
 
+// guestControlAllowed mirrors the desktop UI: the host's anchor decides, and
+// only a room from an older build falls back to the local setting.
+func (a *app) guestControlAllowed(state watchparty.State) bool {
+	if allowed, ok := state.GuestsControl(); ok {
+		return allowed
+	}
+	return a.lib.SharedControlEnabled()
+}
+
 // drift keeps the local mpv close to the extrapolated host position. It also
 // forwards input the person makes in the guest's mpv when shared control is on.
 func (a *app) drift(room *watchparty.Session, state watchparty.State, current *playback.Session) {
+	allowed := a.guestControlAllowed(state)
+	_ = current.SetInputLocked(!allowed)
 	number, _ := current.Episode()
 	if number == "" || number != state.Episode {
 		a.rate = 1
@@ -660,7 +674,7 @@ func (a *app) drift(room *watchparty.Session, state watchparty.State, current *p
 	paused := current.Paused()
 	if !a.seeded {
 		a.seeded = true
-	} else if a.lib.SharedControlEnabled() {
+	} else if allowed {
 		// Between ticks only a person can change the player: the drift loop
 		// acts below and records its own corrections in the baseline.
 		switch {

@@ -266,3 +266,21 @@ func TestPreferredProviderFollowsTheSetting(t *testing.T) {
 		})
 	}
 }
+
+func TestGuestControlUsesTheHostDecision(t *testing.T) {
+	off := false
+	on := true
+
+	if guestControlAllowed(watchparty.State{ControlEnabled: &off}, true) {
+		t.Fatal("the guest's local setting must not override the host's refusal")
+	}
+	if !guestControlAllowed(watchparty.State{ControlEnabled: &on}, false) {
+		t.Fatal("the host's permission must work even when the guest's local setting is off")
+	}
+	if !guestControlAllowed(watchparty.State{}, true) {
+		t.Fatal("an older host without the field must fall back to the local setting")
+	}
+	if guestControlAllowed(watchparty.State{}, false) {
+		t.Fatal("the local setting must still be able to refuse control")
+	}
+}

@@ -172,7 +172,20 @@ func (m *partyManager) SetSharedControl(enabled bool) {
 	}
 	m.mu.Lock()
 	m.control = enabled
+	room := m.session
 	m.mu.Unlock()
+	if room == nil || room.Role != watchparty.Host {
+		return
+	}
+	// Publish the new decision immediately instead of waiting for the next
+	// heartbeat, so a guest locks its player as soon as the host flips the
+	// setting. The settings card runs on the UI thread, so the network write
+	// stays in the background.
+	go func() {
+		if state, ok := m.hostState(); ok {
+			_ = room.Publish(state)
+		}
+	}()
 }
 
 // SharedControl reports the current shared-control setting.
@@ -183,6 +196,31 @@ func (m *partyManager) SharedControl() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.control
+}
+
+// GuestControlAllowed reports whether the guest player should accept input.
+// The host publishes its own decision with every anchor; only a room created
+// by an older build falls back to the guest's local setting.
+func (m *partyManager) GuestControlAllowed() bool {
+	if m == nil {
+		return true
+	}
+	m.mu.Lock()
+	state := m.state
+	hasState := m.hasState
+	local := m.control
+	m.mu.Unlock()
+	if hasState {
+		return guestControlAllowed(state, local)
+	}
+	return local
+}
+
+func guestControlAllowed(state watchparty.State, local bool) bool {
+	if allowed, ok := state.GuestsControl(); ok {
+		return allowed
+	}
+	return local
 }
 
 // Create opens a fresh room and returns its key.
@@ -356,6 +394,13 @@ func (m *partyManager) adopt(session *watchparty.Session) {
 	stopUpdates := make(chan struct{})
 	m.consumeStop = stopUpdates
 	running := m.hostSession
+	if running != nil && (m.app == nil || m.app.playback == nil || m.app.playback.Current() != running) {
+		// The player exited while no room was open, so the remembered session
+		// is stale. A presence heartbeat must not wait for it.
+		running = nil
+		m.hostSession = nil
+		m.hostMeta = hostMeta{}
+	}
 	m.mu.Unlock()
 
 	closeStop(hostStop)
@@ -368,7 +413,9 @@ func (m *partyManager) adopt(session *watchparty.Session) {
 	go m.consume(session, stopUpdates)
 	if session.Role == watchparty.Guest {
 		go m.guestLoop(session, stop)
-	} else if running != nil && m.app != nil && m.app.playback != nil && m.app.playback.Current() == running {
+	} else {
+		// A host room starts its heartbeat even without a running title: the
+		// guest must see that the host is still online while it waits.
 		m.startHostLoop(session, running)
 	}
 	m.invalidate()
@@ -665,6 +712,12 @@ func (m *partyManager) guestLoop(session *watchparty.Session, stop chan struct{}
 			seeded = false
 			continue
 		}
+		// Block the player itself, not just the commands sent to the host: with
+		// guest control off, pause and seek must not work even for a moment.
+		// The host's anchor is authoritative; the local setting only covers
+		// rooms created by older builds.
+		controlAllowed := m.GuestControlAllowed()
+		_ = current.SetInputLocked(!controlAllowed)
 		state, ok := session.State()
 		if !ok || !state.Started() {
 			continue
@@ -682,7 +735,7 @@ func (m *partyManager) guestLoop(session *watchparty.Session, stop chan struct{}
 		paused := current.Paused()
 		if !seeded {
 			seeded = true
-		} else if m.SharedControl() {
+		} else if controlAllowed {
 			// Between two ticks only a person can change the player: the drift
 			// loop acts below and records its own corrections in the baseline.
 			switch {
@@ -792,8 +845,10 @@ func (m *partyManager) hostStarted(session *playback.Session, title library.Titl
 	m.startHostLoop(room, session)
 }
 
-// startHostLoop (re)connects the heartbeat of an existing room to the running
-// mpv session.
+// startHostLoop (re)connects the heartbeat of an existing room. A nil session
+// means the room is open but no title is playing: the host still sends empty
+// presence anchors, otherwise a guest would count the host as gone and leave
+// while it is simply waiting on the create screen.
 func (m *partyManager) startHostLoop(room *watchparty.Session, session *playback.Session) {
 	m.mu.Lock()
 	oldStop := m.hostStop
@@ -807,6 +862,8 @@ func (m *partyManager) startHostLoop(room *watchparty.Session, session *playback
 	// Publish once immediately so a guest does not wait for the first tick.
 	if state, ok := m.hostState(); ok {
 		_ = room.Publish(state)
+	} else {
+		_ = room.Publish(watchparty.State{})
 	}
 	m.invalidate()
 }
@@ -824,14 +881,16 @@ func (m *partyManager) hostState() (watchparty.State, bool) {
 	if number == "" {
 		number = meta.Episode
 	}
+	control := m.SharedControl()
 	return watchparty.State{
-		TitleSlug:    meta.Slug,
-		TitleName:    meta.Name,
-		Voice:        meta.Voice,
-		Episode:      number,
-		EpisodeIndex: index,
-		Playing:      !session.Paused(),
-		Position:     session.LivePosition(),
+		TitleSlug:      meta.Slug,
+		TitleName:      meta.Name,
+		Voice:          meta.Voice,
+		Episode:        number,
+		EpisodeIndex:   index,
+		Playing:        !session.Paused(),
+		Position:       session.LivePosition(),
+		ControlEnabled: &control,
 	}, true
 }
 
@@ -850,22 +909,61 @@ func (m *partyManager) hostLoop(room *watchparty.Session, stop chan struct{}, se
 		var now time.Time
 		select {
 		case <-stop:
-			room.SetSource(nil)
+			// A newer loop may already own this room. Only the loop that is
+			// still current may clear the source.
+			if m.releaseHostLoop(stop) {
+				room.SetSource(nil)
+			}
 			return
 		case now = <-ticker.C:
 		}
-		if m.app == nil || m.app.playback.Current() != session {
-			// mpv exited: clear the room so guests show the waiting screen
-			// instead of extrapolating a finished episode forever.
-			m.mu.Lock()
-			if m.hostSession == session {
-				m.hostSession = nil
+		if m.app == nil || m.app.playback == nil {
+			if m.releaseHostLoop(stop) {
+				room.SetSource(nil)
 			}
-			m.mu.Unlock()
-			room.SetSource(nil)
-			_ = room.Publish(watchparty.State{})
-			m.invalidate()
 			return
+		}
+
+		if session != nil {
+			if current := m.app.playback.Current(); current != session {
+				// mpv exited: clear the room so guests show the waiting screen
+				// instead of extrapolating a finished episode forever. Keep
+				// publishing empty presence anchors so those guests stay in
+				// the room while the host is still online.
+				m.mu.Lock()
+				replaced := m.hostSession != session
+				if !replaced {
+					m.hostSession = nil
+				}
+				m.mu.Unlock()
+				if replaced {
+					// A newer playback already took over the room.
+					return
+				}
+				_ = room.Publish(watchparty.State{})
+				lastPublish = now
+				first = false
+				session = nil
+				m.invalidate()
+				continue
+			}
+		} else {
+			// A new title may have started between ticks; its own loop is
+			// (or is about to be) installed, so do not publish an empty state
+			// over the fresh anchor.
+			m.mu.Lock()
+			running := m.hostSession != nil
+			m.mu.Unlock()
+			if running {
+				continue
+			}
+			if first || now.Sub(lastPublish) >= partyHeartbeatIdle {
+				if err := room.Publish(watchparty.State{}); err == nil {
+					lastPublish = now
+				}
+				first = false
+			}
+			continue
 		}
 
 		state, ok := m.hostState()
@@ -894,6 +992,19 @@ func (m *partyManager) hostLoop(room *watchparty.Session, stop chan struct{}, se
 		lastPosition = state.Position
 		lastSample = now
 	}
+}
+
+// releaseHostLoop reports whether stop is still the room's active heartbeat
+// and, if so, forgets it. An older loop must not detach the source installed by
+// its replacement.
+func (m *partyManager) releaseHostLoop(stop chan struct{}) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.hostStop != stop {
+		return false
+	}
+	m.hostStop = nil
+	return true
 }
 
 func (m *partyManager) invalidate() {

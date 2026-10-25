@@ -39,6 +39,11 @@ type StartOptions struct {
 	// The Lua header uses it to size its pill exactly like the app's header;
 	// zero means the script falls back to its character table.
 	HeaderBadgeWidth float32
+	// InputLocked disables mpv's built-in keyboard and mouse bindings as well
+	// as the OSC. Guests use it when the host does not allow them to control
+	// playback, so pausing or seeking is impossible instead of being undone by
+	// the drift loop a moment later.
+	InputLocked bool
 	// Title overrides the mpv window title. The desktop window keeps the
 	// default; the watch-party console client adds the role so a host and a
 	// guest on one machine can tell their players apart.
@@ -124,6 +129,7 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 		lastPos:        plan.ResumeAt,
 		currentEp:      -1,
 		chaptersNoData: make(map[string]bool),
+		inputLocked:    options.InputLocked,
 	}
 	if session.quality <= 0 {
 		session.quality = 1080
@@ -143,7 +149,7 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 		return nil, err
 	}
 	header.BadgeWidth = options.HeaderBadgeWidth
-	mpv, err := startMPV(ctx, geometry, header, options.Title)
+	mpv, err := startMPV(ctx, geometry, header, options.Title, options.InputLocked)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -285,6 +291,9 @@ type Session struct {
 	suppressFinish bool
 	finished       bool
 	loadedOnce     bool
+	// inputLocked mirrors the mpv input properties so the guest loop only
+	// sends the three set_property commands when the setting changes.
+	inputLocked bool
 
 	loadMu   sync.Mutex
 	ensureMu sync.Mutex

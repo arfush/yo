@@ -59,10 +59,24 @@ type State struct {
 	// Anchor is the host wall clock in unix milliseconds at which Position
 	// was sampled.
 	Anchor int64 `json:"anchor"`
+	// ControlEnabled carries the host's guest-control decision. It is a
+	// pointer so an anchor from an older host, which has no such field, can be
+	// told apart from an explicit "guests may not control playback".
+	ControlEnabled *bool `json:"control,omitempty"`
 }
 
 // Started reports whether the host has opened a title.
 func (s State) Started() bool { return s.TitleSlug != "" }
+
+// GuestsControl returns the host's guest-control setting and whether the
+// anchor carried one at all. The second value is false for rooms created by
+// older builds.
+func (s State) GuestsControl() (bool, bool) {
+	if s.ControlEnabled == nil {
+		return false, false
+	}
+	return *s.ControlEnabled, true
+}
 
 // SamePlayback reports whether two states point at the same media, so a guest
 // does not relaunch mpv for a position-only change.

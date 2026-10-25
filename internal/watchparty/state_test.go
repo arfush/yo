@@ -85,6 +85,22 @@ func TestStateSamePlayback(t *testing.T) {
 	}
 }
 
+func TestStateGuestsControl(t *testing.T) {
+	if _, ok := (State{}).GuestsControl(); ok {
+		t.Fatal("an anchor without the field must not claim a control setting")
+	}
+	off := false
+	disallowed := State{ControlEnabled: &off}
+	if allowed, ok := disallowed.GuestsControl(); !ok || allowed {
+		t.Fatalf("GuestsControl() = %v, %v; want false, true", allowed, ok)
+	}
+	on := true
+	allowedState := State{ControlEnabled: &on}
+	if allowed, ok := allowedState.GuestsControl(); !ok || !allowed {
+		t.Fatalf("GuestsControl() = %v, %v; want true, true", allowed, ok)
+	}
+}
+
 func TestNormalizeDisplay(t *testing.T) {
 	cases := map[string]string{
 		"yofbqopgz":   "YOFBQOPGZ",
@@ -101,15 +117,15 @@ func TestNormalizeDisplay(t *testing.T) {
 
 func TestSanitizeKeyInput(t *testing.T) {
 	cases := map[string]string{
-		"yofbqopgz":     "YOFBQOPGZ",
-		" yofbqopgz ":   "YOFBQOPGZ",
+		"yofbqopgz":   "YOFBQOPGZ",
+		" yofbqopgz ": "YOFBQOPGZ",
 		// A key copied from a message may carry separators.
-		"YO-FBQ-OPGZ":   "YOFBQOPGZ",
-		"yofbqopgzzz":   "YOFBQOPGZ",
+		"YO-FBQ-OPGZ": "YOFBQOPGZ",
+		"yofbqopgzzz": "YOFBQOPGZ",
 		// Cyrillic letters are not part of the alphabet.
-		"УОFBQOPGZ":     "FBQOPGZ",
-		"12345":         "",
-		"":              "",
+		"УОFBQOPGZ": "FBQOPGZ",
+		"12345":     "",
+		"":          "",
 	}
 	for input, want := range cases {
 		if got := SanitizeKeyInput(input); got != want {

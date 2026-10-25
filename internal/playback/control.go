@@ -124,3 +124,32 @@ func (s *Session) SetPaused(paused bool) error {
 	_, err := mpv.call("set_property", "pause", paused)
 	return err
 }
+
+// SetInputLocked disables or re-enables mpv's built-in player controls. It is
+// used for a watch-party guest whose host does not allow shared control: the
+// drift loop alone only undoes a seek after the fact, while this makes the
+// input impossible in the first place.
+func (s *Session) SetInputLocked(locked bool) error {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	mpv := s.mpv
+	changed := s.inputLocked != locked
+	s.inputLocked = locked
+	s.mu.Unlock()
+	if mpv == nil {
+		return ErrNotRunning
+	}
+	if !changed {
+		return nil
+	}
+	allowed := !locked
+	var firstErr error
+	for _, property := range []string{"input-default-bindings", "input-vo-keyboard", "osc"} {
+		if _, err := mpv.call("set_property", property, allowed); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}

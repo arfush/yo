@@ -928,11 +928,16 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 			// history, which would start the file in the wrong place.
 			plan.ResumeAt = startAt
 		}
+		inputLocked := false
+		if partyGuest && a.party != nil {
+			inputLocked = !a.party.GuestControlAllowed()
+		}
 		session, err := a.playback.Start(ctx, plan, playback.StartOptions{
 			Quality:          quality,
 			Window:           window,
 			HeaderFonts:      headerFonts(),
 			HeaderBadgeWidth: a.shell.badgeWidth,
+			InputLocked:      inputLocked,
 			OnReady: func() {
 				a.hidden.Store(true)
 				hideAppWindow()
