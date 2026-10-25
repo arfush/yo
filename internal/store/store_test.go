@@ -499,6 +499,41 @@ func TestSharedControlDefaultsOnAndProviderPersists(t *testing.T) {
 	}
 }
 
+func TestDiscordPresenceDefaultsOffAndPersists(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "yonime.sqlite")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if db.DiscordPresenceEnabled() {
+		t.Fatal("discord presence must be disabled by default")
+	}
+	if err := db.SetDiscordPresenceEnabled(true); err != nil {
+		t.Fatal(err)
+	}
+	if !db.DiscordPresenceEnabled() {
+		t.Fatal("enabled discord presence was not stored")
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if !db.DiscordPresenceEnabled() {
+		t.Fatal("discord presence did not survive reopen")
+	}
+	if err := db.SetDiscordPresenceEnabled(false); err != nil {
+		t.Fatal(err)
+	}
+	if db.DiscordPresenceEnabled() {
+		t.Fatal("disabled discord presence was not stored")
+	}
+}
+
 func TestHistoryKeepsNewestFirst(t *testing.T) {
 	db, err := Open(filepath.Join(t.TempDir(), "yonime.sqlite"))
 	if err != nil {

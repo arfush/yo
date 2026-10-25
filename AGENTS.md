@@ -86,9 +86,10 @@ internal/
   animelib/            клиент AnimeLIB API, эпизоды, озвучки, rate limit
   appdata/             пути в %APPDATA%\yonime
   browser/             Playwright: установка Chromium, авторизация, headless
+  discord/             Discord Rich Presence через локальный IPC, без бота
   kodik/               резолв Kodik embed -> HLS через headless Chromium
   library/             связка API + SQLite, выбор озвучки/серии, план playback, обложки
-  metadata/            Shikimori -> MAL, AniList -> сезон, IMDb -> id, introdb -> главы
+  metadata/            Shikimori -> MAL, AniList -> сезон и постер, IMDb -> id, introdb -> главы
   mpv/                 поиск/установка mpv
   playback/            сессия mpv, очередь, прогресс, главы, автопропуск
   singleinstance/      один запущенный экземпляр на пользователя
@@ -176,6 +177,13 @@ docs/                  техническая документация (watchpar
 - Kodik `/ftor` требует браузерную сессию. Резолв идёт через headless Chromium, а не через прямой HTTP-запрос.
 - Один headless-браузер живёт на сессию; резолвы сериализованы, кэш ссылок — 45 минут.
 - Не заменяй Playwright на `net/http` и не пытайся обойти защиту иначе: это уже проверено и не работает.
+
+### Discord
+
+- Rich Presence идёт через локальный IPC Discord (`\\.\pipe\discord-ipc-N`), а не через бота, OAuth или Social SDK: `cgo` в проекте запрещён. Нужен только публичный Application ID (по умолчанию вшит в `internal/discord.AppID`, переопределяется `YONIME_DISCORD_APP_ID`).
+- Интеграция выключена по умолчанию (`discord_presence=0`): активность видна всем друзьям. Включается только в настройках, раздел «Интеграции».
+- Обложка для карточки берётся только с AniList: CDN AnimeLIB отдаёт 403 без заголовка `Referer`, который прокси Discord не отправляет.
+- Публикуется только во время воспроизведения; при завершении, смене сессии, выключении настройки и выходе активность очищается. Переподключение к Discord — с задержкой, без опроса сети в простое.
 
 ### Браузер и авторизация
 
