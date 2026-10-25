@@ -74,9 +74,6 @@ const (
 var (
 	wpLinkColor      = color.NRGBA{R: 0x7d, G: 0x77, B: 0x8c, A: 0xff}
 	wpLinkHoverColor = color.NRGBA{R: 0xb5, G: 0xae, B: 0xc6, A: 0xff}
-	wpSecondaryFill  = color.NRGBA{R: 0x21, G: 0x1d, B: 0x2d, A: 0xff}
-	wpSecondaryEdge  = color.NRGBA{R: 0x35, G: 0x2f, B: 0x47, A: 0xff}
-	wpSecondaryHover = color.NRGBA{R: 0x2a, G: 0x24, B: 0x3a, A: 0xff}
 )
 
 type watchPartyMode int
@@ -269,12 +266,12 @@ func (w *watchPartyWindow) layoutChoice(gtx layout.Context, cardWidth int, px fu
 	join := image.Rect(left+half+gap, top, right, bottom)
 
 	errored, shake := buttonErrorFeedback(gtx.Now, w.errorAt, !w.joinFeedback)
-	// Joining is the primary action; creating a room is secondary, so the pair
-	// does not compete for attention.
-	if w.layoutActionButton(gtx, create, &w.createButton, wpCreateLabel, false, errored, shake) {
+	// Both actions open a room, so they share the primary accent instead of
+	// competing for attention.
+	if w.layoutActionButton(gtx, create, &w.createButton, wpCreateLabel, errored, shake) {
 		w.create()
 	}
-	if w.layoutActionButton(gtx, join, &w.joinButton, wpJoinLabel, true, false, 0) {
+	if w.layoutActionButton(gtx, join, &w.joinButton, wpJoinLabel, false, 0) {
 		w.openJoin()
 	}
 
@@ -631,13 +628,13 @@ func (w *watchPartyWindow) drawRoundButton(gtx layout.Context, size image.Point,
 	}
 }
 
-func (w *watchPartyWindow) layoutActionButton(gtx layout.Context, rect image.Rectangle, click *widget.Clickable, label string, primary, errored bool, shake float32) bool {
+func (w *watchPartyWindow) layoutActionButton(gtx layout.Context, rect image.Rectangle, click *widget.Clickable, label string, errored bool, shake float32) bool {
 	if rect.Empty() {
 		return false
 	}
 	clicked := click.Clicked(gtx)
 	stack := op.Offset(rect.Min).Push(gtx.Ops)
-	w.drawActionButton(gtx, rect.Size(), click.Hovered(), label, primary, errored, shake)
+	w.drawActionButton(gtx, rect.Size(), click.Hovered(), label, errored, shake)
 	stack.Pop()
 
 	btnGtx := gtx
@@ -651,17 +648,16 @@ func (w *watchPartyWindow) layoutActionButton(gtx layout.Context, rect image.Rec
 	return clicked
 }
 
-func (w *watchPartyWindow) drawActionButton(gtx layout.Context, size image.Point, hovered bool, label string, primary, errored bool, shake float32) {
+func (w *watchPartyWindow) drawActionButton(gtx layout.Context, size image.Point, hovered bool, label string, errored bool, shake float32) {
 	rect := image.Rectangle{Max: size}
 	radius := size.Y / 2
 	face := font.Font{Typeface: fontFamily, Weight: font.SemiBold}
 	labelColor := color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}
 
-	switch {
-	case errored:
+	if errored {
 		drawGlow(gtx, rect, radius, tokenErrorGlow)
 		fillRoundedGradient(gtx, rect, rect, radius, tokenErrorColor1, tokenErrorColor2)
-	case primary:
+	} else {
 		drawFirstRunGlow(gtx, rect, radius)
 		c1, c2 := mainAccentColor1, mainAccentColor2
 		if hovered {
@@ -669,15 +665,6 @@ func (w *watchPartyWindow) drawActionButton(gtx layout.Context, size image.Point
 			c2 = lighten(c2, 0x08)
 		}
 		fillRoundedGradient(gtx, rect, rect, radius, c1, c2)
-	default:
-		fill := wpSecondaryFill
-		border := wpSecondaryEdge
-		if hovered {
-			fill = wpSecondaryHover
-		}
-		fillRounded(gtx, border, rect, radius)
-		fillRounded(gtx, fill, rect.Inset(gtx.Dp(unit.Dp(1))), radius-gtx.Dp(unit.Dp(1)))
-		labelColor = titleButtonText
 	}
 
 	center := image.Pt(size.X/2, size.Y/2)
