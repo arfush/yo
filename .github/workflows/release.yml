@@ -143,10 +143,31 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Verify release assets
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          # Every architecture ships two downloads: the portable exe and the
+          # installer. A release that lost either of them must not happen.
+          missing=0
+          for arch in amd64 arm64 386; do
+            for file in "dist/yonime_${VERSION}_${arch}.exe" "dist/yonime_${VERSION}_${arch}_setup.exe"; do
+              if [[ -f "$file" ]]; then
+                echo "ok: $(basename "$file")"
+              else
+                echo "::error::missing release asset: $(basename "$file")"
+                missing=1
+              fi
+            done
+          done
+          exit "$missing"
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.version }}
           name: Yonime ${{ needs.prepare.outputs.version }}
           body: ${{ needs.prepare.outputs.body }}
-          files: dist/*
+          files: |
+            dist/*.exe
+            dist/*.sha256
           generate_release_notes: ${{ needs.prepare.outputs.body == '' }}
