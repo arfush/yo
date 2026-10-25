@@ -233,7 +233,7 @@ func (w *settingsWindow) layoutControlPanel(gtx layout.Context, rect image.Recta
 	w.layoutToggleRow(
 		gtx,
 		rect,
-		"Управление для гостей",
+		"Гостевое управление",
 		"Гости могут ставить на паузу и перематывать",
 		w.control,
 		hover,
