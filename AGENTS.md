@@ -222,7 +222,7 @@ go test ./internal/playback -run TestName -v
 # Сборка (Windows GUI, без консоли)
 .\build.ps1 -Version 1.0 -Arch amd64
 
-# Установщик (нужен Inno Setup 6; собирается из dist\yonime_v1.0_amd64.exe)
+# Установщик (Inno Setup скачивается сам при первом запуске; собирается из dist\yonime_v1.0_amd64.exe)
 .\installer.ps1 -Version 1.0 -Arch amd64
 
 # Или через make
