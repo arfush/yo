@@ -35,9 +35,12 @@ const (
 	settingsTitleGap     = unit.Dp(16)
 	settingsGroupGap     = unit.Dp(20)
 	settingsRowGap       = unit.Dp(10)
-	settingsPillWidth    = unit.Dp(94)
-	settingsPillHeight   = unit.Dp(28)
-	settingsPillGap      = unit.Dp(8)
+
+	settingsProviderWidth      = unit.Dp(124)
+	settingsProviderHeight     = unit.Dp(30)
+	settingsProviderItemHeight = unit.Dp(32)
+	settingsProviderMenuPad    = unit.Dp(4)
+	settingsProviderMenuGap    = unit.Dp(6)
 )
 
 var (
@@ -48,6 +51,8 @@ var (
 	settingsToggleKnobOff = color.NRGBA{R: 0x9b, G: 0x94, B: 0xad, A: 0xff}
 	settingsErrorText     = color.NRGBA{R: 0xf0, G: 0x8a, B: 0x8a, A: 0xff}
 	settingsNoteColor     = color.NRGBA{R: 0x8a, G: 0x84, B: 0x9c, A: 0xff}
+	settingsMenuFill      = color.NRGBA{R: 0x1d, G: 0x1a, B: 0x27, A: 0xff}
+	settingsMenuSelected  = color.NRGBA{R: 0x2b, G: 0x22, B: 0x45, A: 0xff}
 )
 
 // settingsValues is the state the settings screen opens with. It is separate
@@ -73,7 +78,14 @@ type settingsWindow struct {
 	toggleHover  hoverAnim
 	controlClick widget.Clickable
 	controlHover hoverAnim
-	providerPill [2]widget.Clickable
+
+	// providerClick is the select itself, providerItems are its options and
+	// providerScrim catches clicks outside the open menu.
+	providerClick  widget.Clickable
+	providerItems  [2]widget.Clickable
+	providerScrim  widget.Clickable
+	providerOpen   bool
+	providerAnchor image.Rectangle
 
 	backClick widget.Clickable
 	backHover hoverAnim
@@ -110,6 +122,12 @@ func (w *settingsWindow) handleKeys(gtx layout.Context) {
 		}
 		e, ok := ev.(key.Event)
 		if !ok || e.State != key.Press {
+			continue
+		}
+		// Escape dismisses the open provider menu before it leaves the screen.
+		if w.providerOpen {
+			w.providerOpen = false
+			gtx.Execute(op.InvalidateCmd{})
 			continue
 		}
 		if w.onBack != nil {
@@ -154,6 +172,11 @@ func (w *settingsWindow) layout(gtx layout.Context) {
 			image.Pt(left, y+gtx.Dp(unit.Dp(8))),
 			right-left,
 		)
+	}
+
+	// The menu floats over the panels above, so it is painted last.
+	if w.providerOpen {
+		w.layoutProviderMenu(gtx, size)
 	}
 }
 
@@ -271,28 +294,102 @@ func (w *settingsWindow) layoutProviderPanel(gtx layout.Context, rect image.Rect
 	labelTop := rect.Min.Y + (rect.Dy()-labelInk.Dy())/2
 	w.typo.draw(gtx, "Провайдер", labelFace, settingsLabelSize, mainTextColor, image.Pt(left, labelTop))
 
-	providers := watchparty.Providers()
-	pillHeight := gtx.Dp(settingsPillHeight)
-	pillWidth := gtx.Dp(settingsPillWidth)
-	gap := gtx.Dp(settingsPillGap)
-	right := rect.Max.X - gtx.Dp(settingsPanelPadX)
-	top := rect.Min.Y + (rect.Dy()-pillHeight)/2
-	for index := len(providers) - 1; index >= 0; index-- {
-		provider := providers[index]
-		pill := image.Rect(right-pillWidth, top, right, top+pillHeight)
-		right = pill.Min.X - gap
-		if pill.Empty() {
-			continue
-		}
-		if w.layoutProviderPill(gtx, pill, provider, &w.providerPill[index]) {
-			w.setProvider(provider)
-			gtx.Execute(op.InvalidateCmd{})
-		}
+	height := gtx.Dp(settingsProviderHeight)
+	trigger := image.Rect(
+		rect.Max.X-gtx.Dp(settingsPanelPadX)-gtx.Dp(settingsProviderWidth),
+		rect.Min.Y+(rect.Dy()-height)/2,
+		rect.Max.X-gtx.Dp(settingsPanelPadX),
+		rect.Min.Y+(rect.Dy()+height)/2,
+	)
+	w.providerAnchor = trigger
+	if w.layoutProviderTrigger(gtx, trigger) {
+		w.providerOpen = !w.providerOpen
+		gtx.Execute(op.InvalidateCmd{})
 	}
 	return rect.Max.Y
 }
 
-func (w *settingsWindow) layoutProviderPill(gtx layout.Context, rect image.Rectangle, provider watchparty.Provider, click *widget.Clickable) bool {
+// layoutProviderTrigger paints the closed select: the current provider and a
+// chevron pointing at the menu, which opens on click.
+func (w *settingsWindow) layoutProviderTrigger(gtx layout.Context, rect image.Rectangle) bool {
+	if rect.Empty() {
+		return false
+	}
+	clicked := w.providerClick.Clicked(gtx)
+	active := w.providerClick.Hovered() || w.providerOpen
+
+	w.layoutClickableDraw(gtx, rect, &w.providerClick, func(gtx layout.Context) {
+		local := image.Rect(0, 0, rect.Dx(), rect.Dy())
+		radius := gtx.Dp(unit.Dp(7))
+		fill := tokenDomainFill
+		if active {
+			fill = tokenDomainFillHover
+		}
+		fillRounded(gtx, tokenDomainBorder, local, radius)
+		fillRounded(gtx, fill, local.Inset(gtx.Dp(unit.Dp(1))), radius-gtx.Dp(unit.Dp(1)))
+
+		face := font.Font{Typeface: fontFamily, Weight: font.Medium}
+		label := w.provider.Label()
+		_, ink := w.typo.measure(gtx, label, face, settingsButtonSize)
+		padX := gtx.Dp(unit.Dp(12))
+		w.typo.draw(gtx, label, face, settingsButtonSize, mainTextColor, image.Pt(padX, (rect.Dy()-ink.Dy())/2))
+
+		size := gtx.Dp(unit.Dp(9))
+		center := image.Pt(rect.Dx()-padX-size/2, rect.Dy()/2)
+		width := gtx.Dp(unit.Dp(1.6))
+		if w.providerOpen {
+			drawChevronUp(gtx, center, size, width, settingsNoteColor)
+			return
+		}
+		drawChevronDown(gtx, center, size, width, settingsNoteColor)
+	})
+	return clicked
+}
+
+// layoutProviderMenu paints the open select. It is a plain overlay instead of
+// an inline list so the panel row keeps its single-line height.
+func (w *settingsWindow) layoutProviderMenu(gtx layout.Context, size image.Point) {
+	if w.providerAnchor.Empty() {
+		return
+	}
+	providers := watchparty.Providers()
+	pad := gtx.Dp(settingsProviderMenuPad)
+	itemHeight := gtx.Dp(settingsProviderItemHeight)
+	menu := placeProviderMenu(
+		w.providerAnchor,
+		len(providers)*itemHeight+2*pad,
+		gtx.Dp(settingsProviderMenuGap),
+		image.Rectangle{Max: size},
+	)
+
+	// The scrim goes first so the options registered after it stay on top and
+	// receive their own clicks; anything else closes the menu.
+	if w.layoutScrim(gtx, image.Rectangle{Max: size}, &w.providerScrim) {
+		w.providerOpen = false
+		gtx.Execute(op.InvalidateCmd{})
+		return
+	}
+
+	radius := gtx.Dp(unit.Dp(8))
+	fillRounded(gtx, titlePanelBorder, menu, radius)
+	fillRounded(gtx, settingsMenuFill, menu.Inset(gtx.Dp(unit.Dp(1))), radius-gtx.Dp(unit.Dp(1)))
+
+	for index, provider := range providers {
+		item := image.Rect(
+			menu.Min.X+pad,
+			menu.Min.Y+pad+index*itemHeight,
+			menu.Max.X-pad,
+			menu.Min.Y+pad+(index+1)*itemHeight,
+		)
+		if w.layoutProviderItem(gtx, item, provider, &w.providerItems[index]) {
+			w.setProvider(provider)
+			w.providerOpen = false
+			gtx.Execute(op.InvalidateCmd{})
+		}
+	}
+}
+
+func (w *settingsWindow) layoutProviderItem(gtx layout.Context, rect image.Rectangle, provider watchparty.Provider, click *widget.Clickable) bool {
 	if rect.Empty() {
 		return false
 	}
@@ -300,34 +397,113 @@ func (w *settingsWindow) layoutProviderPill(gtx layout.Context, rect image.Recta
 	hovered := click.Hovered()
 	selected := provider == w.provider
 
+	w.layoutClickableDraw(gtx, rect, click, func(gtx layout.Context) {
+		local := image.Rect(0, 0, rect.Dx(), rect.Dy())
+		radius := gtx.Dp(unit.Dp(6))
+		switch {
+		case selected:
+			fillRounded(gtx, settingsMenuSelected, local, radius)
+		case hovered:
+			fillRounded(gtx, tokenDomainFillHover, local, radius)
+		}
+
+		face := font.Font{Typeface: fontFamily, Weight: font.Medium}
+		label := provider.Label()
+		_, ink := w.typo.measure(gtx, label, face, settingsButtonSize)
+		textColor := mainTextColor
+		if selected {
+			textColor = badgeTextColor
+		}
+		padX := gtx.Dp(unit.Dp(10))
+		w.typo.draw(gtx, label, face, settingsButtonSize, textColor, image.Pt(padX, (rect.Dy()-ink.Dy())/2))
+		if selected {
+			drawCheckMark(
+				gtx,
+				image.Pt(rect.Dx()-padX-gtx.Dp(unit.Dp(5)), rect.Dy()/2),
+				gtx.Dp(unit.Dp(10)),
+				gtx.Dp(unit.Dp(1.6)),
+				badgeTextColor,
+			)
+		}
+	})
+	return clicked
+}
+
+// placeProviderMenu returns the menu rectangle for anchor. It prefers to open
+// below the trigger and flips above it when the content area would clip it.
+func placeProviderMenu(anchor image.Rectangle, height, gap int, bounds image.Rectangle) image.Rectangle {
+	below := image.Rect(anchor.Min.X, anchor.Max.Y+gap, anchor.Max.X, anchor.Max.Y+gap+height)
+	if below.Max.Y <= bounds.Max.Y {
+		return below
+	}
+	above := image.Rect(anchor.Min.X, anchor.Min.Y-gap-height, anchor.Max.X, anchor.Min.Y-gap)
+	if above.Min.Y >= bounds.Min.Y {
+		return above
+	}
+	return below
+}
+
+// layoutScrim registers an invisible click target and reports a click on it.
+func (w *settingsWindow) layoutScrim(gtx layout.Context, rect image.Rectangle, click *widget.Clickable) bool {
+	if rect.Empty() {
+		return false
+	}
 	stack := op.Offset(rect.Min).Push(gtx.Ops)
 	defer stack.Pop()
 	cgtx := gtx
 	cgtx.Constraints = layout.Exact(rect.Size())
-
 	click.Layout(cgtx, func(gtx layout.Context) layout.Dimensions {
-		pointer.CursorPointer.Add(gtx.Ops)
-		local := image.Rect(0, 0, rect.Dx(), rect.Dy())
-		radius := gtx.Dp(unit.Dp(7))
-		switch {
-		case selected:
-			fillRoundedGradient(gtx, local, local, radius, mainAccentColor1, mainAccentColor2)
-		case hovered:
-			fillRounded(gtx, tokenDomainFillHover, local, radius)
-		default:
-			fillRounded(gtx, tokenDomainFill, local, radius)
-		}
-		if !selected {
-			strokeRoundedRect(gtx, local, float32(radius), float32(gtx.Dp(unit.Dp(1))), tokenDomainBorder)
-		}
-		textColor := settingsToggleKnobOff
-		if selected {
-			textColor = titleButtonText
-		}
-		w.typo.drawCentered(gtx, provider.Label(), font.Font{Typeface: fontFamily, Weight: font.Medium}, settingsButtonSize, textColor, centerOf(local))
 		return layout.Dimensions{Size: rect.Size()}
 	})
-	return clicked
+	return click.Clicked(gtx)
+}
+
+func drawChevronDown(gtx layout.Context, center image.Point, size, width int, col color.NRGBA) {
+	drawChevronVertical(gtx, center, size, width, col, 1)
+}
+
+func drawChevronUp(gtx layout.Context, center image.Point, size, width int, col color.NRGBA) {
+	drawChevronVertical(gtx, center, size, width, col, -1)
+}
+
+func drawChevronVertical(gtx layout.Context, center image.Point, size, width int, col color.NRGBA, direction float32) {
+	if size <= 0 {
+		return
+	}
+	half := float32(size) / 2
+	tip := f32.Pt(float32(center.X), float32(center.Y)+half*0.55*direction)
+	strokeLine(gtx,
+		f32.Pt(float32(center.X)-half*0.8, float32(center.Y)-half*0.35*direction),
+		tip,
+		float32(width),
+		col,
+	)
+	strokeLine(gtx,
+		tip,
+		f32.Pt(float32(center.X)+half*0.8, float32(center.Y)-half*0.35*direction),
+		float32(width),
+		col,
+	)
+}
+
+func drawCheckMark(gtx layout.Context, center image.Point, size, width int, col color.NRGBA) {
+	if size <= 0 {
+		return
+	}
+	half := float32(size) / 2
+	corner := f32.Pt(float32(center.X)-half*0.15, float32(center.Y)+half*0.6)
+	strokeLine(gtx,
+		f32.Pt(float32(center.X)-half*0.8, float32(center.Y)+half*0.05),
+		corner,
+		float32(width),
+		col,
+	)
+	strokeLine(gtx,
+		corner,
+		f32.Pt(float32(center.X)+half*0.85, float32(center.Y)-half*0.7),
+		float32(width),
+		col,
+	)
 }
 
 func (w *settingsWindow) setToggle(enabled bool) {
