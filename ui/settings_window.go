@@ -341,6 +341,10 @@ func (w *settingsWindow) layoutProviderPanel(gtx layout.Context, rect image.Rect
 	w.providerAnchor = trigger
 	if w.layoutProviderTrigger(gtx, trigger) {
 		w.providerOpen = !w.providerOpen
+		if w.providerOpen {
+			// Typing must not fall through to an endpoint hidden under the menu.
+			gtx.Execute(key.FocusCmd{})
+		}
 		gtx.Execute(op.InvalidateCmd{})
 	}
 
