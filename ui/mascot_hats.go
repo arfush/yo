@@ -12,7 +12,7 @@ import (
 
 const (
 	// mascotHatCount is the number of outfits the waiting screen can pick from.
-	mascotHatCount = 10
+	mascotHatCount = 11
 	// mascotHatNone keeps the main-window mascot bare.
 	mascotHatNone = -1
 )
@@ -20,6 +20,7 @@ const (
 var (
 	hatPink  = color.NRGBA{R: 0xf2, G: 0x8f, B: 0xc2, A: 0xff}
 	hatWhite = color.NRGBA{R: 0xf7, G: 0xf3, B: 0xff, A: 0xff}
+	hatCream = color.NRGBA{R: 0xe9, G: 0xde, B: 0xc6, A: 0xff}
 	hatDark  = color.NRGBA{R: 0x3b, G: 0x2a, B: 0x63, A: 0xff}
 	hatGold  = color.NRGBA{R: 0xf5, G: 0xc2, B: 0x5c, A: 0xff}
 	hatRed   = color.NRGBA{R: 0xd9, G: 0x4f, B: 0x6a, A: 0xff}
@@ -131,6 +132,28 @@ func drawMascotHat(
 			fillCircle(gtx, pointOf(pt(x, -12.2)), max(1, px(1.25)), petal)
 			fillCircle(gtx, pointOf(pt(x, -12.2)), max(1, px(0.45)), hatGold)
 		}
+	case 10: // Cypher's cream fedora with a dark band and a teal lens.
+		// The brim gets a warmer underside, like the shadowed edge of felt.
+		fillEllipse(gtx, r(-12.4, -13.9, 12.4, -10.8), hatTan)
+		fillEllipse(gtx, r(-12.0, -14.2, 12.0, -11.4), hatCream)
+		// The crown tapers to a pinched fedora top.
+		fillPolygon(gtx, []f32.Point{
+			pt(-6.5, -12.8),
+			pt(-5.1, -19.6),
+			pt(-2.7, -20.8),
+			pt(0, -20.0),
+			pt(2.7, -20.8),
+			pt(5.1, -19.6),
+			pt(6.5, -12.8),
+		}, hatCream)
+		crease := float32(max(1, px(0.32)))
+		strokeLine(gtx, pt(-2.8, -20.2), pt(0, -19.4), crease, hatTan)
+		strokeLine(gtx, pt(2.8, -20.2), pt(0, -19.4), crease, hatTan)
+		fillRounded(gtx, hatDark, r(-6.3, -14.5, 6.3, -12.9), px(0.35))
+		// A small teal camera lens in a gold setting is the Cypher nod.
+		fillCircle(gtx, pointOf(pt(0, -13.7)), max(1, px(0.9)), hatGold)
+		fillCircle(gtx, pointOf(pt(0, -13.7)), max(1, px(0.55)), hatTeal)
+		fillCircle(gtx, pointOf(pt(0, -13.7)), max(1, px(0.18)), hatDark)
 	}
 }
 
