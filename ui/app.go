@@ -41,6 +41,10 @@ const (
 	// settle before the first background pass starts spending the shared
 	// AnimeLIB rate-limit window.
 	episodeCheckStartupDelay = 10 * time.Second
+	// playbackStartTimeout bounds the network work between a Play click and an
+	// mpv window. Without it a stuck rate-limit wait or resolver leaves the
+	// row's spinner turning forever with no way to retry.
+	playbackStartTimeout = 3 * time.Minute
 )
 
 // Run starts the Yonime desktop application.
@@ -892,7 +896,7 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 		}
 	}
 	go func() {
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), playbackStartTimeout)
 		defer cancel()
 		if len(title.Voiceovers) == 0 || len(title.Episodes) == 0 {
 			// History rows keep only the saved selection, never the episode
@@ -901,7 +905,7 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 			// first; the saved voice and episode are restored during the load.
 			loaded, loadErr := a.library.Load(ctx, title.Slug)
 			if loadErr != nil {
-				a.deliverWatch(watchResult{err: loadErr, historyFailure: true, party: partyGuest})
+				a.deliverWatch(watchResult{err: playbackStartError(loadErr), historyFailure: true, party: partyGuest})
 				return
 			}
 			title = loaded
@@ -920,7 +924,7 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 		}
 		plan, err := a.library.PlaybackPlan(ctx, title, voice, episode)
 		if err != nil {
-			a.deliverWatch(watchResult{err: err, historyItem: historyItem, titleID: trackedID, party: partyGuest})
+			a.deliverWatch(watchResult{err: playbackStartError(err), historyItem: historyItem, titleID: trackedID, party: partyGuest})
 			return
 		}
 		if partyGuest {
@@ -952,7 +956,7 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 			},
 		})
 		if err != nil {
-			a.deliverWatch(watchResult{err: err, historyItem: historyItem, titleID: trackedID, party: partyGuest})
+			a.deliverWatch(watchResult{err: playbackStartError(err), historyItem: historyItem, titleID: trackedID, party: partyGuest})
 			return
 		}
 		if !partyGuest && a.party != nil {
@@ -962,11 +966,20 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 	return nil
 }
 
-func (a *application) deliverWatch(result watchResult) {
-	select {
-	case a.watchResults <- result:
-	case <-time.After(5 * time.Second):
+// playbackStartError turns the watchdog deadline into a reason the user can
+// act on instead of the raw context error.
+func playbackStartError(err error) error {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("не удалось начать воспроизведение за %s — попробуйте ещё раз", playbackStartTimeout)
 	}
+	return err
+}
+
+func (a *application) deliverWatch(result watchResult) {
+	// The UI drains this channel every frame and there can only be one active
+	// session, so blocking here is safe. Dropping a result used to leave the
+	// history row or the title page spinning forever.
+	a.watchResults <- result
 	if a.window != nil {
 		a.window.Invalidate()
 	}

@@ -688,28 +688,33 @@ func (m *mainWindow) startLoading(gtx layout.Context, target int, animateRow boo
 }
 
 func (m *mainWindow) deliverLoadResult(result titleLoadResult) {
-	select {
-	case m.loadResults <- result:
-	default:
-	}
+	// Never drop a result: a dropped reply leaves m.loading set and the row
+	// spinner turning until the application restarts. The UI drains this
+	// channel every frame, so a blocking send cannot deadlock in practice.
+	m.loadResults <- result
 	if m.invalidate != nil {
 		m.invalidate()
 	}
 }
 
-// updateLoading consumes a background fetch. There is no artificial delay:
-// the title opens as soon as AnimeLIB responds.
+// updateLoading consumes background fetches. There is no artificial delay:
+// the title opens as soon as AnimeLIB responds. Stale results from a cancelled
+// load are discarded, but draining continues so a current reply queued behind
+// one is not left waiting for the next frame.
 func (m *mainWindow) updateLoading(gtx layout.Context) {
-	if !m.loading {
-		return
-	}
-	select {
-	case result := <-m.loadResults:
-		if result.sequence != m.loadSequence {
+	// Drain even when idle: a cancelled load still delivers its result, and
+	// leaving those in the channel would block their goroutines forever.
+	for {
+		select {
+		case result := <-m.loadResults:
+			if !m.loading || result.sequence != m.loadSequence {
+				continue
+			}
+			m.finishLoading(gtx, result)
+			return
+		default:
 			return
 		}
-		m.finishLoading(gtx, result)
-	default:
 	}
 }
 
