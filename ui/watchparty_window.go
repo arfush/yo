@@ -286,7 +286,7 @@ func (w *watchPartyWindow) layoutCreated(gtx layout.Context, cardWidth int, px f
 	field := image.Rect(px(wpCardPadding), px(wpActionTop), cardWidth-px(wpCardPadding), px(wpActionTop)+px(wpFieldHeight))
 	key := w.party.Snapshot().Key
 	if !field.Empty() {
-		w.layoutKeyField(gtx, field, key, false, false)
+		w.layoutKeyField(gtx, field, key, false, false, 0)
 	}
 
 	face := font.Font{Typeface: fontFamily, Weight: font.Normal}
@@ -334,14 +334,28 @@ func (w *watchPartyWindow) layoutJoin(gtx layout.Context, cardWidth int, px func
 	}
 
 	field := image.Rect(px(wpCardPadding), px(wpActionTop), cardWidth-px(wpCardPadding), px(wpActionTop)+px(wpFieldHeight))
+	errored, shake := buttonErrorFeedback(gtx.Now, w.errorAt, true)
 	if !field.Empty() {
-		errored, _ := buttonErrorFeedback(gtx.Now, w.errorAt, false)
-		if w.layoutKeyField(gtx, field, w.editor.Text(), true, errored) {
+		if w.layoutKeyField(gtx, field, w.editor.Text(), true, errored, shake) {
 			w.join()
 		}
 	}
 
 	drawCenteredError(gtx, w.typo, w.errorText, cardWidth, px)
+	if w.animationsRun() && (w.busy || w.shakeRunning(gtx.Now)) {
+		// The spinner and the shaking chevron both need continuous frames.
+		gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(16 * time.Millisecond)})
+	}
+}
+
+// shakeRunning keeps animation frames coming for the whole shake, including
+// its very first frame when the sine offset is still zero.
+func (w *watchPartyWindow) shakeRunning(now time.Time) bool {
+	if w.errorAt.IsZero() {
+		return false
+	}
+	elapsed := now.Sub(w.errorAt)
+	return elapsed >= 0 && elapsed < wpShakeDuration
 }
 
 // drawCenteredError paints the feedback line in the middle of the card, between
@@ -360,8 +374,9 @@ func drawCenteredError(gtx layout.Context, typo *typography, text string, cardWi
 }
 
 // layoutKeyField draws the rounded field with either a copy or a submit button
-// on its right. editable fields host the key editor.
-func (w *watchPartyWindow) layoutKeyField(gtx layout.Context, rect image.Rectangle, value string, editable, errored bool) bool {
+// on its right. editable fields host the key editor. While a join check runs,
+// the submit button shows a spinner instead of the chevron.
+func (w *watchPartyWindow) layoutKeyField(gtx layout.Context, rect image.Rectangle, value string, editable, errored bool, shake float32) bool {
 	radius := gtx.Dp(mainInputRadius)
 	border := mainInputBorder
 	if editable && gtx.Focused(&w.editor) {
@@ -412,6 +427,13 @@ func (w *watchPartyWindow) layoutKeyField(gtx layout.Context, rect image.Rectang
 	stack := op.Offset(round.Min).Push(gtx.Ops)
 	w.drawRoundButton(gtx, round.Size(), hovered, errored, func(gtx layout.Context, center image.Point) {
 		if editable {
+			if w.busy && w.mode == wpJoin {
+				drawSpinner(gtx, center, gtx.Dp(unit.Dp(9)), gtx.Dp(unit.Dp(1.7)), 0, color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff})
+				return
+			}
+			if shake != 0 {
+				center.X += int(math.Round(float64(shake) * float64(gtx.Dp(unit.Dp(wpShakeAmpDp)))))
+			}
 			drawChevronRight(
 				gtx,
 				center,
@@ -628,8 +650,7 @@ func (w *watchPartyWindow) layoutWaiting(gtx layout.Context, snapshot partySnaps
 		w.party.Delete()
 		w.mode = wpJoin
 		w.waitSince = time.Time{}
-		w.editor.SetText("")
-		w.failJoin("Комната не найдена — проверьте ключ")
+		w.failJoin(watchparty.ErrRoomNotFound.Error())
 		return
 	}
 
@@ -814,27 +835,38 @@ func (w *watchPartyWindow) drain() {
 	for {
 		select {
 		case result := <-w.results:
-			w.busy = false
-			if result.err != nil {
-				w.errorText = result.err.Error()
-				w.errorAt = time.Now()
-				w.joinFeedback = result.kind == partyJoined
+			w.handleResult(result)
+			if w.window != nil {
 				w.window.Invalidate()
-				continue
 			}
-			w.errorText = ""
-			w.errorAt = time.Time{}
-			switch result.kind {
-			case partyCreated:
-				w.mode = wpCreated
-			case partyJoined:
-				w.enterWaiting()
-				w.editor.SetText("")
-			}
-			w.window.Invalidate()
 		default:
 			return
 		}
+	}
+}
+
+func (w *watchPartyWindow) handleResult(result partyResult) {
+	w.busy = false
+	if result.err != nil {
+		if result.kind == partyJoined {
+			// A failed join is corrected by retyping the key, so the form clears
+			// it and uses the same red, shaking feedback for every reason.
+			w.failJoin(result.err.Error())
+			return
+		}
+		w.errorText = result.err.Error()
+		w.errorAt = time.Now()
+		w.joinFeedback = false
+		return
+	}
+	w.errorText = ""
+	w.errorAt = time.Time{}
+	switch result.kind {
+	case partyCreated:
+		w.mode = wpCreated
+	case partyJoined:
+		w.enterWaiting()
+		w.editor.SetText("")
 	}
 }
 
@@ -904,7 +936,11 @@ func (w *watchPartyWindow) failJoin(text string) {
 	w.errorText = text
 	w.errorAt = time.Now()
 	w.joinFeedback = true
-	w.window.Invalidate()
+	w.focusField = true
+	w.editor.SetText("")
+	if w.window != nil {
+		w.window.Invalidate()
+	}
 }
 
 // roomClosed returns the screen to the join form with an explanation. The room

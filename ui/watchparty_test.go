@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -41,6 +42,62 @@ func TestLabelShakeStartsAndEndsCalm(t *testing.T) {
 	}
 	if got := labelShake(start.Add(wpShakeDuration), start); got != 0 {
 		t.Fatalf("labelShake after the shake = %v, want 0", got)
+	}
+	if _, shake := buttonErrorFeedback(start.Add(wpShakeDuration/2), start, true); shake == 0 {
+		t.Fatal("a join error must shake the icon as well as turn the button red")
+	}
+	if _, shake := buttonErrorFeedback(start.Add(wpShakeDuration/2), start, false); shake != 0 {
+		t.Fatal("a caller that only needs the red state must not receive a shake")
+	}
+	screen := &watchPartyWindow{errorAt: start}
+	if !screen.shakeRunning(start) {
+		t.Fatal("the first shake frame must still request the next one")
+	}
+	if screen.shakeRunning(start.Add(wpShakeDuration)) {
+		t.Fatal("animation frames must stop when the shake ends")
+	}
+}
+
+func TestJoinFailureClearsTheKeyAndStartsRedFeedback(t *testing.T) {
+	screen := newWatchPartyWindow(nil, nil, &partyManager{provider: watchparty.Cloudflare})
+	screen.mode = wpJoin
+	screen.busy = true
+	screen.editor.SetText("YOCBQOPGZ")
+
+	screen.handleResult(partyResult{kind: partyJoined, err: errors.New("комната не найдена — проверьте ключ")})
+
+	if screen.busy {
+		t.Fatal("a failed join must stop the button spinner")
+	}
+	if got := screen.editor.Text(); got != "" {
+		t.Fatalf("key editor = %q, want it cleared", got)
+	}
+	if !screen.joinFeedback {
+		t.Fatal("a join error must use the auto-clearing red feedback")
+	}
+	if screen.errorText == "" || screen.errorAt.IsZero() {
+		t.Fatalf("error = %q at %v, want text and a start time", screen.errorText, screen.errorAt)
+	}
+	if !screen.focusField {
+		t.Fatal("the cleared key field should take focus again")
+	}
+}
+
+func TestCreateFailureKeepsItsOwnFeedback(t *testing.T) {
+	screen := newWatchPartyWindow(nil, nil, &partyManager{provider: watchparty.Cloudflare})
+	screen.busy = true
+	screen.editor.SetText("YOCBQOPGZ")
+
+	screen.handleResult(partyResult{kind: partyCreated, err: errors.New("реле не настроено")})
+
+	if screen.busy {
+		t.Fatal("a failed create must stop the button spinner")
+	}
+	if got := screen.editor.Text(); got != "YOCBQOPGZ" {
+		t.Fatalf("key editor = %q, create errors must not clear the join field", got)
+	}
+	if screen.joinFeedback {
+		t.Fatal("a create error must stay until the next attempt")
 	}
 }
 

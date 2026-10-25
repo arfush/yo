@@ -37,6 +37,11 @@ var (
 // version. A guest leaves instead of applying anchors it may misread.
 var ErrVersionMismatch = errors.New("разные версии приложения — обновите Yonime")
 
+// ErrRoomNotFound reports a reachable relay that has no host in the room. A
+// guest uses it before opening the waiting screen, so a mistyped key fails
+// immediately instead of waiting for the regular host-silence timeout.
+var ErrRoomNotFound = errors.New("комната не найдена — проверьте ключ")
+
 // Session is one joined room. It owns the WebSocket, reconnects on its own and
 // keeps the newest host anchor plus the clock estimate.
 type Session struct {
@@ -143,6 +148,46 @@ func (s *Session) HostSeen() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.hostSeen
+}
+
+// WaitHost blocks until the host proves it is in the room. A guest calls it
+// right after Join to distinguish a real room from a key the relay accepted but
+// nobody is hosting. The relay's welcome message is enough; the host does not
+// have to publish a playback anchor for an empty room to count as existing.
+//
+// A host throttles answers to hello bursts, so a probe repeats its hello once a
+// second. Without that retry two guests joining together on Supabase would make
+// the second one time out even though the room is alive.
+func (s *Session) WaitHost(ctx context.Context) error {
+	if s.Role != Guest {
+		return nil
+	}
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+	lastHello := time.Now()
+	for {
+		if s.HostSeen() {
+			return nil
+		}
+		if s.HostGone() {
+			return ErrRoomNotFound
+		}
+		if err := s.Err(); err != nil {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return ErrRoomNotFound
+			}
+			return ctx.Err()
+		case <-ticker.C:
+			if time.Since(lastHello) >= time.Second {
+				lastHello = time.Now()
+				_ = s.write(message{Type: messageHello, Role: s.Role})
+			}
+		}
+	}
 }
 
 // HostGone reports whether the room is over: the host closed it explicitly or

@@ -25,6 +25,9 @@ type testHub struct {
 	host   *websocket.Conn
 	guests map[*websocket.Conn]bool
 	last   []byte
+	// quiet mimics Supabase, which neither announces the host on connect nor
+	// replays the last anchor. The guest has to make the host answer a hello.
+	quiet bool
 	// guestByes counts departures a guest announced. A guest must leave
 	// silently: only the host's bye ends the room.
 	guestByes int
@@ -106,10 +109,13 @@ func (h *testHub) serve(w http.ResponseWriter, r *http.Request) {
 	h.guests[conn] = true
 	hosted := h.host != nil
 	last := h.last
+	quiet := h.quiet
 	h.mu.Unlock()
-	h.send(conn, message{Type: messageWelcome, Host: boolPtr(hosted)})
-	if hosted && last != nil {
-		h.write(conn, last)
+	if !quiet {
+		h.send(conn, message{Type: messageWelcome, Host: boolPtr(hosted)})
+		if hosted && last != nil {
+			h.write(conn, last)
+		}
 	}
 
 	for {
@@ -136,10 +142,11 @@ func (h *testHub) serve(w http.ResponseWriter, r *http.Request) {
 		case messageHello:
 			h.mu.Lock()
 			host := h.host
+			quiet := h.quiet
 			h.mu.Unlock()
 			if host != nil {
 				h.send(host, message{Type: messageHello, Role: Guest})
-			} else {
+			} else if !quiet {
 				h.send(conn, message{Type: messageWelcome, Host: boolPtr(false)})
 			}
 		}
@@ -275,6 +282,86 @@ func TestHostAndGuestShareAnAnchor(t *testing.T) {
 	}
 	if position < want.Position || position > want.Position+2 {
 		t.Fatalf("expected position = %v, want around %v", position, want.Position)
+	}
+}
+
+func TestWaitHostConfirmsAnExistingRoom(t *testing.T) {
+	hub := newTestHub(t)
+	cfg := Config{CloudflareURL: hub.url}
+
+	host, err := Create(context.Background(), cfg, Cloudflare)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer host.Close()
+
+	guest, err := Join(context.Background(), cfg, host.Key)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+	defer guest.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := guest.WaitHost(ctx); err != nil {
+		t.Fatalf("WaitHost: %v", err)
+	}
+}
+
+func TestWaitHostRetriesAThrottledHello(t *testing.T) {
+	hub := newTestHub(t)
+	hub.quiet = true
+	cfg := Config{CloudflareURL: hub.url}
+
+	host, err := Create(context.Background(), cfg, Cloudflare)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer host.Close()
+
+	first, err := Join(context.Background(), cfg, host.Key)
+	if err != nil {
+		t.Fatalf("first Join: %v", err)
+	}
+	defer first.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := first.WaitHost(ctx); err != nil {
+		t.Fatalf("first WaitHost: %v", err)
+	}
+
+	// The second hello lands inside the host's helloThrottle window. WaitHost
+	// has to ask again instead of declaring the room empty.
+	second, err := Join(context.Background(), cfg, host.Key)
+	if err != nil {
+		t.Fatalf("second Join: %v", err)
+	}
+	defer second.Close()
+	ctx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := second.WaitHost(ctx); err != nil {
+		t.Fatalf("second WaitHost after a throttled hello: %v", err)
+	}
+}
+
+func TestWaitHostReportsAnEmptyRoom(t *testing.T) {
+	hub := newTestHub(t)
+	cfg := Config{CloudflareURL: hub.url}
+
+	key, err := NewKey(Cloudflare)
+	if err != nil {
+		t.Fatalf("NewKey: %v", err)
+	}
+	guest, err := Join(context.Background(), cfg, key)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+	defer guest.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	if err := guest.WaitHost(ctx); !errors.Is(err, ErrRoomNotFound) {
+		t.Fatalf("WaitHost = %v, want ErrRoomNotFound", err)
 	}
 }
 

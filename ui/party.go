@@ -23,6 +23,11 @@ const (
 	partyHostTick         = time.Second
 	partyGuestTick        = time.Second
 	partyCreateTimeout    = 20 * time.Second
+	// A guest checks that a room has a host before the waiting screen opens.
+	// The relay handshake and the host's answer share this budget, so a bad
+	// key or an unreachable relay cannot leave the button spinning forever.
+	partyJoinTimeout = 8 * time.Second
+	partyHostWait    = 5 * time.Second
 
 	// Drift is corrected in two ways: a gentle rate change hides errors below a
 	// second, a seek fixes anything larger. The seek leads by a little because
@@ -273,10 +278,16 @@ func (m *partyManager) Join(key string) error {
 		m.Delete()
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), partyCreateTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), partyJoinTimeout)
 	defer cancel()
 	session, err := watchparty.Join(ctx, m.cfg, normalized)
 	if err != nil {
+		return err
+	}
+	probeCtx, probeCancel := context.WithTimeout(ctx, partyHostWait)
+	defer probeCancel()
+	if err := session.WaitHost(probeCtx); err != nil {
+		_ = session.Close()
 		return err
 	}
 	m.adopt(session)
