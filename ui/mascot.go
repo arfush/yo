@@ -132,10 +132,12 @@ func drawCatgirl(gtx layout.Context, rect image.Rectangle, now time.Time, linkAt
 	// Side locks frame the face without adding tails behind the body.
 	fillEllipse(gtx, r(-9.5, -7.5, -5.4, -0.5), catHairColor)
 	fillEllipse(gtx, r(5.4, -7.5, 9.5, -0.5), catHairColor)
-	// Fringe, with a small highlight on the left.
-	fillEllipse(gtx, r(-7.6, -9.2, -0.4, -3.1), catHairColor)
-	fillEllipse(gtx, r(-0.6, -9.2, 7.6, -3.1), catHairColor)
-	fillEllipse(gtx, r(-4.6, -10.3, 0.8, -4.2), catHairColor)
+	// Fringe, with a small highlight on the left. The tops reach above the
+	// hair crown: at the junction of the two side locks the face ellipse used
+	// to peek through as a stray light dot.
+	fillEllipse(gtx, r(-7.6, -10.2, -0.4, -3.1), catHairColor)
+	fillEllipse(gtx, r(-0.6, -10.2, 7.6, -3.1), catHairColor)
+	fillEllipse(gtx, r(-4.6, -11.0, 0.8, -4.2), catHairColor)
 	fillEllipse(gtx, r(-7.2, -8.1, -3.6, -6.1), withAlpha(catHairLight, 0x9a))
 
 	// Eyes, blush and a tiny cat mouth.
