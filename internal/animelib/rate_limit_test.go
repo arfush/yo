@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -273,6 +274,38 @@ func TestGetFailsFastOnRateLimitWhenRequested(t *testing.T) {
 	}
 	if elapsed := time.Since(start); elapsed > time.Second {
 		t.Fatalf("get took %v, want an immediate error", elapsed)
+	}
+	if got := atomic.LoadInt32(&requests); got != 1 {
+		t.Fatalf("server saw %d requests, want 1", got)
+	}
+}
+
+// TestResolveKeepsRateLimitCause covers the Play-from-history path: the title
+// loader tries several variants, and a fail-fast 429 must not be reported as
+// "title not found", which used to open an empty title page instead of showing
+// the header countdown.
+func TestResolveKeepsRateLimitCause(t *testing.T) {
+	resetRateLimit()
+	defer resetRateLimit()
+
+	var requests int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requests, 1)
+		http.Error(w, "slow down", http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	client := New("token")
+	client.baseURL = server.URL
+	client.http = server.Client()
+
+	ctx := FailFastOnRateLimit(context.Background())
+	_, err := client.resolve(ctx, "some-title")
+	if !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("resolve = %v, want ErrRateLimited", err)
+	}
+	if strings.Contains(err.Error(), "не удалось найти") {
+		t.Fatalf("resolve = %v, must not mask the pause as a missing title", err)
 	}
 	if got := atomic.LoadInt32(&requests); got != 1 {
 		t.Fatalf("server saw %d requests, want 1", got)

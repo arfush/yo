@@ -539,6 +539,14 @@ func (c *Client) resolve(ctx context.Context, rawSlug string) (*Title, error) {
 			endpoint := c.baseURL + "/api/anime/" + url.PathEscape(variant) + "?fields%5B0%5D=teams"
 			body, err := c.getWithRetry(ctx, endpoint, siteID, 2)
 			if err != nil {
+				// A fail-fast rate-limit pause is not "title not found": letting
+				// it fall through would report every variant as missing and send
+				// the user to the title page instead of the header countdown.
+				if errors.Is(err, ErrRateLimited) ||
+					errors.Is(err, context.Canceled) ||
+					errors.Is(err, context.DeadlineExceeded) {
+					return nil, err
+				}
 				failures = append(failures, fmt.Sprintf("%s (site %d): %v", variant, siteID, err))
 				continue
 			}
