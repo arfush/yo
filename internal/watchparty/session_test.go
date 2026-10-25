@@ -229,7 +229,7 @@ func TestHostAndGuestShareAnAnchor(t *testing.T) {
 		t.Fatalf("Create returned key %q", host.Key)
 	}
 
-	guest, err := Join(context.Background(), cfg, Cloudflare, strings.ToLower(host.Key))
+	guest, err := Join(context.Background(), cfg, strings.ToLower(host.Key))
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -285,7 +285,7 @@ func TestGuestLearnsWhenTheHostLeaves(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	guest, err := Join(context.Background(), cfg, Cloudflare, host.Key)
+	guest, err := Join(context.Background(), cfg, host.Key)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -318,7 +318,7 @@ func TestHostGetsAReconnectWindow(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	defer host.Close()
-	guest, err := Join(context.Background(), cfg, Cloudflare, host.Key)
+	guest, err := Join(context.Background(), cfg, host.Key)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -358,7 +358,7 @@ func TestGuestLeavesWithoutAnnouncingIt(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	defer host.Close()
-	guest, err := Join(context.Background(), cfg, Cloudflare, host.Key)
+	guest, err := Join(context.Background(), cfg, host.Key)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -385,7 +385,7 @@ func TestGuestControlReachesTheHost(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	defer host.Close()
-	guest, err := Join(context.Background(), cfg, Cloudflare, host.Key)
+	guest, err := Join(context.Background(), cfg, host.Key)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -431,7 +431,7 @@ func TestGuestNoticesASilentHost(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	defer host.Close()
-	guest, err := Join(context.Background(), cfg, Cloudflare, host.Key)
+	guest, err := Join(context.Background(), cfg, host.Key)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -452,11 +452,14 @@ func TestJoinRejectsAMistypedKey(t *testing.T) {
 	hub := newTestHub(t)
 	cfg := Config{CloudflareURL: hub.url}
 
-	if _, err := Join(context.Background(), cfg, Cloudflare, "YOFBQOPG"); err == nil {
+	if _, err := Join(context.Background(), cfg, "YOCBQOPG"); err == nil {
 		t.Fatal("Join accepted a key that is too short")
 	}
-	if _, err := Join(context.Background(), cfg, Cloudflare, "XXFBQOPGZ"); err == nil {
+	if _, err := Join(context.Background(), cfg, "XXCBQOPGZ"); err == nil {
 		t.Fatal("Join accepted a key without the YO prefix")
+	}
+	if _, err := Join(context.Background(), cfg, "YOFBQOPGZ"); err == nil {
+		t.Fatal("Join accepted a key without a known relay")
 	}
 }
 
@@ -490,7 +493,7 @@ func TestHostPublishesRightAfterCreate(t *testing.T) {
 		t.Fatalf("Publish right after Create: %v", err)
 	}
 
-	guest, err := Join(context.Background(), cfg, Cloudflare, host.Key)
+	guest, err := Join(context.Background(), cfg, host.Key)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}

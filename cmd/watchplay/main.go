@@ -60,7 +60,7 @@ const (
 var errUsage = errors.New("неверные аргументы")
 
 func main() {
-	providerFlag := flag.String("provider", "", "реле: cloudflare или supabase")
+	providerFlag := flag.String("provider", "", "реле для создания комнаты: cloudflare или supabase")
 	flag.Usage = usage
 	flag.Parse()
 
@@ -140,9 +140,18 @@ func run(ctx context.Context, providerFlag string, args []string) error {
 	if err != nil {
 		return err
 	}
-	provider, err := chooseProvider(cfg, providerFlag)
+	var provider watchparty.Provider
+	if cmd.name == "create" {
+		provider, err = chooseProvider(cfg, providerFlag)
+	} else {
+		// The host's key names the relay; --provider is a create-only flag.
+		provider, err = watchparty.ProviderFromKey(cmd.args[0])
+	}
 	if err != nil {
 		return err
+	}
+	if !cfg.Configured(provider) {
+		return fmt.Errorf("%s не настроен", provider.Label())
 	}
 	fmt.Printf("Реле: %s (%s)\n", provider.Label(), source)
 
@@ -169,7 +178,7 @@ func run(ctx context.Context, providerFlag string, args []string) error {
 	case "create":
 		return a.host(ctx, cfg, provider, cmd.args)
 	case "open":
-		return a.guest(ctx, cfg, provider, cmd.args[0])
+		return a.guest(ctx, cfg, cmd.args[0])
 	}
 	return errUsage
 }
@@ -343,9 +352,9 @@ func (a *app) host(ctx context.Context, cfg watchparty.Config, provider watchpar
 	return a.commands(ctx, room, true)
 }
 
-func (a *app) guest(ctx context.Context, cfg watchparty.Config, provider watchparty.Provider, key string) error {
+func (a *app) guest(ctx context.Context, cfg watchparty.Config, key string) error {
 	roomCtx, cancel := context.WithTimeout(ctx, roomTimeout)
-	room, err := watchparty.Join(roomCtx, cfg, provider, key)
+	room, err := watchparty.Join(roomCtx, cfg, key)
 	cancel()
 	if err != nil {
 		return err

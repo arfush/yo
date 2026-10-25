@@ -950,10 +950,9 @@ func (w *watchPartyWindow) join() {
 	w.busy = true
 	w.errorText = ""
 	w.errorAt = time.Time{}
-	provider := w.party.Provider()
 	w.window.Invalidate()
 	go func() {
-		err := w.party.Join(provider, key)
+		err := w.party.Join(key)
 		w.results <- partyResult{kind: partyJoined, err: err}
 		w.window.Invalidate()
 	}()

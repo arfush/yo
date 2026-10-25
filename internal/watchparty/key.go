@@ -6,6 +6,7 @@ package watchparty
 import (
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -14,6 +15,11 @@ const (
 	KeyLength = 9
 	// KeyPrefix opens every room key, so a pasted value is recognisable.
 	KeyPrefix = "YO"
+	// keyProviderIndex is the position of the relay letter. It follows the
+	// prefix: YOC… is a Cloudflare room, YOS… a Supabase room.
+	keyProviderIndex = len(KeyPrefix)
+	// keySuffixLength covers the random part after the prefix and the relay.
+	keySuffixLength = KeyLength - len(KeyPrefix) - 1
 )
 
 const keyAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -21,9 +27,13 @@ const keyAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 // ErrInvalidKey reports a value that is not a room key.
 var ErrInvalidKey = errors.New("некорректный ключ комнаты")
 
-// NewKey returns a random room key such as YOFBQOPGZ.
-func NewKey() (string, error) {
-	buf := make([]byte, KeyLength-len(KeyPrefix))
+// NewKey returns a random room key for the given relay, such as YOCBQOPGZ.
+func NewKey(provider Provider) (string, error) {
+	code, ok := providerKeyCode(provider)
+	if !ok {
+		return "", fmt.Errorf("неизвестный провайдер %q", provider)
+	}
+	buf := make([]byte, keySuffixLength)
 	if _, err := rand.Read(buf); err != nil {
 		return "", err
 	}
@@ -35,12 +45,12 @@ func NewKey() (string, error) {
 		}
 		buf[index] = keyAlphabet[value]
 	}
-	return KeyPrefix + string(buf), nil
+	return KeyPrefix + string(code) + string(buf), nil
 }
 
 // NormalizeKey trims a pasted key and returns its canonical upper-case form.
-// The keyboard layout and letter case do not matter to the user, so "yofbqopgz"
-// and " YOFBQOPGZ " both resolve to the same room.
+// The keyboard layout and letter case do not matter to the user, so "yocbqopgz"
+// and " YOCBQOPGZ " both resolve to the same room.
 func NormalizeKey(value string) (string, error) {
 	key := strings.ToUpper(strings.TrimSpace(value))
 	if !ValidKey(key) {
@@ -54,12 +64,50 @@ func ValidKey(key string) bool {
 	if len(key) != KeyLength || !strings.HasPrefix(key, KeyPrefix) {
 		return false
 	}
-	for _, r := range key[len(KeyPrefix):] {
+	if !validProviderKey(key[keyProviderIndex]) {
+		return false
+	}
+	for _, r := range key[keyProviderIndex+1:] {
 		if r < 'A' || r > 'Z' {
 			return false
 		}
 	}
 	return true
+}
+
+// ProviderFromKey returns the relay encoded in a room key. The guest must join
+// the relay of the host, regardless of the provider selected in its settings.
+func ProviderFromKey(value string) (Provider, error) {
+	key, err := NormalizeKey(value)
+	if err != nil {
+		return "", err
+	}
+	switch key[keyProviderIndex] {
+	case 'C':
+		return Cloudflare, nil
+	case 'S':
+		return Supabase, nil
+	}
+	return "", ErrInvalidKey
+}
+
+// providerKeyCode is the third letter of a key for the given relay.
+func providerKeyCode(provider Provider) (byte, bool) {
+	switch provider {
+	case Cloudflare:
+		return 'C', true
+	case Supabase:
+		return 'S', true
+	}
+	return 0, false
+}
+
+func validProviderKey(code byte) bool {
+	switch code {
+	case 'C', 'S':
+		return true
+	}
+	return false
 }
 
 // NormalizeDisplay returns the upper-case form of a key for display. It does

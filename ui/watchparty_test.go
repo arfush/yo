@@ -55,14 +55,14 @@ func TestWatchPartyOpensOnChoiceWithoutRoom(t *testing.T) {
 func TestWatchPartyReopensCreatedFormForHost(t *testing.T) {
 	party := &partyManager{
 		provider: watchparty.Cloudflare,
-		session:  &watchparty.Session{Key: "YOFBQOPGZ", Provider: watchparty.Cloudflare, Role: watchparty.Host},
+		session:  &watchparty.Session{Key: "YOCBQOPGZ", Provider: watchparty.Cloudflare, Role: watchparty.Host},
 	}
 	screen := newWatchPartyWindow(nil, nil, party)
 	if screen.mode != wpCreated {
 		t.Fatalf("mode = %v, want wpCreated for a host", screen.mode)
 	}
 	snapshot := party.Snapshot()
-	if snapshot.Key != "YOFBQOPGZ" || !snapshot.Active {
+	if snapshot.Key != "YOCBQOPGZ" || !snapshot.Active {
 		t.Fatalf("snapshot = %+v, want the retained key", snapshot)
 	}
 }
@@ -70,7 +70,7 @@ func TestWatchPartyReopensCreatedFormForHost(t *testing.T) {
 func TestWatchPartyReopensWaitingScreenForGuest(t *testing.T) {
 	party := &partyManager{
 		provider: watchparty.Cloudflare,
-		session:  &watchparty.Session{Key: "YOFBQOPGZ", Provider: watchparty.Cloudflare, Role: watchparty.Guest},
+		session:  &watchparty.Session{Key: "YOCBQOPGZ", Provider: watchparty.Cloudflare, Role: watchparty.Guest},
 	}
 	screen := newWatchPartyWindow(nil, nil, party)
 	if screen.mode != wpWaiting {
@@ -185,7 +185,7 @@ func TestRoomClosedShowsJoinFormWithReason(t *testing.T) {
 	screen := newWatchPartyWindow(nil, nil, &partyManager{provider: watchparty.Cloudflare})
 	screen.mode = wpWaiting
 	screen.busy = true
-	screen.editor.SetText("YOFBQOPGZ")
+	screen.editor.SetText("YOCBQOPGZ")
 
 	screen.roomClosed(hostClosedNotice)
 

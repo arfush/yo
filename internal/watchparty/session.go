@@ -62,18 +62,24 @@ type Session struct {
 	cancel context.CancelFunc
 }
 
-// Create allocates a fresh room key and opens it as the host.
+// Create allocates a fresh room key and opens it as the host. The key carries
+// the relay, so a guest joins the same backend without picking one by hand.
 func Create(ctx context.Context, cfg Config, provider Provider) (*Session, error) {
-	key, err := NewKey()
+	key, err := NewKey(provider)
 	if err != nil {
 		return nil, err
 	}
 	return open(ctx, cfg, provider, key, Host)
 }
 
-// Join normalises the key and opens the room as a guest.
-func Join(ctx context.Context, cfg Config, provider Provider, key string) (*Session, error) {
+// Join reads the relay from the key, normalises it and opens the room as a
+// guest.
+func Join(ctx context.Context, cfg Config, key string) (*Session, error) {
 	normalized, err := NormalizeKey(key)
+	if err != nil {
+		return nil, err
+	}
+	provider, err := ProviderFromKey(normalized)
 	if err != nil {
 		return nil, err
 	}
@@ -83,6 +89,11 @@ func Join(ctx context.Context, cfg Config, provider Provider, key string) (*Sess
 func open(ctx context.Context, cfg Config, provider Provider, key string, role Role) (*Session, error) {
 	if !provider.Valid() || !cfg.Configured(provider) {
 		return nil, ErrNotConfigured
+	}
+	// The key is the only source of the relay for a guest, and a host must not
+	// mint a key for another backend, so a mismatch here is a programming bug.
+	if keyProvider, err := ProviderFromKey(key); err != nil || keyProvider != provider {
+		return nil, ErrInvalidKey
 	}
 	session := &Session{
 		Key:      key,

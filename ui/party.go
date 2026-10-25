@@ -248,16 +248,23 @@ func (m *partyManager) Create(provider watchparty.Provider) (string, error) {
 	return session.Key, nil
 }
 
-// Join connects to an existing room.
-func (m *partyManager) Join(provider watchparty.Provider, key string) error {
+// Join connects to an existing room. The relay comes from the key, not from
+// the provider selected in the settings: the host's room lives on its own
+// backend and a guest must reach the same one.
+func (m *partyManager) Join(key string) error {
 	if m == nil {
 		return errors.New("совместный просмотр недоступен")
 	}
-	if !m.cfg.Configured(provider) {
-		return fmt.Errorf("%s не настроен", provider.Label())
-	}
-	if _, err := watchparty.NormalizeKey(key); err != nil {
+	normalized, err := watchparty.NormalizeKey(key)
+	if err != nil {
 		return err
+	}
+	provider, err := watchparty.ProviderFromKey(normalized)
+	if err != nil {
+		return err
+	}
+	if !m.cfg.Configured(provider) {
+		return fmt.Errorf("для этого ключа нужен %s — он не настроен в этой сборке", provider.Label())
 	}
 	m.mu.Lock()
 	busy := m.session != nil
@@ -268,7 +275,7 @@ func (m *partyManager) Join(provider watchparty.Provider, key string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), partyCreateTimeout)
 	defer cancel()
-	session, err := watchparty.Join(ctx, m.cfg, provider, key)
+	session, err := watchparty.Join(ctx, m.cfg, normalized)
 	if err != nil {
 		return err
 	}
