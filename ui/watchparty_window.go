@@ -142,6 +142,7 @@ func newWatchPartyWindow(typo *typography, w *app.Window, party *partyManager) *
 		results: make(chan partyResult, 4),
 	}
 	screen.editor.SingleLine = true
+	screen.editor.Submit = true
 	screen.editor.InputHint = key.HintText
 	screen.keyEditor.SingleLine = true
 	screen.keyEditor.ReadOnly = true
@@ -389,9 +390,10 @@ func (w *watchPartyWindow) layoutKeyField(gtx layout.Context, rect image.Rectang
 		inner.Min.Y+(inner.Dy()-lineHeight)/2+lineHeight,
 	)
 
+	submitted := false
 	if textRect.Dx() > 0 {
 		if editable {
-			w.layoutKeyEditor(gtx, textRect)
+			submitted = w.layoutKeyEditor(gtx, textRect)
 		} else {
 			w.layoutKeyViewer(gtx, textRect, watchparty.NormalizeDisplay(value))
 		}
@@ -435,11 +437,11 @@ func (w *watchPartyWindow) layoutKeyField(gtx layout.Context, rect image.Rectang
 	})
 	stack.Pop()
 
+	if editable {
+		return clicked || submitted
+	}
 	if !clicked {
 		return false
-	}
-	if editable {
-		return true
 	}
 	key := watchparty.NormalizeDisplay(value)
 	if key == "" {
@@ -452,8 +454,21 @@ func (w *watchPartyWindow) layoutKeyField(gtx layout.Context, rect image.Rectang
 	return false
 }
 
-func (w *watchPartyWindow) layoutKeyEditor(gtx layout.Context, rect image.Rectangle) {
+// layoutKeyEditor draws the editable field and reports whether Enter was
+// pressed. Editor.Layout drains its events internally, so SubmitEvent has to be
+// collected with a separate Update pass before the layout.
+func (w *watchPartyWindow) layoutKeyEditor(gtx layout.Context, rect image.Rectangle) bool {
 	w.syncEditor()
+	submitted := false
+	for {
+		event, ok := w.editor.Update(gtx)
+		if !ok {
+			break
+		}
+		if _, ok := event.(widget.SubmitEvent); ok {
+			submitted = true
+		}
+	}
 	editorGtx := gtx
 	editorGtx.Constraints = layout.Exact(rect.Size())
 	stack := op.Offset(rect.Min).Push(gtx.Ops)
@@ -467,6 +482,7 @@ func (w *watchPartyWindow) layoutKeyEditor(gtx layout.Context, rect image.Rectan
 	)
 	stack.Pop()
 	w.syncEditor()
+	return submitted
 }
 
 // syncEditor keeps the join field in the canonical room-key form: upper case,
