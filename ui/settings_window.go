@@ -19,38 +19,35 @@ import (
 
 const (
 	settingsPadX         = unit.Dp(28)
-	settingsPadTop       = unit.Dp(22)
+	settingsPadTop       = unit.Dp(20)
 	settingsTitleSize    = unit.Sp(21)
 	settingsLabelSize    = unit.Sp(14)
 	settingsNoteSize     = unit.Sp(11.5)
 	settingsButtonSize   = unit.Sp(12)
 	settingsButtonHeight = unit.Dp(34)
 	settingsPanelRadius  = unit.Dp(10)
-	settingsPanelHeight  = unit.Dp(80)
+	settingsPanelHeight  = unit.Dp(60)
 	settingsPanelPadX    = unit.Dp(18)
-	settingsPanelPadTop  = unit.Dp(15)
 	settingsToggleWidth  = unit.Dp(42)
 	settingsToggleHeight = unit.Dp(24)
 	settingsNoteGap      = unit.Dp(6)
-	settingsTitleGap     = unit.Dp(13)
-	settingsGroupGap     = unit.Dp(16)
-	settingsRowGap       = unit.Dp(8)
+	settingsTitleGap     = unit.Dp(12)
+	settingsGroupGap     = unit.Dp(14)
+	settingsRowGap       = unit.Dp(6)
 
-	settingsProviderWidth       = unit.Dp(124)
-	settingsProviderHeight      = unit.Dp(30)
-	settingsProviderItemHeight  = unit.Dp(32)
-	settingsProviderItemGap     = unit.Dp(2)
-	settingsProviderMenuPad     = unit.Dp(4)
-	settingsProviderMenuGap     = unit.Dp(6)
-	settingsProviderPanelHeight = unit.Dp(60)
+	settingsProviderWidth      = unit.Dp(124)
+	settingsProviderHeight     = unit.Dp(30)
+	settingsProviderItemHeight = unit.Dp(32)
+	settingsProviderItemGap    = unit.Dp(2)
+	settingsProviderMenuPad    = unit.Dp(4)
+	settingsProviderMenuGap    = unit.Dp(6)
 
-	settingsRelayPanelHeight = unit.Dp(68)
-	settingsFieldHeight      = unit.Dp(30)
-	settingsFieldGap         = unit.Dp(12)
-	settingsFieldPadX        = unit.Dp(10)
-	settingsFieldLabelGap    = unit.Dp(4)
-	settingsFieldSize        = unit.Sp(12)
-	settingsErrorGap         = unit.Dp(6)
+	settingsFieldHeight = unit.Dp(30)
+	settingsFieldWidth  = unit.Dp(360)
+	settingsFieldPadX   = unit.Dp(10)
+	settingsFieldSize   = unit.Sp(12)
+	settingsLabelGap    = unit.Dp(18)
+	settingsErrorGap    = unit.Dp(5)
 )
 
 var (
@@ -189,16 +186,9 @@ func (w *settingsWindow) layout(gtx layout.Context) {
 	y = w.layoutSectionTitle(gtx, left, y, "Совместный просмотр")
 	y = w.layoutControlPanel(gtx, image.Rect(left, y, right, y+gtx.Dp(settingsPanelHeight)))
 	y += gtx.Dp(settingsRowGap)
-	y = w.layoutProviderPanel(
-		gtx,
-		image.Rect(left, y, right, y+gtx.Dp(settingsProviderPanelHeight)),
-	)
-	y += gtx.Dp(settingsRowGap)
+	y = w.layoutProviderPanel(gtx, image.Rect(left, y, right, y+gtx.Dp(settingsPanelHeight)))
 	var relaySubmitted, relayFocusLost bool
-	y, relaySubmitted, relayFocusLost = w.layoutRelayPanel(
-		gtx,
-		image.Rect(left, y, right, y+gtx.Dp(settingsRelayPanelHeight)),
-	)
+	y, relaySubmitted, relayFocusLost = w.layoutRelayPanels(gtx, left, right, y)
 	if relaySubmitted || relayFocusLost {
 		w.saveRelays()
 	}
@@ -357,63 +347,100 @@ func (w *settingsWindow) layoutProviderPanel(gtx layout.Context, rect image.Rect
 	return rect.Max.Y
 }
 
-// layoutRelayPanel draws the endpoints in their own block under the provider
-// choice, so the dropdown and the editable fields do not look like one control.
-func (w *settingsWindow) layoutRelayPanel(gtx layout.Context, rect image.Rectangle) (int, bool, bool) {
-	w.drawPanel(gtx, rect)
-	left := rect.Min.X + gtx.Dp(settingsPanelPadX)
-	right := rect.Max.X - gtx.Dp(settingsPanelPadX)
-	labelFace := font.Font{Typeface: fontFamily, Weight: font.Normal}
-	_, labelInk := w.typo.measure(gtx, "Supabase Publishable Key", labelFace, settingsNoteSize)
-	fieldHeight := gtx.Dp(settingsFieldHeight)
-	blockHeight := labelInk.Dy() + gtx.Dp(settingsFieldLabelGap) + fieldHeight
-	labelTop := rect.Min.Y + (rect.Dy()-blockHeight)/2
-	fieldTop := labelTop + labelInk.Dy() + gtx.Dp(settingsFieldLabelGap)
-	fieldBottom := fieldTop + fieldHeight
-	if fieldBottom > rect.Max.Y {
-		fieldBottom = rect.Max.Y
-	}
-
+// layoutRelayPanels draws one panel per editable endpoint, so each field reads
+// as its own setting instead of a row inside the provider card. It returns the
+// bottom of the last panel.
+func (w *settingsWindow) layoutRelayPanels(gtx layout.Context, left, right, top int) (int, bool, bool) {
+	height := gtx.Dp(settingsPanelHeight)
+	gap := gtx.Dp(settingsRowGap)
 	submitted := false
 	focusLost := false
-	if w.provider == watchparty.Supabase {
-		gap := gtx.Dp(settingsFieldGap)
-		width := (right - left - gap) / 2
-		if width <= 0 {
-			return rect.Max.Y, false, false
-		}
-		w.cloudflareFocused = false
 
-		urlRect := image.Rect(left, fieldTop, left+width, fieldBottom)
-		keyRect := image.Rect(left+width+gap, fieldTop, right, fieldBottom)
-		w.typo.draw(gtx, "Supabase Endpoint", labelFace, settingsNoteSize, settingsNoteColor, image.Pt(urlRect.Min.X, labelTop))
-		w.typo.draw(gtx, "Supabase Publishable Key", labelFace, settingsNoteSize, settingsNoteColor, image.Pt(keyRect.Min.X, labelTop))
-		if w.layoutRelayField(gtx, urlRect, &w.supabaseURLEditor, "https://...supabase.co") {
-			submitted = true
-		}
-		if w.layoutRelayField(gtx, keyRect, &w.supabaseKeyEditor, "sb_publishable_...") {
-			submitted = true
-		}
-		if relayFocusLost(gtx, &w.supabaseURLEditor, &w.supabaseURLFocused) {
-			focusLost = true
-		}
-		if relayFocusLost(gtx, &w.supabaseKeyEditor, &w.supabaseKeyFocused) {
-			focusLost = true
-		}
-		return rect.Max.Y, submitted, focusLost
+	if w.provider == watchparty.Supabase {
+		w.cloudflareFocused = false
+		var panel image.Rectangle
+		var ok, lost bool
+
+		top += gap
+		panel = image.Rect(left, top, right, top+height)
+		ok, lost = w.layoutRelayPanel(gtx, panel, "Supabase Endpoint", &w.supabaseURLEditor, "https://...supabase.co", &w.supabaseURLFocused)
+		submitted = submitted || ok
+		focusLost = focusLost || lost
+		top = panel.Max.Y
+
+		top += gap
+		panel = image.Rect(left, top, right, top+height)
+		ok, lost = w.layoutRelayPanel(gtx, panel, "Supabase Publishable Key", &w.supabaseKeyEditor, "sb_publishable_...", &w.supabaseKeyFocused)
+		submitted = submitted || ok
+		focusLost = focusLost || lost
+		return panel.Max.Y, submitted, focusLost
 	}
 
 	w.supabaseURLFocused = false
 	w.supabaseKeyFocused = false
-	fieldRect := image.Rect(left, fieldTop, right, fieldBottom)
-	w.typo.draw(gtx, "Cloudflare Endpoint", labelFace, settingsNoteSize, settingsNoteColor, image.Pt(fieldRect.Min.X, labelTop))
-	if w.layoutRelayField(gtx, fieldRect, &w.cloudflareEditor, "https://...workers.dev") {
-		submitted = true
+	top += gap
+	panel := image.Rect(left, top, right, top+height)
+	ok, lost := w.layoutRelayPanel(gtx, panel, "Cloudflare Endpoint", &w.cloudflareEditor, "https://...workers.dev", &w.cloudflareFocused)
+	return panel.Max.Y, ok, lost
+}
+
+// layoutRelayPanel paints one endpoint setting: the name on the left, the
+// editor on the right, both vertically centered like the other setting rows.
+func (w *settingsWindow) layoutRelayPanel(
+	gtx layout.Context,
+	rect image.Rectangle,
+	label string,
+	editor *widget.Editor,
+	hint string,
+	wasFocused *bool,
+) (bool, bool) {
+	if rect.Empty() {
+		return false, false
 	}
-	if relayFocusLost(gtx, &w.cloudflareEditor, &w.cloudflareFocused) {
-		focusLost = true
+	w.drawPanel(gtx, rect)
+
+	panelPadX := gtx.Dp(settingsPanelPadX)
+	fieldRect := relayFieldRect(gtx, rect)
+	if fieldRect.Empty() {
+		return false, false
 	}
-	return rect.Max.Y, submitted, focusLost
+
+	face := font.Font{Typeface: fontFamily, Weight: font.Medium}
+	_, ink := w.typo.measure(gtx, label, face, settingsLabelSize)
+	labelLeft := rect.Min.X + panelPadX
+	labelTop := rect.Min.Y + (rect.Dy()-ink.Dy())/2
+	drawTruncatedText(
+		gtx,
+		w.typo,
+		label,
+		face,
+		settingsLabelSize,
+		mainTextColor,
+		image.Pt(labelLeft, labelTop),
+		fieldRect.Min.X-gtx.Dp(settingsLabelGap)-labelLeft,
+	)
+
+	submitted := w.layoutRelayField(gtx, fieldRect, editor, hint)
+	focusLost := relayFocusLost(gtx, editor, wasFocused)
+	return submitted, focusLost
+}
+
+// relayFieldRect returns the editor rectangle for one endpoint row: a fixed
+// width on the right, vertically centered in the panel.
+func relayFieldRect(gtx layout.Context, rect image.Rectangle) image.Rectangle {
+	panelPadX := gtx.Dp(settingsPanelPadX)
+	fieldHeight := gtx.Dp(settingsFieldHeight)
+	fieldWidth := gtx.Dp(settingsFieldWidth)
+	if max := (rect.Dx() - 2*panelPadX) / 2; fieldWidth > max {
+		fieldWidth = max
+	}
+	right := rect.Max.X - panelPadX
+	return image.Rect(
+		right-fieldWidth,
+		rect.Min.Y+(rect.Dy()-fieldHeight)/2,
+		right,
+		rect.Min.Y+(rect.Dy()+fieldHeight)/2,
+	)
 }
 
 // layoutRelayField paints one editable endpoint. Enter and leaving the field

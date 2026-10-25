@@ -133,10 +133,8 @@ func TestSettingsWindowFitsTheRealContentArea(t *testing.T) {
 	bottom := gtx.Dp(settingsPadTop) +
 		2*(titleInk.Dy()+gtx.Dp(settingsTitleGap)) +
 		gtx.Dp(settingsGroupGap) +
-		2*gtx.Dp(settingsPanelHeight) +
-		2*gtx.Dp(settingsRowGap) +
-		gtx.Dp(settingsProviderPanelHeight) +
-		gtx.Dp(settingsRelayPanelHeight)
+		5*gtx.Dp(settingsPanelHeight) +
+		3*gtx.Dp(settingsRowGap)
 	if bottom > contentHeight {
 		t.Fatalf("settings need %dpx, content area allows %dpx", bottom, contentHeight)
 	}
@@ -144,6 +142,35 @@ func TestSettingsWindowFitsTheRealContentArea(t *testing.T) {
 	errorBottom := bottom + gtx.Dp(settingsErrorGap) + noteInk.Dy()
 	if errorBottom > contentHeight {
 		t.Fatalf("settings with an error need %dpx, content area allows %dpx", errorBottom, contentHeight)
+	}
+}
+
+// TestRelayFieldRectKeepsTheInputBesideTheLabel pins the row layout: the editor
+// sits on the right of the same line as the setting name, not under it.
+func TestRelayFieldRectKeepsTheInputBesideTheLabel(t *testing.T) {
+	gtx := layout.Context{
+		Metric:      unit.Metric{PxPerDp: 1, PxPerSp: 1},
+		Constraints: layout.Exact(image.Pt(777, 60)),
+	}
+	panel := image.Rect(0, 100, 777, 160)
+	field := relayFieldRect(gtx, panel)
+
+	if want := panel.Max.X - gtx.Dp(settingsPanelPadX); field.Max.X != want {
+		t.Fatalf("field right = %d, want %d", field.Max.X, want)
+	}
+	if field.Dy() != gtx.Dp(settingsFieldHeight) {
+		t.Fatalf("field height = %d, want %d", field.Dy(), gtx.Dp(settingsFieldHeight))
+	}
+	if got, want := field.Min.Y+field.Dy()/2, panel.Min.Y+panel.Dy()/2; got != want {
+		t.Fatalf("field center = %d, want %d", got, want)
+	}
+	if field.Min.X <= panel.Min.X+gtx.Dp(settingsPanelPadX) {
+		t.Fatalf("field %v leaves no room for the label", field)
+	}
+
+	narrow := relayFieldRect(gtx, image.Rect(0, 0, 400, 60))
+	if max := (400 - 2*gtx.Dp(settingsPanelPadX)) / 2; narrow.Dx() > max {
+		t.Fatalf("narrow field width = %d, want at most %d", narrow.Dx(), max)
 	}
 }
 
