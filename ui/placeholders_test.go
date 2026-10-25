@@ -21,6 +21,10 @@ func TestAnimeLinkPromptList(t *testing.T) {
 		if !strings.Contains(phrase, "AnimeLIB") {
 			t.Fatalf("prompt %d does not mention AnimeLIB: %q", i, phrase)
 		}
+		lower := strings.ToLower(phrase)
+		if !strings.Contains(lower, "ссылк") && !strings.Contains(lower, "линк") {
+			t.Fatalf("prompt %d does not ask for a link: %q", i, phrase)
+		}
 		if seen[phrase] {
 			t.Fatalf("prompt %d is duplicated: %q", i, phrase)
 		}
