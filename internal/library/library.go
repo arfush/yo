@@ -308,8 +308,7 @@ func (l *Library) SetSharedControlEnabled(enabled bool) error {
 }
 
 // AutoSkipSegments returns the introdb segments that playback should skip.
-// Recap and the opening are on by default; the rest may be enabled in the
-// settings.
+// Every segment is off until the user enables it in the settings.
 func (l *Library) AutoSkipSegments() map[metadata.Segment]bool {
 	segments := metadata.Segments()
 	out := make(map[metadata.Segment]bool, len(segments))
@@ -317,13 +316,9 @@ func (l *Library) AutoSkipSegments() map[metadata.Segment]bool {
 		return out
 	}
 	for _, segment := range segments {
-		out[segment] = l.store.AutoSkipSegment(string(segment), defaultAutoSkip(segment))
+		out[segment] = l.store.AutoSkipSegment(string(segment))
 	}
 	return out
-}
-
-func defaultAutoSkip(segment metadata.Segment) bool {
-	return segment == metadata.SegmentRecap || segment == metadata.SegmentIntro
 }
 
 // SetAutoSkipSegment stores the per-type auto-skip choice.

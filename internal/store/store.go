@@ -655,10 +655,9 @@ func (s *Store) SetSharedControlEnabled(enabled bool) error {
 }
 
 // AutoSkipSegment reports whether chapters of this introdb segment type are
-// skipped automatically. Defaults live in the library, which knows the
-// product policy for a fresh database.
-func (s *Store) AutoSkipSegment(segment string, defaultValue bool) bool {
-	return s.boolSetting("autoskip_"+segment, defaultValue)
+// skipped automatically. Auto-skip is opt-in, so a missing row means off.
+func (s *Store) AutoSkipSegment(segment string) bool {
+	return s.boolSetting("autoskip_"+segment, false)
 }
 
 // SetAutoSkipSegment stores the per-type auto-skip choice.

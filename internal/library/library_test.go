@@ -38,13 +38,9 @@ func TestChoiceFallsBackToCompleteVoiceAndEpisode(t *testing.T) {
 	}
 }
 
-// TestTrackViewingTracksUnseenTitles covers a watch-party guest: the title may
-// be new for them and only known from the room, but it still has to land in
-// their history with the host's voice and keep the progress mpv writes.
-// TestAutoSkipSegmentsDefaultsAndPersist keeps the per-type switches working:
-// recap and opening start enabled, the rest are opt-in, and every choice is
-// stored by segment key.
-func TestAutoSkipSegmentsDefaultsAndPersist(t *testing.T) {
+// TestAutoSkipSegmentsOptInAndPersist keeps the per-type switches working:
+// every segment starts off, and each choice is stored by segment key.
+func TestAutoSkipSegmentsOptInAndPersist(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "yonime.sqlite")
 	lib, err := Open(path, filepath.Join(dir, "token.txt"))
@@ -52,13 +48,12 @@ func TestAutoSkipSegmentsDefaultsAndPersist(t *testing.T) {
 		t.Fatal(err)
 	}
 	segments := lib.AutoSkipSegments()
-	if !segments[metadata.SegmentRecap] || !segments[metadata.SegmentIntro] {
-		t.Fatalf("recap and intro must be enabled by default: %v", segments)
+	for _, segment := range metadata.Segments() {
+		if segments[segment] {
+			t.Fatalf("%s must be disabled by default: %v", segment, segments)
+		}
 	}
-	if segments[metadata.SegmentOutro] || segments[metadata.SegmentCredits] {
-		t.Fatalf("outro and credits must be opt-in: %v", segments)
-	}
-	if err := lib.SetAutoSkipSegment(metadata.SegmentOutro, true); err != nil {
+	if err := lib.SetAutoSkipSegment(metadata.SegmentIntro, true); err != nil {
 		t.Fatal(err)
 	}
 	if err := lib.Close(); err != nil {
@@ -70,11 +65,14 @@ func TestAutoSkipSegmentsDefaultsAndPersist(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = lib.Close() })
-	if !lib.AutoSkipSegments()[metadata.SegmentOutro] {
-		t.Fatal("enabled outro did not survive reopen")
+	if !lib.AutoSkipSegments()[metadata.SegmentIntro] {
+		t.Fatal("enabled intro did not survive reopen")
 	}
 }
 
+// TestTrackViewingTracksUnseenTitles covers a watch-party guest: the title may
+// be new for them and only known from the room, but it still has to land in
+// their history with the host's voice and keep the progress mpv writes.
 func TestTrackViewingTracksUnseenTitles(t *testing.T) {
 	dir := t.TempDir()
 	lib, err := Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
