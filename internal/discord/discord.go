@@ -30,17 +30,20 @@ const (
 	// five SET_ACTIVITY calls per twenty seconds. The activity only changes when
 	// the episode does, so this delay is invisible in practice.
 	minUpdateInterval = 4 * time.Second
+	// statusDisplayDetails makes Discord show the activity details (title and
+	// episode) in the compact status line above the profile instead of the
+	// application name "Yonime". See StatusDisplayTypes in the Discord docs.
+	statusDisplayDetails = 2
 	// reconnectDelay is how long to wait before dialing again when Discord is
 	// not running. A late Discord start is picked up within this window.
 	reconnectDelay = 10 * time.Second
 )
 
-// Presence is the data shown in the activity card. The voice, episode and total
-// are only used for the details line; Cover may be empty, in which case Discord
+// Presence is the data shown in the activity card. The episode and total are
+// only used for the details line; Cover may be empty, in which case Discord
 // falls back to the application art.
 type Presence struct {
 	Title   string
-	Voice   string
 	Episode string
 	Total   int
 	Movie   bool
@@ -48,18 +51,15 @@ type Presence struct {
 }
 
 // Details is the second line of the card. Serial episodes read
-// "Название 5/12 · Озвучка"; films and titles without a known episode or total
-// read "Название · Озвучка". The suffix is kept whole: a long title is the part
-// that gets shortened, so the episode number always stays visible.
+// "Название 5/12"; films and titles without a known episode or total read
+// "Название". The episode suffix is kept whole: a long title is the part that
+// gets shortened, so the episode number always stays visible. The voiceover is
+// deliberately not included, as requested.
 func (p Presence) Details() string {
 	title := strings.TrimSpace(p.Title)
-	voice := strings.TrimSpace(p.Voice)
 	suffix := ""
 	if !p.Movie && title != "" && p.Episode != "" && p.Total > 0 {
 		suffix = fmt.Sprintf(" %s/%d", p.Episode, p.Total)
-	}
-	if voice != "" {
-		suffix += " · " + voice
 	}
 	if suffix == "" {
 		return truncate(title, maxTextRunes)
@@ -81,8 +81,9 @@ func (p Presence) key() string {
 // than a struct: Discord distinguishes a missing assets block from an empty one.
 func (p Presence) activity() map[string]any {
 	activity := map[string]any{
-		"type":    activityTypeWatching,
-		"details": p.Details(),
+		"type":                activityTypeWatching,
+		"details":             p.Details(),
+		"status_display_type": statusDisplayDetails,
 	}
 	if cover := strings.TrimSpace(p.Cover); cover != "" {
 		activity["assets"] = map[string]any{

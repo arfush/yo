@@ -14,43 +14,33 @@ import (
 func TestPresenceDetailsSeries(t *testing.T) {
 	presence := Presence{
 		Title:   "Провожающая в последний путь Фрирен",
-		Voice:   "AniLibria",
 		Episode: "5",
 		Total:   12,
 	}
-	want := "Провожающая в последний путь Фрирен 5/12 · AniLibria"
+	want := "Провожающая в последний путь Фрирен 5/12"
 	if got := presence.Details(); got != want {
 		t.Fatalf("details = %q, want %q", got, want)
 	}
 }
 
-func TestPresenceDetailsMovie(t *testing.T) {
+func TestPresenceDetailsMovieHasNoEpisodes(t *testing.T) {
 	presence := Presence{
 		Title:   "Кими но На ва",
-		Voice:   "AniLibria",
 		Episode: "1",
 		Total:   1,
 		Movie:   true,
 	}
-	want := "Кими но На ва · AniLibria"
-	if got := presence.Details(); got != want {
+	if got, want := presence.Details(), "Кими но На ва"; got != want {
 		t.Fatalf("details = %q, want %q", got, want)
 	}
 }
 
-func TestPresenceDetailsWithoutVoice(t *testing.T) {
-	presence := Presence{Title: "Фрирен", Episode: "3", Total: 28}
-	if got, want := presence.Details(), "Фрирен 3/28"; got != want {
-		t.Fatalf("details = %q, want %q", got, want)
-	}
-}
-
-func TestPresenceDetailsFallsBackWithoutEpisodeOrTotal(t *testing.T) {
+func TestPresenceDetailsWithoutEpisodeOrTotal(t *testing.T) {
 	for _, presence := range []Presence{
-		{Title: "Фрирен", Voice: "AniLibria", Episode: "", Total: 28},
-		{Title: "Фрирен", Voice: "AniLibria", Episode: "5", Total: 0},
+		{Title: "Фрирен", Episode: "", Total: 28},
+		{Title: "Фрирен", Episode: "5", Total: 0},
 	} {
-		if got, want := presence.Details(), "Фрирен · AniLibria"; got != want {
+		if got, want := presence.Details(), "Фрирен"; got != want {
 			t.Fatalf("details = %q, want %q", got, want)
 		}
 	}
@@ -58,19 +48,18 @@ func TestPresenceDetailsFallsBackWithoutEpisodeOrTotal(t *testing.T) {
 
 // TestPresenceDetailsKeepsTheEpisodeWhenTheTitleIsLong guards the truncation
 // order: Discord cuts the whole line at 128 characters, so the title has to
-// shrink and the episode and voice must survive.
+// shrink and the episode must survive.
 func TestPresenceDetailsKeepsTheEpisodeWhenTheTitleIsLong(t *testing.T) {
 	presence := Presence{
 		Title:   strings.Repeat("Очень длинное название ", 12),
-		Voice:   "AniLibria",
 		Episode: "5",
 		Total:   12,
 	}
 	details := presence.Details()
-	if !strings.HasSuffix(details, " 5/12 · AniLibria") {
+	if !strings.HasSuffix(details, " 5/12") {
 		t.Fatalf("details = %q, want the episode suffix intact", details)
 	}
-	if !strings.HasSuffix(details, "… 5/12 · AniLibria") {
+	if !strings.HasSuffix(details, "… 5/12") {
 		t.Fatalf("details = %q, want a shortened title", details)
 	}
 	if runeLen(details) != maxTextRunes {
@@ -87,6 +76,9 @@ func TestPresenceActivityUsesExternalCover(t *testing.T) {
 	}
 	if activity["details"] != "Фрирен" {
 		t.Fatalf("details = %v", activity["details"])
+	}
+	if activity["status_display_type"] != statusDisplayDetails {
+		t.Fatalf("status_display_type = %v, want %d", activity["status_display_type"], statusDisplayDetails)
 	}
 	assets, ok := activity["assets"].(map[string]any)
 	if !ok {
@@ -109,7 +101,7 @@ func TestClientSendsSetActivityFrame(t *testing.T) {
 	defer serverConn.Close()
 	client := &ipcClient{conn: clientConn, r: bufio.NewReader(clientConn)}
 
-	want := Presence{Title: "Фрирен", Episode: "5", Total: 12, Voice: "AniLibria"}
+	want := Presence{Title: "Фрирен", Episode: "5", Total: 12}
 	go func() {
 		_ = client.setActivity(want.activity())
 	}()
@@ -135,7 +127,7 @@ func TestClientSendsSetActivityFrame(t *testing.T) {
 	if frame.Args.PID <= 0 {
 		t.Fatalf("pid = %d", frame.Args.PID)
 	}
-	if frame.Args.Activity["details"] != "Фрирен 5/12 · AniLibria" {
+	if frame.Args.Activity["details"] != "Фрирен 5/12" {
 		t.Fatalf("details = %v", frame.Args.Activity["details"])
 	}
 }

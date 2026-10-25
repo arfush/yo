@@ -1363,7 +1363,6 @@ func (a *application) trackPresence(session *playback.Session, title library.Tit
 	}
 	base := discord.Presence{
 		Title:   presenceTitle(title),
-		Voice:   plan.Voice,
 		Episode: plan.Episode,
 		Total:   title.EpisodesTotal,
 		Movie:   title.IsMovie,
