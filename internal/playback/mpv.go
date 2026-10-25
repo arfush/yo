@@ -61,6 +61,23 @@ type mpvProcess struct {
 	lastErr         error
 }
 
+// headerScriptOpts builds the script-opts value for the Lua header. mpv matches
+// the keys verbatim, dashes included, and the script declares them that way, so
+// a renamed option would be silently ignored and the header would fall back to
+// estimating the badge width from a character table.
+func headerScriptOpts(badgeWidth float32, title string) string {
+	opts := "yonime-header-version=" + version.String() + ",osc-windowcontrols=no"
+	if badgeWidth > 0 {
+		opts += ",yonime-header-badge-width=" + strconv.FormatFloat(float64(badgeWidth), 'f', -1, 32)
+	}
+	if title != "" && title != "Yonime" {
+		// The Lua header draws its own title, so the role has to be passed
+		// there as well as in the native window title.
+		opts += ",title=" + title
+	}
+	return opts
+}
+
 func startMPV(ctx context.Context, geometry string, header headerAssets, title string) (*mpvProcess, error) {
 	path, err := findMPV()
 	if err != nil {
@@ -95,21 +112,12 @@ func startMPV(ctx context.Context, geometry string, header headerAssets, title s
 		// apply boxvideo margins on its own; doing both made the bottom bar
 		// appear inconsistently. windowcontrols are hidden because the script
 		// draws its own.
-		scriptOpts := "yonime-header-version=" + version.String() + ",osc-windowcontrols=no"
-		if header.BadgeWidth > 0 {
-			scriptOpts += ",yonime-header-badge-width=" + strconv.FormatFloat(float64(header.BadgeWidth), 'f', -1, 32)
-		}
-		if title != "Yonime" {
-			// The Lua header draws its own title, so the role has to be
-			// passed there as well as in the native window title.
-			scriptOpts += ",title=" + title
-		}
 		args = append(args,
 			"--title-bar=no",
 			"--border=yes",
 			"--window-dragging=yes",
 			"--script="+header.ScriptPath,
-			"--script-opts="+scriptOpts,
+			"--script-opts="+headerScriptOpts(header.BadgeWidth, title),
 		)
 		if header.FontsDir != "" {
 			args = append(args, "--osd-fonts-dir="+header.FontsDir, "--osd-font=Inter")

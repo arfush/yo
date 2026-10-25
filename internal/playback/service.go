@@ -35,9 +35,9 @@ type StartOptions struct {
 	// custom window header. The UI owns the embedded fonts; playback installs
 	// them next to the Lua script.
 	HeaderFonts map[string][]byte
-	// HeaderBadgeWidth is the version badge ink width in dp, measured by the
-	// UI. The Lua header uses it to size its pill exactly like the app's
-	// header; zero means the script falls back to its character table.
+	// HeaderBadgeWidth is the version-label width in dp, measured by the UI.
+	// The Lua header uses it to size its pill exactly like the app's header;
+	// zero means the script falls back to its character table.
 	HeaderBadgeWidth float32
 	// Title overrides the mpv window title. The desktop window keeps the
 	// default; the watch-party console client adds the role so a host and a

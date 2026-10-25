@@ -17,10 +17,12 @@ local options = {
     height = 52,
     -- Font family loaded from the fonts directory passed by the launcher.
     font = "Inter",
-    -- Exact ink width of the version text in dp, measured by Gio. Zero means
-    -- the launcher had no measurement (the console client) and the character
-    -- advance table below is used instead.
-    badge_width = 0,
+    -- Exact width of the version text in dp, measured by Gio. Zero means the
+    -- launcher had no measurement (the console client) and the character
+    -- advance table below is used instead. mpv matches script-opts keys
+    -- verbatim, dashes included, so the key must stay "badge-width" even
+    -- though Lua would normally use an underscore.
+    ["badge-width"] = 0,
 }
 
 opt.read_options(options, "yonime-header")
@@ -29,7 +31,7 @@ local HEADER_HEIGHT = tonumber(options.height) or 52
 local HEADER_FONT = options.font or "Inter"
 local TITLE = options.title or "Yonime"
 local VERSION = options.version or ""
-local BADGE_WIDTH = tonumber(options.badge_width) or 0
+local BADGE_WIDTH = tonumber(options["badge-width"]) or 0
 
 -- Palette copied from ui/theme.go.
 local COLORS = {
@@ -46,8 +48,9 @@ local COLORS = {
     logoGate = "#ad9eff",
 }
 
--- Advance widths of the version characters at 11 sp in Inter Medium. They
--- match the ink widths Gio measures for the application's badge.
+-- Advance widths of the version characters at 11 sp in Inter Medium, rounded.
+-- They approximate the width Gio measures for the application's badge and are
+-- only used when the launcher cannot pass that measurement.
 local BADGE_ADVANCE = {
     ["0"] = 8, ["1"] = 5, ["2"] = 7, ["3"] = 7, ["4"] = 8,
     ["5"] = 7, ["6"] = 7, ["7"] = 7, ["8"] = 8, ["9"] = 8,

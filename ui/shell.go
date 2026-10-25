@@ -3,6 +3,7 @@ package ui
 import (
 	"image"
 	"image/color"
+	"math"
 
 	"gioui.org/app"
 	"gioui.org/f32"
@@ -59,9 +60,9 @@ type shell struct {
 	rateLimit rateLimitBanner
 	// footer lets a screen own the footer area, such as the title window.
 	footer layout.Widget
-	// badgeWidth is the measured version-badge ink width in dp. Playback
-	// forwards it to mpv so both headers draw the same pill instead of
-	// estimating it from a character table.
+	// badgeWidth is the measured version-label width in dp. Playback forwards
+	// it to mpv so both headers draw the same pill instead of estimating it
+	// from a character table.
 	badgeWidth float32
 	// overlay is drawn after the chrome so a dragged history card can move
 	// across the whole window, including over the header and footer.
@@ -262,44 +263,89 @@ func (s *shell) layoutLogo(gtx layout.Context, g geometry) {
 	drawImage(gtx, s.icon, g.logo)
 }
 
+// versionBadge is the version pill and the placement of its label.
+type versionBadge struct {
+	// pill is the outer rectangle, border included.
+	pill image.Rectangle
+	// ink is the visual bounds of the label in its own coordinates; center is
+	// where the painter puts its midpoint.
+	ink image.Rectangle
+	// textWidth is the typographic width of the label in device pixels. It
+	// sizes the pill and is the value handed to mpv, which cannot measure text
+	// itself.
+	textWidth float32
+	// center is the fractional point the label ink is centered on.
+	center f32.Point
+	// cap is the distance from the top of the label ink to the baseline. The
+	// label is centered by this block, not by the full ink: the dot in "v1.2"
+	// must not lift the digits above the middle of the pill.
+	cap int
+}
+
+// measureVersionBadge sizes the pill from the label advance so any version
+// string, short or long, keeps the same padding around its text. The advance,
+// not the ink, is what both renderers can agree on: mpv centres its ASS line
+// by it as well.
+func measureVersionBadge(gtx layout.Context, typo *typography, text string, g geometry) (versionBadge, bool) {
+	glyphs, ink := typo.measure(gtx, text, font.Font{Typeface: fontFamily, Weight: font.Medium}, badgeSize)
+	if ink.Empty() || len(glyphs) == 0 {
+		return versionBadge{}, false
+	}
+	last := glyphs[len(glyphs)-1]
+	advance := float32(last.X+last.Advance) / 64
+
+	border := g.leastPx(1)
+	pad := g.px(badgePaddingX)
+	height := g.px(badgeHeight)
+	width := int(math.Round(float64(advance))) + 2*pad + 2*border
+	top := g.headerCenterY - height/2
+	pill := image.Rect(g.badgeX, top, g.badgeX+width, top+height)
+	inner := pill.Inset(border)
+
+	baseline := int(glyphs[0].Y)
+	cap := baseline - ink.Min.Y
+	if cap <= 0 || cap > ink.Dy() {
+		cap = ink.Dy()
+	}
+
+	return versionBadge{
+		pill:      pill,
+		ink:       ink,
+		textWidth: advance,
+		center: f32.Pt(
+			float32(inner.Min.X)+float32(inner.Dx())/2,
+			float32(inner.Min.Y)+float32(inner.Dy())/2,
+		),
+		cap: cap,
+	}, true
+}
+
 // layoutBadge draws the version pill and returns its right edge so the
 // rate-limit banner can stay clear of a long version string.
 func (s *shell) layoutBadge(gtx layout.Context, g geometry) int {
 	face := font.Font{Typeface: fontFamily, Weight: font.Medium}
 	badgeText := version.String()
-	_, ink := s.typo.measure(gtx, badgeText, face, badgeSize)
-	if ink.Empty() {
+	badge, ok := measureVersionBadge(gtx, s.typo, badgeText, g)
+	if !ok {
 		return g.badgeX
 	}
-	if gtx.Metric.PxPerDp > 0 {
-		s.badgeWidth = float32(ink.Dx()) / gtx.Metric.PxPerDp
+	if g.scale > 0 {
+		s.badgeWidth = badge.textWidth / g.scale
 	}
 
 	border := g.leastPx(1)
-	pad := g.px(badgePaddingX)
-	height := g.px(badgeHeight)
-	width := ink.Dx() + 2*pad + 2*border
-	top := g.headerCenterY - height/2
-	badge := image.Rect(g.badgeX, top, g.badgeX+width, top+height)
-	radius := height / 2
+	radius := badge.pill.Dy() / 2
+	fillRounded(gtx, badgeBorderColor, badge.pill, radius)
 
-	fillRounded(gtx, badgeBorderColor, badge, radius)
-
-	inner := badge.Inset(border)
+	inner := badge.pill.Inset(border)
 	innerRadius := radius - border
 	if innerRadius < 0 {
 		innerRadius = 0
 	}
 	fillRounded(gtx, badgeFillColor, inner, innerRadius)
 
-	// Center the ink inside the inner rect so every version sits in the middle
-	// of its pill, regardless of the glyph widths.
-	at := image.Pt(
-		inner.Min.X+(inner.Dx()-ink.Dx())/2,
-		inner.Min.Y+(inner.Dy()-ink.Dy())/2,
-	)
-	s.typo.draw(gtx, badgeText, face, badgeSize, badgeTextColor, at)
-	return badge.Max.X
+	s.typo.paintCentered(gtx, badgeText, face, badgeSize, badgeTextColor, badge.center, badge.cap)
+	return badge.pill.Max.X
 }
 
 func (s *shell) clickControl(gtx layout.Context, g geometry, rect image.Rectangle, control *widget.Clickable, hover *hoverAnim, hoverColor color.NRGBA, draw func(layout.Context)) bool {

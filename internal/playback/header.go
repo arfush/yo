@@ -25,8 +25,8 @@ const headerScriptName = "yonime-header.lua"
 type headerAssets struct {
 	ScriptPath string
 	FontsDir   string
-	// BadgeWidth is the version badge ink width in dp, or zero when the
-	// caller has no Gio measurement to share.
+	// BadgeWidth is the version-label width in dp, or zero when the caller has
+	// no Gio measurement to share.
 	BadgeWidth float32
 }
 
