@@ -42,25 +42,8 @@ func githubTestClient(responses map[string]githubTestResponse) *http.Client {
 	})}
 }
 
-func githubReleaseJSON(version, assetURL, digest string) string {
-	assetName := AssetName(version, runtime.GOARCH)
-	payload := map[string]any{
-		"tag_name": version,
-		"body":     "Release notes",
-		"assets": []map[string]any{
-			{
-				"name":                 assetName,
-				"size":                 1234,
-				"browser_download_url": assetURL,
-				"digest":               digest,
-			},
-		},
-	}
-	data, _ := json.Marshal(payload)
-	return string(data)
-}
-
-func TestFetchReleaseUsesAssetDigest(t *testing.T) {
+func testRepository(t *testing.T) {
+	t.Helper()
 	oldBase, oldRepo := apiBase, Repository
 	t.Cleanup(func() {
 		apiBase = oldBase
@@ -68,14 +51,47 @@ func TestFetchReleaseUsesAssetDigest(t *testing.T) {
 	})
 	apiBase = "https://api.test"
 	Repository = "arfush/yonime"
+}
 
-	version := "v1.4.0"
+func githubAssetURL(version string) string {
+	name := AssetName(version, runtime.GOARCH)
+	return "https://github.com/arfush/yonime/releases/download/" + version + "/" + name
+}
+
+func githubReleaseEntry(version, assetURL, digest string) map[string]any {
+	return map[string]any{
+		"tag_name": version,
+		"body":     "Release notes",
+		"assets": []map[string]any{
+			{
+				"name":                 AssetName(version, runtime.GOARCH),
+				"size":                 1234,
+				"browser_download_url": assetURL,
+				"digest":               digest,
+			},
+		},
+	}
+}
+
+func githubReleaseListJSON(entries ...map[string]any) string {
+	data, _ := json.Marshal(entries)
+	return string(data)
+}
+
+func releasesPath() string {
+	return "api.test/repos/arfush/yonime/releases"
+}
+
+func TestFetchReleaseUsesAssetDigest(t *testing.T) {
+	testRepository(t)
+
+	version := "v1.4"
 	assetName := AssetName(version, runtime.GOARCH)
-	assetURL := "https://github.com/arfush/yonime/releases/download/" + version + "/" + assetName
+	assetURL := githubAssetURL(version)
 	client := githubTestClient(map[string]githubTestResponse{
-		"api.test/repos/arfush/yonime/releases/latest": {
+		releasesPath(): {
 			status: http.StatusOK,
-			body:   githubReleaseJSON(version, assetURL, "sha256:"+testHash),
+			body:   githubReleaseListJSON(githubReleaseEntry(version, assetURL, "sha256:"+testHash)),
 		},
 	})
 
@@ -94,20 +110,119 @@ func TestFetchReleaseUsesAssetDigest(t *testing.T) {
 	}
 }
 
-func TestFetchReleaseFallsBackToChecksumAsset(t *testing.T) {
-	oldBase, oldRepo := apiBase, Repository
-	t.Cleanup(func() {
-		apiBase = oldBase
-		Repository = oldRepo
-	})
-	apiBase = "https://api.test"
-	Repository = "arfush/yonime"
+func TestFetchReleaseStableSkipsPatchVersions(t *testing.T) {
+	testRepository(t)
 
-	version := "v1.4.0"
+	stable := "v1.2"
+	beta := "v1.2.1"
+	client := githubTestClient(map[string]githubTestResponse{
+		releasesPath(): {
+			status: http.StatusOK,
+			body: githubReleaseListJSON(
+				githubReleaseEntry(beta, githubAssetURL(beta), "sha256:"+testHash),
+				githubReleaseEntry(stable, githubAssetURL(stable), "sha256:"+testHash),
+			),
+		},
+	})
+
+	release, err := FetchRelease(context.Background(), client)
+	if err != nil {
+		t.Fatalf("FetchRelease: %v", err)
+	}
+	if release.Version != stable {
+		t.Fatalf("stable release = %q, want %q", release.Version, stable)
+	}
+
+	release, err = FetchReleaseChannel(context.Background(), client, ChannelBeta)
+	if err != nil {
+		t.Fatalf("FetchReleaseChannel: %v", err)
+	}
+	if release.Version != beta {
+		t.Fatalf("beta release = %q, want %q", release.Version, beta)
+	}
+}
+
+func TestFetchReleaseStableRejectsPatchOnlyFeed(t *testing.T) {
+	testRepository(t)
+
+	version := "v1.2.1"
+	client := githubTestClient(map[string]githubTestResponse{
+		releasesPath(): {
+			status: http.StatusOK,
+			body:   githubReleaseListJSON(githubReleaseEntry(version, githubAssetURL(version), "sha256:"+testHash)),
+		},
+	})
+
+	_, err := FetchRelease(context.Background(), client)
+	if !errors.Is(err, ErrNoRelease) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestFetchReleaseBetaIncludesStableAndPatch(t *testing.T) {
+	testRepository(t)
+
+	stable := "v1.3"
+	patch := "v1.2.9"
+	client := githubTestClient(map[string]githubTestResponse{
+		releasesPath(): {
+			status: http.StatusOK,
+			body: githubReleaseListJSON(
+				githubReleaseEntry(patch, githubAssetURL(patch), "sha256:"+testHash),
+				githubReleaseEntry(stable, githubAssetURL(stable), "sha256:"+testHash),
+			),
+		},
+	})
+
+	release, err := FetchReleaseChannel(context.Background(), client, ChannelBeta)
+	if err != nil {
+		t.Fatalf("FetchReleaseChannel: %v", err)
+	}
+	if release.Version != stable {
+		t.Fatalf("beta release = %q, want the newer stable %q", release.Version, stable)
+	}
+}
+
+func TestFetchReleaseIgnoresDraftsPrereleasesAndInvalidTags(t *testing.T) {
+	testRepository(t)
+
+	stable := "v1.4"
+	prerelease := githubReleaseEntry("v1.5", githubAssetURL("v1.5"), "sha256:"+testHash)
+	prerelease["prerelease"] = true
+	draft := githubReleaseEntry("v1.6", githubAssetURL("v1.6"), "sha256:"+testHash)
+	draft["draft"] = true
+	invalid := githubReleaseEntry("nightly", "https://github.com/arfush/yonime/releases/download/nightly/nightly.exe", "sha256:"+testHash)
+	fourParts := githubReleaseEntry("v1.7.0.1", githubAssetURL("v1.7.0.1"), "sha256:"+testHash)
+	client := githubTestClient(map[string]githubTestResponse{
+		releasesPath(): {
+			status: http.StatusOK,
+			body: githubReleaseListJSON(
+				draft,
+				prerelease,
+				fourParts,
+				invalid,
+				githubReleaseEntry(stable, githubAssetURL(stable), "sha256:"+testHash),
+			),
+		},
+	})
+
+	release, err := FetchRelease(context.Background(), client)
+	if err != nil {
+		t.Fatalf("FetchRelease: %v", err)
+	}
+	if release.Version != stable {
+		t.Fatalf("release = %q, want %q", release.Version, stable)
+	}
+}
+
+func TestFetchReleaseFallsBackToChecksumAsset(t *testing.T) {
+	testRepository(t)
+
+	version := "v1.4"
 	assetName := AssetName(version, runtime.GOARCH)
-	assetURL := "https://github.com/arfush/yonime/releases/download/" + version + "/" + assetName
+	assetURL := githubAssetURL(version)
 	checksumURL := assetURL + ".sha256"
-	payload := map[string]any{
+	payload := githubReleaseListJSON(map[string]any{
 		"tag_name": version,
 		"assets": []map[string]any{
 			{
@@ -121,12 +236,11 @@ func TestFetchReleaseFallsBackToChecksumAsset(t *testing.T) {
 				"browser_download_url": checksumURL,
 			},
 		},
-	}
-	apiBody, _ := json.Marshal(payload)
+	})
 	client := githubTestClient(map[string]githubTestResponse{
-		"api.test/repos/arfush/yonime/releases/latest": {
+		releasesPath(): {
 			status: http.StatusOK,
-			body:   string(apiBody),
+			body:   payload,
 		},
 		"github.com/arfush/yonime/releases/download/" + version + "/" + assetName + ".sha256": {
 			status: http.StatusOK,
@@ -144,17 +258,11 @@ func TestFetchReleaseFallsBackToChecksumAsset(t *testing.T) {
 }
 
 func TestFetchReleaseNoMatchingAsset(t *testing.T) {
-	oldBase, oldRepo := apiBase, Repository
-	t.Cleanup(func() {
-		apiBase = oldBase
-		Repository = oldRepo
-	})
-	apiBase = "https://api.test"
-	Repository = "arfush/yonime"
+	testRepository(t)
 
-	payload := fmt.Sprintf(`{"tag_name":"v1.4.0","assets":[{"name":"yonime_v1.4.0_other.exe","size":1234,"browser_download_url":"https://github.com/arfush/yonime/releases/download/v1.4.0/other.exe"}]}`)
+	payload := fmt.Sprintf(`[{"tag_name":"v1.4","assets":[{"name":"yonime_v1.4_other.exe","size":1234,"browser_download_url":"https://github.com/arfush/yonime/releases/download/v1.4/other.exe"}]}]`)
 	client := githubTestClient(map[string]githubTestResponse{
-		"api.test/repos/arfush/yonime/releases/latest": {status: http.StatusOK, body: payload},
+		releasesPath(): {status: http.StatusOK, body: payload},
 	})
 	_, err := FetchRelease(context.Background(), client)
 	if !errors.Is(err, ErrNoRelease) {
@@ -163,16 +271,10 @@ func TestFetchReleaseNoMatchingAsset(t *testing.T) {
 }
 
 func TestFetchReleaseNotFound(t *testing.T) {
-	oldBase, oldRepo := apiBase, Repository
-	t.Cleanup(func() {
-		apiBase = oldBase
-		Repository = oldRepo
-	})
-	apiBase = "https://api.test"
-	Repository = "arfush/yonime"
+	testRepository(t)
 
 	client := githubTestClient(map[string]githubTestResponse{
-		"api.test/repos/arfush/yonime/releases/latest": {status: http.StatusNotFound, body: ""},
+		releasesPath(): {status: http.StatusNotFound, body: ""},
 	})
 	_, err := FetchRelease(context.Background(), client)
 	if !errors.Is(err, ErrNoRelease) {
@@ -181,18 +283,12 @@ func TestFetchReleaseNotFound(t *testing.T) {
 }
 
 func TestFetchReleaseRejectsUntrustedAssetURL(t *testing.T) {
-	oldBase, oldRepo := apiBase, Repository
-	t.Cleanup(func() {
-		apiBase = oldBase
-		Repository = oldRepo
-	})
-	apiBase = "https://api.test"
-	Repository = "arfush/yonime"
+	testRepository(t)
 
 	client := githubTestClient(map[string]githubTestResponse{
-		"api.test/repos/arfush/yonime/releases/latest": {
+		releasesPath(): {
 			status: http.StatusOK,
-			body:   githubReleaseJSON("v1.4.0", "https://evil.example/yonime.exe", "sha256:"+testHash),
+			body:   githubReleaseListJSON(githubReleaseEntry("v1.4", "https://evil.example/yonime.exe", "sha256:"+testHash)),
 		},
 	})
 	_, err := FetchRelease(context.Background(), client)

@@ -90,3 +90,33 @@ func NormalizeVersion(value string) string {
 	}
 	return "v" + strings.Join(text, ".")
 }
+
+// Channel selects which published versions an installation accepts. Stable
+// releases use one or two components (v1.2); patch releases use three
+// (v1.2.3) and are opt-in.
+type Channel int
+
+const (
+	ChannelStable Channel = iota
+	ChannelBeta
+)
+
+// Accepts reports whether version belongs to the channel. Versions with four
+// components are not part of either channel: the release scheme only defines
+// stable and patch builds.
+func (c Channel) Accepts(version string) bool {
+	parts, ok := parseVersion(version)
+	if !ok {
+		return false
+	}
+	if c == ChannelBeta {
+		return len(parts) <= 3
+	}
+	return len(parts) <= 2
+}
+
+// IsBeta reports whether version is a patch release (major.minor.patch).
+func IsBeta(version string) bool {
+	parts, ok := parseVersion(version)
+	return ok && len(parts) == 3
+}

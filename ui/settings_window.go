@@ -69,6 +69,8 @@ var (
 // from the window so the screen itself has no storage dependency.
 type settingsValues struct {
 	Notifications bool
+	AutoUpdate    bool
+	Beta          bool
 	SharedControl bool
 	Provider      watchparty.Provider
 	CloudflareURL string
@@ -79,9 +81,11 @@ type settingsValues struct {
 type settingsWindow struct {
 	typo *typography
 
-	enabled  bool
-	control  bool
-	provider watchparty.Provider
+	enabled    bool
+	autoUpdate bool
+	beta       bool
+	control    bool
+	provider   watchparty.Provider
 
 	cloudflareEditor   widget.Editor
 	supabaseURLEditor  widget.Editor
@@ -91,10 +95,14 @@ type settingsWindow struct {
 	supabaseKeyFocused bool
 	relayDirty         bool
 
-	toggleClick  widget.Clickable
-	toggleHover  hoverAnim
-	controlClick widget.Clickable
-	controlHover hoverAnim
+	toggleClick     widget.Clickable
+	toggleHover     hoverAnim
+	autoUpdateClick widget.Clickable
+	autoUpdateHover hoverAnim
+	betaClick       widget.Clickable
+	betaHover       hoverAnim
+	controlClick    widget.Clickable
+	controlHover    hoverAnim
 
 	// providerClick is the select itself, providerItems are its options and
 	// providerScrim catches clicks outside the open menu.
@@ -118,19 +126,23 @@ type settingsWindow struct {
 	// hover transitions stop requesting frames.
 	hidden func() bool
 
-	onBack     func()
-	onToggle   func(bool) error
-	onControl  func(bool) error
-	onProvider func(watchparty.Provider) error
-	onRelay    func(watchparty.Config) error
+	onBack       func()
+	onToggle     func(bool) error
+	onAutoUpdate func(bool) error
+	onBeta       func(bool) error
+	onControl    func(bool) error
+	onProvider   func(watchparty.Provider) error
+	onRelay      func(watchparty.Config) error
 }
 
 func newSettingsWindow(typo *typography, values settingsValues) *settingsWindow {
 	w := &settingsWindow{
-		typo:     typo,
-		enabled:  values.Notifications,
-		control:  values.SharedControl,
-		provider: values.Provider,
+		typo:       typo,
+		enabled:    values.Notifications,
+		autoUpdate: values.AutoUpdate,
+		beta:       values.Beta,
+		control:    values.SharedControl,
+		provider:   values.Provider,
 	}
 	w.cloudflareEditor.SingleLine = true
 	w.cloudflareEditor.Submit = true
@@ -199,6 +211,12 @@ func (w *settingsWindow) layout(gtx layout.Context) {
 	y := gtx.Dp(settingsPadTop)
 	y = w.layoutSectionTitle(gtx, left, y, "Уведомления")
 	y = w.layoutNotificationPanel(gtx, image.Rect(left, y, right, y+gtx.Dp(settingsPanelHeight)))
+	y += gtx.Dp(settingsGroupGap)
+
+	y = w.layoutSectionTitle(gtx, left, y, "Обновление")
+	y = w.layoutAutoUpdatePanel(gtx, image.Rect(left, y, right, y+gtx.Dp(settingsPanelHeight)))
+	y += gtx.Dp(settingsRowGap)
+	y = w.layoutBetaPanel(gtx, image.Rect(left, y, right, y+gtx.Dp(settingsPanelHeight)))
 	y += gtx.Dp(settingsGroupGap)
 
 	y = w.layoutSectionTitle(gtx, left, y, "Совместный просмотр")
@@ -292,6 +310,8 @@ func (w *settingsWindow) contentHeight(gtx layout.Context) int {
 	height := gtx.Dp(settingsPadTop)
 	height += title("Уведомления") + panel
 	height += gtx.Dp(settingsGroupGap)
+	height += title("Обновление") + 2*panel + gtx.Dp(settingsRowGap)
+	height += gtx.Dp(settingsGroupGap)
 	height += title("Совместный просмотр") + 2*panel
 	height += (relays + 1) * gtx.Dp(settingsRowGap)
 	height += relays * panel
@@ -339,6 +359,50 @@ func (w *settingsWindow) layoutNotificationPanel(gtx layout.Context, rect image.
 		w.enabled,
 		hover,
 		&w.toggleClick,
+	)
+	return rect.Max.Y
+}
+
+func (w *settingsWindow) layoutAutoUpdatePanel(gtx layout.Context, rect image.Rectangle) int {
+	w.drawPanel(gtx, rect)
+	clicked := w.autoUpdateClick.Clicked(gtx)
+	hovered := w.autoUpdateClick.Hovered()
+	hover := w.autoUpdateHover.update(gtx, hovered && w.animationsRun())
+	if clicked {
+		w.setAutoUpdate(!w.autoUpdate)
+		gtx.Execute(op.InvalidateCmd{})
+	}
+
+	w.layoutToggleRow(
+		gtx,
+		rect,
+		"Автообновление",
+		"Автоматически обновляет Yonime при запуске или пока оно неактивно - просмотру не повредит",
+		w.autoUpdate,
+		hover,
+		&w.autoUpdateClick,
+	)
+	return rect.Max.Y
+}
+
+func (w *settingsWindow) layoutBetaPanel(gtx layout.Context, rect image.Rectangle) int {
+	w.drawPanel(gtx, rect)
+	clicked := w.betaClick.Clicked(gtx)
+	hovered := w.betaClick.Hovered()
+	hover := w.betaHover.update(gtx, hovered && w.animationsRun())
+	if clicked {
+		w.setBeta(!w.beta)
+		gtx.Execute(op.InvalidateCmd{})
+	}
+
+	w.layoutToggleRow(
+		gtx,
+		rect,
+		"Beta-тестирование",
+		"Скачивать патч-версии. Могут быть ошибки",
+		w.beta,
+		hover,
+		&w.betaClick,
 	)
 	return rect.Max.Y
 }
@@ -828,6 +892,28 @@ func (w *settingsWindow) setToggle(enabled bool) {
 		}
 	}
 	w.enabled = enabled
+	w.errorText = ""
+}
+
+func (w *settingsWindow) setAutoUpdate(enabled bool) {
+	if w.onAutoUpdate != nil {
+		if err := w.onAutoUpdate(enabled); err != nil {
+			w.errorText = err.Error()
+			return
+		}
+	}
+	w.autoUpdate = enabled
+	w.errorText = ""
+}
+
+func (w *settingsWindow) setBeta(enabled bool) {
+	if w.onBeta != nil {
+		if err := w.onBeta(enabled); err != nil {
+			w.errorText = err.Error()
+			return
+		}
+	}
+	w.beta = enabled
 	w.errorText = ""
 }
 

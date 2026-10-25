@@ -45,6 +45,12 @@ const (
 	// mpv window. Without it a stuck rate-limit wait or resolver leaves the
 	// row's spinner turning forever with no way to retry.
 	playbackStartTimeout = 3 * time.Minute
+	// autoUpdatePollInterval is how often a downloaded update rechecks whether
+	// installing it would interrupt playback or a watch party.
+	autoUpdatePollInterval = 15 * time.Second
+	// autoUpdateDownloadTimeout bounds the silent download. It is deliberately
+	// generous because the executable is tens of megabytes.
+	autoUpdateDownloadTimeout = 30 * time.Minute
 )
 
 // Run starts the Yonime desktop application.
@@ -96,6 +102,9 @@ type application struct {
 	// only close request that is allowed to end the process.
 	hidden   atomic.Bool
 	quitting atomic.Bool
+	// mainActive mirrors active == main for the background auto-updater. The
+	// window screen itself is only touched on the UI goroutine.
+	mainActive atomic.Bool
 
 	watchResults chan watchResult
 
@@ -122,10 +131,17 @@ type application struct {
 	downloadClient   *http.Client
 	updatesAvailable atomic.Pointer[updates.Release]
 	updateChecking   atomic.Bool
+	updatePending    atomic.Bool
 	updateWake       chan struct{}
 	// currentSHA is the hash of the running executable. It lets a re-pushed
 	// version with the same number still install its fixed build.
 	currentSHA string
+
+	// One silent auto-update may run at a time. It waits until the main screen
+	// is idle and never installs while mpv or a watch party is active.
+	autoUpdateMu      sync.Mutex
+	autoUpdateRunning bool
+	autoUpdateCancel  context.CancelFunc
 }
 
 type watchResult struct {
@@ -400,6 +416,9 @@ func (a *application) openUpdate() {
 	if a.window == nil {
 		return
 	}
+	// The user is installing manually; stop a pending silent install so it
+	// cannot replace the executable behind the update screen.
+	a.cancelAutoUpdate()
 	update := *release
 	screen := newFirstRun(
 		a.shell.typo,
@@ -431,6 +450,8 @@ func (a *application) openSettings() {
 	partyCfg := a.party.Config()
 	settings := newSettingsWindow(a.shell.typo, settingsValues{
 		Notifications: a.library.EpisodeNotificationsEnabled(),
+		AutoUpdate:    a.library.AutoUpdateEnabled(),
+		Beta:          a.library.BetaUpdatesEnabled(),
 		SharedControl: a.library.SharedControlEnabled(),
 		Provider:      a.party.Provider(),
 		CloudflareURL: partyCfg.CloudflareURL,
@@ -454,6 +475,29 @@ func (a *application) openSettings() {
 		} else {
 			a.cancelEpisodePass()
 		}
+		return nil
+	}
+	settings.onAutoUpdate = func(enabled bool) error {
+		if err := a.library.SetAutoUpdateEnabled(enabled); err != nil {
+			return err
+		}
+		if enabled {
+			// A fresh check decides which release may be installed. This also
+			// avoids installing a cached build from the previous channel.
+			a.triggerUpdateCheck()
+		} else {
+			a.cancelAutoUpdate()
+		}
+		return nil
+	}
+	settings.onBeta = func(enabled bool) error {
+		if err := a.library.SetBetaUpdatesEnabled(enabled); err != nil {
+			return err
+		}
+		// The channel changed, so a pending download may no longer belong to
+		// the selected channel. Refetch before starting another silent install.
+		a.cancelAutoUpdate()
+		a.triggerUpdateCheck()
 		return nil
 	}
 	settings.onControl = func(enabled bool) error {
@@ -534,30 +578,58 @@ func (a *application) startPartyPlayback(state watchparty.State) error {
 }
 
 func (a *application) downloadAndApply(ctx context.Context, release updates.Release, report func(downloadProgress)) error {
-	report(downloadProgress{Preparing: true})
-	target, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("не удалось определить файл приложения: %w", err)
+	if report != nil {
+		report(downloadProgress{Preparing: true})
 	}
-	if err := updater.CheckTarget(target); err != nil {
-		return err
-	}
-	updateDir, err := appdata.UpdateDir()
-	if err != nil {
-		return err
-	}
-	name := filepath.Base(release.AssetName)
-	if name == "." || name == "" {
-		name = updates.AssetName(release.Version, runtime.GOARCH)
-	}
-	destination := filepath.Join(updateDir, name)
-	source, err := updates.Download(ctx, a.downloadClient, release, destination, func(downloaded, total int64) {
+	source, err := a.downloadRelease(ctx, release, func(downloaded, total int64) {
+		if report == nil {
+			return
+		}
 		percent := 0.0
 		if total > 0 {
 			percent = float64(downloaded) * 100 / float64(total)
 		}
 		report(downloadProgress{Percent: percent})
 	})
+	if err != nil {
+		return err
+	}
+	if report != nil {
+		report(downloadProgress{Percent: 100})
+	}
+	return a.applyDownload(source)
+}
+
+// downloadRelease fetches and verifies the executable without installing it, so
+// the silent updater can wait for an idle moment between download and replace.
+func (a *application) downloadRelease(ctx context.Context, release updates.Release, report func(downloaded, total int64)) (string, error) {
+	target, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("не удалось определить файл приложения: %w", err)
+	}
+	if err := updater.CheckTarget(target); err != nil {
+		return "", err
+	}
+	updateDir, err := appdata.UpdateDir()
+	if err != nil {
+		return "", err
+	}
+	name := filepath.Base(release.AssetName)
+	if name == "." || name == "" {
+		name = updates.AssetName(release.Version, runtime.GOARCH)
+	}
+	destination := filepath.Join(updateDir, name)
+	return updates.Download(ctx, a.downloadClient, release, destination, report)
+}
+
+// applyDownload starts the hidden helper that replaces the executable after
+// this process exits.
+func (a *application) applyDownload(source string) error {
+	target, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("не удалось определить файл приложения: %w", err)
+	}
+	updateDir, err := appdata.UpdateDir()
 	if err != nil {
 		return err
 	}
@@ -569,7 +641,6 @@ func (a *application) downloadAndApply(ctx context.Context, release updates.Rele
 	if err != nil {
 		return err
 	}
-	report(downloadProgress{Percent: 100})
 	return plan.Launch()
 }
 
@@ -608,13 +679,21 @@ func (a *application) checkForUpdates(w *app.Window) {
 		return
 	}
 	if !a.updateChecking.CompareAndSwap(false, true) {
+		// A settings change or the periodic timer may ask for another check
+		// while the current one is still running.
+		a.updatePending.Store(true)
 		return
 	}
-	defer a.updateChecking.Store(false)
+	defer func() {
+		a.updateChecking.Store(false)
+		if a.updatePending.Swap(false) {
+			a.triggerUpdateCheck()
+		}
+	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	release, err := updates.FetchRelease(ctx, a.updateClient)
+	release, err := updates.FetchReleaseChannel(ctx, a.updateClient, a.updateChannel())
 	now := time.Now()
 	if err != nil {
 		if errors.Is(err, updates.ErrNoRelease) {
@@ -634,6 +713,103 @@ func (a *application) checkForUpdates(w *app.Window) {
 	a.updatesAvailable.Store(release)
 	if w != nil {
 		w.Invalidate()
+	}
+	a.maybeAutoUpdate(release)
+}
+
+// maybeAutoUpdate starts a silent install when the feature is enabled and the
+// freshly checked release is newer than the running build.
+func (a *application) maybeAutoUpdate(release *updates.Release) {
+	if release == nil || !a.autoUpdatesEnabled() || !a.updateAvailable(release) {
+		return
+	}
+	a.startAutoUpdate(*release)
+}
+
+func (a *application) startAutoUpdate(release updates.Release) {
+	a.autoUpdateMu.Lock()
+	if a.autoUpdateRunning {
+		a.autoUpdateMu.Unlock()
+		return
+	}
+	a.autoUpdateRunning = true
+	ctx, cancel := context.WithCancel(context.Background())
+	a.autoUpdateCancel = cancel
+	a.autoUpdateMu.Unlock()
+
+	go func() {
+		defer func() {
+			cancel()
+			a.autoUpdateMu.Lock()
+			a.autoUpdateCancel = nil
+			a.autoUpdateRunning = false
+			a.autoUpdateMu.Unlock()
+		}()
+
+		if !a.waitForAutoUpdate(ctx) {
+			return
+		}
+		downloadCtx, stop := context.WithTimeout(ctx, autoUpdateDownloadTimeout)
+		source, err := a.downloadRelease(downloadCtx, release, nil)
+		stop()
+		if err != nil {
+			if !errors.Is(err, context.Canceled) {
+				fmt.Fprintln(os.Stderr, "yonime: автоматическое обновление:", err)
+			}
+			return
+		}
+		// Playback may have started while the executable was downloading. Keep
+		// the verified file and wait: installing now would close mpv.
+		if !a.waitForAutoUpdate(ctx) {
+			return
+		}
+		if err := a.applyDownload(source); err != nil {
+			fmt.Fprintln(os.Stderr, "yonime: автоматическое обновление:", err)
+			return
+		}
+		a.quitForUpdate()
+	}()
+}
+
+// waitForAutoUpdate blocks until installing an update cannot interrupt the
+// user. The settings are re-read on every poll, so disabling auto-update also
+// aborts a pending install.
+func (a *application) waitForAutoUpdate(ctx context.Context) bool {
+	ticker := time.NewTicker(autoUpdatePollInterval)
+	defer ticker.Stop()
+	for {
+		if !a.autoUpdatesEnabled() {
+			return false
+		}
+		if a.autoUpdateIdle() {
+			return true
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-ticker.C:
+		}
+	}
+}
+
+func (a *application) autoUpdateIdle() bool {
+	playing := a.playback != nil && a.playback.Active()
+	party := a.party != nil && a.party.HasRoom()
+	return autoUpdateSafe(playing, party, a.mainActive.Load(), a.quitting.Load())
+}
+
+// autoUpdateSafe keeps the policy free of UI state so it can be tested. An
+// update may only replace the process while the main screen is idle.
+func autoUpdateSafe(playing, party, main, quitting bool) bool {
+	return !playing && !party && main && !quitting
+}
+
+func (a *application) cancelAutoUpdate() {
+	a.autoUpdateMu.Lock()
+	cancel := a.autoUpdateCancel
+	a.autoUpdateMu.Unlock()
+	if cancel != nil {
+		cancel()
 	}
 }
 
@@ -781,11 +957,29 @@ func (a *application) syncFooterControls() {
 	a.shell.updateVisible = onMain && a.updateAvailable(release)
 }
 
-// updateAvailable applies the same rule to the footer button and the update
-// screen: newer versions always qualify, and a re-pushed version qualifies when
-// its published build differs from the running executable.
+// updateAvailable applies the same rule to the footer button, the update
+// screen and the silent updater: the release must belong to the selected
+// channel, and a re-pushed version qualifies when its published build differs
+// from the running executable.
 func (a *application) updateAvailable(release *updates.Release) bool {
+	if release == nil {
+		return false
+	}
+	if !a.updateChannel().Accepts(release.Version) {
+		return false
+	}
 	return updates.IsUpdate(release, version.Version, a.currentSHA)
+}
+
+func (a *application) updateChannel() updates.Channel {
+	if a.library != nil && a.library.BetaUpdatesEnabled() {
+		return updates.ChannelBeta
+	}
+	return updates.ChannelStable
+}
+
+func (a *application) autoUpdatesEnabled() bool {
+	return a.library != nil && a.library.AutoUpdateEnabled()
 }
 
 func (a *application) openTitle(item historyTitle) {
@@ -1167,6 +1361,7 @@ func (a *application) showWindow(w *app.Window, screen windowScreen) {
 		a.active.Close()
 	}
 	a.active = screen
+	a.mainActive.Store(screen == a.main)
 	a.shell.footer = nil
 	if fs, ok := screen.(footerScreen); ok {
 		a.shell.footer = func(gtx layout.Context) layout.Dimensions {
@@ -1190,6 +1385,8 @@ func (a *application) showWindow(w *app.Window, screen windowScreen) {
 }
 
 func (a *application) close() {
+	a.cancelAutoUpdate()
+	a.mainActive.Store(false)
 	a.stopEpisodeLoop()
 	if a.party != nil {
 		a.party.Close()

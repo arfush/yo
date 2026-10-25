@@ -68,6 +68,7 @@ func TestSettingsWindowProviderMenuOpensInsideTheContentArea(t *testing.T) {
 		Constraints: layout.Exact(image.Pt(833, 442)),
 	}
 	gtx = gtx.Disabled()
+	settings.scroll = settings.contentHeight(gtx)
 	settings.layout(gtx)
 
 	if settings.providerAnchor.Empty() {
@@ -75,7 +76,7 @@ func TestSettingsWindowProviderMenuOpensInsideTheContentArea(t *testing.T) {
 	}
 	bounds := image.Rectangle{Max: image.Pt(833, 442)}
 	menu := placeProviderMenu(
-		settings.providerAnchor,
+		settings.providerAnchor.Sub(image.Pt(0, settings.scroll)),
 		providerMenuHeight(gtx, len(watchparty.Providers())),
 		gtx.Dp(settingsProviderMenuGap),
 		bounds,
@@ -213,6 +214,41 @@ func TestSettingsWindowScrollsWithTheWheel(t *testing.T) {
 
 	if settings.scroll != 60 {
 		t.Fatalf("scroll = %d, want 60", settings.scroll)
+	}
+}
+
+func TestSettingsWindowSavesUpdateToggles(t *testing.T) {
+	typo, err := newTypography()
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings := newSettingsWindow(typo, settingsValues{Provider: watchparty.Cloudflare})
+	var auto, beta bool
+	settings.onAutoUpdate = func(enabled bool) error {
+		auto = enabled
+		return nil
+	}
+	settings.onBeta = func(enabled bool) error {
+		beta = enabled
+		return nil
+	}
+
+	settings.setAutoUpdate(true)
+	settings.setBeta(true)
+	if !settings.autoUpdate || !auto {
+		t.Fatal("auto-update toggle was not stored")
+	}
+	if !settings.beta || !beta {
+		t.Fatal("beta toggle was not stored")
+	}
+
+	settings.onAutoUpdate = func(bool) error { return errors.New("база данных недоступна") }
+	settings.setAutoUpdate(false)
+	if !settings.autoUpdate {
+		t.Fatal("a failed save must not flip the auto-update toggle")
+	}
+	if settings.errorText == "" {
+		t.Fatal("a failed save must surface the error")
 	}
 }
 

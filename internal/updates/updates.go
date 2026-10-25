@@ -3,9 +3,13 @@
 // A release is published by the GitHub Actions workflow on a commit whose
 // message starts with "release: <version>". The workflow uploads one Windows
 // executable per architecture and a matching .sha256 file. The application
-// reads the latest release through the public GitHub API, picks the asset for
-// the running architecture, and verifies both its size and SHA-256 before the
-// updater is allowed to replace the executable.
+// reads the newest release accepted by the selected channel through the public
+// GitHub API, picks the asset for the running architecture, and verifies both
+// its size and SHA-256 before the updater is allowed to replace the executable.
+//
+// Stable builds use one or two version components (v1.2). Patch releases add a
+// third component (v1.2.3); they are installed only when the user opts into beta
+// testing.
 package updates
 
 import "errors"

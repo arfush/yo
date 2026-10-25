@@ -306,6 +306,32 @@ func (l *Library) SetSharedControlEnabled(enabled bool) error {
 	return l.store.SetSharedControlEnabled(enabled)
 }
 
+// AutoUpdateEnabled reports whether updates may install without asking.
+func (l *Library) AutoUpdateEnabled() bool {
+	if l == nil || l.store == nil {
+		return false
+	}
+	return l.store.AutoUpdateEnabled()
+}
+
+// SetAutoUpdateEnabled stores the automatic-update choice.
+func (l *Library) SetAutoUpdateEnabled(enabled bool) error {
+	return l.store.SetAutoUpdateEnabled(enabled)
+}
+
+// BetaUpdatesEnabled reports whether patch releases may be installed.
+func (l *Library) BetaUpdatesEnabled() bool {
+	if l == nil || l.store == nil {
+		return false
+	}
+	return l.store.BetaUpdatesEnabled()
+}
+
+// SetBetaUpdatesEnabled stores the beta-testing choice.
+func (l *Library) SetBetaUpdatesEnabled(enabled bool) error {
+	return l.store.SetBetaUpdatesEnabled(enabled)
+}
+
 // WatchPartyProvider returns the relay picked for new rooms, or "" when the
 // user never picked one.
 func (l *Library) WatchPartyProvider() string {

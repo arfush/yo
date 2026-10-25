@@ -550,27 +550,60 @@ func (s *Store) UpdateMetadata(tid int64, imdbID string, season int) error {
 	return err
 }
 
-// EpisodeNotificationsEnabled reports whether the user wants new-episode
-// notifications. The setting is enabled by default for a fresh database.
-func (s *Store) EpisodeNotificationsEnabled() bool {
+// boolSetting reads a boolean setting and falls back to defaultValue when the
+// row is missing or unreadable.
+func (s *Store) boolSetting(key string, defaultValue bool) bool {
 	var value string
-	if err := s.db.QueryRow("SELECT value FROM settings WHERE key = 'episode_notifications'").Scan(&value); err != nil {
-		return true
+	if err := s.db.QueryRow("SELECT value FROM settings WHERE key = ?", key).Scan(&value); err != nil {
+		return defaultValue
 	}
 	return value != "0" && value != "false"
 }
 
-// SetEpisodeNotificationsEnabled stores the new-episode notification choice.
-func (s *Store) SetEpisodeNotificationsEnabled(enabled bool) error {
+// setBoolSetting stores a boolean setting.
+func (s *Store) setBoolSetting(key string, enabled bool) error {
 	value := "1"
 	if !enabled {
 		value = "0"
 	}
 	_, err := s.db.Exec(`
-        INSERT INTO settings (key, value) VALUES ('episode_notifications', ?)
+        INSERT INTO settings (key, value) VALUES (?, ?)
         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-		value)
+		key, value)
 	return err
+}
+
+// EpisodeNotificationsEnabled reports whether the user wants new-episode
+// notifications. The setting is enabled by default for a fresh database.
+func (s *Store) EpisodeNotificationsEnabled() bool {
+	return s.boolSetting("episode_notifications", true)
+}
+
+// SetEpisodeNotificationsEnabled stores the new-episode notification choice.
+func (s *Store) SetEpisodeNotificationsEnabled(enabled bool) error {
+	return s.setBoolSetting("episode_notifications", enabled)
+}
+
+// AutoUpdateEnabled reports whether Yonime may install updates without asking.
+// It is off by default: a background restart is opt-in.
+func (s *Store) AutoUpdateEnabled() bool {
+	return s.boolSetting("auto_update", false)
+}
+
+// SetAutoUpdateEnabled stores the automatic-update choice.
+func (s *Store) SetAutoUpdateEnabled(enabled bool) error {
+	return s.setBoolSetting("auto_update", enabled)
+}
+
+// BetaUpdatesEnabled reports whether patch releases (major.minor.patch) may be
+// installed. It is off by default because patch builds may be less polished.
+func (s *Store) BetaUpdatesEnabled() bool {
+	return s.boolSetting("beta_updates", false)
+}
+
+// SetBetaUpdatesEnabled stores the beta-testing choice.
+func (s *Store) SetBetaUpdatesEnabled(enabled bool) error {
+	return s.setBoolSetting("beta_updates", enabled)
 }
 
 // PreferredQuality returns the globally remembered quality, defaulting to 1080.

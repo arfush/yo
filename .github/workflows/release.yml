@@ -17,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
       body: ${{ steps.version.outputs.body }}
     steps:
       - name: Read release version and notes
@@ -28,8 +29,8 @@ jobs:
           message="$(printf '%s\n' "$COMMIT_MESSAGE" | tr -d '\r')"
 
           first_line="$(printf '%s\n' "$message" | head -n 1)"
-          if [[ ! "$first_line" =~ ^release:[[:space:]]*(v?[0-9]+(\.[0-9]+){0,3})[[:space:]]*$ ]]; then
-            echo "Commit message must look like: release: 1.2" >&2
+          if [[ ! "$first_line" =~ ^release:[[:space:]]*(v?[0-9]+(\.[0-9]+){0,2})[[:space:]]*$ ]]; then
+            echo "Commit message must look like: release: 1.2 or release: 1.2.3" >&2
             echo "Optional release notes go on the following lines." >&2
             exit 1
           fi
@@ -38,6 +39,14 @@ jobs:
             version="v$version"
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          # A patch release has three components (v1.2.3). It is published as a
+          # pre-release so stable installations do not pick it up as latest.
+          prerelease=false
+          if [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            prerelease=true
+          fi
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
 
           # Everything after the first line becomes the GitHub release description.
           # Leading/trailing blank lines are dropped, inner formatting is preserved.
@@ -167,6 +176,8 @@ jobs:
           tag_name: ${{ needs.prepare.outputs.version }}
           name: Yonime ${{ needs.prepare.outputs.version }}
           body: ${{ needs.prepare.outputs.body }}
+          prerelease: ${{ needs.prepare.outputs.prerelease }}
+          make_latest: ${{ needs.prepare.outputs.prerelease != 'true' }}
           files: |
             dist/*.exe
             dist/*.sha256
