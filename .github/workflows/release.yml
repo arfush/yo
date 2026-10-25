@@ -88,6 +88,10 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
       REPO: ${{ github.repository }}
+      # Code signing stays optional: without the secret the build is simply
+      # unsigned, exactly like a local build without a certificate.
+      SIGN_PFX_BASE64: ${{ secrets.YONIME_SIGN_PFX_BASE64 }}
+      SIGN_PFX_PASSWORD: ${{ secrets.YONIME_SIGN_PFX_PASSWORD }}
       # Repository variables win; otherwise build.ps1 falls back to the checked-in
       # watchplay.json, so a relay deployed once reaches every user without any
       # configuration file on their side.
@@ -100,6 +104,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Prepare signing certificate
+        if: env.SIGN_PFX_BASE64 != ''
+        shell: pwsh
+        run: |
+          "YONIME_SIGN_PFX_BASE64=$env:SIGN_PFX_BASE64" >> $env:GITHUB_ENV
+          "YONIME_SIGN_PFX_PASSWORD=$env:SIGN_PFX_PASSWORD" >> $env:GITHUB_ENV
       - name: Build
         shell: pwsh
         run: .\build.ps1 -Version $env:VERSION -Repo $env:REPO -Arch "${{ matrix.arch }}"

@@ -98,3 +98,9 @@ go build -trimpath -ldflags="$ldflags" -o $Output .\cmd\yonime
 
 $size = (Get-Item $Output).Length
 Write-Host ("Built {0}: {1:N1} MB" -f $Output, ($size / 1MB))
+
+# Signing is optional and controlled by environment variables documented in
+# sign.ps1, so a build without a certificate still succeeds.
+if ($env:YONIME_SIGN_PFX -or $env:YONIME_SIGN_PFX_BASE64 -or $env:YONIME_SIGN_THUMBPRINT) {
+    & (Join-Path $PSScriptRoot "sign.ps1") -Path $Output
+}

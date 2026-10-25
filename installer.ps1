@@ -124,4 +124,10 @@ if (-not (Test-Path $setup)) {
     throw "Expected installer was not produced: $setup"
 }
 
+# Code signing is optional: it only runs when a certificate is configured, so
+# the build keeps working for contributors without one.
+if ($env:YONIME_SIGN_PFX -or $env:YONIME_SIGN_PFX_BASE64 -or $env:YONIME_SIGN_THUMBPRINT) {
+    & (Join-Path $PSScriptRoot "sign.ps1") -Path $setup
+}
+
 Write-Output $setup
