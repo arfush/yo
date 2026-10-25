@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"image"
 	"testing"
 
@@ -18,9 +19,16 @@ func TestSettingsWindowLayoutDoesNotOverflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, values := range []settingsValues{
-		{Notifications: true, SharedControl: true, Provider: watchparty.Cloudflare, ProviderChoice: true},
-		{Notifications: false, SharedControl: false, Provider: watchparty.Supabase, ProviderChoice: true},
-		{Notifications: true, SharedControl: true, Provider: watchparty.Cloudflare, ProviderChoice: false},
+		{Notifications: true, SharedControl: true, Provider: watchparty.Cloudflare},
+		{Notifications: false, SharedControl: false, Provider: watchparty.Supabase},
+		{
+			Notifications: true,
+			SharedControl: true,
+			Provider:      watchparty.Supabase,
+			CloudflareURL: "wss://yonime-watchparty.example.workers.dev",
+			SupabaseURL:   "wss://abcdefghijkl.supabase.co",
+			SupabaseKey:   "sb_publishable_example",
+		},
 	} {
 		settings := newSettingsWindow(typo, values)
 
@@ -46,10 +54,9 @@ func TestSettingsWindowProviderMenuOpensInsideTheContentArea(t *testing.T) {
 		t.Fatal(err)
 	}
 	settings := newSettingsWindow(typo, settingsValues{
-		Notifications:  true,
-		SharedControl:  true,
-		Provider:       watchparty.Cloudflare,
-		ProviderChoice: true,
+		Notifications: true,
+		SharedControl: true,
+		Provider:      watchparty.Cloudflare,
 	})
 	settings.providerOpen = true
 
@@ -109,10 +116,9 @@ func TestSettingsWindowFitsTheRealContentArea(t *testing.T) {
 	contentWidth := geometry.size.X
 
 	settings := newSettingsWindow(typo, settingsValues{
-		Notifications:  true,
-		SharedControl:  true,
-		Provider:       watchparty.Supabase,
-		ProviderChoice: true,
+		Notifications: true,
+		SharedControl: true,
+		Provider:      watchparty.Supabase,
 	})
 	gtx := layout.Context{
 		Ops:         new(op.Ops),
@@ -129,8 +135,51 @@ func TestSettingsWindowFitsTheRealContentArea(t *testing.T) {
 		gtx.Dp(settingsGroupGap) +
 		2*gtx.Dp(settingsPanelHeight) +
 		gtx.Dp(settingsRowGap) +
-		gtx.Dp(settingsPanelHeight)
+		gtx.Dp(settingsRelayPanelHeight)
 	if bottom > contentHeight {
 		t.Fatalf("settings need %dpx, content area allows %dpx", bottom, contentHeight)
+	}
+}
+
+func TestSettingsWindowSavesTheRelayBlock(t *testing.T) {
+	typo, err := newTypography()
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings := newSettingsWindow(typo, settingsValues{Provider: watchparty.Supabase})
+	settings.cloudflareEditor.SetText("https://party.example.workers.dev")
+	settings.supabaseURLEditor.SetText("https://abcd.supabase.co")
+	settings.supabaseKeyEditor.SetText("sb_publishable_example")
+	settings.relayDirty = true
+
+	var saved watchparty.Config
+	settings.onRelay = func(cfg watchparty.Config) error {
+		saved = cfg
+		return nil
+	}
+	settings.saveRelays()
+
+	if saved.CloudflareURL != "https://party.example.workers.dev" ||
+		saved.SupabaseURL != "https://abcd.supabase.co" ||
+		saved.SupabaseKey != "sb_publishable_example" {
+		t.Fatalf("saved config = %+v", saved)
+	}
+	if settings.relayDirty {
+		t.Fatal("a successful save must clear the dirty flag")
+	}
+	if settings.errorText != "" {
+		t.Fatalf("error = %q, want none", settings.errorText)
+	}
+
+	settings.onRelay = func(watchparty.Config) error {
+		return errors.New("адрес Cloudflare указан неверно")
+	}
+	settings.relayDirty = true
+	settings.saveRelays()
+	if !settings.relayDirty {
+		t.Fatal("a failed save must stay dirty for the next attempt")
+	}
+	if settings.errorText == "" {
+		t.Fatal("a failed save must surface the error")
 	}
 }

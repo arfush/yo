@@ -145,14 +145,37 @@ func (m *partyManager) Provider() watchparty.Provider {
 	return m.provider
 }
 
-// HasProviderChoice reports whether the settings have anything to switch to.
-// The official build ships a single relay, so the row stays hidden there
-// instead of being a control that leads nowhere.
-func (m *partyManager) HasProviderChoice() bool {
+// Config returns a copy of the relay settings currently in use.
+func (m *partyManager) Config() watchparty.Config {
 	if m == nil {
-		return false
+		return watchparty.Config{}
 	}
-	return m.cfg.Configured(watchparty.Cloudflare) && m.cfg.Configured(watchparty.Supabase)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.cfg
+}
+
+// SetRelayConfig stores the endpoints entered in the settings and applies them
+// to the next room. An already open room keeps the config it dialled with.
+func (m *partyManager) SetRelayConfig(cfg watchparty.Config) error {
+	if m == nil {
+		return errors.New("совместный просмотр недоступен")
+	}
+	cfg = cfg.Normalized()
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	path, err := appdata.WatchPartyConfigPath()
+	if err != nil {
+		return err
+	}
+	if err := watchparty.SaveConfig(path, cfg); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	m.cfg = cfg
+	m.mu.Unlock()
+	return nil
 }
 
 // SetProvider remembers the relay chosen in the settings, so the next room
@@ -233,7 +256,8 @@ func (m *partyManager) Create(provider watchparty.Provider) (string, error) {
 	if m == nil {
 		return "", errors.New("совместный просмотр недоступен")
 	}
-	if !m.cfg.Configured(provider) {
+	cfg := m.Config()
+	if !cfg.Configured(provider) {
 		return "", fmt.Errorf("%s не настроен", provider.Label())
 	}
 	m.mu.Lock()
@@ -245,7 +269,7 @@ func (m *partyManager) Create(provider watchparty.Provider) (string, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), partyCreateTimeout)
 	defer cancel()
-	session, err := watchparty.Create(ctx, m.cfg, provider)
+	session, err := watchparty.Create(ctx, cfg, provider)
 	if err != nil {
 		return "", err
 	}
@@ -268,7 +292,8 @@ func (m *partyManager) Join(key string) error {
 	if err != nil {
 		return err
 	}
-	if !m.cfg.Configured(provider) {
+	cfg := m.Config()
+	if !cfg.Configured(provider) {
 		return fmt.Errorf("для этого ключа нужен %s — он не настроен в этой сборке", provider.Label())
 	}
 	m.mu.Lock()
@@ -280,7 +305,7 @@ func (m *partyManager) Join(key string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), partyJoinTimeout)
 	defer cancel()
-	session, err := watchparty.Join(ctx, m.cfg, normalized)
+	session, err := watchparty.Join(ctx, cfg, normalized)
 	if err != nil {
 		return err
 	}

@@ -145,25 +145,6 @@ func TestWatchPartyReopensWaitingScreenWithAHat(t *testing.T) {
 	}
 }
 
-func TestPartyProviderChoiceRequiresTwoRelays(t *testing.T) {
-	single := &partyManager{cfg: watchparty.Config{CloudflareURL: "wss://relay.example.workers.dev"}}
-	if single.HasProviderChoice() {
-		t.Fatal("a build with one relay must not offer a provider switch")
-	}
-	both := &partyManager{cfg: watchparty.Config{
-		CloudflareURL: "wss://relay.example.workers.dev",
-		SupabaseURL:   "wss://project.supabase.co",
-		SupabaseKey:   "sb_publishable_example",
-	}}
-	if !both.HasProviderChoice() {
-		t.Fatal("a build with both relays must allow switching")
-	}
-	var missing *partyManager
-	if missing.HasProviderChoice() {
-		t.Fatal("a nil manager must not report a choice")
-	}
-}
-
 func TestPartySnapshotFallsBackToSelectedProvider(t *testing.T) {
 	party := &partyManager{provider: watchparty.Supabase}
 	snapshot := party.Snapshot()

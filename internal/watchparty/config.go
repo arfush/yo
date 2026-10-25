@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -26,7 +27,9 @@ type Config struct {
 }
 
 // LoadConfig reads the watch-party configuration. A missing file is not an
-// error: the build-time defaults (if any) are used instead.
+// error: the build-time defaults (if any) are used instead. When the file
+// exists, it fully describes the relays, including empty fields: that is how
+// the settings screen turns a built-in relay off.
 func LoadConfig(path string) Config {
 	cfg := Config{
 		CloudflareURL: CloudflareURL,
@@ -41,16 +44,82 @@ func LoadConfig(path string) Config {
 	if json.Unmarshal(raw, &stored) != nil {
 		return cfg.normalized()
 	}
-	if value := strings.TrimSpace(stored.CloudflareURL); value != "" {
-		cfg.CloudflareURL = value
-	}
-	if value := strings.TrimSpace(stored.SupabaseURL); value != "" {
-		cfg.SupabaseURL = value
-	}
-	if value := strings.TrimSpace(stored.SupabaseKey); value != "" {
-		cfg.SupabaseKey = value
-	}
+	cfg.CloudflareURL = stored.CloudflareURL
+	cfg.SupabaseURL = stored.SupabaseURL
+	cfg.SupabaseKey = stored.SupabaseKey
 	return cfg.normalized()
+}
+
+// SaveConfig writes the relays to the per-user override file. The write goes
+// through a temporary file so a crash cannot leave a half-written JSON behind.
+func SaveConfig(path string, cfg Config) error {
+	cfg = cfg.normalized()
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	raw, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode watch-party config: %w", err)
+	}
+	raw = append(raw, '\n')
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create watch-party config directory: %w", err)
+	}
+	tmp, err := os.CreateTemp(dir, ".watchparty-*.json")
+	if err != nil {
+		return fmt.Errorf("create watch-party config: %w", err)
+	}
+	name := tmp.Name()
+	if _, err := tmp.Write(raw); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(name)
+		return fmt.Errorf("write watch-party config: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(name)
+		return fmt.Errorf("close watch-party config: %w", err)
+	}
+	if err := os.Rename(name, path); err != nil {
+		_ = os.Remove(name)
+		return fmt.Errorf("replace watch-party config: %w", err)
+	}
+	return nil
+}
+
+// Normalized returns the config in the form the clients dial.
+func (c Config) Normalized() Config {
+	return c.normalized()
+}
+
+// Validate checks the non-empty fields before they are saved. Partial configs
+// are allowed: a provider simply stays unconfigured until both parts arrive.
+func (c Config) Validate() error {
+	c = c.normalized()
+	for _, endpoint := range []struct {
+		value string
+		label string
+	}{
+		{c.CloudflareURL, "Cloudflare"},
+		{c.SupabaseURL, "Supabase"},
+	} {
+		if endpoint.value == "" {
+			continue
+		}
+		parsed, err := url.Parse(endpoint.value)
+		if err != nil || parsed.Host == "" {
+			return fmt.Errorf("адрес %s указан неверно", endpoint.label)
+		}
+		switch parsed.Scheme {
+		case "ws", "wss":
+		default:
+			return fmt.Errorf("адрес %s указан неверно", endpoint.label)
+		}
+	}
+	if key := strings.ToLower(c.SupabaseKey); strings.HasPrefix(key, "sb_secret_") || strings.HasPrefix(key, "service_role") {
+		return errors.New("для Supabase нужен publishable-ключ, а не секретный")
+	}
+	return nil
 }
 
 func (c Config) normalized() Config {

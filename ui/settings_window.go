@@ -42,6 +42,13 @@ const (
 	settingsProviderItemGap    = unit.Dp(2)
 	settingsProviderMenuPad    = unit.Dp(4)
 	settingsProviderMenuGap    = unit.Dp(6)
+
+	settingsRelayPanelHeight = unit.Dp(108)
+	settingsFieldHeight      = unit.Dp(30)
+	settingsFieldGap         = unit.Dp(12)
+	settingsFieldPadX        = unit.Dp(10)
+	settingsFieldLabelGap    = unit.Dp(4)
+	settingsFieldSize        = unit.Sp(12)
 )
 
 var (
@@ -59,10 +66,12 @@ var (
 // settingsValues is the state the settings screen opens with. It is separate
 // from the window so the screen itself has no storage dependency.
 type settingsValues struct {
-	Notifications  bool
-	SharedControl  bool
-	Provider       watchparty.Provider
-	ProviderChoice bool
+	Notifications bool
+	SharedControl bool
+	Provider      watchparty.Provider
+	CloudflareURL string
+	SupabaseURL   string
+	SupabaseKey   string
 }
 
 type settingsWindow struct {
@@ -71,9 +80,14 @@ type settingsWindow struct {
 	enabled  bool
 	control  bool
 	provider watchparty.Provider
-	// providerChoice hides the relay row when the build ships one relay: a
-	// choice between one option is not a setting.
-	providerChoice bool
+
+	cloudflareEditor   widget.Editor
+	supabaseURLEditor  widget.Editor
+	supabaseKeyEditor  widget.Editor
+	cloudflareFocused  bool
+	supabaseURLFocused bool
+	supabaseKeyFocused bool
+	relayDirty         bool
 
 	toggleClick  widget.Clickable
 	toggleHover  hoverAnim
@@ -101,19 +115,34 @@ type settingsWindow struct {
 	onToggle   func(bool) error
 	onControl  func(bool) error
 	onProvider func(watchparty.Provider) error
+	onRelay    func(watchparty.Config) error
 }
 
 func newSettingsWindow(typo *typography, values settingsValues) *settingsWindow {
-	return &settingsWindow{
-		typo:           typo,
-		enabled:        values.Notifications,
-		control:        values.SharedControl,
-		provider:       values.Provider,
-		providerChoice: values.ProviderChoice,
+	w := &settingsWindow{
+		typo:     typo,
+		enabled:  values.Notifications,
+		control:  values.SharedControl,
+		provider: values.Provider,
 	}
+	w.cloudflareEditor.SingleLine = true
+	w.cloudflareEditor.Submit = true
+	w.cloudflareEditor.InputHint = key.HintURL
+	w.cloudflareEditor.SetText(values.CloudflareURL)
+	w.supabaseURLEditor.SingleLine = true
+	w.supabaseURLEditor.Submit = true
+	w.supabaseURLEditor.InputHint = key.HintURL
+	w.supabaseURLEditor.SetText(values.SupabaseURL)
+	w.supabaseKeyEditor.SingleLine = true
+	w.supabaseKeyEditor.Submit = true
+	w.supabaseKeyEditor.InputHint = key.HintText
+	w.supabaseKeyEditor.SetText(values.SupabaseKey)
+	return w
 }
 
-func (w *settingsWindow) Close() {}
+func (w *settingsWindow) Close() {
+	w.saveRelays()
+}
 
 func (w *settingsWindow) handleKeys(gtx layout.Context) {
 	for {
@@ -157,9 +186,14 @@ func (w *settingsWindow) layout(gtx layout.Context) {
 
 	y = w.layoutSectionTitle(gtx, left, y, "Совместный просмотр")
 	y = w.layoutControlPanel(gtx, image.Rect(left, y, right, y+gtx.Dp(settingsPanelHeight)))
-	if w.providerChoice {
-		y += gtx.Dp(settingsRowGap)
-		y = w.layoutProviderPanel(gtx, image.Rect(left, y, right, y+gtx.Dp(settingsPanelHeight)))
+	y += gtx.Dp(settingsRowGap)
+	var relaySubmitted, relayFocusLost bool
+	y, relaySubmitted, relayFocusLost = w.layoutProviderPanel(
+		gtx,
+		image.Rect(left, y, right, y+gtx.Dp(settingsRelayPanelHeight)),
+	)
+	if relaySubmitted || relayFocusLost {
+		w.saveRelays()
 	}
 
 	if w.errorText != "" {
@@ -287,27 +321,182 @@ func (w *settingsWindow) layoutToggleRow(
 	})
 }
 
-func (w *settingsWindow) layoutProviderPanel(gtx layout.Context, rect image.Rectangle) int {
+func (w *settingsWindow) layoutProviderPanel(gtx layout.Context, rect image.Rectangle) (int, bool, bool) {
 	w.drawPanel(gtx, rect)
 	labelFace := font.Font{Typeface: fontFamily, Weight: font.Medium}
 	_, labelInk := w.typo.measure(gtx, "Провайдер", labelFace, settingsLabelSize)
 	left := rect.Min.X + gtx.Dp(settingsPanelPadX)
-	labelTop := rect.Min.Y + (rect.Dy()-labelInk.Dy())/2
+	right := rect.Max.X - gtx.Dp(settingsPanelPadX)
+	rowTop := rect.Min.Y + gtx.Dp(unit.Dp(12))
+	rowHeight := gtx.Dp(settingsProviderHeight)
+	labelTop := rowTop + (rowHeight-labelInk.Dy())/2
 	w.typo.draw(gtx, "Провайдер", labelFace, settingsLabelSize, mainTextColor, image.Pt(left, labelTop))
 
-	height := gtx.Dp(settingsProviderHeight)
 	trigger := image.Rect(
-		rect.Max.X-gtx.Dp(settingsPanelPadX)-gtx.Dp(settingsProviderWidth),
-		rect.Min.Y+(rect.Dy()-height)/2,
-		rect.Max.X-gtx.Dp(settingsPanelPadX),
-		rect.Min.Y+(rect.Dy()+height)/2,
+		right-gtx.Dp(settingsProviderWidth),
+		rowTop,
+		right,
+		rowTop+rowHeight,
 	)
 	w.providerAnchor = trigger
 	if w.layoutProviderTrigger(gtx, trigger) {
 		w.providerOpen = !w.providerOpen
 		gtx.Execute(op.InvalidateCmd{})
 	}
-	return rect.Max.Y
+
+	fieldLabelFace := font.Font{Typeface: fontFamily, Weight: font.Normal}
+	_, fieldLabelInk := w.typo.measure(gtx, "Supabase Publishable Key", fieldLabelFace, settingsNoteSize)
+	fieldLabelTop := rowTop + rowHeight + gtx.Dp(unit.Dp(8))
+	fieldTop := fieldLabelTop + fieldLabelInk.Dy() + gtx.Dp(settingsFieldLabelGap)
+	fieldHeight := gtx.Dp(settingsFieldHeight)
+	fieldBottom := fieldTop + fieldHeight
+	if fieldBottom > rect.Max.Y {
+		fieldBottom = rect.Max.Y
+	}
+
+	submitted := false
+	focusLost := false
+	if w.provider == watchparty.Supabase {
+		gap := gtx.Dp(settingsFieldGap)
+		width := (right - left - gap) / 2
+		if width <= 0 {
+			return rect.Max.Y, false, false
+		}
+		w.cloudflareFocused = false
+
+		urlRect := image.Rect(left, fieldTop, left+width, fieldBottom)
+		keyRect := image.Rect(left+width+gap, fieldTop, right, fieldBottom)
+		w.typo.draw(gtx, "Supabase Endpoint", fieldLabelFace, settingsNoteSize, settingsNoteColor, image.Pt(urlRect.Min.X, fieldLabelTop))
+		w.typo.draw(gtx, "Supabase Publishable Key", fieldLabelFace, settingsNoteSize, settingsNoteColor, image.Pt(keyRect.Min.X, fieldLabelTop))
+		if w.layoutRelayField(gtx, urlRect, &w.supabaseURLEditor, "https://...supabase.co") {
+			submitted = true
+		}
+		if w.layoutRelayField(gtx, keyRect, &w.supabaseKeyEditor, "sb_publishable_...") {
+			submitted = true
+		}
+		if relayFocusLost(gtx, &w.supabaseURLEditor, &w.supabaseURLFocused) {
+			focusLost = true
+		}
+		if relayFocusLost(gtx, &w.supabaseKeyEditor, &w.supabaseKeyFocused) {
+			focusLost = true
+		}
+		return rect.Max.Y, submitted, focusLost
+	}
+
+	w.supabaseURLFocused = false
+	w.supabaseKeyFocused = false
+	fieldRect := image.Rect(left, fieldTop, right, fieldBottom)
+	w.typo.draw(gtx, "Cloudflare Endpoint", fieldLabelFace, settingsNoteSize, settingsNoteColor, image.Pt(fieldRect.Min.X, fieldLabelTop))
+	if w.layoutRelayField(gtx, fieldRect, &w.cloudflareEditor, "https://...workers.dev") {
+		submitted = true
+	}
+	if relayFocusLost(gtx, &w.cloudflareEditor, &w.cloudflareFocused) {
+		focusLost = true
+	}
+	return rect.Max.Y, submitted, focusLost
+}
+
+// layoutRelayField paints one editable endpoint. Enter and leaving the field
+// both commit the whole relay block; typing only marks it dirty.
+func (w *settingsWindow) layoutRelayField(gtx layout.Context, rect image.Rectangle, editor *widget.Editor, hint string) bool {
+	if rect.Empty() {
+		return false
+	}
+	submitted := false
+	for {
+		event, ok := editor.Update(gtx)
+		if !ok {
+			break
+		}
+		switch event.(type) {
+		case widget.ChangeEvent:
+			w.relayDirty = true
+		case widget.SubmitEvent:
+			w.relayDirty = true
+			submitted = true
+		}
+	}
+
+	focused := gtx.Focused(editor)
+	radius := gtx.Dp(unit.Dp(7))
+	border := tokenDomainBorder
+	fill := tokenDomainFill
+	if focused {
+		border = settingsToggleOnColor
+		fill = tokenDomainFillHover
+	}
+	fillRounded(gtx, border, rect, radius)
+	fillRounded(gtx, fill, rect.Inset(gtx.Dp(unit.Dp(1))), radius-gtx.Dp(unit.Dp(1)))
+
+	inner := rect.Inset(gtx.Dp(unit.Dp(1)))
+	padX := gtx.Dp(settingsFieldPadX)
+	if editor.Len() == 0 && hint != "" {
+		face := font.Font{Typeface: fontFamily, Weight: font.Normal}
+		_, ink := w.typo.measure(gtx, hint, face, settingsFieldSize)
+		drawTruncatedText(
+			gtx,
+			w.typo,
+			hint,
+			face,
+			settingsFieldSize,
+			mainPlaceholderColor,
+			image.Pt(inner.Min.X+padX, inner.Min.Y+(inner.Dy()-ink.Dy())/2),
+			inner.Dx()-2*padX,
+		)
+	}
+
+	lineHeight := gtx.Dp(unit.Dp(18))
+	textRect := image.Rect(
+		inner.Min.X+padX,
+		inner.Min.Y+(inner.Dy()-lineHeight)/2,
+		inner.Max.X-padX,
+		inner.Min.Y+(inner.Dy()-lineHeight)/2+lineHeight,
+	)
+	if textRect.Empty() {
+		return submitted
+	}
+	editorGtx := gtx
+	editorGtx.Constraints = layout.Exact(textRect.Size())
+	stack := op.Offset(textRect.Min).Push(gtx.Ops)
+	editor.Layout(
+		editorGtx,
+		w.typo.shaper,
+		font.Font{Typeface: fontFamily, Weight: font.Normal},
+		settingsFieldSize,
+		colorMaterial(gtx, mainTextColor),
+		colorMaterial(gtx, mainSelectionColor),
+	)
+	stack.Pop()
+	return submitted
+}
+
+func relayFocusLost(gtx layout.Context, editor *widget.Editor, wasFocused *bool) bool {
+	focused := gtx.Focused(editor)
+	lost := *wasFocused && !focused
+	*wasFocused = focused
+	return lost
+}
+
+// saveRelays stores the endpoint block. It runs on focus loss, Enter, provider
+// change and when the screen closes; a failed save leaves the dirty flag set so
+// the next attempt retries the same text.
+func (w *settingsWindow) saveRelays() {
+	if !w.relayDirty {
+		return
+	}
+	cfg := watchparty.Config{
+		CloudflareURL: w.cloudflareEditor.Text(),
+		SupabaseURL:   w.supabaseURLEditor.Text(),
+		SupabaseKey:   w.supabaseKeyEditor.Text(),
+	}
+	if w.onRelay != nil {
+		if err := w.onRelay(cfg); err != nil {
+			w.errorText = err.Error()
+			return
+		}
+	}
+	w.relayDirty = false
+	w.errorText = ""
 }
 
 // layoutProviderTrigger paints the closed select: the current provider and a
@@ -385,7 +574,9 @@ func (w *settingsWindow) layoutProviderMenu(gtx layout.Context, size image.Point
 		)
 		if w.layoutProviderItem(gtx, item, provider, &w.providerItems[index]) {
 			w.setProvider(provider)
+			w.saveRelays()
 			w.providerOpen = false
+			gtx.Execute(key.FocusCmd{})
 			gtx.Execute(op.InvalidateCmd{})
 		}
 	}

@@ -428,11 +428,14 @@ func (a *application) openSettings() {
 	if a.party == nil {
 		a.party = newPartyManager(a)
 	}
+	partyCfg := a.party.Config()
 	settings := newSettingsWindow(a.shell.typo, settingsValues{
-		Notifications:  a.library.EpisodeNotificationsEnabled(),
-		SharedControl:  a.library.SharedControlEnabled(),
-		Provider:       a.party.Provider(),
-		ProviderChoice: a.party.HasProviderChoice(),
+		Notifications: a.library.EpisodeNotificationsEnabled(),
+		SharedControl: a.library.SharedControlEnabled(),
+		Provider:      a.party.Provider(),
+		CloudflareURL: partyCfg.CloudflareURL,
+		SupabaseURL:   partyCfg.SupabaseURL,
+		SupabaseKey:   partyCfg.SupabaseKey,
 	})
 	settings.hidden = a.windowHidden
 	settings.onBack = func() {
@@ -461,13 +464,13 @@ func (a *application) openSettings() {
 		return nil
 	}
 	settings.onProvider = func(provider watchparty.Provider) error {
-		if !a.party.HasProviderChoice() {
-			return nil
-		}
 		// SetProvider stores the choice, so the next room and the party card
 		// agree with the settings.
 		a.party.SetProvider(provider)
 		return nil
+	}
+	settings.onRelay = func(cfg watchparty.Config) error {
+		return a.party.SetRelayConfig(cfg)
 	}
 	a.showWindow(a.window, settings)
 }

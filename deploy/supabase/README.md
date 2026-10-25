@@ -51,8 +51,9 @@ curl "https://abcdefghijkl.supabase.co/realtime/v1/websocket?apikey=<PUBLISHABLE
 
 ## Подключение клиента без своей сборки
 
-Для исходников и форков настройки задаются файлом
-`%APPDATA%\yonime\watchparty.json`:
+URL и ключ можно ввести в настройках Yonime: **Совместный просмотр → Провайдер
+→ Supabase Endpoint / Supabase Publishable Key**. То же самое можно сделать
+файлом `%APPDATA%\yonime\watchparty.json`:
 
 ```json
 {
@@ -61,9 +62,9 @@ curl "https://abcdefghijkl.supabase.co/realtime/v1/websocket?apikey=<PUBLISHABLE
 }
 ```
 
-После перезапуска Yonime провайдер **Supabase** появится в настройках. В форме
-комнаты провайдер не выбирается: ключ с буквой `S` сам приведёт гостя на
-Supabase. Файл перекрывает вшитые значения.
+Провайдер **Supabase** выбирается в блоке настроек. В форме комнаты провайдер не
+выбирается: ключ с буквой `S` сам приведёт гостя на Supabase. Файл перекрывает
+вшитые значения.
 
 Для сборки с вшитым ключом:
 
