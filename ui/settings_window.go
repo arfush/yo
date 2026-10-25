@@ -43,7 +43,7 @@ const (
 	settingsProviderMenuPad    = unit.Dp(4)
 	settingsProviderMenuGap    = unit.Dp(6)
 
-	settingsRelayPanelHeight = unit.Dp(108)
+	settingsRelayPanelHeight = unit.Dp(106)
 	settingsFieldHeight      = unit.Dp(30)
 	settingsFieldGap         = unit.Dp(12)
 	settingsFieldPadX        = unit.Dp(10)
