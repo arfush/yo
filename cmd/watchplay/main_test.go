@@ -21,8 +21,8 @@ func TestParseCommand(t *testing.T) {
 		},
 		{
 			name: "open is case insensitive",
-			args: []string{"OPEN", "yofbqopgz"},
-			want: command{name: "open", args: []string{"yofbqopgz"}},
+			args: []string{"OPEN", "yocbqopgz"},
+			want: command{name: "open", args: []string{"yocbqopgz"}},
 		},
 		{name: "no arguments", args: nil, wantErr: true},
 		{name: "create without episode", args: []string{"create", "slug", "voice"}, wantErr: true},

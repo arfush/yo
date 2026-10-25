@@ -78,7 +78,7 @@ func TestWatchPartyReopensWaitingScreenForGuest(t *testing.T) {
 	}
 }
 
-func TestPartyProviderChipIsStaticWithOneRelay(t *testing.T) {
+func TestPartyProviderChoiceRequiresTwoRelays(t *testing.T) {
 	single := &partyManager{cfg: watchparty.Config{CloudflareURL: "wss://relay.example.workers.dev"}}
 	if single.HasProviderChoice() {
 		t.Fatal("a build with one relay must not offer a provider switch")

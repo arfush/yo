@@ -103,10 +103,10 @@ func TestStateGuestsControl(t *testing.T) {
 
 func TestNormalizeDisplay(t *testing.T) {
 	cases := map[string]string{
-		"yofbqopgz":   "YOFBQOPGZ",
-		"  YOFBQOPGZ": "YOFBQOPGZ",
+		"yocbqopgz":   "YOCBQOPGZ",
+		"  YOCBQOPGZ": "YOCBQOPGZ",
 		"":            "",
-		"yof":         "YOF",
+		"yoc":         "YOC",
 	}
 	for input, want := range cases {
 		if got := NormalizeDisplay(input); got != want {
@@ -117,13 +117,13 @@ func TestNormalizeDisplay(t *testing.T) {
 
 func TestSanitizeKeyInput(t *testing.T) {
 	cases := map[string]string{
-		"yofbqopgz":   "YOFBQOPGZ",
-		" yofbqopgz ": "YOFBQOPGZ",
+		"yocbqopgz":   "YOCBQOPGZ",
+		" yocbqopgz ": "YOCBQOPGZ",
 		// A key copied from a message may carry separators.
-		"YO-FBQ-OPGZ": "YOFBQOPGZ",
-		"yofbqopgzzz": "YOFBQOPGZ",
+		"YO-CBQ-OPGZ": "YOCBQOPGZ",
+		"yocbqopgzzz": "YOCBQOPGZ",
 		// Cyrillic letters are not part of the alphabet.
-		"УОFBQOPGZ": "FBQOPGZ",
+		"УОCBQOPGZ": "CBQOPGZ",
 		"12345":     "",
 		"":          "",
 	}
@@ -170,11 +170,11 @@ func TestConfigNormalizesEndpoints(t *testing.T) {
 		t.Fatalf("supabase key = %q", cfg.SupabaseKey)
 	}
 
-	endpoint, err := cfg.CloudflareEndpoint("YOFBQOPGZ", Guest)
+	endpoint, err := cfg.CloudflareEndpoint("YOCBQOPGZ", Guest)
 	if err != nil {
 		t.Fatalf("CloudflareEndpoint: %v", err)
 	}
-	want := "wss://party.example.workers.dev/room?key=YOFBQOPGZ&role=guest"
+	want := "wss://party.example.workers.dev/room?key=YOCBQOPGZ&role=guest"
 	if endpoint != want {
 		t.Fatalf("endpoint = %q, want %q", endpoint, want)
 	}
