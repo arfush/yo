@@ -63,6 +63,12 @@ const (
 	mainStatusPaddingX   = unit.Dp(9)
 	mainFrameTime        = time.Second / 60
 	mainSpinnerFrameTime = time.Second / 60
+	// mainErrorFeedbackDuration is how long the Next button and the mascot stay
+	// red after an empty link or a failed load.
+	mainErrorFeedbackDuration = 3 * time.Second
+	// mainErrorShakeOffset is the peak horizontal offset of the error tremor.
+	mainErrorShakeOffset = unit.Dp(1.8)
+	mainErrorShakeHz     = 11.0
 )
 
 var (
@@ -96,6 +102,7 @@ var (
 	mainDragDotColor      = color.NRGBA{R: 0x53, G: 0x4d, B: 0x63, A: 0xff}
 	mainDragDotActive     = color.NRGBA{R: 0xb4, G: 0x9c, B: 0xff, A: 0xff}
 	mainDangerColor       = color.NRGBA{R: 0xff, G: 0x64, B: 0x73, A: 0xff}
+	mainDangerColor2      = color.NRGBA{R: 0xd1, G: 0x31, B: 0x48, A: 0xff}
 	mainStatusDoneText    = color.NRGBA{R: 0x58, G: 0xdc, B: 0x9a, A: 0xff}
 	mainStatusDoneFill    = color.NRGBA{R: 0x10, G: 0x2c, B: 0x21, A: 0xff}
 	mainStatusDoneBorder  = color.NRGBA{R: 0x24, G: 0x55, B: 0x3e, A: 0xff}
@@ -196,7 +203,7 @@ type mainWindow struct {
 	deleteIndex     int
 
 	inputFocused bool
-	emptyLinkAt  time.Time
+	errorAt      time.Time
 	placeholder  placeholderState
 
 	undo undoDeleteState
@@ -280,15 +287,59 @@ func (m *mainWindow) onShown() {
 	m.editor.ClearSelection()
 }
 
-// triggerEmptyLink runs the short feedback used when Next is pressed with an
-// empty URL field: the arrow shakes and the mascot taps the prompt.
+// triggerEmptyLink flashes the load-error feedback when Next is pressed with an
+// empty URL field.
 func (m *mainWindow) triggerEmptyLink(gtx layout.Context) {
 	if m.loading {
 		return
 	}
-	m.emptyLinkAt = gtx.Now
+	m.showLoadError(gtx, "Введите ссылку на тайтл AnimeLIB.")
 	m.placeholder.showFull(gtx.Now)
+}
+
+// showLoadError stores the message and starts the three-second red shake on the
+// Next button and the mascot.
+func (m *mainWindow) showLoadError(gtx layout.Context, text string) {
+	m.loadError = text
+	m.errorAt = gtx.Now
 	gtx.Execute(op.InvalidateCmd{})
+}
+
+// clearLoadError drops the message and the error feedback together, so a retry
+// paints the button purple again immediately.
+func (m *mainWindow) clearLoadError() {
+	m.loadError = ""
+	m.errorAt = time.Time{}
+}
+
+// errorFeedbackActive reports whether the red error state is still running.
+func errorFeedbackActive(now, start time.Time) bool {
+	if start.IsZero() {
+		return false
+	}
+	elapsed := now.Sub(start)
+	return elapsed >= 0 && elapsed < mainErrorFeedbackDuration
+}
+
+// errorShake returns the horizontal tremor of the error feedback in [-1, 1].
+// The amplitude fades out, so the button settles before the red window ends
+// instead of stopping abruptly.
+func errorShake(now, start time.Time) float32 {
+	if !errorFeedbackActive(now, start) {
+		return 0
+	}
+	elapsed := now.Sub(start)
+	decay := 1 - float32(elapsed)/float32(mainErrorFeedbackDuration)
+	seconds := float64(elapsed) / float64(time.Second)
+	return decay * float32(math.Sin(2*math.Pi*mainErrorShakeHz*seconds))
+}
+
+// errorShakePixels converts the tremor into device pixels.
+func errorShakePixels(gtx layout.Context, shake float32) int {
+	if shake == 0 {
+		return 0
+	}
+	return int(math.Round(float64(shake) * float64(gtx.Dp(mainErrorShakeOffset))))
 }
 
 // updateCovers consumes covers downloaded in the background after a title is
@@ -640,15 +691,14 @@ func (m *mainWindow) startLoading(gtx layout.Context, target int, animateRow boo
 		return
 	}
 	if input == "" {
-		m.loadError = "Введите ссылку на тайтл AnimeLIB."
-		gtx.Execute(op.InvalidateCmd{})
+		m.showLoadError(gtx, "Введите ссылку на тайтл AnimeLIB.")
 		return
 	}
 
 	m.loading = true
 	m.loadingTarget = target
 	m.loadingAnimateRow = animateRow && target >= 0
-	m.loadError = ""
+	m.clearLoadError()
 	m.loadSequence++
 	sequence := m.loadSequence
 	ctx, cancel := context.WithCancel(context.Background())
@@ -726,14 +776,14 @@ func (m *mainWindow) finishLoading(gtx layout.Context, result titleLoadResult) {
 
 	if result.err != nil {
 		if result.err != context.Canceled && !strings.Contains(result.err.Error(), "context canceled") {
-			m.loadError = result.err.Error()
+			m.showLoadError(gtx, result.err.Error())
 		}
 		m.dismissRateLimitNotice()
 		gtx.Execute(op.InvalidateCmd{})
 		return
 	}
 
-	m.loadError = ""
+	m.clearLoadError()
 	// The title came through, so the rate-limit phrase must go immediately
 	// even if the throttle pause is technically still winding down.
 	animelib.DismissRateLimitNotice()
@@ -924,9 +974,12 @@ func (m *mainWindow) layoutInput(gtx layout.Context, rect image.Rectangle, focus
 	if !editorRect.Empty() {
 		m.layoutEditor(gtx, editorRect)
 	}
-	// Draw the mascot after the editor so her extended paw reads as tapping
-	// the prompt during the empty-link feedback.
-	drawCatgirl(gtx, mascot, gtx.Now, m.emptyLinkAt, mascotHatNone)
+	// Draw the mascot after the editor so the error tremor moves her over the
+	// prompt instead of the text painting on top of her.
+	shake := errorShake(gtx.Now, m.errorAt)
+	offset := op.Offset(image.Pt(errorShakePixels(gtx, shake), 0)).Push(gtx.Ops)
+	drawCatgirl(gtx, mascot, gtx.Now, mascotHatNone, errorFeedbackActive(gtx.Now, m.errorAt))
+	offset.Pop()
 
 	m.drawHint(gtx, hintRect)
 	m.layoutNext(gtx, nextRect)
@@ -1001,7 +1054,7 @@ func (m *mainWindow) drawHint(gtx layout.Context, rect image.Rectangle) {
 
 func (m *mainWindow) layoutNext(gtx layout.Context, rect image.Rectangle) {
 	if m.loading {
-		m.drawNextFace(gtx, rect, 0, true)
+		m.drawNextFace(gtx, rect, 0, true, false)
 		drawSpinner(gtx, centerOf(rect), gtx.Dp(unit.Dp(9)), gtx.Dp(unit.Dp(1.7)), 0, mainTextColor)
 		if m.animationsRun() {
 			gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(mainSpinnerFrameTime)})
@@ -1020,18 +1073,25 @@ func (m *mainWindow) layoutNext(gtx layout.Context, rect image.Rectangle) {
 		}
 	}
 
+	errored := errorFeedbackActive(gtx.Now, m.errorAt)
+	shake := errorShakePixels(gtx, errorShake(gtx.Now, m.errorAt))
+
 	stack := op.Offset(rect.Min).Push(gtx.Ops)
 	defer stack.Pop()
 	cgtx := gtx
 	cgtx.Constraints = layout.Exact(rect.Size())
 	m.next.Layout(cgtx, func(gtx layout.Context) layout.Dimensions {
 		pointer.CursorPointer.Add(gtx.Ops)
-		m.drawNextFace(gtx, image.Rectangle{Max: rect.Size()}, hover, false)
+		// The offset moves only the face, so the click area stays put while the
+		// button trembles.
+		face := op.Offset(image.Pt(shake, 0)).Push(gtx.Ops)
+		m.drawNextFace(gtx, image.Rectangle{Max: rect.Size()}, hover, false, errored)
+		face.Pop()
 		return layout.Dimensions{Size: rect.Size()}
 	})
 }
 
-func (m *mainWindow) drawNextFace(gtx layout.Context, rect image.Rectangle, hover float32, disabled bool) {
+func (m *mainWindow) drawNextFace(gtx layout.Context, rect image.Rectangle, hover float32, disabled, alarm bool) {
 	if rect.Empty() {
 		return
 	}
@@ -1039,33 +1099,16 @@ func (m *mainWindow) drawNextFace(gtx layout.Context, rect image.Rectangle, hove
 	c1, c2 := mainAccentColor1, mainAccentColor2
 	if disabled {
 		c1, c2 = mainDisabledColor1, mainDisabledColor2
+	} else if alarm {
+		c1, c2 = mainDangerColor, mainDangerColor2
 	} else if hover > 0 {
 		c1 = mixColor(c1, color.NRGBA{R: 0xae, G: 0x8b, B: 0xff, A: 0xff}, hover)
 		c2 = mixColor(c2, color.NRGBA{R: 0x82, G: 0x3e, B: 0xee, A: 0xff}, hover)
 	}
 	fillRoundedGradient(gtx, rect, rect, radius, c1, c2)
 	if !disabled {
-		iconCenter := centerOf(rect)
-		if shake := nextIconShake(gtx.Now, m.emptyLinkAt); shake != 0 {
-			iconCenter.X += int(math.Round(float64(shake) * float64(gtx.Dp(unit.Dp(2.4)))))
-		}
-		drawChevronRight(gtx, iconCenter, rect.Dx()/3, gtx.Dp(unit.Dp(2)), color.NRGBA{A: 0xff, R: 0xff, G: 0xff, B: 0xff})
+		drawChevronRight(gtx, centerOf(rect), rect.Dx()/3, gtx.Dp(unit.Dp(2)), color.NRGBA{A: 0xff, R: 0xff, G: 0xff, B: 0xff})
 	}
-}
-
-// nextIconShake is a short decaying wobble for the Next arrow. It starts and
-// ends at zero so the icon never jumps when the animation is triggered again.
-func nextIconShake(now, start time.Time) float32 {
-	if start.IsZero() {
-		return 0
-	}
-	const duration = 420 * time.Millisecond
-	elapsed := now.Sub(start)
-	if elapsed < 0 || elapsed >= duration {
-		return 0
-	}
-	p := float32(elapsed) / float32(duration)
-	return (1 - p) * float32(math.Sin(6*math.Pi*float64(p)))
 }
 
 func (m *mainWindow) layoutHistoryHeader(gtx layout.Context, rect image.Rectangle) {

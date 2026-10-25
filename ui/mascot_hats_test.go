@@ -35,6 +35,7 @@ func TestDrawCatgirlWithEveryHat(t *testing.T) {
 	}
 	rect := image.Rect(0, 0, 168, 168)
 	for hat := mascotHatNone; hat < mascotHatCount; hat++ {
-		drawCatgirl(gtx, rect, gtx.Now, time.Time{}, hat)
+		drawCatgirl(gtx, rect, gtx.Now, hat, false)
+		drawCatgirl(gtx, rect, gtx.Now, hat, true)
 	}
 }

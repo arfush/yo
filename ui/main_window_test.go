@@ -1,10 +1,14 @@
 package ui
 
 import (
+	"errors"
 	"image"
 	"testing"
+	"time"
 
 	"gioui.org/io/key"
+	"gioui.org/layout"
+	"gioui.org/op"
 )
 
 func testHistory() []historyTitle {
@@ -183,5 +187,71 @@ func TestReorderIndexFollowsMovedItem(t *testing.T) {
 				t.Fatalf("reorderIndex(%d, %d, %d) = %d, want %d", tt.index, tt.from, tt.to, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestErrorFeedbackLastsThreeSeconds(t *testing.T) {
+	start := time.Unix(500, 0)
+	if !errorFeedbackActive(start, start) {
+		t.Fatal("feedback should be active right after the error")
+	}
+	if !errorFeedbackActive(start.Add(2900*time.Millisecond), start) {
+		t.Fatal("feedback should still be active just before three seconds")
+	}
+	if errorFeedbackActive(start.Add(mainErrorFeedbackDuration), start) {
+		t.Fatal("feedback should stop at three seconds")
+	}
+	if errorFeedbackActive(start, time.Time{}) {
+		t.Fatal("an unset timestamp should not start the feedback")
+	}
+	if got := errorShake(start.Add(mainErrorFeedbackDuration), start); got != 0 {
+		t.Fatalf("shake after the window = %v, want 0", got)
+	}
+	for elapsed := time.Duration(0); elapsed < mainErrorFeedbackDuration; elapsed += 10 * time.Millisecond {
+		shake := errorShake(start.Add(elapsed), start)
+		if shake < -1 || shake > 1 {
+			t.Fatalf("shake at %v = %v, want it within [-1, 1]", elapsed, shake)
+		}
+	}
+}
+
+func TestEmptyLinkStartsRedErrorFeedback(t *testing.T) {
+	gtx := layout.Context{Ops: new(op.Ops), Now: time.Unix(600, 0)}
+	m := &mainWindow{}
+	m.editor.SetText("   ")
+
+	m.startLoading(gtx, -1, false)
+
+	if m.loading {
+		t.Fatal("empty input should not start a load")
+	}
+	if m.loadError == "" {
+		t.Fatal("empty input should leave a user-facing message")
+	}
+	if m.errorAt != gtx.Now {
+		t.Fatalf("error timestamp = %v, want %v", m.errorAt, gtx.Now)
+	}
+}
+
+func TestLoadFailureStartsAndSuccessClearsRedErrorFeedback(t *testing.T) {
+	gtx := layout.Context{Ops: new(op.Ops), Now: time.Unix(700, 0)}
+	m := &mainWindow{loading: true}
+	m.finishLoading(gtx, titleLoadResult{err: errors.New("boom")})
+
+	if m.loadError != "boom" {
+		t.Fatalf("load error = %q, want %q", m.loadError, "boom")
+	}
+	if m.errorAt != gtx.Now {
+		t.Fatalf("error timestamp = %v, want %v", m.errorAt, gtx.Now)
+	}
+
+	gtx.Now = gtx.Now.Add(time.Second)
+	m.loading = true
+	m.finishLoading(gtx, titleLoadResult{title: historyTitle{id: 1}})
+	if m.loadError != "" {
+		t.Fatalf("load error = %q after success, want empty", m.loadError)
+	}
+	if !m.errorAt.IsZero() {
+		t.Fatalf("error timestamp = %v after success, want zero", m.errorAt)
 	}
 }

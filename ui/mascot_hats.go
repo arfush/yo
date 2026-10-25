@@ -39,8 +39,8 @@ func nextMascotHat() int {
 }
 
 // drawMascotHat paints one of the waiting-screen outfits. Every shape uses the
-// same mascot coordinate system as drawCatgirl, so a hat bobs and leans with
-// the head instead of floating beside it.
+// same mascot coordinate system as drawCatgirl, so a hat bobs with the head
+// instead of floating beside it.
 func drawMascotHat(
 	gtx layout.Context,
 	hat int,
