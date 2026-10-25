@@ -1790,7 +1790,6 @@ func shortcutInfoFor(screen windowScreen) shortcutInfo {
 		items: []shortcutItem{
 			{keys: "F1", label: "Открыть или закрыть сводку"},
 		},
-		note: "Esc или кнопка «Вернуться» закрывают сводку.",
 	}
 }
 

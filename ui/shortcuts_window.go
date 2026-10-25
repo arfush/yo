@@ -17,7 +17,6 @@ const (
 	shortcutPageSize  = unit.Sp(11.5)
 	shortcutKeySize   = unit.Sp(10.5)
 	shortcutTextSize  = unit.Sp(12)
-	shortcutNoteSize  = unit.Sp(10.5)
 	shortcutKeyHeight = unit.Dp(23)
 )
 
@@ -32,7 +31,6 @@ type shortcutItem struct {
 type shortcutInfo struct {
 	page  string
 	items []shortcutItem
-	note  string
 }
 
 // shortcutSource lets a screen describe only the keys that work on it. The
@@ -109,7 +107,7 @@ func (w *shortcutsWindow) layout(gtx layout.Context) {
 	buttonHeight := gtx.Dp(unit.Dp(34))
 	buttonWidth := gtx.Dp(unit.Dp(120))
 	footerY := card.Max.Y - innerPad - buttonHeight
-	button := image.Rect(right-buttonWidth, footerY, right, footerY+buttonHeight)
+	button := image.Rect(left, footerY, left+buttonWidth, footerY+buttonHeight)
 
 	rowsTop := dividerY + gtx.Dp(unit.Dp(8))
 	rowsBottom := button.Min.Y - gtx.Dp(unit.Dp(10))
@@ -146,19 +144,6 @@ func (w *shortcutsWindow) layout(gtx layout.Context) {
 			_, labelInk := w.typo.measure(gtx, item.label, textFace, shortcutTextSize)
 			labelY := centerY - labelInk.Dy()/2
 			w.typo.draw(gtx, item.label, textFace, shortcutTextSize, mainTextColor, image.Pt(left+keyColumn+keyGap, labelY))
-		}
-	}
-
-	if w.info.note != "" {
-		noteFace := font.Font{Typeface: fontFamily, Weight: font.Normal}
-		available := button.Min.X - left - gtx.Dp(unit.Dp(16))
-		if available > gtx.Dp(unit.Dp(80)) {
-			note := truncateText(gtx, w.typo, w.info.note, noteFace, shortcutNoteSize, available)
-			if note != "" {
-				_, noteInk := w.typo.measure(gtx, note, noteFace, shortcutNoteSize)
-				noteY := button.Min.Y + (button.Dy()-noteInk.Dy())/2
-				w.typo.draw(gtx, note, noteFace, shortcutNoteSize, mainMutedColor, image.Pt(left, noteY))
-			}
 		}
 	}
 

@@ -1347,7 +1347,6 @@ func (w *titleWindow) shortcutInfo() shortcutInfo {
 	return shortcutInfo{
 		page:  "Страница тайтла",
 		items: items,
-		note:  "Клавиши работают в русской и английской раскладке.",
 	}
 }
 

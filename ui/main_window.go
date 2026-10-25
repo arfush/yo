@@ -637,7 +637,6 @@ func (m *mainWindow) shortcutInfo() shortcutInfo {
 			{keys: "Ctrl + K", label: "Перейти к полю ссылки"},
 			{keys: "Esc", label: "Вернуться к истории или отменить загрузку"},
 		},
-		note: "Клавиши работают в русской и английской раскладке.",
 	}
 }
 
