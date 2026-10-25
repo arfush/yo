@@ -59,8 +59,10 @@ type shell struct {
 	// errorText is the user-facing failure shown in the middle of the header.
 	// Technical details stay in the log; screens never draw their own errors.
 	errorText string
-	// logAlertUntil keeps the log button dull red for a few seconds after an
-	// error, pointing the user at the details without opening the window.
+	// errorUntil expires the header sentence. logAlertUntil keeps the log
+	// button dull red for the same window, pointing the user at the details
+	// without opening the window.
+	errorUntil    time.Time
 	logAlertUntil time.Time
 
 	content layout.Widget
@@ -101,13 +103,40 @@ func (s *shell) setConfig(cfg app.Config) {
 // error before calling this method.
 func (s *shell) setError(message string, now time.Time) {
 	s.errorText = message
-	if message != "" {
-		s.logAlertUntil = now.Add(5 * time.Second)
+	if message == "" {
+		s.errorUntil = time.Time{}
+		s.logAlertUntil = time.Time{}
+		return
 	}
+	s.errorUntil = now.Add(5 * time.Second)
+	s.logAlertUntil = s.errorUntil
 }
 
 func (s *shell) clearError() {
 	s.errorText = ""
+	s.errorUntil = time.Time{}
+}
+
+// expireError clears the header sentence once its five seconds are up. It is
+// separate from layout so the rule can be tested without an event loop.
+func (s *shell) expireError(now time.Time) bool {
+	if s.errorText == "" || s.errorUntil.IsZero() || now.Before(s.errorUntil) {
+		return false
+	}
+	s.clearError()
+	return true
+}
+
+// updateError runs before the header is drawn. Scheduling the frame at the
+// exact expiry is important: otherwise the sentence would stay forever when
+// the window is otherwise idle.
+func (s *shell) updateError(gtx layout.Context) {
+	if s.expireError(gtx.Now) {
+		return
+	}
+	if s.errorText != "" && !s.errorUntil.IsZero() && s.animationsRun() {
+		gtx.Execute(op.InvalidateCmd{At: s.errorUntil})
+	}
 }
 
 // animationsRun reports whether the chrome may keep scheduling its own frames.
@@ -116,6 +145,7 @@ func (s *shell) animationsRun() bool {
 }
 
 func (s *shell) layout(gtx layout.Context, w *app.Window) {
+	s.updateError(gtx)
 	g := makeGeometry(gtx, s.cfg.Mode != app.Windowed, s.settingsVisible, s.partyVisible, s.updateVisible)
 	// The watcher registered last frame has already collected presses for this
 	// frame. Reading it before the content lets a press outside the selected
