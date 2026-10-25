@@ -97,17 +97,21 @@ func drawCatgirl(gtx layout.Context, rect image.Rectangle, now time.Time, linkAt
 	fillRoundedGradient(gtx, body, body, px(5), catHairColor, catDressColor)
 	fillRounded(gtx, catDressLight, r(-7.2, 12.0, 7.2, 12.9), px(0.45))
 
-	// Hair silhouette and cat ears.
+	// Hair silhouette and cat ears. The last point of each outer ear is its
+	// root: it sits inside the head ellipse, so the ear base never leaves a
+	// wedge of background between the ear and the head.
 	fillEllipse(gtx, r(-12.2, -13.5, 12.2, 6.5), catHairColor)
 	fillPolygon(gtx, []f32.Point{
 		pt(-11.5, -8),
 		pt(-14, -18.5),
 		pt(-4, -12.5),
+		pt(-10.8, -5.6),
 	}, catHairColor)
 	fillPolygon(gtx, []f32.Point{
 		pt(11.5, -8),
 		pt(14, -18.5),
 		pt(4, -12.5),
+		pt(10.8, -5.6),
 	}, catHairColor)
 	fillPolygon(gtx, []f32.Point{
 		pt(-10.2, -9.5),
