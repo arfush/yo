@@ -28,6 +28,9 @@ func TestAnimeLinkPromptList(t *testing.T) {
 		if seen[phrase] {
 			t.Fatalf("prompt %d is duplicated: %q", i, phrase)
 		}
+		if n := utf8.RuneCountInString(phrase); n > maxPlaceholderRunes {
+			t.Fatalf("prompt %d has %d runes, want at most %d: %q", i, n, maxPlaceholderRunes, phrase)
+		}
 		seen[phrase] = true
 	}
 }
