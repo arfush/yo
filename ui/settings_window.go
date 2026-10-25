@@ -31,6 +31,7 @@ const (
 	settingsPanelPadTop  = unit.Dp(15)
 	settingsToggleWidth  = unit.Dp(42)
 	settingsToggleHeight = unit.Dp(24)
+	settingsNoteGap      = unit.Dp(6)
 	settingsTitleGap     = unit.Dp(16)
 	settingsGroupGap     = unit.Dp(20)
 	settingsRowGap       = unit.Dp(10)
@@ -237,7 +238,7 @@ func (w *settingsWindow) layoutToggleRow(
 	_, noteInk := w.typo.measure(gtx, note, noteFace, settingsNoteSize)
 	blockHeight := labelInk.Dy()
 	if note != "" {
-		blockHeight += gtx.Dp(unit.Dp(2)) + noteInk.Dy()
+		blockHeight += gtx.Dp(settingsNoteGap) + noteInk.Dy()
 	}
 	top := rect.Min.Y + (rect.Dy()-blockHeight)/2
 
@@ -253,7 +254,7 @@ func (w *settingsWindow) layoutToggleRow(
 
 	w.typo.draw(gtx, label, labelFace, settingsLabelSize, mainTextColor, image.Pt(left, top))
 	if note != "" {
-		noteTop := top + labelInk.Dy() + gtx.Dp(unit.Dp(2))
+		noteTop := top + labelInk.Dy() + gtx.Dp(settingsNoteGap)
 		drawTruncatedText(gtx, w.typo, note, noteFace, settingsNoteSize, settingsNoteColor, image.Pt(left, noteTop), textRight-left)
 	}
 
