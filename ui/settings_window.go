@@ -19,36 +19,38 @@ import (
 
 const (
 	settingsPadX         = unit.Dp(28)
-	settingsPadTop       = unit.Dp(30)
+	settingsPadTop       = unit.Dp(22)
 	settingsTitleSize    = unit.Sp(21)
 	settingsLabelSize    = unit.Sp(14)
 	settingsNoteSize     = unit.Sp(11.5)
 	settingsButtonSize   = unit.Sp(12)
 	settingsButtonHeight = unit.Dp(34)
 	settingsPanelRadius  = unit.Dp(10)
-	settingsPanelHeight  = unit.Dp(84)
+	settingsPanelHeight  = unit.Dp(80)
 	settingsPanelPadX    = unit.Dp(18)
 	settingsPanelPadTop  = unit.Dp(15)
 	settingsToggleWidth  = unit.Dp(42)
 	settingsToggleHeight = unit.Dp(24)
 	settingsNoteGap      = unit.Dp(6)
-	settingsTitleGap     = unit.Dp(16)
-	settingsGroupGap     = unit.Dp(20)
-	settingsRowGap       = unit.Dp(10)
+	settingsTitleGap     = unit.Dp(13)
+	settingsGroupGap     = unit.Dp(16)
+	settingsRowGap       = unit.Dp(8)
 
-	settingsProviderWidth      = unit.Dp(124)
-	settingsProviderHeight     = unit.Dp(30)
-	settingsProviderItemHeight = unit.Dp(32)
-	settingsProviderItemGap    = unit.Dp(2)
-	settingsProviderMenuPad    = unit.Dp(4)
-	settingsProviderMenuGap    = unit.Dp(6)
+	settingsProviderWidth       = unit.Dp(124)
+	settingsProviderHeight      = unit.Dp(30)
+	settingsProviderItemHeight  = unit.Dp(32)
+	settingsProviderItemGap     = unit.Dp(2)
+	settingsProviderMenuPad     = unit.Dp(4)
+	settingsProviderMenuGap     = unit.Dp(6)
+	settingsProviderPanelHeight = unit.Dp(60)
 
-	settingsRelayPanelHeight = unit.Dp(106)
+	settingsRelayPanelHeight = unit.Dp(68)
 	settingsFieldHeight      = unit.Dp(30)
 	settingsFieldGap         = unit.Dp(12)
 	settingsFieldPadX        = unit.Dp(10)
 	settingsFieldLabelGap    = unit.Dp(4)
 	settingsFieldSize        = unit.Sp(12)
+	settingsErrorGap         = unit.Dp(6)
 )
 
 var (
@@ -187,8 +189,13 @@ func (w *settingsWindow) layout(gtx layout.Context) {
 	y = w.layoutSectionTitle(gtx, left, y, "Совместный просмотр")
 	y = w.layoutControlPanel(gtx, image.Rect(left, y, right, y+gtx.Dp(settingsPanelHeight)))
 	y += gtx.Dp(settingsRowGap)
+	y = w.layoutProviderPanel(
+		gtx,
+		image.Rect(left, y, right, y+gtx.Dp(settingsProviderPanelHeight)),
+	)
+	y += gtx.Dp(settingsRowGap)
 	var relaySubmitted, relayFocusLost bool
-	y, relaySubmitted, relayFocusLost = w.layoutProviderPanel(
+	y, relaySubmitted, relayFocusLost = w.layoutRelayPanel(
 		gtx,
 		image.Rect(left, y, right, y+gtx.Dp(settingsRelayPanelHeight)),
 	)
@@ -204,7 +211,7 @@ func (w *settingsWindow) layout(gtx layout.Context) {
 			font.Font{Typeface: fontFamily, Weight: font.Normal},
 			settingsNoteSize,
 			settingsErrorText,
-			image.Pt(left, y+gtx.Dp(unit.Dp(8))),
+			image.Pt(left, y+gtx.Dp(settingsErrorGap)),
 			right-left,
 		)
 	}
@@ -321,14 +328,14 @@ func (w *settingsWindow) layoutToggleRow(
 	})
 }
 
-func (w *settingsWindow) layoutProviderPanel(gtx layout.Context, rect image.Rectangle) (int, bool, bool) {
+func (w *settingsWindow) layoutProviderPanel(gtx layout.Context, rect image.Rectangle) int {
 	w.drawPanel(gtx, rect)
 	labelFace := font.Font{Typeface: fontFamily, Weight: font.Medium}
 	_, labelInk := w.typo.measure(gtx, "Провайдер", labelFace, settingsLabelSize)
 	left := rect.Min.X + gtx.Dp(settingsPanelPadX)
 	right := rect.Max.X - gtx.Dp(settingsPanelPadX)
-	rowTop := rect.Min.Y + gtx.Dp(unit.Dp(12))
 	rowHeight := gtx.Dp(settingsProviderHeight)
+	rowTop := rect.Min.Y + (rect.Dy()-rowHeight)/2
 	labelTop := rowTop + (rowHeight-labelInk.Dy())/2
 	w.typo.draw(gtx, "Провайдер", labelFace, settingsLabelSize, mainTextColor, image.Pt(left, labelTop))
 
@@ -347,12 +354,21 @@ func (w *settingsWindow) layoutProviderPanel(gtx layout.Context, rect image.Rect
 		}
 		gtx.Execute(op.InvalidateCmd{})
 	}
+	return rect.Max.Y
+}
 
-	fieldLabelFace := font.Font{Typeface: fontFamily, Weight: font.Normal}
-	_, fieldLabelInk := w.typo.measure(gtx, "Supabase Publishable Key", fieldLabelFace, settingsNoteSize)
-	fieldLabelTop := rowTop + rowHeight + gtx.Dp(unit.Dp(8))
-	fieldTop := fieldLabelTop + fieldLabelInk.Dy() + gtx.Dp(settingsFieldLabelGap)
+// layoutRelayPanel draws the endpoints in their own block under the provider
+// choice, so the dropdown and the editable fields do not look like one control.
+func (w *settingsWindow) layoutRelayPanel(gtx layout.Context, rect image.Rectangle) (int, bool, bool) {
+	w.drawPanel(gtx, rect)
+	left := rect.Min.X + gtx.Dp(settingsPanelPadX)
+	right := rect.Max.X - gtx.Dp(settingsPanelPadX)
+	labelFace := font.Font{Typeface: fontFamily, Weight: font.Normal}
+	_, labelInk := w.typo.measure(gtx, "Supabase Publishable Key", labelFace, settingsNoteSize)
 	fieldHeight := gtx.Dp(settingsFieldHeight)
+	blockHeight := labelInk.Dy() + gtx.Dp(settingsFieldLabelGap) + fieldHeight
+	labelTop := rect.Min.Y + (rect.Dy()-blockHeight)/2
+	fieldTop := labelTop + labelInk.Dy() + gtx.Dp(settingsFieldLabelGap)
 	fieldBottom := fieldTop + fieldHeight
 	if fieldBottom > rect.Max.Y {
 		fieldBottom = rect.Max.Y
@@ -370,8 +386,8 @@ func (w *settingsWindow) layoutProviderPanel(gtx layout.Context, rect image.Rect
 
 		urlRect := image.Rect(left, fieldTop, left+width, fieldBottom)
 		keyRect := image.Rect(left+width+gap, fieldTop, right, fieldBottom)
-		w.typo.draw(gtx, "Supabase Endpoint", fieldLabelFace, settingsNoteSize, settingsNoteColor, image.Pt(urlRect.Min.X, fieldLabelTop))
-		w.typo.draw(gtx, "Supabase Publishable Key", fieldLabelFace, settingsNoteSize, settingsNoteColor, image.Pt(keyRect.Min.X, fieldLabelTop))
+		w.typo.draw(gtx, "Supabase Endpoint", labelFace, settingsNoteSize, settingsNoteColor, image.Pt(urlRect.Min.X, labelTop))
+		w.typo.draw(gtx, "Supabase Publishable Key", labelFace, settingsNoteSize, settingsNoteColor, image.Pt(keyRect.Min.X, labelTop))
 		if w.layoutRelayField(gtx, urlRect, &w.supabaseURLEditor, "https://...supabase.co") {
 			submitted = true
 		}
@@ -390,7 +406,7 @@ func (w *settingsWindow) layoutProviderPanel(gtx layout.Context, rect image.Rect
 	w.supabaseURLFocused = false
 	w.supabaseKeyFocused = false
 	fieldRect := image.Rect(left, fieldTop, right, fieldBottom)
-	w.typo.draw(gtx, "Cloudflare Endpoint", fieldLabelFace, settingsNoteSize, settingsNoteColor, image.Pt(fieldRect.Min.X, fieldLabelTop))
+	w.typo.draw(gtx, "Cloudflare Endpoint", labelFace, settingsNoteSize, settingsNoteColor, image.Pt(fieldRect.Min.X, labelTop))
 	if w.layoutRelayField(gtx, fieldRect, &w.cloudflareEditor, "https://...workers.dev") {
 		submitted = true
 	}

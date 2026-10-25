@@ -134,10 +134,16 @@ func TestSettingsWindowFitsTheRealContentArea(t *testing.T) {
 		2*(titleInk.Dy()+gtx.Dp(settingsTitleGap)) +
 		gtx.Dp(settingsGroupGap) +
 		2*gtx.Dp(settingsPanelHeight) +
-		gtx.Dp(settingsRowGap) +
+		2*gtx.Dp(settingsRowGap) +
+		gtx.Dp(settingsProviderPanelHeight) +
 		gtx.Dp(settingsRelayPanelHeight)
 	if bottom > contentHeight {
 		t.Fatalf("settings need %dpx, content area allows %dpx", bottom, contentHeight)
+	}
+	_, noteInk := typo.measure(gtx, "Ошибка", font.Font{Typeface: fontFamily, Weight: font.Normal}, settingsNoteSize)
+	errorBottom := bottom + gtx.Dp(settingsErrorGap) + noteInk.Dy()
+	if errorBottom > contentHeight {
+		t.Fatalf("settings with an error need %dpx, content area allows %dpx", errorBottom, contentHeight)
 	}
 }
 
