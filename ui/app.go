@@ -355,10 +355,20 @@ func (a *application) startTray() {
 // return to Window.Event() while a close request is being handled. Calling it
 // inline would block both threads forever.
 func (a *application) hideToTray() {
+	a.hidePopups()
 	a.hidden.Store(true)
 	go hideAppWindow()
 	// A pending silent install may proceed now that the user parked the window.
 	a.wakeAutoUpdate()
+}
+
+// hidePopups closes any transient menu before the window stops being the
+// active one. Clicking outside the window arrives as a focus change, not as a
+// pointer event, so the application has to dismiss the popup here.
+func (a *application) hidePopups() {
+	if popup, ok := a.active.(popupScreen); ok {
+		popup.dismissPopup()
+	}
 }
 
 // restoreWindow brings the window back from the notification area. While mpv is
@@ -1847,8 +1857,11 @@ func (a *application) run(w *app.Window) error {
 		case app.ConfigEvent:
 			wasFocused := a.shell.cfg.Focused
 			a.shell.setConfig(e.Config)
-			if wasFocused && !e.Config.Focused && a.active == a.main {
-				a.main.clearSelection()
+			if wasFocused && !e.Config.Focused {
+				a.hidePopups()
+				if a.active == a.main {
+					a.main.clearSelection()
+				}
 				w.Invalidate()
 			}
 		case event.Event:

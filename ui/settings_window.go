@@ -186,6 +186,11 @@ func (w *settingsWindow) Close() {
 	w.saveRelays()
 }
 
+// dismissPopup closes the provider menu when the window loses focus.
+func (w *settingsWindow) dismissPopup() {
+	w.providerOpen = false
+}
+
 func (w *settingsWindow) reportError(err error) {
 	if err == nil {
 		return
@@ -943,12 +948,15 @@ func (w *settingsWindow) layoutScrim(gtx layout.Context, rect image.Rectangle, c
 	}
 	stack := op.Offset(rect.Min).Push(gtx.Ops)
 	defer stack.Pop()
+	// Clicked must run before Layout: Layout consumes the click events and
+	// discards their result, so a later Clicked always returns false.
+	clicked := click.Clicked(gtx)
 	cgtx := gtx
 	cgtx.Constraints = layout.Exact(rect.Size())
 	click.Layout(cgtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Dimensions{Size: rect.Size()}
 	})
-	return click.Clicked(gtx)
+	return clicked
 }
 
 func drawChevronDown(gtx layout.Context, center image.Point, size, width int, col color.NRGBA) {

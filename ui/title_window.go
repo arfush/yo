@@ -181,6 +181,11 @@ func (w *titleWindow) setUserStatus(status library.UserStatus) {
 	w.item.userStatus = library.NormalizeUserStatus(status)
 }
 
+// dismissPopup closes the status menu when the window loses focus.
+func (w *titleWindow) dismissPopup() {
+	w.statusMenu.close()
+}
+
 func (w *titleWindow) canChangeUserStatus() bool {
 	return w.item.status != statusAnnounced
 }
@@ -360,6 +365,11 @@ func (w *titleWindow) handleKeys(gtx layout.Context) {
 		}
 		e, ok := ev.(key.Event)
 		if !ok || e.State != key.Press {
+			continue
+		}
+		if w.statusMenu.open {
+			w.statusMenu.close()
+			gtx.Execute(op.InvalidateCmd{})
 			continue
 		}
 		if w.onBack != nil {

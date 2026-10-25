@@ -110,6 +110,33 @@ func (r *textRenderer) paintCentered(gtx layout.Context, txt string, face font.F
 	stack.Pop()
 }
 
+// paintCenteredOnBaseline places the text baseline so a cap-height band of
+// capHeight pixels is centered on center. capHeight should come from one
+// reference glyph for the face and size instead of the label itself: otherwise
+// accents, tall lowercase letters and round overshoots move labels with the
+// same intended baseline by a pixel relative to each other.
+func (r *textRenderer) paintCenteredOnBaseline(gtx layout.Context, txt string, face font.Font, size unit.Sp, col color.NRGBA, center f32.Point, capHeight int) {
+	glyphs, ink := r.measure(gtx, txt, face, size)
+	if len(glyphs) == 0 || ink.Empty() {
+		return
+	}
+	if capHeight <= 0 {
+		capHeight = int(glyphs[0].Y) - ink.Min.Y
+	}
+	dy := baselineCenteredOffset(center.Y, int(glyphs[0].Y), capHeight)
+	dx := center.X - float32(ink.Min.X+ink.Max.X)/2
+	stack := op.Affine(f32.Affine2D{}.Offset(f32.Pt(dx, dy))).Push(gtx.Ops)
+	r.paintGlyphs(gtx, glyphs, col)
+	stack.Pop()
+}
+
+// baselineCenteredOffset returns the translation that puts the baseline at the
+// bottom of a cap-height band centered on centerY. All labels that share the
+// same cap height and baseline therefore land on exactly the same line.
+func baselineCenteredOffset(centerY float32, baseline, capHeight int) float32 {
+	return centerY + float32(capHeight)/2 - float32(baseline)
+}
+
 func (r *textRenderer) paintGlyphs(gtx layout.Context, glyphs []text.Glyph, col color.NRGBA) {
 	material := op.Record(gtx.Ops)
 	paint.ColorOp{Color: col}.Add(gtx.Ops)

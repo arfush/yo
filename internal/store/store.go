@@ -15,6 +15,10 @@ import (
 	"github.com/arfush/yonime/internal/logging"
 )
 
+// defaultUserStatus is the schema default ("В планах"). Removing a title from
+// the library must clear its status so a later re-add starts from scratch.
+const defaultUserStatus = 2
+
 const schemaSQL = `
 CREATE TABLE IF NOT EXISTS titles (
     id             INTEGER PRIMARY KEY,
@@ -162,8 +166,30 @@ func Open(path string) (*Store, error) {
 		logging.Error("cannot migrate database schema", "path", path, "error", err)
 		return nil, err
 	}
+	if err := normalizeOrphanUserStatuses(db); err != nil {
+		db.Close()
+		logging.Error("cannot clear orphan user statuses", "path", path, "error", err)
+		return nil, err
+	}
 	logging.Info("database opened", "path", path)
 	return &Store{db: db}, nil
+}
+
+// normalizeOrphanUserStatuses resets cached titles that are not in the
+// library. Older builds kept a deleted title's user status because only the
+// history row was removed, so a later re-add brought the old status back.
+func normalizeOrphanUserStatuses(db *sql.DB) error {
+	result, err := db.Exec(`
+        UPDATE titles SET user_status = ?
+        WHERE user_status != ? AND id NOT IN (SELECT tid FROM history)`,
+		defaultUserStatus, defaultUserStatus)
+	if err != nil {
+		return err
+	}
+	if changed, err := result.RowsAffected(); err == nil && changed > 0 {
+		logging.Info("cleared orphan user statuses", "count", changed)
+	}
+	return nil
 }
 
 // ensureTitleColumns adds columns introduced after the first public schema.
@@ -791,22 +817,46 @@ func (s *Store) SaveIntrodbCache(tid int64, episode string, chapters []byte, noD
 
 // DeleteHistory removes one title from history without deleting its cached
 // metadata. Its episode tracking goes with it: a deleted title must not keep
-// producing notifications.
+// producing notifications. The user status belongs to library membership, so
+// it is reset too; otherwise the title would reappear with its old status.
 func (s *Store) DeleteHistory(tid int64) error {
-	if _, err := s.db.Exec("DELETE FROM episode_tracking WHERE tid = ?", tid); err != nil {
+	tx, err := s.db.Begin()
+	if err != nil {
 		return err
 	}
-	_, err := s.db.Exec("DELETE FROM history WHERE tid = ?", tid)
-	return err
+	defer tx.Rollback()
+	if _, err := tx.Exec("UPDATE titles SET user_status = ? WHERE id = ?", defaultUserStatus, tid); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("DELETE FROM episode_tracking WHERE tid = ?", tid); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("DELETE FROM history WHERE tid = ?", tid); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
-// ClearHistory removes every history row but keeps cached title metadata.
+// ClearHistory removes every history row but keeps cached title metadata. The
+// statuses of the titles that were in the library are reset with the rows.
 func (s *Store) ClearHistory() error {
-	if _, err := s.db.Exec("DELETE FROM episode_tracking"); err != nil {
+	tx, err := s.db.Begin()
+	if err != nil {
 		return err
 	}
-	_, err := s.db.Exec("DELETE FROM history")
-	return err
+	defer tx.Rollback()
+	if _, err := tx.Exec(`
+        UPDATE titles SET user_status = ?
+        WHERE id IN (SELECT tid FROM history)`, defaultUserStatus); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("DELETE FROM episode_tracking"); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("DELETE FROM history"); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // ReorderHistory persists the visible order of title ids.

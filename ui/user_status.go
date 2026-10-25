@@ -184,18 +184,15 @@ func drawPill(gtx layout.Context, typo *typography, rect image.Rectangle, label 
 	fillRounded(gtx, borderColor, rect, radius)
 	fillRounded(gtx, fillColor, rect.Inset(gtx.Dp(unit.Dp(1))), radius-gtx.Dp(unit.Dp(1)))
 	face := font.Font{Typeface: fontFamily, Weight: font.Medium}
-	// Center the box from the top of the label ink to its baseline, not the
-	// full ink box: the descender of "р" in "Смотрю" must not lift the whole
-	// label above the pill's middle.
-	glyphs, ink := typo.measure(gtx, label, face, size)
-	if len(glyphs) == 0 || ink.Empty() {
-		return
+	// Every pill is centered on the same cap-height band measured from one
+	// reference glyph. Measuring each label's own ink makes labels with a
+	// descender, an accent or a round overshoot sit half a pixel lower or
+	// higher than their neighbours even though they share the baseline.
+	capHeight := 0
+	if _, refInk := typo.measure(gtx, "Н", face, size); !refInk.Empty() {
+		capHeight = refInk.Dy()
 	}
-	capHeight := int(glyphs[0].Y) - ink.Min.Y
-	if capHeight <= 0 || capHeight > ink.Dy() {
-		capHeight = ink.Dy()
-	}
-	typo.paintCentered(
+	typo.paintCenteredOnBaseline(
 		gtx,
 		label,
 		face,
@@ -361,10 +358,13 @@ func layoutOverlayScrim(gtx layout.Context, rect image.Rectangle, click *widget.
 	}
 	stack := op.Offset(rect.Min).Push(gtx.Ops)
 	defer stack.Pop()
+	// Clicked must run before Layout: Layout drains and discards the click
+	// events, so checking afterwards can never report a click.
+	clicked := click.Clicked(gtx)
 	cgtx := gtx
 	cgtx.Constraints = layout.Exact(rect.Size())
 	click.Layout(cgtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Dimensions{Size: rect.Size()}
 	})
-	return click.Clicked(gtx)
+	return clicked
 }

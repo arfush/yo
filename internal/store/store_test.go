@@ -385,6 +385,120 @@ func TestClearHistoryDropsEpisodeTracking(t *testing.T) {
 	}
 }
 
+func TestOpenClearsUserStatusesWithoutHistory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "yonime.sqlite")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	saved, err := db.UpsertTitle(Title{Slug: "kept-status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.EnsureHistory(saved, "1", "Озвучка"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetUserStatus(saved, 4); err != nil {
+		t.Fatal(err)
+	}
+	orphan, err := db.UpsertTitle(Title{Slug: "orphan-status", UserStatus: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	keptTitle, err := db.GetTitleByID(saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if keptTitle == nil || keptTitle.UserStatus != 4 {
+		t.Fatalf("history title status = %#v, want 4", keptTitle)
+	}
+	orphanTitle, err := db.GetTitleByID(orphan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if orphanTitle == nil {
+		t.Fatal("cached title metadata was deleted")
+	}
+	if orphanTitle.UserStatus != defaultUserStatus {
+		t.Fatalf("orphan status = %d, want %d", orphanTitle.UserStatus, defaultUserStatus)
+	}
+}
+
+func TestDeleteHistoryResetsUserStatus(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "yonime.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	tid, err := db.UpsertTitle(Title{Slug: "delete-status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.EnsureHistory(tid, "1", "Озвучка"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetUserStatus(tid, 3); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.DeleteHistory(tid); err != nil {
+		t.Fatal(err)
+	}
+	title, err := db.GetTitleByID(tid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if title == nil {
+		t.Fatal("cached title metadata was deleted")
+	}
+	if title.UserStatus != defaultUserStatus {
+		t.Fatalf("user status after delete = %d, want %d", title.UserStatus, defaultUserStatus)
+	}
+}
+
+func TestClearHistoryResetsUserStatuses(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "yonime.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	tid, err := db.UpsertTitle(Title{Slug: "clear-status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.EnsureHistory(tid, "1", "Озвучка"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetUserStatus(tid, 4); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ClearHistory(); err != nil {
+		t.Fatal(err)
+	}
+	title, err := db.GetTitleByID(tid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if title == nil {
+		t.Fatal("cached title metadata was deleted")
+	}
+	if title.UserStatus != defaultUserStatus {
+		t.Fatalf("user status after clear = %d, want %d", title.UserStatus, defaultUserStatus)
+	}
+}
+
 func TestEpisodeNotificationsDefaultOnAndPersist(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "yonime.sqlite")
 	db, err := Open(path)

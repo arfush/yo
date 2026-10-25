@@ -165,12 +165,10 @@ func (l *Library) Load(ctx context.Context, input string) (Title, error) {
 		return Title{}, err
 	}
 
-	stored := storedTitleFromData(data)
-	id, err := l.store.UpsertTitle(stored)
+	stored, err := l.upsertLoadedTitle(storedTitleFromData(data))
 	if err != nil {
-		return Title{}, fmt.Errorf("не удалось сохранить тайтл: %w", err)
+		return Title{}, err
 	}
-	stored.ID = id
 
 	title := titleFromData(stored, data)
 	if err := l.restoreSelection(&title); err != nil {
@@ -179,6 +177,26 @@ func (l *Library) Load(ctx context.Context, input string) (Title, error) {
 	l.ensureCover(ctx, &title)
 	logging.Info("title loaded", "title", title.Russian, "slug", title.Slug, "episodes", len(title.Episodes), "voices", len(title.Voiceovers))
 	return title, nil
+}
+
+// upsertLoadedTitle stores freshly loaded metadata and returns the row as it
+// exists in the database. UpsertTitle deliberately preserves the current user
+// status on conflict, so the in-memory copy still carries the schema default;
+// reloading it is what makes the title page show the status chosen in history.
+func (l *Library) upsertLoadedTitle(stored store.Title) (store.Title, error) {
+	id, err := l.store.UpsertTitle(stored)
+	if err != nil {
+		return store.Title{}, fmt.Errorf("не удалось сохранить тайтл: %w", err)
+	}
+	persisted, err := l.store.GetTitleByID(id)
+	if err != nil {
+		return store.Title{}, err
+	}
+	if persisted != nil {
+		return *persisted, nil
+	}
+	stored.ID = id
+	return stored, nil
 }
 
 // Fetch loads a title and its episode list from AnimeLIB without adding it to

@@ -238,9 +238,15 @@ func TestDeleteHistoryRemovesCachedCover(t *testing.T) {
 	if _, err := os.Stat(coverPath); err != nil {
 		t.Fatalf("cover was not written: %v", err)
 	}
+	if err := lib.SetUserStatus(tid, UserStatusWatching); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := lib.DeleteHistory(tid); err != nil {
 		t.Fatal(err)
+	}
+	if got := lib.UserStatus(tid); got != UserStatusPlanned {
+		t.Fatalf("user status after delete = %d, want planned", got)
 	}
 	if _, err := os.Stat(coverPath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("cover file still exists after deletion: %v", err)
@@ -264,6 +270,46 @@ func TestDeleteHistoryRemovesCachedCover(t *testing.T) {
 	// second call has no cover file or cache row left to remove.
 	if err := lib.DeleteHistory(tid); err != nil {
 		t.Fatalf("repeated delete failed: %v", err)
+	}
+}
+
+// TestUpsertLoadedTitleKeepsStoredUserStatus covers the reload that makes a
+// title opened from history show the status changed there: UpsertTitle keeps
+// the database value, so the fresh in-memory metadata has to adopt it back.
+func TestUpsertLoadedTitleKeepsStoredUserStatus(t *testing.T) {
+	dir := t.TempDir()
+	lib, err := Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = lib.Close() })
+
+	id, err := lib.store.UpsertTitle(store.Title{Slug: "loaded-status", RusName: "Старое имя"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lib.store.EnsureHistory(id, "1", "Озвучка"); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.SetUserStatus(id, UserStatusWatching); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := lib.upsertLoadedTitle(store.Title{
+		Slug:    "loaded-status",
+		RusName: "Новое имя",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.ID != id {
+		t.Fatalf("loaded id = %d, want %d", loaded.ID, id)
+	}
+	if loaded.RusName != "Новое имя" {
+		t.Fatalf("fresh metadata was not saved: %#v", loaded)
+	}
+	if loaded.UserStatus != int(UserStatusWatching) {
+		t.Fatalf("loaded user status = %d, want watching", loaded.UserStatus)
 	}
 }
 

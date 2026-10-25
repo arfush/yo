@@ -536,6 +536,11 @@ func (m *mainWindow) handleKeys(gtx layout.Context) {
 		}
 		switch e.Name {
 		case key.NameEscape:
+			if m.statusMenu.open {
+				m.statusMenu.close()
+				gtx.Execute(op.InvalidateCmd{})
+				continue
+			}
 			m.cancelLoading(gtx)
 			m.focusHistory(gtx)
 		case key.NameUpArrow:
@@ -1696,6 +1701,11 @@ func (m *mainWindow) historyItemByID(id int64) historyTitle {
 		return m.history[index]
 	}
 	return historyTitle{}
+}
+
+// dismissPopup closes the status menu when the window loses focus.
+func (m *mainWindow) dismissPopup() {
+	m.statusMenu.close()
 }
 
 // setUserStatus updates a title in both the complete and visible history. When
