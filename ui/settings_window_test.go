@@ -5,7 +5,9 @@ import (
 	"image"
 	"testing"
 
-	"gioui.org/font"
+	"gioui.org/f32"
+	"gioui.org/io/input"
+	"gioui.org/io/pointer"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/unit"
@@ -98,10 +100,10 @@ func TestPlaceProviderMenu(t *testing.T) {
 	}
 }
 
-// TestSettingsWindowFitsTheRealContentArea guards the margin between the last
-// panel and the footer at the default window size, which the panic-free layout
-// test above cannot see.
-func TestSettingsWindowFitsTheRealContentArea(t *testing.T) {
+// TestSettingsWindowContentScrollsAtTheDefaultSize guards the wheel scrolling:
+// the taller cards no longer fit the default content area, so the content has to
+// report its full height and the offset has to stop at the last block.
+func TestSettingsWindowContentScrollsAtTheDefaultSize(t *testing.T) {
 	typo, err := newTypography()
 	if err != nil {
 		t.Fatal(err)
@@ -112,8 +114,7 @@ func TestSettingsWindowFitsTheRealContentArea(t *testing.T) {
 		Constraints: layout.Exact(image.Pt(initialWidth, initialHeight)),
 	}
 	geometry := makeGeometry(window, false, true, false, false)
-	contentHeight := geometry.contentBottom - geometry.contentTop
-	contentWidth := geometry.size.X
+	viewport := geometry.contentBottom - geometry.contentTop
 
 	settings := newSettingsWindow(typo, settingsValues{
 		Notifications: true,
@@ -123,25 +124,33 @@ func TestSettingsWindowFitsTheRealContentArea(t *testing.T) {
 	gtx := layout.Context{
 		Ops:         new(op.Ops),
 		Metric:      window.Metric,
-		Constraints: layout.Exact(image.Pt(contentWidth, contentHeight)),
+		Constraints: layout.Exact(image.Pt(geometry.size.X, viewport)),
 	}
 	gtx = gtx.Disabled()
-	settings.layout(gtx)
 
-	bold := font.Font{Typeface: fontFamily, Weight: font.Bold}
-	_, titleInk := typo.measure(gtx, "Совместный просмотр", bold, settingsTitleSize)
-	bottom := gtx.Dp(settingsPadTop) +
-		2*(titleInk.Dy()+gtx.Dp(settingsTitleGap)) +
-		gtx.Dp(settingsGroupGap) +
-		5*gtx.Dp(settingsPanelHeight) +
-		3*gtx.Dp(settingsRowGap)
-	if bottom > contentHeight {
-		t.Fatalf("settings need %dpx, content area allows %dpx", bottom, contentHeight)
+	full := settings.contentHeight(gtx)
+	if full <= viewport {
+		t.Fatalf("settings content is %dpx, want it taller than the %dpx viewport", full, viewport)
 	}
-	_, noteInk := typo.measure(gtx, "Ошибка", font.Font{Typeface: fontFamily, Weight: font.Normal}, settingsNoteSize)
-	errorBottom := bottom + gtx.Dp(settingsErrorGap) + noteInk.Dy()
-	if errorBottom > contentHeight {
-		t.Fatalf("settings with an error need %dpx, content area allows %dpx", errorBottom, contentHeight)
+	if got, want := clampScroll(full*2, full, viewport), full-viewport; got != want {
+		t.Fatalf("clamped scroll = %d, want %d", got, want)
+	}
+}
+
+func TestClampScroll(t *testing.T) {
+	tests := []struct {
+		scroll, content, viewport, want int
+	}{
+		{0, 400, 440, 0},
+		{0, 440, 440, 0},
+		{30, 500, 440, 30},
+		{100, 500, 440, 60},
+		{-20, 500, 440, 0},
+	}
+	for _, tc := range tests {
+		if got := clampScroll(tc.scroll, tc.content, tc.viewport); got != tc.want {
+			t.Errorf("clampScroll(%d, %d, %d) = %d, want %d", tc.scroll, tc.content, tc.viewport, got, tc.want)
+		}
 	}
 }
 
@@ -171,6 +180,39 @@ func TestRelayFieldRectKeepsTheInputBesideTheLabel(t *testing.T) {
 	narrow := relayFieldRect(gtx, image.Rect(0, 0, 400, 60))
 	if max := (400 - 2*gtx.Dp(settingsPanelPadX)) / 2; narrow.Dx() > max {
 		t.Fatalf("narrow field width = %d, want at most %d", narrow.Dx(), max)
+	}
+}
+
+// TestSettingsWindowScrollsWithTheWheel feeds a real wheel event through the
+// input router: the screen has to accept it and move the content by the delta.
+func TestSettingsWindowScrollsWithTheWheel(t *testing.T) {
+	typo, err := newTypography()
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings := newSettingsWindow(typo, settingsValues{Provider: watchparty.Supabase})
+	var router input.Router
+	gtx := layout.Context{
+		Ops:         new(op.Ops),
+		Metric:      unit.Metric{PxPerDp: 1, PxPerSp: 1},
+		Constraints: layout.Exact(image.Pt(833, 442)),
+		Source:      router.Source(),
+	}
+	settings.layout(gtx)
+	router.Frame(gtx.Ops)
+
+	router.Queue(pointer.Event{
+		Kind:     pointer.Scroll,
+		Position: f32.Pt(400, 200),
+		Scroll:   f32.Pt(0, 60),
+	})
+
+	next := gtx
+	next.Ops = new(op.Ops)
+	settings.layout(next)
+
+	if settings.scroll != 60 {
+		t.Fatalf("scroll = %d, want 60", settings.scroll)
 	}
 }
 

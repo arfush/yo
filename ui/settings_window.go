@@ -7,10 +7,12 @@ import (
 
 	"gioui.org/f32"
 	"gioui.org/font"
+	"gioui.org/io/event"
 	"gioui.org/io/key"
 	"gioui.org/io/pointer"
 	"gioui.org/layout"
 	"gioui.org/op"
+	"gioui.org/op/clip"
 	"gioui.org/unit"
 	"gioui.org/widget"
 
@@ -26,13 +28,13 @@ const (
 	settingsButtonSize   = unit.Sp(12)
 	settingsButtonHeight = unit.Dp(34)
 	settingsPanelRadius  = unit.Dp(10)
-	settingsPanelHeight  = unit.Dp(60)
+	settingsPanelHeight  = unit.Dp(72)
 	settingsPanelPadX    = unit.Dp(18)
 	settingsToggleWidth  = unit.Dp(42)
 	settingsToggleHeight = unit.Dp(24)
 	settingsNoteGap      = unit.Dp(6)
 	settingsTitleGap     = unit.Dp(12)
-	settingsGroupGap     = unit.Dp(14)
+	settingsGroupGap     = unit.Dp(28)
 	settingsRowGap       = unit.Dp(6)
 
 	settingsProviderWidth      = unit.Dp(124)
@@ -48,6 +50,7 @@ const (
 	settingsFieldSize   = unit.Sp(12)
 	settingsLabelGap    = unit.Dp(18)
 	settingsErrorGap    = unit.Dp(5)
+	settingsPadBottom   = unit.Dp(16)
 )
 
 var (
@@ -103,6 +106,11 @@ type settingsWindow struct {
 
 	backClick widget.Clickable
 	backHover hoverAnim
+
+	// scroll is the wheel offset of the settings content, and scrollTag carries
+	// the wheel events for the whole screen.
+	scroll    int
+	scrollTag struct{}
 
 	errorText string
 
@@ -178,6 +186,16 @@ func (w *settingsWindow) layout(gtx layout.Context) {
 		return
 	}
 
+	viewport := image.Rectangle{Max: size}
+	clipStack := clip.Rect(viewport).Push(gtx.Ops)
+	defer clipStack.Pop()
+
+	// The blocks are taller than the content area, so the whole screen scrolls
+	// under the fixed header and footer.
+	w.scroll = clampScroll(w.scroll+w.scrollDelta(gtx), w.contentHeight(gtx), size.Y)
+
+	content := op.Offset(image.Pt(0, -w.scroll)).Push(gtx.Ops)
+
 	y := gtx.Dp(settingsPadTop)
 	y = w.layoutSectionTitle(gtx, left, y, "Уведомления")
 	y = w.layoutNotificationPanel(gtx, image.Rect(left, y, right, y+gtx.Dp(settingsPanelHeight)))
@@ -206,10 +224,83 @@ func (w *settingsWindow) layout(gtx layout.Context) {
 		)
 	}
 
-	// The menu floats over the panels above, so it is painted last.
+	content.Pop()
+
+	// The menu floats over the panels above, so it is painted last. Its anchor
+	// is stored in content coordinates and has to follow the scroll offset.
 	if w.providerOpen {
-		w.layoutProviderMenu(gtx, size)
+		w.layoutProviderMenu(gtx, size, w.providerAnchor.Sub(image.Pt(0, w.scroll)))
 	}
+}
+
+// scrollDelta feeds wheel input into the settings offset. The wheel works
+// anywhere over the screen and closes the provider menu, whose position would
+// otherwise drift away from its trigger.
+func (w *settingsWindow) scrollDelta(gtx layout.Context) int {
+	event.Op(gtx.Ops, &w.scrollTag)
+	delta := 0
+	for {
+		ev, ok := gtx.Event(pointer.Filter{
+			Target:  &w.scrollTag,
+			Kinds:   pointer.Scroll,
+			ScrollY: pointer.ScrollRange{Min: math.MinInt, Max: math.MaxInt},
+		})
+		if !ok {
+			break
+		}
+		e, ok := ev.(pointer.Event)
+		if !ok || e.Kind != pointer.Scroll {
+			continue
+		}
+		delta += int(e.Scroll.Y)
+	}
+	if delta != 0 {
+		w.providerOpen = false
+	}
+	return delta
+}
+
+// clampScroll keeps the offset between the top of the content and its last
+// scrollable pixel.
+func clampScroll(scroll, content, viewport int) int {
+	max := content - viewport
+	if max < 0 {
+		max = 0
+	}
+	if scroll > max {
+		scroll = max
+	}
+	if scroll < 0 {
+		scroll = 0
+	}
+	return scroll
+}
+
+// contentHeight mirrors layout and reports the full height of the settings,
+// including the part hidden below the viewport.
+func (w *settingsWindow) contentHeight(gtx layout.Context) int {
+	titleFace := font.Font{Typeface: fontFamily, Weight: font.Bold}
+	title := func(text string) int {
+		_, ink := w.typo.measure(gtx, text, titleFace, settingsTitleSize)
+		return ink.Dy() + gtx.Dp(settingsTitleGap)
+	}
+	panel := gtx.Dp(settingsPanelHeight)
+	relays := 1
+	if w.provider == watchparty.Supabase {
+		relays = 2
+	}
+	height := gtx.Dp(settingsPadTop)
+	height += title("Уведомления") + panel
+	height += gtx.Dp(settingsGroupGap)
+	height += title("Совместный просмотр") + 2*panel
+	height += (relays + 1) * gtx.Dp(settingsRowGap)
+	height += relays * panel
+	if w.errorText != "" {
+		_, ink := w.typo.measure(gtx, "Ошибка", font.Font{Typeface: fontFamily, Weight: font.Normal}, settingsNoteSize)
+		height += gtx.Dp(settingsErrorGap) + ink.Dy()
+	}
+	height += gtx.Dp(settingsPadBottom)
+	return height
 }
 
 // layoutSectionTitle paints one group heading and returns the top of the panel
@@ -585,8 +676,8 @@ func (w *settingsWindow) layoutProviderTrigger(gtx layout.Context, rect image.Re
 
 // layoutProviderMenu paints the open select. It is a plain overlay instead of
 // an inline list so the panel row keeps its single-line height.
-func (w *settingsWindow) layoutProviderMenu(gtx layout.Context, size image.Point) {
-	if w.providerAnchor.Empty() {
+func (w *settingsWindow) layoutProviderMenu(gtx layout.Context, size image.Point, anchor image.Rectangle) {
+	if anchor.Empty() {
 		return
 	}
 	providers := watchparty.Providers()
@@ -594,7 +685,7 @@ func (w *settingsWindow) layoutProviderMenu(gtx layout.Context, size image.Point
 	itemHeight := gtx.Dp(settingsProviderItemHeight)
 	itemGap := gtx.Dp(settingsProviderItemGap)
 	menu := placeProviderMenu(
-		w.providerAnchor,
+		anchor,
 		providerMenuHeight(gtx, len(providers)),
 		gtx.Dp(settingsProviderMenuGap),
 		image.Rectangle{Max: size},
