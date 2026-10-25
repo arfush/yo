@@ -66,8 +66,9 @@ const (
 	// mainErrorFeedbackDuration is how long the Next button and the mascot stay
 	// red after an empty link or a failed load.
 	mainErrorFeedbackDuration = 3 * time.Second
-	// mainIconShakeOffset is the peak horizontal offset of the Next arrow.
-	mainIconShakeOffset = unit.Dp(1.6)
+	// mainIconShakeOffset is the peak horizontal offset of the Next arrow. The
+	// arrow is only about 13 dp wide, so a large offset reads as jumping.
+	mainIconShakeOffset = unit.Dp(0.7)
 	// mainMascotShakeOffset is deliberately smaller: at 42 dp the character
 	// reads any larger movement as jumping, not trembling.
 	mainMascotShakeOffset = unit.Dp(0.9)
