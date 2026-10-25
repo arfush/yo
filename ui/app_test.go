@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/arfush/yonime/internal/library"
+	"github.com/arfush/yonime/internal/updates"
 )
 
 func TestAutoUpdateSafe(t *testing.T) {
@@ -113,5 +114,49 @@ func TestAutoUpdateIdleDuringPlaybackStart(t *testing.T) {
 	a.playbackStarting.Store(true)
 	if a.autoUpdateIdle() {
 		t.Fatal("autoUpdateIdle() = true while playback is starting")
+	}
+}
+
+// TestMaybeAutoUpdateWaitsForMain covers the first-install flow: the launch
+// check can finish while authorization, Chromium or mpv still occupy the app.
+// The release must wait for the first main screen instead of falling back to
+// the tray-only path.
+func TestMaybeAutoUpdateWaitsForMain(t *testing.T) {
+	dir := t.TempDir()
+	lib, err := library.Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	if err != nil {
+		t.Fatalf("open library: %v", err)
+	}
+	t.Cleanup(func() { _ = lib.Close() })
+	if !lib.AutoUpdateEnabled() {
+		t.Fatal("auto-update must be enabled by default")
+	}
+
+	a := &application{library: lib, autoUpdateCard: make(chan updates.Release, 1)}
+	a.autoUpdateStartup.Store(true)
+	release := &updates.Release{Version: "9.9", SHA256: "0123456789abcdef"}
+
+	a.maybeAutoUpdate(release)
+	if !a.autoUpdateStartup.Load() {
+		t.Fatal("launch window closed before the first main screen")
+	}
+	select {
+	case got := <-a.autoUpdateCard:
+		t.Fatalf("card queued before main: %+v", got)
+	default:
+	}
+
+	a.mainShown.Store(true)
+	a.maybeAutoUpdate(release)
+	if a.autoUpdateStartup.Load() {
+		t.Fatal("launch window stayed open after main")
+	}
+	select {
+	case got := <-a.autoUpdateCard:
+		if got.Version != release.Version {
+			t.Fatalf("card release = %q, want %q", got.Version, release.Version)
+		}
+	default:
+		t.Fatal("card was not queued after main")
 	}
 }

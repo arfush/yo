@@ -151,10 +151,17 @@ type application struct {
 	// autoUpdateWake tells a waiting install that its conditions may have
 	// changed: the window went to the tray or mpv closed.
 	autoUpdateWake chan struct{}
-	// autoUpdateStartup is true from launch until the first release check
-	// finishes. During that window an available update is presented as the
-	// download card instead of the main screen.
+	// autoUpdateStartup is true from launch until the launch update decision is
+	// made. During that window an available update is presented as the download
+	// card instead of the main screen. The window survives the first-run,
+	// authorization and mpv screens: a fresh install reaches main minutes after
+	// the check and must still pick up the release it found.
 	autoUpdateStartup atomic.Bool
+	// mainShown and firstCheckDone bound that window. Once the first check has
+	// finished *and* main has been on screen, a later check must not open the
+	// card over a user who is already working.
+	mainShown      atomic.Bool
+	firstCheckDone atomic.Bool
 	// autoUpdateCard carries a release the UI goroutine should present as the
 	// download card. The check runs off the UI goroutine and cannot open a
 	// screen itself.
@@ -432,9 +439,18 @@ func (a *application) requireMPV(w *app.Window) {
 
 func (a *application) showMain(w *app.Window) {
 	// At launch an available update is presented as a download card instead of
-	// the main screen, so the user sees what is being installed.
-	if a.offerStartupUpdate(a.updatesAvailable.Load()) {
-		return
+	// the main screen, so the user sees what is being installed. A first install
+	// may reach main only after authorization and the Chromium/mpv setup, so the
+	// cached release is checked on the first main screen, not at process start.
+	if !a.mainShown.Swap(true) {
+		if a.offerStartupUpdate(a.updatesAvailable.Load()) {
+			return
+		}
+		// The launch check already finished without a release: close the window
+		// so a periodic check cannot open the card over a working user.
+		if a.firstCheckDone.Load() {
+			a.autoUpdateStartup.Store(false)
+		}
 	}
 	a.showWindow(w, a.main)
 	w.Invalidate()
@@ -756,9 +772,14 @@ func (a *application) checkForUpdates(w *app.Window) time.Duration {
 	}
 	defer func() {
 		a.updateChecking.Store(false)
-		// The first check ends the launch window: a later check must not open
-		// the card over a user who is already working.
-		a.autoUpdateStartup.Store(false)
+		a.firstCheckDone.Store(true)
+		// Once main is on screen and the launch check has finished, the startup
+		// window is over and a later check must not open the card over a working
+		// user. Before main (authorization, Chromium and mpv on a fresh install)
+		// the window stays open so showMain can still offer the release.
+		if a.mainShown.Load() {
+			a.autoUpdateStartup.Store(false)
+		}
 		if a.updatePending.Swap(false) {
 			a.triggerUpdateCheck()
 		}
@@ -796,6 +817,12 @@ func (a *application) checkForUpdates(w *app.Window) time.Duration {
 // afterwards the install waits for the tray.
 func (a *application) maybeAutoUpdate(release *updates.Release) {
 	if release == nil || !a.autoUpdatesEnabled() || !a.updateAvailable(release) {
+		return
+	}
+	// Before the first main screen (fresh install: authorization, Chromium,
+	// mpv) the release has to wait for showMain, which presents it once the app
+	// is ready instead of interrupting the setup.
+	if !a.mainShown.Load() {
 		return
 	}
 	if a.autoUpdateStartup.CompareAndSwap(true, false) {

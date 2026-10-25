@@ -420,19 +420,19 @@ func TestEpisodeNotificationsDefaultOnAndPersist(t *testing.T) {
 	}
 }
 
-func TestUpdateSettingsDefaultOffAndPersist(t *testing.T) {
+func TestUpdateSettingsDefaultsAndPersist(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "yonime.sqlite")
 	db, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if db.AutoUpdateEnabled() {
-		t.Fatal("auto-update must be disabled by default")
+	if !db.AutoUpdateEnabled() {
+		t.Fatal("auto-update must be enabled by default")
 	}
 	if db.BetaUpdatesEnabled() {
 		t.Fatal("beta updates must be disabled by default")
 	}
-	if err := db.SetAutoUpdateEnabled(true); err != nil {
+	if err := db.SetAutoUpdateEnabled(false); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.SetBetaUpdatesEnabled(true); err != nil {
@@ -447,20 +447,20 @@ func TestUpdateSettingsDefaultOffAndPersist(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	if !db.AutoUpdateEnabled() {
-		t.Fatal("enabled auto-update did not survive reopen")
+	if db.AutoUpdateEnabled() {
+		t.Fatal("disabled auto-update did not survive reopen")
 	}
 	if !db.BetaUpdatesEnabled() {
 		t.Fatal("enabled beta updates did not survive reopen")
 	}
-	if err := db.SetAutoUpdateEnabled(false); err != nil {
+	if err := db.SetAutoUpdateEnabled(true); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.SetBetaUpdatesEnabled(false); err != nil {
 		t.Fatal(err)
 	}
-	if db.AutoUpdateEnabled() || db.BetaUpdatesEnabled() {
-		t.Fatal("disabled update settings were not stored")
+	if !db.AutoUpdateEnabled() || db.BetaUpdatesEnabled() {
+		t.Fatal("changed update settings were not stored")
 	}
 }
 

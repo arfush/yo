@@ -585,9 +585,10 @@ func (s *Store) SetEpisodeNotificationsEnabled(enabled bool) error {
 }
 
 // AutoUpdateEnabled reports whether Yonime may install updates without asking.
-// It is off by default: a background restart is opt-in.
+// It is on by default so a fresh install picks up the latest release; an
+// explicit "0" row still turns it off for good.
 func (s *Store) AutoUpdateEnabled() bool {
-	return s.boolSetting("auto_update", false)
+	return s.boolSetting("auto_update", true)
 }
 
 // SetAutoUpdateEnabled stores the automatic-update choice.
