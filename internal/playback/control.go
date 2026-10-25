@@ -153,6 +153,9 @@ func (s *Session) SetInputLocked(locked bool) error {
 	if _, err := mpv.call(command, guestInputSection); err != nil {
 		firstErr = err
 	}
+	// The osc property loads and unloads the built-in OSC script. Hiding it
+	// with a visibility message would leave its seek bar and pause button
+	// alive, and they bypass the input section above.
 	if _, err := mpv.call("set_property", "osc", !locked); err != nil && firstErr == nil {
 		firstErr = err
 	}
