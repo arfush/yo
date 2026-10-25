@@ -49,6 +49,12 @@ const (
 	// A guest whose mpv failed retries after a pause; closing the player on
 	// purpose leaves the room, exactly like the desktop app.
 	retryCooldown = 45 * time.Second
+
+	// A guest that just sent a command must not let the drift loop undo it
+	// before the host's confirming anchor arrives.
+	controlHold = 1500 * time.Millisecond
+	// A jump larger than this between two ticks is a person seeking in mpv.
+	userSeekThreshold = 1.5
 )
 
 var errUsage = errors.New("неверные аргументы")
@@ -282,6 +288,14 @@ type app struct {
 	// rate is only touched by the guest loop goroutine.
 	rate float64
 
+	// The guest loop samples mpv between ticks to notice input the person made
+	// in the player window. These fields are also guest-loop-only.
+	lastPos    float64
+	lastSample time.Time
+	lastPaused bool
+	holdUntil  time.Time
+	seeded     bool
+
 	// leave closes the command loop when the guest's player is closed. The
 	// guest then leaves the room instead of waiting for the host.
 	leave func()
@@ -323,6 +337,7 @@ func (a *app) host(ctx context.Context, cfg watchparty.Config, provider watchpar
 		_ = room.Publish(state)
 	}
 	go a.hostLoop(ctx, room)
+	go a.controlLoop(ctx, room)
 
 	a.printCommands(true)
 	return a.commands(ctx, room, true)
@@ -500,12 +515,31 @@ func (a *app) hostLoop(ctx context.Context, room *watchparty.Session) {
 func (a *app) guestLoop(ctx context.Context, room *watchparty.Session) {
 	ticker := time.NewTicker(syncTick)
 	defer ticker.Stop()
+	hostSeen := false
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 		}
+		if !room.HostSeen() {
+			if hostSeen {
+				// The relay said bye, reported host:false or the anchor went
+				// silent: the room is over, exactly like in the desktop app.
+				fmt.Println("\nСоздатель закрыл комнату — выхожу.")
+				a.stopGuest()
+				a.mu.Lock()
+				leave := a.leave
+				a.mu.Unlock()
+				if leave != nil {
+					leave()
+				}
+				return
+			}
+			// The first greeting has not arrived yet; nothing to follow.
+			continue
+		}
+		hostSeen = true
 		state, ok := room.State()
 		if !ok {
 			continue
@@ -608,37 +642,82 @@ func (a *app) restartGuest(ctx context.Context, room *watchparty.Session, state 
 	}()
 }
 
-// drift keeps the local mpv close to the extrapolated host position.
+// drift keeps the local mpv close to the extrapolated host position. It also
+// forwards input the person makes in the guest's mpv when shared control is on.
 func (a *app) drift(room *watchparty.Session, state watchparty.State, current *playback.Session) {
 	number, _ := current.Episode()
 	if number == "" || number != state.Episode {
 		a.rate = 1
+		a.seeded = false
 		return
 	}
+	now := time.Now()
+	position := current.LivePosition()
+	paused := current.Paused()
+	if !a.seeded {
+		a.seeded = true
+	} else if a.lib.SharedControlEnabled() {
+		// Between ticks only a person can change the player: the drift loop
+		// acts below and records its own corrections in the baseline.
+		switch {
+		case paused != a.lastPaused:
+			action := watchparty.ControlPlay
+			if paused {
+				action = watchparty.ControlPause
+			}
+			_ = room.SendControl(action, 0)
+			a.holdUntil = now.Add(controlHold)
+		case !a.lastPaused && !a.lastSample.IsZero():
+			expected := a.lastPos + now.Sub(a.lastSample).Seconds()
+			// A frozen position means a network stall, not a seek: do not drag
+			// the host back to a stalled guest.
+			if position != a.lastPos && math.Abs(position-expected) > userSeekThreshold {
+				_ = room.SendControl(watchparty.ControlSeek, position)
+				a.holdUntil = now.Add(controlHold)
+			}
+		}
+	}
+	a.lastPaused = paused
+	a.lastSample = now
+	tracked := position
+	if now.Before(a.holdUntil) {
+		// The command is still travelling; correcting the drift now would undo
+		// the guest's own pause or seek before the host confirms it.
+		a.lastPos = tracked
+		return
+	}
+
 	if !state.Playing {
 		if !current.Paused() {
 			_ = current.SetPaused(true)
 		}
-		if math.Abs(current.LivePosition()-state.Position) > 0.8 {
+		if math.Abs(position-state.Position) > 0.8 {
 			_ = current.SeekTo(state.Position)
+			tracked = state.Position
 		}
 		if a.rate != 1 {
 			_ = current.SetSpeed(1)
 			a.rate = 1
 		}
+		a.lastPaused = current.Paused()
+		a.lastPos = tracked
 		return
 	}
 	if current.Paused() {
 		_ = current.SetPaused(false)
 	}
-	want, _, ok := room.ExpectedPosition(time.Now())
+	want, _, ok := room.ExpectedPosition(now)
 	if !ok {
+		a.lastPaused = current.Paused()
+		a.lastPos = tracked
 		return
 	}
-	drift := current.LivePosition() - want
+	drift := position - want
 	switch {
 	case math.Abs(drift) > seekThreshold:
-		_ = current.SeekTo(want + seekLead)
+		target := want + seekLead
+		_ = current.SeekTo(target)
+		tracked = target
 		if a.rate != 1 {
 			_ = current.SetSpeed(1)
 			a.rate = 1
@@ -653,6 +732,41 @@ func (a *app) drift(room *watchparty.Session, state watchparty.State, current *p
 		if a.rate != 1 {
 			_ = current.SetSpeed(1)
 			a.rate = 1
+		}
+	}
+	// Record what we just enforced, otherwise the next tick would mistake our
+	// own pause or seek for input from the person.
+	a.lastPaused = current.Paused()
+	a.lastPos = tracked
+}
+
+// controlLoop applies guest commands on the host. Shared control is the host's
+// decision, so a command is ignored when the setting is off.
+func (a *app) controlLoop(ctx context.Context, room *watchparty.Session) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case update := <-room.Updates():
+			if update.Kind != watchparty.UpdateControl || !a.lib.SharedControlEnabled() {
+				continue
+			}
+			current := a.current()
+			if current == nil {
+				continue
+			}
+			switch update.Control.Action {
+			case watchparty.ControlPause:
+				_ = current.SetPaused(true)
+			case watchparty.ControlPlay:
+				_ = current.SetPaused(false)
+			case watchparty.ControlSeek:
+				_ = current.SeekTo(update.Control.Position)
+			default:
+				continue
+			}
+			a.publish(room)
+			fmt.Println("\nГость изменил воспроизведение.")
 		}
 	}
 }
@@ -711,7 +825,8 @@ func (a *app) printCommands(host bool) {
 	if host {
 		fmt.Println("Команды: pause, play, seek <сек|+сек|-сек>, status, quit")
 	} else {
-		fmt.Println("Команды: status, reopen, quit (воспроизведением управляет создатель комнаты)")
+		fmt.Println("Команды: pause, play, seek <сек|+сек|-сек>, status, reopen, quit")
+		fmt.Println("Управлять можно, если создатель включает совместное управление.")
 	}
 	fmt.Println()
 }
@@ -783,11 +898,23 @@ func (a *app) runCommand(ctx context.Context, line string, room *watchparty.Sess
 		fmt.Println("Открываю плеер заново…")
 		a.restartGuest(ctx, room, state)
 	case "pause", "play":
+		pause := strings.ToLower(fields[0]) == "pause"
 		if !host {
-			fmt.Println("Воспроизведением управляет создатель комнаты.")
+			if !a.lib.SharedControlEnabled() {
+				fmt.Println("Совместное управление выключено — команду отправить нельзя.")
+				return true
+			}
+			action := watchparty.ControlPlay
+			if pause {
+				action = watchparty.ControlPause
+			}
+			if err := room.SendControl(action, 0); err != nil {
+				fmt.Println("комната:", err)
+				return true
+			}
+			fmt.Println("Команда отправлена создателю комнаты.")
 			return true
 		}
-		pause := strings.ToLower(fields[0]) == "pause"
 		err := a.control(func(current *playback.Session) error {
 			return current.SetPaused(pause)
 		})
@@ -802,8 +929,8 @@ func (a *app) runCommand(ctx context.Context, line string, room *watchparty.Sess
 			fmt.Println("Продолжаю.")
 		}
 	case "seek":
-		if !host {
-			fmt.Println("Воспроизведением управляет создатель комнаты.")
+		if !host && !a.lib.SharedControlEnabled() {
+			fmt.Println("Совместное управление выключено — команду отправить нельзя.")
 			return true
 		}
 		if len(fields) < 2 {
@@ -818,6 +945,14 @@ func (a *app) runCommand(ctx context.Context, line string, room *watchparty.Sess
 		target, err := parseSeek(fields[1], current.LivePosition())
 		if err != nil {
 			fmt.Println(err)
+			return true
+		}
+		if !host {
+			if err := room.SendControl(watchparty.ControlSeek, target); err != nil {
+				fmt.Println("комната:", err)
+				return true
+			}
+			fmt.Printf("Команда перемотки на %.1f с отправлена создателю комнаты.\n", target)
 			return true
 		}
 		if err := current.SeekTo(target); err != nil {

@@ -162,3 +162,89 @@ func TestWatchPartyCardFitsText(t *testing.T) {
 		t.Fatalf("%dpx chevron does not fit the %dpx circle", chevron, wpRoundSize)
 	}
 }
+
+func TestRoomClosedShowsJoinFormWithReason(t *testing.T) {
+	screen := newWatchPartyWindow(nil, nil, &partyManager{provider: watchparty.Cloudflare})
+	screen.mode = wpWaiting
+	screen.busy = true
+	screen.editor.SetText("YOFBQOPGZ")
+
+	screen.roomClosed(hostLeftNotice)
+
+	if screen.mode != wpJoin {
+		t.Fatalf("mode = %d, want the join form", screen.mode)
+	}
+	if screen.errorText != hostLeftNotice {
+		t.Fatalf("error = %q, want the host-left reason", screen.errorText)
+	}
+	if screen.joinFeedback {
+		t.Fatal("the host-left reason must not auto-clear like a mistyped key")
+	}
+	if screen.busy {
+		t.Fatal("a closed room must not leave the screen busy")
+	}
+	if got := screen.editor.Text(); got != "" {
+		t.Fatalf("key editor = %q, want it cleared", got)
+	}
+}
+
+func TestHostGoneLeavesANotice(t *testing.T) {
+	party := &partyManager{provider: watchparty.Cloudflare}
+	party.hostGone()
+
+	if got := party.takeClosedNotice(); got != hostLeftNotice {
+		t.Fatalf("notice = %q, want the host-left reason", got)
+	}
+	if got := party.takeClosedNotice(); got != "" {
+		t.Fatalf("notice repeated: %q", got)
+	}
+}
+
+func TestPartyWindowStartsWithTheHostLeftReason(t *testing.T) {
+	party := &partyManager{provider: watchparty.Cloudflare}
+	party.closedNotice = hostLeftNotice
+
+	screen := newWatchPartyWindow(nil, nil, party)
+	if screen.mode != wpJoin {
+		t.Fatalf("mode = %d, want the join form", screen.mode)
+	}
+	if screen.errorText != hostLeftNotice {
+		t.Fatalf("error = %q, want the host-left reason", screen.errorText)
+	}
+	if got := party.takeClosedNotice(); got != "" {
+		t.Fatalf("the notice was not consumed: %q", got)
+	}
+}
+
+func TestPreferredProviderFollowsTheSetting(t *testing.T) {
+	both := watchparty.Config{
+		CloudflareURL: "wss://relay.example",
+		SupabaseURL:   "wss://supabase.example",
+		SupabaseKey:   "sb_publishable_x",
+	}
+	onlySupabase := watchparty.Config{
+		SupabaseURL: "wss://supabase.example",
+		SupabaseKey: "sb_publishable_x",
+	}
+
+	cases := []struct {
+		name  string
+		cfg   watchparty.Config
+		saved string
+		want  watchparty.Provider
+	}{
+		{"saved supabase", both, string(watchparty.Supabase), watchparty.Supabase},
+		{"saved cloudflare", both, string(watchparty.Cloudflare), watchparty.Cloudflare},
+		{"auto without a choice", both, "", watchparty.Cloudflare},
+		{"unknown value", both, "bogus", watchparty.Cloudflare},
+		{"saved provider missing from the build", onlySupabase, string(watchparty.Cloudflare), watchparty.Supabase},
+		{"single relay build", onlySupabase, "", watchparty.Supabase},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			if got := preferredProvider(test.cfg, test.saved); got != test.want {
+				t.Fatalf("provider = %q, want %q", got, test.want)
+			}
+		})
+	}
+}

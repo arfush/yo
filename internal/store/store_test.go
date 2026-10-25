@@ -420,6 +420,41 @@ func TestEpisodeNotificationsDefaultOnAndPersist(t *testing.T) {
 	}
 }
 
+func TestSharedControlDefaultsOnAndProviderPersists(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "yonime.sqlite")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !db.SharedControlEnabled() {
+		t.Fatal("shared control must be enabled by default")
+	}
+	if got := db.WatchPartyProvider(); got != "" {
+		t.Fatalf("provider default = %q, want an empty auto choice", got)
+	}
+	if err := db.SetSharedControlEnabled(false); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetWatchPartyProvider("supabase"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if db.SharedControlEnabled() {
+		t.Fatal("disabled shared control did not survive reopen")
+	}
+	if got := db.WatchPartyProvider(); got != "supabase" {
+		t.Fatalf("stored provider = %q, want supabase", got)
+	}
+}
+
 func TestHistoryKeepsNewestFirst(t *testing.T) {
 	db, err := Open(filepath.Join(t.TempDir(), "yonime.sqlite"))
 	if err != nil {

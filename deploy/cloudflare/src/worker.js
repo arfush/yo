@@ -9,6 +9,7 @@
 //
 //	{t:"hello"}                 guest asks for a fresh anchor
 //	{t:"state", state:{...}}    host publishes an anchor
+//	{t:"control", control:{}}   guest asks the host to pause/play/seek
 //	{t:"welcome", host:true}    relay reports whether the host is present
 //	{t:"bye"}                   host left
 //	{t:"error", error:"..."}    relay refused something
@@ -139,7 +140,19 @@ export class Room {
 
     socket.addEventListener("message", (event) => {
       const message = parse(event.data);
-      if (!message || message.t !== "hello") {
+      if (!message) {
+        return;
+      }
+      if (message.t === "control") {
+        // Shared control is the host's decision, so the relay only forwards
+        // the command. The host applies it and publishes a fresh anchor, which
+        // reaches every guest through the regular state path.
+        if (this.host) {
+          this.send(this.host, message);
+        }
+        return;
+      }
+      if (message.t !== "hello") {
         return;
       }
       if (this.host) {

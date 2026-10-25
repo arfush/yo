@@ -12,17 +12,19 @@ import (
 
 // message is the wire envelope shared by both relays.
 type message struct {
-	Type  string `json:"t"`
-	Role  Role   `json:"role,omitempty"`
-	Name  string `json:"name,omitempty"`
-	State *State `json:"state,omitempty"`
-	Host  *bool  `json:"host,omitempty"`
-	Error string `json:"error,omitempty"`
+	Type    string   `json:"t"`
+	Role    Role     `json:"role,omitempty"`
+	Name    string   `json:"name,omitempty"`
+	State   *State   `json:"state,omitempty"`
+	Control *Control `json:"control,omitempty"`
+	Host    *bool    `json:"host,omitempty"`
+	Error   string   `json:"error,omitempty"`
 }
 
 const (
 	messageHello   = "hello"
 	messageState   = "state"
+	messageControl = "control"
 	messageBye     = "bye"
 	messageError   = "error"
 	messageWelcome = "welcome"

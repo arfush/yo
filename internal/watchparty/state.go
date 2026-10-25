@@ -86,6 +86,32 @@ func (s State) PositionAt(hostNow time.Time) float64 {
 	return position + float64(elapsed)/1000
 }
 
+// Control actions a guest may send to the host when shared control is on.
+const (
+	ControlPause = "pause"
+	ControlPlay  = "play"
+	ControlSeek  = "seek"
+)
+
+// Control is one playback command from a guest. The host applies it and then
+// publishes a fresh anchor, so the other guests follow the same command through
+// the regular state channel.
+type Control struct {
+	Action   string  `json:"action"`
+	Position float64 `json:"position,omitempty"`
+}
+
+// Valid reports whether the host can apply the action.
+func (c Control) Valid() bool {
+	switch c.Action {
+	case ControlPause, ControlPlay:
+		return true
+	case ControlSeek:
+		return c.Position >= 0
+	}
+	return false
+}
+
 // UpdateKind classifies a room notification.
 type UpdateKind int
 
@@ -96,6 +122,8 @@ const (
 	UpdateHostSeen
 	// UpdateHostLeft fires when the relay reports the host is gone.
 	UpdateHostLeft
+	// UpdateControl is a guest playback command the host should apply.
+	UpdateControl
 	// UpdateError reports a relay problem that the UI may want to show.
 	UpdateError
 	// UpdateClosed reports that the room was closed locally.
@@ -104,7 +132,8 @@ const (
 
 // Update is delivered to the UI through Session.Updates.
 type Update struct {
-	Kind  UpdateKind
-	State State
-	Err   error
+	Kind    UpdateKind
+	State   State
+	Control Control
+	Err     error
 }

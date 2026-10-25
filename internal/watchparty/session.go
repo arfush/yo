@@ -16,6 +16,18 @@ const (
 	updatesBuffer = 8
 )
 
+// A guest treats the room as abandoned when no host message arrives for this
+// long. The host publishes every ten seconds while paused, so three missed
+// anchors in a row mean the process is gone. Cloudflare usually reports the
+// same event earlier through bye; this covers Supabase and a host that hangs
+// instead of closing its socket.
+//
+// Both values are variables so tests can shorten the wait.
+var (
+	hostSilence   = 15 * time.Second
+	hostWatchTick = time.Second
+)
+
 // Session is one joined room. It owns the WebSocket, reconnects on its own and
 // keeps the newest host anchor plus the clock estimate.
 type Session struct {
@@ -31,6 +43,7 @@ type Session struct {
 	state     State
 	hasState  bool
 	hostSeen  bool
+	lastHost  time.Time
 	closed    bool
 	lastErr   error
 	lastHello time.Time
@@ -84,6 +97,9 @@ func open(ctx context.Context, cfg Config, provider Provider, key string, role R
 	session.conn = conn
 	session.mu.Unlock()
 	go session.run(runCtx, conn)
+	if role == Guest {
+		go session.watchHost(runCtx)
+	}
 	return session, nil
 }
 
@@ -135,6 +151,20 @@ func (s *Session) Publish(state State) error {
 	return s.write(message{Type: messageState, State: &state})
 }
 
+// SendControl forwards a playback command to the host. Only guests use it;
+// applying the command is the host's decision, because the shared-control
+// setting lives there.
+func (s *Session) SendControl(action string, position float64) error {
+	if s.Role != Guest {
+		return errors.New("управлять воспроизведением может только гость")
+	}
+	control := Control{Action: action, Position: position}
+	if !control.Valid() {
+		return errors.New("неизвестное действие комнаты")
+	}
+	return s.write(message{Type: messageControl, Control: &control})
+}
+
 // ExpectedPosition returns where the host expects playback to be right now.
 func (s *Session) ExpectedPosition(now time.Time) (float64, State, bool) {
 	state, ok := s.State()
@@ -154,7 +184,10 @@ func (s *Session) Close() error {
 	conn := s.conn
 	s.mu.Unlock()
 
-	if conn != nil {
+	if conn != nil && s.Role == Host {
+		// Only the host's departure ends the room. A guest saying bye would be
+		// broadcast on Supabase and make the remaining guests think the host
+		// left; the relay notices a guest socket closing on its own.
 		_ = s.write(message{Type: messageBye})
 	}
 
@@ -249,6 +282,7 @@ func (s *Session) handle(msg message) {
 		s.state = state
 		s.hasState = true
 		s.hostSeen = true
+		s.lastHost = time.Now()
 		s.mu.Unlock()
 		s.clock.Add(state.Anchor, time.Now().UnixMilli())
 		if first {
@@ -263,6 +297,9 @@ func (s *Session) handle(msg message) {
 		s.mu.Lock()
 		previous := s.hostSeen
 		s.hostSeen = seen
+		if seen {
+			s.lastHost = time.Now()
+		}
 		s.mu.Unlock()
 		if seen && !previous {
 			s.notify(Update{Kind: UpdateHostSeen})
@@ -274,6 +311,11 @@ func (s *Session) handle(msg message) {
 		if s.Role == Host {
 			s.publishSoon()
 		}
+	case messageControl:
+		if s.Role != Host || msg.Control == nil || !msg.Control.Valid() {
+			return
+		}
+		s.notify(Update{Kind: UpdateControl, Control: *msg.Control})
 	case messageBye:
 		s.mu.Lock()
 		s.hostSeen = false
@@ -285,6 +327,36 @@ func (s *Session) handle(msg message) {
 			text = "ошибка комнаты"
 		}
 		s.reportError(errors.New(text))
+	}
+}
+
+// watchHost notices a host that stopped answering. The relay protocol has no
+// disconnect event on Supabase, so a guest would otherwise wait forever on the
+// last anchor; Cloudflare also benefits when a host freezes instead of closing
+// its socket.
+func (s *Session) watchHost(ctx context.Context) {
+	ticker := time.NewTicker(hostWatchTick)
+	defer ticker.Stop()
+	for {
+		var now time.Time
+		select {
+		case <-ctx.Done():
+			return
+		case now = <-ticker.C:
+		}
+		s.mu.Lock()
+		stale := s.Role == Guest &&
+			!s.closed &&
+			s.hostSeen &&
+			!s.lastHost.IsZero() &&
+			now.Sub(s.lastHost) >= hostSilence
+		if stale {
+			s.hostSeen = false
+		}
+		s.mu.Unlock()
+		if stale {
+			s.notify(Update{Kind: UpdateHostLeft})
+		}
 	}
 }
 

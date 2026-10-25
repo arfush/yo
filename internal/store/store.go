@@ -596,6 +596,49 @@ func (s *Store) SetPreferredQuality(quality int) error {
 	return err
 }
 
+// SharedControlEnabled reports whether watch-party guests may pause, resume and
+// seek the host's player. It is enabled by default so a room behaves the way
+// people expect without opening the settings first.
+func (s *Store) SharedControlEnabled() bool {
+	var value string
+	if err := s.db.QueryRow("SELECT value FROM settings WHERE key = 'party_control'").Scan(&value); err != nil {
+		return true
+	}
+	return value != "0" && value != "false"
+}
+
+// SetSharedControlEnabled stores the shared-control choice.
+func (s *Store) SetSharedControlEnabled(enabled bool) error {
+	value := "1"
+	if !enabled {
+		value = "0"
+	}
+	_, err := s.db.Exec(`
+        INSERT INTO settings (key, value) VALUES ('party_control', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+		value)
+	return err
+}
+
+// WatchPartyProvider returns the relay the user picked for new rooms. An empty
+// string means the user never picked one and the first configured relay wins.
+func (s *Store) WatchPartyProvider() string {
+	var value string
+	if err := s.db.QueryRow("SELECT value FROM settings WHERE key = 'party_provider'").Scan(&value); err != nil {
+		return ""
+	}
+	return value
+}
+
+// SetWatchPartyProvider remembers the relay chosen in the settings.
+func (s *Store) SetWatchPartyProvider(provider string) error {
+	_, err := s.db.Exec(`
+        INSERT INTO settings (key, value) VALUES ('party_provider', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+		provider)
+	return err
+}
+
 // GetIntrodbCache returns cached chapters for one episode. The boolean is true
 // when introdb previously reported that it has no entry.
 func (s *Store) GetIntrodbCache(tid int64, episode string) ([]byte, bool, bool) {

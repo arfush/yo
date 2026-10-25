@@ -33,6 +33,13 @@ const (
 	partySpeedGain      = 0.25
 	partyMinRate        = 0.94
 	partyMaxRate        = 1.06
+
+	// A guest that just asked the host for a pause or a seek must not let the
+	// drift loop undo its own input before the confirming anchor arrives.
+	partyControlHold = 1500 * time.Millisecond
+	// A position jump larger than this between two guest ticks is a person
+	// seeking in mpv; the drift loop never moves the picture this far.
+	partyUserSeekThreshold = 1.5
 )
 
 // partySnapshot is a consistent copy of the room state for the UI.
@@ -62,12 +69,17 @@ type partyManager struct {
 
 	mu       sync.Mutex
 	provider watchparty.Provider
+	control  bool
 	session  *watchparty.Session
 	state    watchparty.State
 	hasState bool
 	started  bool
 	hostSeen bool
 	notice   string
+	// closedNotice explains why the last guest room disappeared. The party
+	// screen consumes it on the UI goroutine, so the fields it mutates stay
+	// owned by layout.
+	closedNotice string
 
 	hostSession *playback.Session
 	hostMeta    hostMeta
@@ -85,16 +97,31 @@ func newPartyManager(app *application) *partyManager {
 	manager := &partyManager{
 		app:      app,
 		provider: watchparty.Cloudflare,
+		control:  true,
 	}
 	if path, err := appdata.WatchPartyConfigPath(); err == nil {
 		manager.cfg = watchparty.LoadConfig(path)
 	}
-	// A user who configured only one relay should not have to click past the
-	// other one before the first attempt.
-	if !manager.cfg.Configured(watchparty.Cloudflare) && manager.cfg.Configured(watchparty.Supabase) {
-		manager.provider = watchparty.Supabase
+	saved := ""
+	if app != nil && app.library != nil {
+		manager.control = app.library.SharedControlEnabled()
+		saved = app.library.WatchPartyProvider()
 	}
+	manager.provider = preferredProvider(manager.cfg, saved)
 	return manager
+}
+
+// preferredProvider is the relay a new room starts with: the one picked in the
+// settings when this build has it, otherwise the only configured relay, and
+// Cloudflare as the historical default.
+func preferredProvider(cfg watchparty.Config, saved string) watchparty.Provider {
+	if preferred := watchparty.Provider(saved); preferred.Valid() && cfg.Configured(preferred) {
+		return preferred
+	}
+	if !cfg.Configured(watchparty.Cloudflare) && cfg.Configured(watchparty.Supabase) {
+		return watchparty.Supabase
+	}
+	return watchparty.Cloudflare
 }
 
 // Provider returns the backend shown in the chip.
@@ -117,7 +144,8 @@ func (m *partyManager) HasProviderChoice() bool {
 	return m.cfg.Configured(watchparty.Cloudflare) && m.cfg.Configured(watchparty.Supabase)
 }
 
-// SetProvider switches the chip while no room is open.
+// SetProvider switches the chip while no room is open and remembers the
+// choice, so the next room starts with the same relay.
 func (m *partyManager) SetProvider(provider watchparty.Provider) {
 	if m == nil {
 		return
@@ -125,6 +153,30 @@ func (m *partyManager) SetProvider(provider watchparty.Provider) {
 	m.mu.Lock()
 	m.provider = provider
 	m.mu.Unlock()
+	if m.app != nil && m.app.library != nil {
+		_ = m.app.library.SetWatchPartyProvider(string(provider))
+	}
+}
+
+// SetSharedControl stores whether guests may control playback. The host reads
+// it for incoming commands; a guest reads it before sending its own.
+func (m *partyManager) SetSharedControl(enabled bool) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	m.control = enabled
+	m.mu.Unlock()
+}
+
+// SharedControl reports the current shared-control setting.
+func (m *partyManager) SharedControl() bool {
+	if m == nil {
+		return true
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.control
 }
 
 // Create opens a fresh room and returns its key.
@@ -324,6 +376,8 @@ func (m *partyManager) consume(session *watchparty.Session, stop chan struct{}) 
 		if !m.owns(session) {
 			return
 		}
+		var control watchparty.Control
+		hostGone := false
 		m.mu.Lock()
 		switch update.Kind {
 		case watchparty.UpdateState:
@@ -336,7 +390,12 @@ func (m *partyManager) consume(session *watchparty.Session, stop chan struct{}) 
 			m.hostSeen = true
 		case watchparty.UpdateHostLeft:
 			m.hostSeen = false
-			m.notice = "Создатель комнаты отключился"
+			m.notice = hostLeftNotice
+			// A guest has nobody to wait for: the room closes right away
+			// instead of sitting on the last anchor.
+			hostGone = session.Role == watchparty.Guest
+		case watchparty.UpdateControl:
+			control = update.Control
 		case watchparty.UpdateError:
 			if update.Err != nil {
 				m.notice = update.Err.Error()
@@ -345,6 +404,15 @@ func (m *partyManager) consume(session *watchparty.Session, stop chan struct{}) 
 		state := m.state
 		started := m.started
 		m.mu.Unlock()
+
+		if hostGone {
+			m.hostGone()
+			return
+		}
+		if update.Kind == watchparty.UpdateControl {
+			m.applyControl(session, control)
+			continue
+		}
 
 		m.invalidate()
 		if session.Role != watchparty.Guest {
@@ -357,6 +425,67 @@ func (m *partyManager) consume(session *watchparty.Session, stop chan struct{}) 
 			// rolling on through its own queue alone.
 			m.stopGuest()
 		}
+	}
+}
+
+// hostLeftNotice explains why a guest room disappeared.
+const hostLeftNotice = "Создатель закрыл комнату"
+
+// hostGone tears the guest room down the moment the host is gone. mpv is
+// stopped without the finish callback, so the window has to be restored here;
+// the party screen then shows the join form with the reason.
+func (m *partyManager) hostGone() {
+	m.stopGuest()
+	m.Delete()
+	m.mu.Lock()
+	m.closedNotice = hostLeftNotice
+	m.mu.Unlock()
+	m.invalidate()
+}
+
+// takeClosedNotice returns the reason the last guest room ended, once. The
+// caller is the party screen, which is the only owner of its UI fields.
+func (m *partyManager) takeClosedNotice() string {
+	if m == nil {
+		return ""
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	text := m.closedNotice
+	m.closedNotice = ""
+	return text
+}
+
+// applyControl carries out a guest command when shared control is enabled. The
+// host publishes a fresh anchor immediately, so every guest reacts within a
+// frame instead of waiting for the next heartbeat tick.
+func (m *partyManager) applyControl(session *watchparty.Session, control watchparty.Control) {
+	if m.app == nil || m.app.playback == nil || !m.SharedControl() {
+		return
+	}
+	m.mu.Lock()
+	running := m.hostSession
+	owned := m.session == session && session.Role == watchparty.Host
+	m.mu.Unlock()
+	if !owned || running == nil || m.app.playback.Current() != running {
+		return
+	}
+	var err error
+	switch control.Action {
+	case watchparty.ControlPause:
+		err = running.SetPaused(true)
+	case watchparty.ControlPlay:
+		err = running.SetPaused(false)
+	case watchparty.ControlSeek:
+		err = running.SeekTo(control.Position)
+	default:
+		return
+	}
+	if err != nil {
+		return
+	}
+	if state, ok := m.hostState(); ok {
+		_ = session.Publish(state)
 	}
 }
 
@@ -373,6 +502,9 @@ func (m *partyManager) stopGuest() {
 	if current := m.app.playback.Current(); current != nil {
 		current.Stop()
 	}
+	// Stop suppresses the finish callback that normally brings the window
+	// back, so the guest would otherwise be left with no visible application.
+	m.app.restorePlayerWindow()
 }
 
 func (m *partyManager) owns(session *watchparty.Session) bool {
@@ -484,11 +616,18 @@ func (m *partyManager) guestFinished(err error) {
 	m.invalidate()
 }
 
-// guestLoop keeps the local mpv close to the extrapolated host position.
+// guestLoop keeps the local mpv close to the extrapolated host position. It
+// also watches for input the person makes in mpv (pause, seek) and forwards it
+// to the host when shared control is on.
 func (m *partyManager) guestLoop(session *watchparty.Session, stop chan struct{}) {
 	ticker := time.NewTicker(partyGuestTick)
 	defer ticker.Stop()
 	rate := 1.0
+	var lastPosition float64
+	var lastSample time.Time
+	var lastPaused bool
+	var holdUntil time.Time
+	var seeded bool
 	for {
 		select {
 		case <-stop:
@@ -500,6 +639,7 @@ func (m *partyManager) guestLoop(session *watchparty.Session, stop chan struct{}
 		}
 		current := m.app.playback.Current()
 		if current == nil {
+			seeded = false
 			continue
 		}
 		state, ok := session.State()
@@ -511,48 +651,98 @@ func (m *partyManager) guestLoop(session *watchparty.Session, stop chan struct{}
 			// mpv is still opening the file or the host moved on; the drift
 			// numbers are meaningless until file-loaded arrives.
 			rate = 1
+			seeded = false
 			continue
 		}
-		if !state.Playing {
+		now := time.Now()
+		position := current.LivePosition()
+		paused := current.Paused()
+		if !seeded {
+			seeded = true
+		} else if m.SharedControl() {
+			// Between two ticks only a person can change the player: the drift
+			// loop acts below and records its own corrections in the baseline.
+			switch {
+			case paused != lastPaused:
+				action := watchparty.ControlPlay
+				if paused {
+					action = watchparty.ControlPause
+				}
+				_ = session.SendControl(action, 0)
+				holdUntil = now.Add(partyControlHold)
+			case !lastPaused && !lastSample.IsZero():
+				expected := lastPosition + now.Sub(lastSample).Seconds()
+				// A stalled network freezes the position instead of moving
+				// it, so only a real jump counts as a seek; otherwise a slow
+				// connection would drag the host back to the guest.
+				if position != lastPosition && math.Abs(position-expected) > partyUserSeekThreshold {
+					_ = session.SendControl(watchparty.ControlSeek, position)
+					holdUntil = now.Add(partyControlHold)
+				}
+			}
+		}
+		// Keep the baseline fresh even while mpv is paused, so the next real
+		// action is measured from the current picture.
+		tracked := position
+		lastPaused = paused
+		lastSample = now
+		if now.Before(holdUntil) {
+			// The command is still travelling; correcting the drift now would
+			// undo the guest's own pause or seek before the host confirms it.
+			lastPosition = tracked
+			continue
+		}
+
+		switch {
+		case !state.Playing:
 			if !current.Paused() {
 				_ = current.SetPaused(true)
 			}
-			if math.Abs(current.LivePosition()-state.Position) > 0.8 {
+			if math.Abs(position-state.Position) > 0.8 {
 				_ = current.SeekTo(state.Position)
+				tracked = state.Position
 			}
 			if rate != 1 {
 				_ = current.SetSpeed(1)
 				rate = 1
 			}
-			continue
-		}
-		if current.Paused() {
+		case current.Paused():
 			_ = current.SetPaused(false)
-		}
-		want, _, ok := session.ExpectedPosition(time.Now())
-		if !ok {
-			continue
-		}
-		drift := current.LivePosition() - want
-		switch {
-		case math.Abs(drift) > partySeekThreshold:
-			_ = current.SeekTo(want + partySeekLead)
-			if rate != 1 {
-				_ = current.SetSpeed(1)
-				rate = 1
-			}
-		case math.Abs(drift) > partySpeedThreshold:
-			next := clampRate(1 - drift*partySpeedGain)
-			if math.Abs(next-rate) > 0.004 {
-				_ = current.SetSpeed(next)
-				rate = next
-			}
+			fallthrough
 		default:
-			if rate != 1 {
-				_ = current.SetSpeed(1)
-				rate = 1
+			want, _, ok := session.ExpectedPosition(now)
+			if !ok {
+				lastPaused = current.Paused()
+				lastPosition = tracked
+				continue
+			}
+			drift := position - want
+			switch {
+			case math.Abs(drift) > partySeekThreshold:
+				target := want + partySeekLead
+				_ = current.SeekTo(target)
+				tracked = target
+				if rate != 1 {
+					_ = current.SetSpeed(1)
+					rate = 1
+				}
+			case math.Abs(drift) > partySpeedThreshold:
+				next := clampRate(1 - drift*partySpeedGain)
+				if math.Abs(next-rate) > 0.004 {
+					_ = current.SetSpeed(next)
+					rate = next
+				}
+			default:
+				if rate != 1 {
+					_ = current.SetSpeed(1)
+					rate = 1
+				}
 			}
 		}
+		// Record the state we just enforced, otherwise the next tick would
+		// mistake our own pause or seek for input from the person.
+		lastPaused = current.Paused()
+		lastPosition = tracked
 	}
 }
 

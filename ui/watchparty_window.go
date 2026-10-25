@@ -162,6 +162,11 @@ func newWatchPartyWindow(typo *typography, w *app.Window, party *partyManager) *
 		screen.mode = wpWaiting
 		screen.waitSince = time.Now()
 	}
+	// The guest may have been on the main screen when the host left; the
+	// reason waits in the manager until the card is opened again.
+	if text := party.takeClosedNotice(); text != "" {
+		screen.roomClosed(text)
+	}
 	return screen
 }
 
@@ -175,6 +180,9 @@ func (w *watchPartyWindow) animationsRun() bool {
 
 func (w *watchPartyWindow) layout(gtx layout.Context) {
 	w.drain()
+	if text := w.party.takeClosedNotice(); text != "" {
+		w.roomClosed(text)
+	}
 	w.handleEscape(gtx)
 	w.expireFeedback(gtx)
 
@@ -892,6 +900,24 @@ func (w *watchPartyWindow) failJoin(text string) {
 	w.errorAt = time.Now()
 	w.joinFeedback = true
 	w.window.Invalidate()
+}
+
+// roomClosed returns the screen to the join form with an explanation. The room
+// is already gone by the time this runs, so the waiting layout would otherwise
+// fall through to a silent join form.
+func (w *watchPartyWindow) roomClosed(text string) {
+	w.mode = wpJoin
+	w.waitSince = time.Time{}
+	w.busy = false
+	w.focusField = false
+	w.editor.SetText("")
+	w.errorText = text
+	w.errorAt = time.Time{}
+	// Unlike a mistyped key, this reason must stay until the next attempt.
+	w.joinFeedback = false
+	if w.window != nil {
+		w.window.Invalidate()
+	}
 }
 
 // buttonErrorFeedback reports the three-second red state and, when requested,

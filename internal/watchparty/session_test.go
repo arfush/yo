@@ -24,6 +24,9 @@ type testHub struct {
 	host   *websocket.Conn
 	guests map[*websocket.Conn]bool
 	last   []byte
+	// guestByes counts departures a guest announced. A guest must leave
+	// silently: only the host's bye ends the room.
+	guestByes int
 }
 
 func newTestHub(t *testing.T) *testHub {
@@ -110,16 +113,27 @@ func (h *testHub) serve(w http.ResponseWriter, r *http.Request) {
 		if json.Unmarshal(data, &msg) != nil {
 			continue
 		}
-		if msg.Type != messageHello {
-			continue
-		}
-		h.mu.Lock()
-		host := h.host
-		h.mu.Unlock()
-		if host != nil {
-			h.send(host, message{Type: messageHello, Role: Guest})
-		} else {
-			h.send(conn, message{Type: messageWelcome, Host: boolPtr(false)})
+		switch msg.Type {
+		case messageBye:
+			h.mu.Lock()
+			h.guestByes++
+			h.mu.Unlock()
+		case messageControl:
+			h.mu.Lock()
+			host := h.host
+			h.mu.Unlock()
+			if host != nil {
+				h.send(host, msg)
+			}
+		case messageHello:
+			h.mu.Lock()
+			host := h.host
+			h.mu.Unlock()
+			if host != nil {
+				h.send(host, message{Type: messageHello, Role: Guest})
+			} else {
+				h.send(conn, message{Type: messageWelcome, Host: boolPtr(false)})
+			}
 		}
 	}
 
@@ -139,6 +153,12 @@ func (h *testHub) dropHost(conn *websocket.Conn) {
 	for _, guest := range guests {
 		h.send(guest, message{Type: messageBye})
 	}
+}
+
+func (h *testHub) guestByeCount() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.guestByes
 }
 
 func (h *testHub) guestList() []*websocket.Conn {
@@ -257,6 +277,100 @@ func TestGuestLearnsWhenTheHostLeaves(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 	waitFor(t, 5*time.Second, func() bool { return !guest.HostSeen() })
+}
+
+func TestGuestLeavesWithoutAnnouncingIt(t *testing.T) {
+	hub := newTestHub(t)
+	cfg := Config{CloudflareURL: hub.url}
+
+	host, err := Create(context.Background(), cfg, Cloudflare)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer host.Close()
+	guest, err := Join(context.Background(), cfg, Cloudflare, host.Key)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+	waitFor(t, 3*time.Second, guest.HostSeen)
+
+	if err := guest.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	// Supabase broadcasts everything, so a guest's bye would reach the other
+	// guests and be read as the host leaving. The relay notices the closed
+	// socket by itself.
+	time.Sleep(150 * time.Millisecond)
+	if n := hub.guestByeCount(); n != 0 {
+		t.Fatalf("guest sent %d bye messages, want none", n)
+	}
+}
+
+func TestGuestControlReachesTheHost(t *testing.T) {
+	hub := newTestHub(t)
+	cfg := Config{CloudflareURL: hub.url}
+
+	host, err := Create(context.Background(), cfg, Cloudflare)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer host.Close()
+	guest, err := Join(context.Background(), cfg, Cloudflare, host.Key)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+	defer guest.Close()
+	waitFor(t, 3*time.Second, guest.HostSeen)
+
+	if err := host.SendControl(ControlPause, 0); err == nil {
+		t.Fatal("a host must not send guest controls")
+	}
+	if err := guest.SendControl(ControlSeek, 321.5); err != nil {
+		t.Fatalf("SendControl: %v", err)
+	}
+
+	waitFor(t, 3*time.Second, func() bool {
+		for {
+			select {
+			case update := <-host.Updates():
+				if update.Kind == UpdateControl {
+					if update.Control.Action != ControlSeek || update.Control.Position != 321.5 {
+						t.Fatalf("control = %+v, want seek to 321.5", update.Control)
+					}
+					return true
+				}
+			default:
+				return false
+			}
+		}
+	})
+}
+
+func TestGuestNoticesASilentHost(t *testing.T) {
+	oldSilence, oldTick := hostSilence, hostWatchTick
+	hostSilence, hostWatchTick = 120*time.Millisecond, 20*time.Millisecond
+	t.Cleanup(func() {
+		hostSilence, hostWatchTick = oldSilence, oldTick
+	})
+
+	hub := newTestHub(t)
+	cfg := Config{CloudflareURL: hub.url}
+
+	host, err := Create(context.Background(), cfg, Cloudflare)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer host.Close()
+	guest, err := Join(context.Background(), cfg, Cloudflare, host.Key)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+	defer guest.Close()
+
+	// The test hub never publishes heartbeats, so the greeting is the last
+	// thing the guest hears and the watchdog has to declare the host gone.
+	waitFor(t, 3*time.Second, guest.HostSeen)
+	waitFor(t, 3*time.Second, func() bool { return !guest.HostSeen() })
 }
 
 func TestJoinRejectsAMistypedKey(t *testing.T) {

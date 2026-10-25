@@ -293,6 +293,33 @@ func (l *Library) SetPreferredQuality(quality int) error {
 	return l.store.SetPreferredQuality(quality)
 }
 
+// SharedControlEnabled reports whether watch-party guests may control playback.
+func (l *Library) SharedControlEnabled() bool {
+	if l == nil || l.store == nil {
+		return true
+	}
+	return l.store.SharedControlEnabled()
+}
+
+// SetSharedControlEnabled stores the shared-control choice.
+func (l *Library) SetSharedControlEnabled(enabled bool) error {
+	return l.store.SetSharedControlEnabled(enabled)
+}
+
+// WatchPartyProvider returns the relay picked for new rooms, or "" when the
+// user never picked one.
+func (l *Library) WatchPartyProvider() string {
+	if l == nil || l.store == nil {
+		return ""
+	}
+	return l.store.WatchPartyProvider()
+}
+
+// SetWatchPartyProvider remembers the relay picked for new rooms.
+func (l *Library) SetWatchPartyProvider(provider string) error {
+	return l.store.SetWatchPartyProvider(provider)
+}
+
 // IntrodbCache returns cached chapters or a no-data marker. The third result
 // reports whether an entry exists at all.
 func (l *Library) IntrodbCache(tid int64, episode string) ([]byte, bool, bool) {

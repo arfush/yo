@@ -414,14 +414,22 @@ func (a *application) openUpdate() {
 	a.showWindow(a.window, screen)
 }
 
-// openSettings shows the notification preferences. Changing the toggle takes
-// effect immediately; enabling it also starts a checker pass without waiting
-// for the regular timer.
+// openSettings shows the preferences. Changing a toggle or the relay takes
+// effect immediately; enabling notifications also starts a checker pass
+// without waiting for the regular timer.
 func (a *application) openSettings() {
 	if a.window == nil || a.library == nil {
 		return
 	}
-	settings := newSettingsWindow(a.shell.typo, a.library.EpisodeNotificationsEnabled())
+	if a.party == nil {
+		a.party = newPartyManager(a)
+	}
+	settings := newSettingsWindow(a.shell.typo, settingsValues{
+		Notifications:  a.library.EpisodeNotificationsEnabled(),
+		SharedControl:  a.library.SharedControlEnabled(),
+		Provider:       a.party.Provider(),
+		ProviderChoice: a.party.HasProviderChoice(),
+	})
 	settings.hidden = a.windowHidden
 	settings.onBack = func() {
 		if a.window == nil {
@@ -439,6 +447,22 @@ func (a *application) openSettings() {
 		} else {
 			a.cancelEpisodePass()
 		}
+		return nil
+	}
+	settings.onControl = func(enabled bool) error {
+		if err := a.library.SetSharedControlEnabled(enabled); err != nil {
+			return err
+		}
+		a.party.SetSharedControl(enabled)
+		return nil
+	}
+	settings.onProvider = func(provider watchparty.Provider) error {
+		if !a.party.HasProviderChoice() {
+			return nil
+		}
+		// SetProvider stores the choice, so the next room and the party card
+		// agree with the settings.
+		a.party.SetProvider(provider)
 		return nil
 	}
 	a.showWindow(a.window, settings)
@@ -1100,6 +1124,20 @@ func (a *application) leaveParty() {
 	}
 	a.showWindow(a.window, a.main)
 	a.window.Invalidate()
+}
+
+// restorePlayerWindow brings the application back when the app itself closed
+// mpv. Session.Stop suppresses the finish callback that normally restores the
+// window, so the caller has to do it.
+func (a *application) restorePlayerWindow() {
+	if !a.hidden.Load() {
+		return
+	}
+	a.hidden.Store(false)
+	showAppWindow()
+	if a.window != nil {
+		a.window.Invalidate()
+	}
 }
 
 func (a *application) showWindow(w *app.Window, screen windowScreen) {
