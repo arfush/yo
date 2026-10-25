@@ -39,6 +39,7 @@ const (
 	settingsProviderWidth      = unit.Dp(124)
 	settingsProviderHeight     = unit.Dp(30)
 	settingsProviderItemHeight = unit.Dp(32)
+	settingsProviderItemGap    = unit.Dp(2)
 	settingsProviderMenuPad    = unit.Dp(4)
 	settingsProviderMenuGap    = unit.Dp(6)
 )
@@ -355,9 +356,10 @@ func (w *settingsWindow) layoutProviderMenu(gtx layout.Context, size image.Point
 	providers := watchparty.Providers()
 	pad := gtx.Dp(settingsProviderMenuPad)
 	itemHeight := gtx.Dp(settingsProviderItemHeight)
+	itemGap := gtx.Dp(settingsProviderItemGap)
 	menu := placeProviderMenu(
 		w.providerAnchor,
-		len(providers)*itemHeight+2*pad,
+		providerMenuHeight(gtx, len(providers)),
 		gtx.Dp(settingsProviderMenuGap),
 		image.Rectangle{Max: size},
 	)
@@ -377,9 +379,9 @@ func (w *settingsWindow) layoutProviderMenu(gtx layout.Context, size image.Point
 	for index, provider := range providers {
 		item := image.Rect(
 			menu.Min.X+pad,
-			menu.Min.Y+pad+index*itemHeight,
+			menu.Min.Y+pad+index*(itemHeight+itemGap),
 			menu.Max.X-pad,
-			menu.Min.Y+pad+(index+1)*itemHeight,
+			menu.Min.Y+pad+index*(itemHeight+itemGap)+itemHeight,
 		)
 		if w.layoutProviderItem(gtx, item, provider, &w.providerItems[index]) {
 			w.setProvider(provider)
@@ -387,6 +389,18 @@ func (w *settingsWindow) layoutProviderMenu(gtx layout.Context, size image.Point
 			gtx.Execute(op.InvalidateCmd{})
 		}
 	}
+}
+
+// providerMenuHeight sums the options plus the gaps and the menu padding.
+func providerMenuHeight(gtx layout.Context, count int) int {
+	if count <= 0 {
+		return 0
+	}
+	height := count*gtx.Dp(settingsProviderItemHeight) + 2*gtx.Dp(settingsProviderMenuPad)
+	if count > 1 {
+		height += (count - 1) * gtx.Dp(settingsProviderItemGap)
+	}
+	return height
 }
 
 func (w *settingsWindow) layoutProviderItem(gtx layout.Context, rect image.Rectangle, provider watchparty.Provider, click *widget.Clickable) bool {
@@ -416,15 +430,6 @@ func (w *settingsWindow) layoutProviderItem(gtx layout.Context, rect image.Recta
 		}
 		padX := gtx.Dp(unit.Dp(10))
 		w.typo.draw(gtx, label, face, settingsButtonSize, textColor, image.Pt(padX, (rect.Dy()-ink.Dy())/2))
-		if selected {
-			drawCheckMark(
-				gtx,
-				image.Pt(rect.Dx()-padX-gtx.Dp(unit.Dp(5)), rect.Dy()/2),
-				gtx.Dp(unit.Dp(10)),
-				gtx.Dp(unit.Dp(1.6)),
-				badgeTextColor,
-			)
-		}
 	})
 	return clicked
 }
@@ -481,26 +486,6 @@ func drawChevronVertical(gtx layout.Context, center image.Point, size, width int
 	strokeLine(gtx,
 		tip,
 		f32.Pt(float32(center.X)+half*0.8, float32(center.Y)-half*0.35*direction),
-		float32(width),
-		col,
-	)
-}
-
-func drawCheckMark(gtx layout.Context, center image.Point, size, width int, col color.NRGBA) {
-	if size <= 0 {
-		return
-	}
-	half := float32(size) / 2
-	corner := f32.Pt(float32(center.X)-half*0.15, float32(center.Y)+half*0.6)
-	strokeLine(gtx,
-		f32.Pt(float32(center.X)-half*0.8, float32(center.Y)+half*0.05),
-		corner,
-		float32(width),
-		col,
-	)
-	strokeLine(gtx,
-		corner,
-		f32.Pt(float32(center.X)+half*0.85, float32(center.Y)-half*0.7),
 		float32(width),
 		col,
 	)

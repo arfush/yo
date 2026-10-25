@@ -67,7 +67,7 @@ func TestSettingsWindowProviderMenuOpensInsideTheContentArea(t *testing.T) {
 	bounds := image.Rectangle{Max: image.Pt(833, 442)}
 	menu := placeProviderMenu(
 		settings.providerAnchor,
-		len(watchparty.Providers())*gtx.Dp(settingsProviderItemHeight)+2*gtx.Dp(settingsProviderMenuPad),
+		providerMenuHeight(gtx, len(watchparty.Providers())),
 		gtx.Dp(settingsProviderMenuGap),
 		bounds,
 	)
