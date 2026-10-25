@@ -12,6 +12,10 @@ import (
 
 // message is the wire envelope shared by both relays.
 type message struct {
+	// Version is the protocol version of the sender. Peers with a different
+	// version must not share playback: their anchors and commands may mean
+	// something else.
+	Version string   `json:"v,omitempty"`
 	Type    string   `json:"t"`
 	Role    Role     `json:"role,omitempty"`
 	Name    string   `json:"name,omitempty"`
@@ -20,6 +24,10 @@ type message struct {
 	Host    *bool    `json:"host,omitempty"`
 	Error   string   `json:"error,omitempty"`
 }
+
+// ProtocolVersion is the current watch-party wire format. Bump it whenever a
+// change makes old and new clients unable to understand each other.
+const ProtocolVersion = "1.0"
 
 const (
 	messageHello   = "hello"

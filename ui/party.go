@@ -471,7 +471,14 @@ func (m *partyManager) consume(session *watchparty.Session, stop chan struct{}) 
 			control = update.Control
 		case watchparty.UpdateError:
 			if update.Err != nil {
-				m.notice = update.Err.Error()
+				if errors.Is(update.Err, watchparty.ErrVersionMismatch) {
+					m.notice = versionMismatchNotice
+					if session.Role == watchparty.Guest {
+						goneNotice = versionMismatchNotice
+					}
+				} else {
+					m.notice = update.Err.Error()
+				}
 			}
 		}
 		state := m.state
@@ -501,11 +508,12 @@ func (m *partyManager) consume(session *watchparty.Session, stop chan struct{}) 
 	}
 }
 
-// The two reasons a guest room disappears: the host closed it on purpose, or
-// the reconnect grace window expired after the host dropped out.
+// The reasons a guest room disappears: the host closed it on purpose, the
+// reconnect grace window expired, or the app versions turned out to differ.
 const (
-	hostClosedNotice = "Создатель закрыл комнату"
-	hostLostNotice   = "Создатель комнаты вышел"
+	hostClosedNotice      = "Создатель закрыл комнату"
+	hostLostNotice        = "Создатель комнаты вышел"
+	versionMismatchNotice = "Разные версии приложения — обновите Yonime"
 )
 
 // hostGone tears the guest room down once the host is definitively gone. mpv

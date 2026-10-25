@@ -33,6 +33,10 @@ var (
 	hostWatchTick = time.Second
 )
 
+// ErrVersionMismatch reports a room whose host speaks another protocol
+// version. A guest leaves instead of applying anchors it may misread.
+var ErrVersionMismatch = errors.New("разные версии приложения — обновите Yonime")
+
 // Session is one joined room. It owns the WebSocket, reconnects on its own and
 // keeps the newest host anchor plus the clock estimate.
 type Session struct {
@@ -309,6 +313,13 @@ func (s *Session) handle(msg message) {
 		if msg.State == nil {
 			return
 		}
+		// The guest cannot know the host version before the first message.
+		// A state is enough to tell: leave before storing an anchor that this
+		// build may misinterpret.
+		if s.Role == Guest && msg.Version != ProtocolVersion {
+			s.rejectVersion()
+			return
+		}
 		state := *msg.State
 		s.mu.Lock()
 		first := !s.hostSeen && s.Role == Guest
@@ -358,7 +369,7 @@ func (s *Session) handle(msg message) {
 			s.publishSoon()
 		}
 	case messageControl:
-		if s.Role != Host || msg.Control == nil || !msg.Control.Valid() {
+		if s.Role != Host || msg.Version != ProtocolVersion || msg.Control == nil || !msg.Control.Valid() {
 			return
 		}
 		s.notify(Update{Kind: UpdateControl, Control: *msg.Control})
@@ -455,6 +466,7 @@ func (s *Session) setConn(conn transport) {
 }
 
 func (s *Session) write(msg message) error {
+	msg.Version = ProtocolVersion
 	s.mu.Lock()
 	conn := s.conn
 	closed := s.closed
@@ -463,6 +475,14 @@ func (s *Session) write(msg message) error {
 		return errNotConnected
 	}
 	return conn.write(msg)
+}
+
+// rejectVersion stops a guest that reached a room speaking another protocol.
+// The error is reported before closing so the UI can explain the mismatch
+// instead of showing a generic disconnect.
+func (s *Session) rejectVersion() {
+	s.reportError(ErrVersionMismatch)
+	_ = s.Close()
 }
 
 func (s *Session) notify(update Update) {

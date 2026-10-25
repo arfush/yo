@@ -3,6 +3,7 @@ package watchparty
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -446,6 +447,79 @@ func TestGuestNoticesASilentHost(t *testing.T) {
 		t.Fatal("silence ended the room before the grace window expired")
 	}
 	waitFor(t, 3*time.Second, guest.HostGone)
+}
+
+func TestMessagesCarryTheProtocolVersion(t *testing.T) {
+	hub := newTestHub(t)
+	cfg := Config{CloudflareURL: hub.url}
+
+	host, err := Create(context.Background(), cfg, Cloudflare)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer host.Close()
+
+	waitFor(t, 3*time.Second, func() bool {
+		hub.mu.Lock()
+		defer hub.mu.Unlock()
+		return hub.last != nil
+	})
+	hub.mu.Lock()
+	last := string(hub.last)
+	hub.mu.Unlock()
+	if !strings.Contains(last, `"v":"`+ProtocolVersion+`"`) {
+		t.Fatalf("host state does not carry protocol %s: %s", ProtocolVersion, last)
+	}
+}
+
+func TestGuestLeavesOnProtocolMismatch(t *testing.T) {
+	hub := newTestHub(t)
+	cfg := Config{CloudflareURL: hub.url}
+
+	key, err := NewKey(Cloudflare)
+	if err != nil {
+		t.Fatalf("NewKey: %v", err)
+	}
+	guest, err := Join(context.Background(), cfg, key)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+	defer guest.Close()
+
+	var guests []*websocket.Conn
+	waitFor(t, 3*time.Second, func() bool {
+		hub.mu.Lock()
+		defer hub.mu.Unlock()
+		guests = hub.guestList()
+		return len(guests) > 0
+	})
+	// A host left over from an older build sends no version at all; a future
+	// one sends another value. Both have to be refused before the anchor is
+	// stored.
+	hub.send(guests[0], message{
+		Type:    messageState,
+		Version: "0.9",
+		State:   &State{TitleSlug: "old-title", Episode: "1", Playing: true},
+	})
+
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case update := <-guest.Updates():
+			if update.Kind != UpdateError || !errors.Is(update.Err, ErrVersionMismatch) {
+				continue
+			}
+		case <-deadline:
+			t.Fatal("guest did not report a protocol mismatch")
+		}
+		break
+	}
+	if _, ok := guest.State(); ok {
+		t.Fatal("guest stored an anchor from a room with another protocol")
+	}
+	if !errors.Is(guest.Err(), ErrVersionMismatch) {
+		t.Fatalf("guest error = %v, want ErrVersionMismatch", guest.Err())
+	}
 }
 
 func TestJoinRejectsAMistypedKey(t *testing.T) {
