@@ -66,9 +66,12 @@ const (
 	// mainErrorFeedbackDuration is how long the Next button and the mascot stay
 	// red after an empty link or a failed load.
 	mainErrorFeedbackDuration = 3 * time.Second
-	// mainErrorShakeOffset is the peak horizontal offset of the error tremor.
-	mainErrorShakeOffset = unit.Dp(1.8)
-	mainErrorShakeHz     = 11.0
+	// mainIconShakeOffset is the peak horizontal offset of the Next arrow.
+	mainIconShakeOffset = unit.Dp(1.6)
+	// mainMascotShakeOffset is deliberately smaller: at 42 dp the character
+	// reads any larger movement as jumping, not trembling.
+	mainMascotShakeOffset = unit.Dp(0.9)
+	mainErrorShakeHz      = 11.0
 )
 
 var (
@@ -334,12 +337,13 @@ func errorShake(now, start time.Time) float32 {
 	return decay * float32(math.Sin(2*math.Pi*mainErrorShakeHz*seconds))
 }
 
-// errorShakePixels converts the tremor into device pixels.
-func errorShakePixels(gtx layout.Context, shake float32) int {
+// errorShakePixels converts the tremor into device pixels for the given peak
+// offset.
+func errorShakePixels(gtx layout.Context, shake float32, peak unit.Dp) int {
 	if shake == 0 {
 		return 0
 	}
-	return int(math.Round(float64(shake) * float64(gtx.Dp(mainErrorShakeOffset))))
+	return int(math.Round(float64(shake) * float64(gtx.Dp(peak))))
 }
 
 // updateCovers consumes covers downloaded in the background after a title is
@@ -977,7 +981,7 @@ func (m *mainWindow) layoutInput(gtx layout.Context, rect image.Rectangle, focus
 	// Draw the mascot after the editor so the error tremor moves her over the
 	// prompt instead of the text painting on top of her.
 	shake := errorShake(gtx.Now, m.errorAt)
-	offset := op.Offset(image.Pt(errorShakePixels(gtx, shake), 0)).Push(gtx.Ops)
+	offset := op.Offset(image.Pt(errorShakePixels(gtx, shake, mainMascotShakeOffset), 0)).Push(gtx.Ops)
 	drawCatgirl(gtx, mascot, gtx.Now, mascotHatNone, errorFeedbackActive(gtx.Now, m.errorAt))
 	offset.Pop()
 
@@ -1074,7 +1078,6 @@ func (m *mainWindow) layoutNext(gtx layout.Context, rect image.Rectangle) {
 	}
 
 	errored := errorFeedbackActive(gtx.Now, m.errorAt)
-	shake := errorShakePixels(gtx, errorShake(gtx.Now, m.errorAt))
 
 	stack := op.Offset(rect.Min).Push(gtx.Ops)
 	defer stack.Pop()
@@ -1082,11 +1085,7 @@ func (m *mainWindow) layoutNext(gtx layout.Context, rect image.Rectangle) {
 	cgtx.Constraints = layout.Exact(rect.Size())
 	m.next.Layout(cgtx, func(gtx layout.Context) layout.Dimensions {
 		pointer.CursorPointer.Add(gtx.Ops)
-		// The offset moves only the face, so the click area stays put while the
-		// button trembles.
-		face := op.Offset(image.Pt(shake, 0)).Push(gtx.Ops)
 		m.drawNextFace(gtx, image.Rectangle{Max: rect.Size()}, hover, false, errored)
-		face.Pop()
 		return layout.Dimensions{Size: rect.Size()}
 	})
 }
@@ -1107,7 +1106,13 @@ func (m *mainWindow) drawNextFace(gtx layout.Context, rect image.Rectangle, hove
 	}
 	fillRoundedGradient(gtx, rect, rect, radius, c1, c2)
 	if !disabled {
-		drawChevronRight(gtx, centerOf(rect), rect.Dx()/3, gtx.Dp(unit.Dp(2)), color.NRGBA{A: 0xff, R: 0xff, G: 0xff, B: 0xff})
+		iconCenter := centerOf(rect)
+		if alarm {
+			// Only the arrow trembles; the red circle itself stays in place.
+			shake := errorShake(gtx.Now, m.errorAt)
+			iconCenter.X += errorShakePixels(gtx, shake, mainIconShakeOffset)
+		}
+		drawChevronRight(gtx, iconCenter, rect.Dx()/3, gtx.Dp(unit.Dp(2)), color.NRGBA{A: 0xff, R: 0xff, G: 0xff, B: 0xff})
 	}
 }
 
