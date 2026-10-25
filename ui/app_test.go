@@ -40,6 +40,50 @@ func TestStartFailureResultKeepsRateLimitOnMainWindow(t *testing.T) {
 	}
 }
 
+func TestHandleWatchResultRefreshesTitleUserStatus(t *testing.T) {
+	dir := t.TempDir()
+	lib, err := library.Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = lib.Close() })
+
+	title := library.Title{
+		Slug:     "refresh-status",
+		Russian:  "Статус",
+		Status:   library.StatusCompleted,
+		Episodes: []string{"1"},
+		Voiceovers: []library.Voiceover{
+			{Name: "Озвучка", Episodes: []string{"1"}},
+		},
+	}
+	saved, err := lib.Save(title, "Озвучка", "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.SetUserStatus(saved.ID, library.UserStatusWatching); err != nil {
+		t.Fatal(err)
+	}
+
+	window := &titleWindow{item: historyTitle{
+		id:         saved.ID,
+		userStatus: library.UserStatusPlanned,
+	}}
+	app := &application{library: lib, active: window}
+	app.handleWatchResult(watchResult{titleID: saved.ID})
+	if window.item.userStatus != library.UserStatusWatching {
+		t.Fatalf("user status = %d, want watching", window.item.userStatus)
+	}
+
+	if err := lib.MarkCompleted(saved.ID); err != nil {
+		t.Fatal(err)
+	}
+	app.handleWatchResult(watchResult{titleID: saved.ID})
+	if window.item.userStatus != library.UserStatusCompleted {
+		t.Fatalf("user status = %d, want completed", window.item.userStatus)
+	}
+}
+
 func TestAutoUpdateSafe(t *testing.T) {
 	tests := []struct {
 		name                         string

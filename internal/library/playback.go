@@ -35,6 +35,10 @@ type PlaybackPlan struct {
 	IMDbID       string
 	ResumeAt     float64
 	Duration     float64
+	// CompleteOnFinish is true when the last episode in Episodes is the final
+	// released episode of a completed title. Playback uses it to move the title
+	// to "Досмотрел" only after that episode reaches EOF.
+	CompleteOnFinish bool
 }
 
 // PlaybackPlan resolves the selected voice, the next available episode and the
@@ -205,20 +209,39 @@ func (l *Library) PlaybackPlan(ctx context.Context, title Title, voiceName, epis
 		voiceLabel = voice.Name
 	}
 	return &PlaybackPlan{
-		TitleID:      title.ID,
-		AnimeID:      title.AnimeID,
-		Slug:         meta.SlugURL,
-		Russian:      russian,
-		English:      english,
-		Voice:        voiceLabel,
-		Episode:      chosen.Number,
-		EpisodeIndex: selectedIndex,
-		Episodes:     episodes,
-		Season:       season,
-		IMDbID:       imdbID,
-		ResumeAt:     resumeAt,
-		Duration:     duration,
+		TitleID:          title.ID,
+		AnimeID:          title.AnimeID,
+		Slug:             meta.SlugURL,
+		Russian:          russian,
+		English:          english,
+		Voice:            voiceLabel,
+		Episode:          chosen.Number,
+		EpisodeIndex:     selectedIndex,
+		Episodes:         episodes,
+		Season:           season,
+		IMDbID:           imdbID,
+		ResumeAt:         resumeAt,
+		Duration:         duration,
+		CompleteOnFinish: planCompletesTitle(title, episodes),
 	}, nil
+}
+
+// planCompletesTitle reports whether the last playable episode is the final
+// released episode. An ongoing title must stay "Смотрю" even after the user
+// catches up with every episode that exists today, and a voiceover missing the
+// finale must not complete the title early.
+func planCompletesTitle(title Title, episodes []PlaybackEpisode) bool {
+	if title.Status != StatusCompleted || len(episodes) == 0 {
+		return false
+	}
+	if title.IsMovie {
+		return true
+	}
+	if len(title.Episodes) == 0 {
+		return title.EpisodesTotal > 0 && len(episodes) == title.EpisodesTotal
+	}
+	last := animelib.NormalizeEpisodeNumber(title.Episodes[len(title.Episodes)-1])
+	return last != "" && episodes[len(episodes)-1].Number == last
 }
 
 func findVoiceover(voices []Voiceover, name string) *Voiceover {

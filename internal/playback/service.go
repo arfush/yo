@@ -521,6 +521,9 @@ func (s *Session) onEndFile(event mpvEvent) {
 	s.mu.Unlock()
 
 	if event.Reason == "eof" && isLastPlanEpisode && !hasNextInPlaylist {
+		if s.plan.CompleteOnFinish && s.plan.TitleID != 0 && s.service != nil && s.service.lib != nil {
+			_ = s.service.lib.MarkCompleted(s.plan.TitleID)
+		}
 		if mpv != nil {
 			_, _ = mpv.call("quit")
 		}

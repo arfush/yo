@@ -487,6 +487,41 @@ func TestTrackViewingPromotesPlannedTitle(t *testing.T) {
 	if history[0].UserStatus != UserStatusWatching {
 		t.Fatalf("status after playback = %d, want watching", history[0].UserStatus)
 	}
+	if got := lib.UserStatus(saved.ID); got != UserStatusWatching {
+		t.Fatalf("UserStatus() = %d, want watching", got)
+	}
+}
+
+func TestMarkCompletedOverridesUserStatus(t *testing.T) {
+	dir := t.TempDir()
+	lib, err := Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = lib.Close() })
+
+	title := Title{
+		Slug:     "complete-status",
+		Russian:  "Завершение",
+		Status:   StatusCompleted,
+		Episodes: []string{"1"},
+		Voiceovers: []Voiceover{
+			{Name: "Озвучка", Episodes: []string{"1"}},
+		},
+	}
+	saved, err := lib.Save(title, "Озвучка", "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.SetUserStatus(saved.ID, UserStatusFavorite); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.MarkCompleted(saved.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := lib.UserStatus(saved.ID); got != UserStatusCompleted {
+		t.Fatalf("UserStatus() = %d, want completed", got)
+	}
 }
 
 func TestCoverIsReplacedWhenURLFilenameChanges(t *testing.T) {

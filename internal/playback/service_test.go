@@ -1,6 +1,7 @@
 package playback
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"unicode"
@@ -32,5 +33,56 @@ func TestUnopenedErrorFallsBackToGenericText(t *testing.T) {
 	err := unopenedError(nil)
 	if err == nil || err.Error() == "" {
 		t.Fatal("expected a non-empty error")
+	}
+}
+
+func TestFinalEOFCompletesTitleOnlyWhenFlagged(t *testing.T) {
+	dir := t.TempDir()
+	lib, err := library.Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = lib.Close() })
+
+	title := library.Title{
+		Slug:     "playback-complete",
+		Russian:  "Финальная серия",
+		Status:   library.StatusCompleted,
+		Episodes: []string{"1"},
+		Voiceovers: []library.Voiceover{
+			{Name: "Озвучка", Episodes: []string{"1"}},
+		},
+	}
+	saved, err := lib.Save(title, "Озвучка", "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.SetUserStatus(saved.ID, library.UserStatusWatching); err != nil {
+		t.Fatal(err)
+	}
+
+	newSession := func(complete bool) *Session {
+		return &Session{
+			service: &Service{lib: lib},
+			plan: &library.PlaybackPlan{
+				TitleID:          saved.ID,
+				Episodes:         []library.PlaybackEpisode{{Number: "1"}},
+				CompleteOnFinish: complete,
+			},
+			entries: []*playlistEntry{{
+				EpisodeIndex: 0,
+				Episode:      library.PlaybackEpisode{Number: "1"},
+			}},
+		}
+	}
+
+	newSession(false).onEndFile(mpvEvent{Kind: mpvEventEndFile, Reason: "eof"})
+	if got := lib.UserStatus(saved.ID); got != library.UserStatusWatching {
+		t.Fatalf("status without the completion flag = %d, want watching", got)
+	}
+
+	newSession(true).onEndFile(mpvEvent{Kind: mpvEventEndFile, Reason: "eof"})
+	if got := lib.UserStatus(saved.ID); got != library.UserStatusCompleted {
+		t.Fatalf("status after the final EOF = %d, want completed", got)
 	}
 }

@@ -78,3 +78,75 @@ func TestIndexOfEpisode(t *testing.T) {
 		t.Fatalf("got %d, want -1", got)
 	}
 }
+
+func TestPlanCompletesTitle(t *testing.T) {
+	episodes := func(numbers ...string) []PlaybackEpisode {
+		result := make([]PlaybackEpisode, 0, len(numbers))
+		for _, number := range numbers {
+			result = append(result, PlaybackEpisode{Number: number})
+		}
+		return result
+	}
+	tests := []struct {
+		name     string
+		title    Title
+		episodes []PlaybackEpisode
+		want     bool
+	}{
+		{
+			name:     "completed series with the finale",
+			title:    Title{Status: StatusCompleted, Episodes: []string{"1", "2", "3"}},
+			episodes: episodes("1", "2", "3"),
+			want:     true,
+		},
+		{
+			name:     "ongoing series stays watching",
+			title:    Title{Status: StatusOngoing, Episodes: []string{"1", "2"}},
+			episodes: episodes("1", "2"),
+			want:     false,
+		},
+		{
+			name:     "completed series missing the finale",
+			title:    Title{Status: StatusCompleted, Episodes: []string{"1", "2", "3"}},
+			episodes: episodes("1", "2"),
+			want:     false,
+		},
+		{
+			name:     "completed movie",
+			title:    Title{Status: StatusCompleted, IsMovie: true},
+			episodes: episodes("1"),
+			want:     true,
+		},
+		{
+			name:     "announced title",
+			title:    Title{Status: StatusAnnounced},
+			episodes: episodes("1"),
+			want:     false,
+		},
+		{
+			name:     "no playable episodes",
+			title:    Title{Status: StatusCompleted, Episodes: []string{"1"}},
+			episodes: nil,
+			want:     false,
+		},
+		{
+			name:     "cached total confirms a complete voice",
+			title:    Title{Status: StatusCompleted, EpisodesTotal: 3},
+			episodes: episodes("1", "2", "3"),
+			want:     true,
+		},
+		{
+			name:     "cached total rejects an incomplete voice",
+			title:    Title{Status: StatusCompleted, EpisodesTotal: 3},
+			episodes: episodes("1", "2"),
+			want:     false,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := planCompletesTitle(test.title, test.episodes); got != test.want {
+				t.Fatalf("planCompletesTitle() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}

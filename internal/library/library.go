@@ -345,6 +345,39 @@ func (l *Library) promoteWatching(tid int64) {
 	}
 }
 
+// UserStatus returns the stored local status for a title. A missing row or a
+// read failure falls back to the default "В планах"; the UI only needs this to
+// refresh a pill after playback.
+func (l *Library) UserStatus(tid int64) UserStatus {
+	if tid == 0 || l.store == nil {
+		return UserStatusPlanned
+	}
+	title, err := l.store.GetTitleByID(tid)
+	if err != nil {
+		logging.Warn("cannot read user status", "title", tid, "error", err)
+		return UserStatusPlanned
+	}
+	if title == nil {
+		return UserStatusPlanned
+	}
+	return NormalizeUserStatus(UserStatus(title.UserStatus))
+}
+
+// MarkCompleted moves a title to "Досмотрел" after the final episode finishes.
+// Unlike SetUserStatus it is unconditional: reaching the end is a stronger
+// signal than the status the user picked earlier.
+func (l *Library) MarkCompleted(tid int64) error {
+	if tid == 0 || l.store == nil {
+		return nil
+	}
+	if err := l.store.SetUserStatus(tid, int(UserStatusCompleted)); err != nil {
+		logging.Error("cannot mark title completed", "title", tid, "error", err)
+		return err
+	}
+	logging.Info("title completed", "title", tid)
+	return nil
+}
+
 // SaveProgress stores the current episode and playback position.
 func (l *Library) SaveProgress(tid int64, episode string, position, duration float64) error {
 	return l.store.SaveProgress(tid, episode, position, duration)

@@ -1312,19 +1312,22 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 			fresh := titleFromLibrary(loaded)
 			historyItem = &fresh
 		}
-		// Watching a title is enough to keep its progress. A link-opened title
-		// has no history row until Save, and a party guest has to keep the
-		// title and voice they watched together, so both get tracked before
-		// mpv starts writing positions.
+		plan, err := a.library.PlaybackPlan(ctx, title, voice, episode)
+		if err != nil {
+			a.deliverWatch(startFailureResult(err, historyItem, 0, partyGuest))
+			return
+		}
+		// Watching a title is enough to keep its progress. Track it only after
+		// the plan resolves: a title whose selected voice has no playable
+		// episode must not be promoted from "В планах" to "Смотрю" by a plan
+		// that cannot resolve an episode. A link-opened title has no history row
+		// until Save, and a party guest has to keep the title and voice they
+		// watched together.
 		trackedID := int64(0)
 		if id, trackErr := a.library.TrackViewing(title, voice, episode); trackErr == nil && id != 0 {
 			trackedID = id
 			title.ID = id
-		}
-		plan, err := a.library.PlaybackPlan(ctx, title, voice, episode)
-		if err != nil {
-			a.deliverWatch(startFailureResult(err, historyItem, trackedID, partyGuest))
-			return
+			plan.TitleID = id
 		}
 		if partyGuest {
 			// The room owns the position: a guest must not resume from its own
@@ -1569,6 +1572,9 @@ func (a *application) handleWatchResult(result watchResult) {
 		}
 		updated := *result.historyItem
 		if a.library != nil && updated.id != 0 {
+			// Playback may have promoted "В планах" to "Смотрю" or completed
+			// the title. Reload the pill before the title page is opened.
+			updated.userStatus = a.library.UserStatus(updated.id)
 			episode, resumeAt, duration := a.library.Progress(updated.id)
 			updated.resumeAt = resumeAt
 			updated.duration = duration
@@ -1599,6 +1605,16 @@ func (a *application) handleWatchResult(result watchResult) {
 	if !ok {
 		return
 	}
+	if result.titleID != 0 && title.item.id == 0 {
+		// Playback tracked a link-opened title in history; adopt the row so the
+		// progress refresh and a later Save use the same entry.
+		title.item.id = result.titleID
+	}
+	if a.library != nil && title.item.id != 0 {
+		// TrackViewing promotes planned titles and the final EOF marks the
+		// title completed. Reflect both before the user sees the page again.
+		title.setUserStatus(a.library.UserStatus(title.item.id))
+	}
 	if result.err != nil {
 		title.setWatchError(result.err.Error())
 		a.reportError(result.err)
@@ -1608,11 +1624,6 @@ func (a *application) handleWatchResult(result watchResult) {
 	}
 	if !result.finished {
 		return
-	}
-	if result.titleID != 0 && title.item.id == 0 {
-		// Playback tracked a link-opened title in history; adopt the row so the
-		// progress refresh and a later Save use the same entry.
-		title.item.id = result.titleID
 	}
 	if a.library != nil && title.item.id != 0 {
 		episode, resumeAt, duration := a.library.Progress(title.item.id)
