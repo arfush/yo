@@ -165,6 +165,42 @@ func TestClientClearSendsNullActivity(t *testing.T) {
 	}
 }
 
+// TestNewClientWaitsForReady guards the handshake: Discord ignores commands
+// sent before it answers with READY, which made the first activity of a session
+// disappear until the player closed.
+func TestNewClientWaitsForReady(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer serverConn.Close()
+
+	done := make(chan error, 1)
+	go func() {
+		client, err := newClient(clientConn, "123")
+		if client != nil {
+			client.close()
+		}
+		done <- err
+	}()
+
+	if op, _ := readTestFrame(t, serverConn); op != opHandshake {
+		t.Fatalf("opcode = %d, want handshake", op)
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("newClient returned before READY: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	writeTestFrame(t, serverConn, opFrame, map[string]any{"cmd": "DISPATCH", "evt": "READY"})
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("newClient: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("newClient did not return after READY")
+	}
+}
+
 func TestClientAnswersPing(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	defer serverConn.Close()

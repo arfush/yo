@@ -26,6 +26,11 @@ const (
 // larger header means the stream is out of sync.
 const maxFrameBytes = 1 << 20
 
+// handshakeTimeout bounds the wait for Discord's READY reply. Commands written
+// before it are ignored by the client, so the connection is not usable until
+// the handshake round trip finishes.
+const handshakeTimeout = 5 * time.Second
+
 // ipcClient is one connection to the Discord client. Writes are serialized,
 // because the worker publishes activities while the watcher answers pings.
 type ipcClient struct {
@@ -40,6 +45,25 @@ func newClient(conn io.ReadWriteCloser, appID string) (*ipcClient, error) {
 	if err := c.write(opHandshake, map[string]any{"v": 1, "client_id": appID}); err != nil {
 		_ = conn.Close()
 		return nil, err
+	}
+	// Discord drops commands that arrive before it has answered the handshake,
+	// so block until READY. Without this wait the first SET_ACTIVITY of a
+	// session is silently lost and the profile stays empty until it closes.
+	if setter, ok := conn.(interface{ SetReadDeadline(time.Time) error }); ok {
+		_ = setter.SetReadDeadline(time.Now().Add(handshakeTimeout))
+		defer setter.SetReadDeadline(time.Time{})
+	}
+	op, payload, err := c.read()
+	if err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("discord ipc: handshake: %w", err)
+	}
+	var ready struct {
+		Evt string `json:"evt"`
+	}
+	if op != opFrame || json.Unmarshal(payload, &ready) != nil || ready.Evt != "READY" {
+		_ = conn.Close()
+		return nil, errors.New("discord ipc: unexpected handshake reply")
 	}
 	return c, nil
 }
