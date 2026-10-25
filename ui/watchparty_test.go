@@ -124,7 +124,7 @@ func TestWatchPartyReopensCreatedFormForHost(t *testing.T) {
 	}
 }
 
-func TestWatchPartyReopensWaitingScreenWithANewHat(t *testing.T) {
+func TestWatchPartyReopensWaitingScreenWithAHat(t *testing.T) {
 	party := &partyManager{
 		provider: watchparty.Cloudflare,
 		session:  &watchparty.Session{Key: "YOCBQOPGZ", Provider: watchparty.Cloudflare, Role: watchparty.Guest},
@@ -140,8 +140,8 @@ func TestWatchPartyReopensWaitingScreenWithANewHat(t *testing.T) {
 	if reopened.mode != wpWaiting {
 		t.Fatalf("reopened mode = %v, want wpWaiting for a guest", reopened.mode)
 	}
-	if reopened.waitHat == screen.waitHat {
-		t.Fatalf("reopening the waiting screen kept hat %d", screen.waitHat)
+	if reopened.waitHat < 0 || reopened.waitHat >= mascotHatCount {
+		t.Fatalf("reopened wait hat = %d, want a hat in [0, %d)", reopened.waitHat, mascotHatCount)
 	}
 }
 

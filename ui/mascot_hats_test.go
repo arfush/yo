@@ -10,22 +10,17 @@ import (
 	"gioui.org/unit"
 )
 
-func TestNextMascotHatChangesOnEveryOpen(t *testing.T) {
-	previous := nextMascotHat()
-	seen := map[int]bool{previous: true}
-	for index := 1; index < mascotHatCount; index++ {
+func TestNextMascotHatStaysInRange(t *testing.T) {
+	seen := map[int]bool{}
+	for index := 0; index < mascotHatCount*20; index++ {
 		hat := nextMascotHat()
 		if hat < 0 || hat >= mascotHatCount {
 			t.Fatalf("nextMascotHat() = %d, want a hat in [0, %d)", hat, mascotHatCount)
 		}
-		if hat == previous {
-			t.Fatalf("hat %d repeated on consecutive waiting screens", hat)
-		}
 		seen[hat] = true
-		previous = hat
 	}
 	if len(seen) != mascotHatCount {
-		t.Fatalf("%d calls covered %d hats, want all %d", mascotHatCount, len(seen), mascotHatCount)
+		t.Fatalf("%d calls covered %d hats, want all %d", mascotHatCount*20, len(seen), mascotHatCount)
 	}
 }
 

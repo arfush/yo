@@ -890,7 +890,7 @@ func (w *watchPartyWindow) create() {
 }
 
 // enterWaiting starts a fresh wait, either after a join or when the card is
-// reopened for a room that is still active. Every opening gets the next hat.
+// reopened for a room that is still active. Every opening gets a random hat.
 func (w *watchPartyWindow) enterWaiting() {
 	w.mode = wpWaiting
 	w.waitSince = time.Now()
