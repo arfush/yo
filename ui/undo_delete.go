@@ -13,6 +13,8 @@ import (
 	"gioui.org/op"
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
+
+	"github.com/arfush/yonime/internal/logging"
 )
 
 // undoDeleteDuration is how long a removed title can be brought back before it
@@ -53,7 +55,6 @@ var undoPhrases = []string{
 // old place when the deletion is undone.
 type pendingHistoryDelete struct {
 	item   historyTitle
-	row    historyRow
 	seq    int
 	prevID int64
 	nextID int64
@@ -96,20 +97,39 @@ func (u *undoDeleteState) pendingIDs() map[int64]bool {
 }
 
 // visibleHistory removes hidden rows from a history snapshot loaded from the
-// library while an undo countdown is still running.
+// library while an undo countdown is still running, then applies the selected
+// status filter.
 func (m *mainWindow) visibleHistory(items []historyTitle) []historyTitle {
 	hidden := m.undo.pendingIDs()
-	if len(hidden) == 0 {
-		return items
-	}
 	visible := make([]historyTitle, 0, len(items))
 	for _, item := range items {
 		if item.id != 0 && hidden[item.id] {
 			continue
 		}
+		if !m.filter.matches(item.userStatus) {
+			continue
+		}
 		visible = append(visible, item)
 	}
 	return visible
+}
+
+// ensureAllHistory repairs the complete-history model for tests and UI state
+// created before status filtering existed.
+func (m *mainWindow) ensureAllHistory() {
+	if len(m.allHistory) == 0 && len(m.history) > 0 {
+		m.allHistory = append([]historyTitle(nil), m.history...)
+	}
+}
+
+// applyFilter rebuilds the visible rows from the complete history. Selection
+// and scroll position refer to the filtered list, so both are reset.
+func (m *mainWindow) applyFilter() {
+	m.history = m.visibleHistory(m.allHistory)
+	m.rows = make([]historyRow, len(m.history))
+	m.selected = -1
+	m.list.Position = layout.Position{}
+	m.statusMenu.close()
 }
 
 // queueHistoryDelete hides one row and starts (or extends) the undo window.
@@ -118,16 +138,19 @@ func (m *mainWindow) queueHistoryDelete(index int, now time.Time) bool {
 	if m.loading || index < 0 || index >= len(m.history) {
 		return false
 	}
+	m.ensureAllHistory()
 
-	pending := pendingHistoryDelete{item: m.history[index]}
-	if index < len(m.rows) {
-		pending.row = m.rows[index]
-	}
-	if index > 0 {
-		pending.prevID = m.history[index-1].id
-	}
-	if index+1 < len(m.history) {
-		pending.nextID = m.history[index+1].id
+	item := m.history[index]
+	logging.Info("history row queued for deletion", "title", item.id, "name", item.title)
+	pending := pendingHistoryDelete{item: item}
+	if allIndex := historyIndexByID(m.allHistory, item.id); allIndex >= 0 {
+		if allIndex > 0 {
+			pending.prevID = m.allHistory[allIndex-1].id
+		}
+		if allIndex+1 < len(m.allHistory) {
+			pending.nextID = m.allHistory[allIndex+1].id
+		}
+		m.allHistory = append(m.allHistory[:allIndex], m.allHistory[allIndex+1:]...)
 	}
 
 	m.history = append(m.history[:index], m.history[index+1:]...)
@@ -149,25 +172,28 @@ func (m *mainWindow) queueHistoryDelete(index int, now time.Time) bool {
 // queueClearHistory hides every visible row at once. Previously hidden rows
 // stay in the same undo batch, so one "Отменить" brings all of them back.
 func (m *mainWindow) queueClearHistory(now time.Time) bool {
-	if m.loading || len(m.history) == 0 {
+	if m.loading {
+		return false
+	}
+	m.ensureAllHistory()
+	if len(m.allHistory) == 0 {
 		return false
 	}
 
-	pending := make([]pendingHistoryDelete, 0, len(m.history))
-	for index := range m.history {
-		item := pendingHistoryDelete{item: m.history[index]}
-		if index < len(m.rows) {
-			item.row = m.rows[index]
-		}
+	logging.Info("clearing history", "count", len(m.allHistory))
+	pending := make([]pendingHistoryDelete, 0, len(m.allHistory))
+	for index := range m.allHistory {
+		item := pendingHistoryDelete{item: m.allHistory[index]}
 		if index > 0 {
-			item.prevID = m.history[index-1].id
+			item.prevID = m.allHistory[index-1].id
 		}
-		if index+1 < len(m.history) {
-			item.nextID = m.history[index+1].id
+		if index+1 < len(m.allHistory) {
+			item.nextID = m.allHistory[index+1].id
 		}
 		pending = append(pending, item)
 	}
 
+	m.allHistory = nil
 	m.history = nil
 	m.rows = nil
 	m.selected = -1
@@ -209,30 +235,39 @@ func (m *mainWindow) undoHistoryDelete() {
 	for index := len(pending) - 1; index >= 0; index-- {
 		item := pending[index]
 		at := m.restoreIndex(item)
-		m.history = insertHistoryTitle(m.history, at, item.item)
-		m.rows = insertHistoryRow(m.rows, at, item.row)
+		m.allHistory = insertHistoryTitle(m.allHistory, at, item.item)
 	}
-	m.selected = -1
+	logging.Info("history deletion undone", "count", len(pending))
+	m.applyFilter()
 	m.loadError = ""
 	m.persistHistoryOrder()
 }
 
 func (m *mainWindow) restoreIndex(pending pendingHistoryDelete) int {
 	if pending.nextID != 0 {
-		for index := range m.history {
-			if m.history[index].id == pending.nextID {
+		for index := range m.allHistory {
+			if m.allHistory[index].id == pending.nextID {
 				return index
 			}
 		}
 	}
 	if pending.prevID != 0 {
-		for index := range m.history {
-			if m.history[index].id == pending.prevID {
+		for index := range m.allHistory {
+			if m.allHistory[index].id == pending.prevID {
 				return index + 1
 			}
 		}
 	}
-	return len(m.history)
+	return len(m.allHistory)
+}
+
+func historyIndexByID(items []historyTitle, id int64) int {
+	for index := range items {
+		if items[index].id == id {
+			return index
+		}
+	}
+	return -1
 }
 
 func insertHistoryTitle(list []historyTitle, index int, item historyTitle) []historyTitle {
@@ -285,6 +320,7 @@ func (m *mainWindow) finalizeHistoryDeletes() {
 	}
 	if firstErr != nil {
 		m.loadError = firstErr.Error()
+		m.reportError(firstErr)
 	}
 }
 

@@ -53,7 +53,7 @@ curl "https://abcdefghijkl.supabase.co/realtime/v1/websocket?apikey=<PUBLISHABLE
 
 URL и ключ можно ввести в настройках Yonime: **Совместный просмотр → Провайдер
 → Supabase Endpoint / Supabase Publishable Key**. То же самое можно сделать
-файлом `%APPDATA%\yonime\watchparty.json`:
+файлом `%APPDATA%\Yonime\watchparty.json`:
 
 ```json
 {

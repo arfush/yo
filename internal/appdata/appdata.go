@@ -1,7 +1,7 @@
 // Package appdata resolves the per-user directory where Yonime keeps its
 // database, token and browser profile.
 //
-// On Windows that directory is %APPDATA%\yonime. Keeping user data out of the
+// On Windows that directory is %APPDATA%\Yonime. Keeping user data out of the
 // executable directory means an application update or a read-only install
 // location cannot lose the library.
 package appdata
@@ -14,7 +14,12 @@ import (
 	"strings"
 )
 
-const dirName = "yonime"
+const dirName = "Yonime"
+
+// legacyDirName is the lower-case directory used by releases before the
+// app-data rename. On a case-insensitive file system it is the same directory;
+// on a case-sensitive one it is moved to the new name on first launch.
+const legacyDirName = "yonime"
 
 const (
 	databaseName   = "yonime.sqlite"
@@ -25,6 +30,7 @@ const (
 	updatesName    = "updates.json"
 	updateDirName  = "update"
 	updateLogName  = "update.log"
+	logName        = "yonime.log"
 	watchPartyName = "watchparty.json"
 )
 
@@ -41,7 +47,46 @@ func Dir() (string, error) {
 		base = filepath.Join(home, ".config")
 	}
 
+	dir, err := ensureDir(base)
+	if err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+// ensureDir creates the data directory under base and normalizes the casing of
+// the old lower-case name. Windows treats both names as the same directory, so
+// a plain MkdirAll would leave the old spelling in Explorer and in paths shown
+// to the user.
+func ensureDir(base string) (string, error) {
 	dir := filepath.Join(base, dirName)
+	legacy := filepath.Join(base, legacyDirName)
+
+	if entries, err := os.ReadDir(base); err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() || entry.Name() == dirName || !strings.EqualFold(entry.Name(), dirName) {
+				continue
+			}
+			// Rename through a temporary name because Windows refuses a
+			// case-only rename directly.
+			oldPath := filepath.Join(base, entry.Name())
+			temp := filepath.Join(base, dirName+".rename")
+			if err := os.Rename(oldPath, temp); err == nil {
+				if err := os.Rename(temp, dir); err != nil {
+					_ = os.Rename(temp, oldPath)
+				}
+			}
+			break
+		}
+	}
+
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		if _, legacyErr := os.Stat(legacy); legacyErr == nil {
+			if renameErr := os.Rename(legacy, dir); renameErr != nil {
+				return "", fmt.Errorf("rename %s to %s: %w", legacy, dir, renameErr)
+			}
+		}
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("create %s: %w", dir, err)
 	}
@@ -98,6 +143,11 @@ func UpdateLogPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(dir, updateLogName), nil
+}
+
+// LogPath returns the application log file inside the data directory.
+func LogPath() (string, error) {
+	return path(logName)
 }
 
 // DatabasePath returns the SQLite database path inside the data directory.

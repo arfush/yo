@@ -131,8 +131,9 @@ type watchPartyWindow struct {
 
 	results chan partyResult
 
-	hidden func() bool
-	onBack func()
+	hidden  func() bool
+	onBack  func()
+	onError func(error)
 }
 
 func newWatchPartyWindow(typo *typography, w *app.Window, party *partyManager) *watchPartyWindow {
@@ -168,6 +169,23 @@ func newWatchPartyWindow(typo *typography, w *app.Window, party *partyManager) *
 // Close only detaches the screen; the room stays open so the main-page control
 // can reopen the card with the same key.
 func (w *watchPartyWindow) Close() {}
+
+func (w *watchPartyWindow) reportText(message string) {
+	w.errorText = message
+	if w.onError != nil {
+		w.onError(userMessage(message))
+	}
+}
+
+func (w *watchPartyWindow) reportError(err error) {
+	if err == nil {
+		return
+	}
+	w.errorText = err.Error()
+	if w.onError != nil {
+		w.onError(err)
+	}
+}
 
 func (w *watchPartyWindow) animationsRun() bool {
 	return w.hidden == nil || !w.hidden()
@@ -272,7 +290,6 @@ func (w *watchPartyWindow) layoutChoice(gtx layout.Context, cardWidth int, px fu
 		w.openJoin()
 	}
 
-	drawCenteredError(gtx, w.typo, w.errorText, cardWidth, px)
 	if shake != 0 {
 		// Only the shake needs continuous frames; the red tint can wait for the
 		// frame that clears it.
@@ -341,7 +358,6 @@ func (w *watchPartyWindow) layoutJoin(gtx layout.Context, cardWidth int, px func
 		}
 	}
 
-	drawCenteredError(gtx, w.typo, w.errorText, cardWidth, px)
 	if w.animationsRun() && (w.busy || w.shakeRunning(gtx.Now)) {
 		// The spinner and the shaking chevron both need continuous frames.
 		gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(16 * time.Millisecond)})
@@ -356,21 +372,6 @@ func (w *watchPartyWindow) shakeRunning(now time.Time) bool {
 	}
 	elapsed := now.Sub(w.errorAt)
 	return elapsed >= 0 && elapsed < wpShakeDuration
-}
-
-// drawCenteredError paints the feedback line in the middle of the card, between
-// the two action buttons. Long relay errors are shortened to the card width.
-func drawCenteredError(gtx layout.Context, typo *typography, text string, cardWidth int, px func(float32) int) {
-	if text == "" || typo == nil {
-		return
-	}
-	face := font.Font{Typeface: fontFamily, Weight: font.Normal}
-	text = upperFirst(truncateText(gtx, typo, text, face, wpErrorSize, cardWidth-2*px(wpCardPadding)))
-	if text == "" {
-		return
-	}
-	_, ink := typo.measure(gtx, text, face, wpErrorSize)
-	typo.draw(gtx, text, face, wpErrorSize, tokenErrorColor1, image.Pt((cardWidth-ink.Dx())/2, px(wpErrorTop)))
 }
 
 // layoutKeyField draws the rounded field with either a copy or a submit button
@@ -854,7 +855,7 @@ func (w *watchPartyWindow) handleResult(result partyResult) {
 			w.failJoin(result.err.Error())
 			return
 		}
-		w.errorText = result.err.Error()
+		w.reportError(result.err)
 		w.errorAt = time.Now()
 		w.joinFeedback = false
 		return
@@ -933,7 +934,7 @@ func (w *watchPartyWindow) join() {
 }
 
 func (w *watchPartyWindow) failJoin(text string) {
-	w.errorText = text
+	w.reportText(text)
 	w.errorAt = time.Now()
 	w.joinFeedback = true
 	w.focusField = true
@@ -952,7 +953,7 @@ func (w *watchPartyWindow) roomClosed(text string) {
 	w.busy = false
 	w.focusField = false
 	w.editor.SetText("")
-	w.errorText = text
+	w.reportText(text)
 	w.errorAt = time.Time{}
 	// Unlike a mistyped key, this reason must stay until the next attempt.
 	w.joinFeedback = false

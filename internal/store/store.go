@@ -11,6 +11,8 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite"
+
+	"github.com/arfush/yonime/internal/logging"
 )
 
 const schemaSQL = `
@@ -22,6 +24,7 @@ CREATE TABLE IF NOT EXISTS titles (
     imdb_id        TEXT    NOT NULL DEFAULT '',
     season         INTEGER NOT NULL DEFAULT 0,
     status         INTEGER NOT NULL DEFAULT 0,
+    user_status    INTEGER NOT NULL DEFAULT 2,
     episodes_total INTEGER NOT NULL DEFAULT 0,
     is_movie       INTEGER NOT NULL DEFAULT 0,
     updated_at     INTEGER NOT NULL DEFAULT 0
@@ -66,13 +69,16 @@ CREATE TABLE IF NOT EXISTS episode_tracking (
 // number of episodes so history rows can draw a progress bar without a network
 // request. IsMovie keeps films from showing an episode counter in history.
 type Title struct {
-	ID            int64
-	Slug          string
-	EngName       string
-	RusName       string
-	IMDbID        string
-	Season        int64
-	Status        int
+	ID      int64
+	Slug    string
+	EngName string
+	RusName string
+	IMDbID  string
+	Season  int64
+	Status  int
+	// UserStatus is the local library status chosen by the user. It is kept
+	// separately from Status, which mirrors AnimeLIB's release state.
+	UserStatus    int
 	EpisodesTotal int
 	IsMovie       bool
 	UpdatedAt     int64
@@ -129,28 +135,34 @@ type Store struct {
 // Open creates the database (and its directory) if needed.
 func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		logging.Error("cannot create database directory", "path", filepath.Dir(path), "error", err)
 		return nil, err
 	}
 	dsn := path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
+		logging.Error("cannot open database", "path", path, "error", err)
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
 	if err := db.Ping(); err != nil {
 		db.Close()
+		logging.Error("database ping failed", "path", path, "error", err)
 		return nil, err
 	}
 	if _, err := db.Exec(schemaSQL); err != nil {
 		db.Close()
+		logging.Error("cannot create database schema", "path", path, "error", err)
 		return nil, err
 	}
 	// The first build stored no episode totals. Adding the column in place
 	// keeps an existing database usable without a migration framework.
 	if err := ensureTitleColumns(db); err != nil {
 		db.Close()
+		logging.Error("cannot migrate database schema", "path", path, "error", err)
 		return nil, err
 	}
+	logging.Info("database opened", "path", path)
 	return &Store{db: db}, nil
 }
 
@@ -181,12 +193,22 @@ func ensureTitleColumns(db *sql.DB) error {
 		return err
 	}
 	if !columns["episodes_total"] {
+		logging.Info("migrating database: adding episodes_total")
 		if _, err := db.Exec("ALTER TABLE titles ADD COLUMN episodes_total INTEGER NOT NULL DEFAULT 0"); err != nil {
 			return err
 		}
 	}
 	if !columns["is_movie"] {
+		logging.Info("migrating database: adding is_movie")
 		if _, err := db.Exec("ALTER TABLE titles ADD COLUMN is_movie INTEGER NOT NULL DEFAULT 0"); err != nil {
+			return err
+		}
+	}
+	if !columns["user_status"] {
+		// Existing libraries start in "В планах"; the user can change it from
+		// the history row or the title page.
+		logging.Info("migrating database: adding user_status")
+		if _, err := db.Exec("ALTER TABLE titles ADD COLUMN user_status INTEGER NOT NULL DEFAULT 2"); err != nil {
 			return err
 		}
 	}
@@ -206,19 +228,24 @@ func (s *Store) UpsertTitle(title Title) (int64, error) {
 	if title.UpdatedAt == 0 {
 		title.UpdatedAt = time.Now().Unix()
 	}
+	userStatus := title.UserStatus
+	if userStatus <= 0 {
+		userStatus = 2
+	}
 	_, err := s.db.Exec(`
-        INSERT INTO titles (slug, eng_name, rus_name, imdb_id, season, status, episodes_total, is_movie, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO titles (slug, eng_name, rus_name, imdb_id, season, status, user_status, episodes_total, is_movie, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(slug) DO UPDATE SET
             eng_name       = CASE WHEN excluded.eng_name != '' THEN excluded.eng_name ELSE titles.eng_name END,
             rus_name       = CASE WHEN excluded.rus_name != '' THEN excluded.rus_name ELSE titles.rus_name END,
             imdb_id        = CASE WHEN excluded.imdb_id != '' THEN excluded.imdb_id ELSE titles.imdb_id END,
             season         = CASE WHEN excluded.season != 0 THEN excluded.season ELSE titles.season END,
             status         = excluded.status,
+            user_status    = titles.user_status,
             episodes_total = CASE WHEN excluded.episodes_total > 0 THEN excluded.episodes_total ELSE titles.episodes_total END,
             is_movie       = excluded.is_movie,
             updated_at     = excluded.updated_at
-    `, title.Slug, title.EngName, title.RusName, title.IMDbID, title.Season, title.Status, title.EpisodesTotal, boolInt(title.IsMovie), title.UpdatedAt)
+    `, title.Slug, title.EngName, title.RusName, title.IMDbID, title.Season, title.Status, userStatus, title.EpisodesTotal, boolInt(title.IsMovie), title.UpdatedAt)
 	if err != nil {
 		return 0, err
 	}
@@ -232,8 +259,16 @@ func (s *Store) UpsertTitle(title Title) (int64, error) {
 // GetTitle returns a cached title by slug.
 func (s *Store) GetTitle(slug string) (*Title, error) {
 	row := s.db.QueryRow(`
-        SELECT id, slug, eng_name, rus_name, imdb_id, season, status, episodes_total, is_movie, updated_at
+        SELECT id, slug, eng_name, rus_name, imdb_id, season, status, user_status, episodes_total, is_movie, updated_at
         FROM titles WHERE slug = ?`, slug)
+	return scanTitle(row)
+}
+
+// GetTitleByID returns a cached title by local id.
+func (s *Store) GetTitleByID(tid int64) (*Title, error) {
+	row := s.db.QueryRow(`
+        SELECT id, slug, eng_name, rus_name, imdb_id, season, status, user_status, episodes_total, is_movie, updated_at
+        FROM titles WHERE id = ?`, tid)
 	return scanTitle(row)
 }
 
@@ -290,7 +325,7 @@ func (s *Store) SaveCoverFailure(tid int64) error {
 // ListHistory returns titles in the user's order, newest first.
 func (s *Store) ListHistory() ([]HistoryEntry, error) {
 	rows, err := s.db.Query(`
-        SELECT t.id, t.slug, t.eng_name, t.rus_name, t.imdb_id, t.season, t.status, t.episodes_total, t.is_movie, t.updated_at,
+        SELECT t.id, t.slug, t.eng_name, t.rus_name, t.imdb_id, t.season, t.status, t.user_status, t.episodes_total, t.is_movie, t.updated_at,
                h.episode, h.resume_at, h.duration, h.voiceover, h.sort_order
         FROM history h
         JOIN titles t ON t.id = h.tid
@@ -305,7 +340,7 @@ func (s *Store) ListHistory() ([]HistoryEntry, error) {
 		var entry HistoryEntry
 		err := rows.Scan(
 			&entry.ID, &entry.Slug, &entry.EngName, &entry.RusName, &entry.IMDbID, &entry.Season,
-			&entry.Status, &entry.EpisodesTotal, &entry.IsMovie, &entry.UpdatedAt,
+			&entry.Status, &entry.UserStatus, &entry.EpisodesTotal, &entry.IsMovie, &entry.UpdatedAt,
 			&entry.Episode, &entry.ResumeAt, &entry.Duration, &entry.Voiceover, &entry.SortOrder,
 		)
 		if err != nil {
@@ -517,6 +552,31 @@ func (s *Store) UpdateTitleStatus(tid int64, status int) error {
 		return nil
 	}
 	_, err := s.db.Exec("UPDATE titles SET status = ?, updated_at = ? WHERE id = ?", status, time.Now().Unix(), tid)
+	return err
+}
+
+// SetUserStatus stores the local library status for a title.
+func (s *Store) SetUserStatus(tid int64, status int) error {
+	if tid == 0 {
+		return nil
+	}
+	_, err := s.db.Exec("UPDATE titles SET user_status = ? WHERE id = ?", status, tid)
+	if err != nil {
+		logging.Error("cannot save user status", "title", tid, "status", status, "error", err)
+		return err
+	}
+	logging.Info("user status saved", "title", tid, "status", status)
+	return nil
+}
+
+// SetUserStatusFrom changes a status only when it still has the expected old
+// value. It is used to promote a planned title to "Смотрю" when playback starts
+// without overwriting a choice the user made in the meantime.
+func (s *Store) SetUserStatusFrom(tid int64, from, to int) error {
+	if tid == 0 {
+		return nil
+	}
+	_, err := s.db.Exec("UPDATE titles SET user_status = ? WHERE id = ? AND user_status = ?", to, tid, from)
 	return err
 }
 
@@ -786,7 +846,7 @@ func scanTitle(row *sql.Row) (*Title, error) {
 	var title Title
 	err := row.Scan(
 		&title.ID, &title.Slug, &title.EngName, &title.RusName, &title.IMDbID, &title.Season,
-		&title.Status, &title.EpisodesTotal, &title.IsMovie, &title.UpdatedAt,
+		&title.Status, &title.UserStatus, &title.EpisodesTotal, &title.IsMovie, &title.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil

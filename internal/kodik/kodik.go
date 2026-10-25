@@ -22,6 +22,7 @@ import (
 	playwright "github.com/mxschmitt/playwright-go"
 
 	"github.com/arfush/yonime/internal/browser"
+	"github.com/arfush/yonime/internal/logging"
 )
 
 const (
@@ -66,6 +67,7 @@ func (r *Resolver) Resolve(ctx context.Context, embedURL string) (map[int]string
 		return nil, errors.New("пустая ссылка Kodik")
 	}
 	if links, ok := r.cached(embedURL); ok {
+		logging.Debug("Kodik links served from cache", "embed", embedURL)
 		return links, nil
 	}
 
@@ -77,17 +79,21 @@ func (r *Resolver) Resolve(ctx context.Context, embedURL string) (map[int]string
 	if links, ok := r.cached(embedURL); ok {
 		return links, nil
 	}
+	logging.Info("resolving Kodik embed", "embed", embedURL)
 	links, err := r.resolve(ctx, embedURL)
 	if err != nil {
 		// A Chromium crash leaves the cached handle unusable. Drop it and retry
 		// once with a fresh browser.
+		logging.Warn("Kodik resolve failed, retrying with a fresh browser", "embed", embedURL, "error", err)
 		r.dropHeadless()
 		links, err = r.resolve(ctx, embedURL)
 		if err != nil {
+			logging.Error("Kodik resolve failed", "embed", embedURL, "error", err)
 			return nil, err
 		}
 	}
 	r.store(embedURL, links)
+	logging.Info("Kodik embed resolved", "embed", embedURL, "qualities", len(links))
 	return links, nil
 }
 

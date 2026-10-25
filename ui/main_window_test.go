@@ -165,6 +165,12 @@ func TestMoveHistoryItemKeepsSelectionAndLoadingWithTitle(t *testing.T) {
 	if got := m.history[3].title; got != loadingTitle {
 		t.Fatalf("loading title = %q, want %q", got, loadingTitle)
 	}
+	if len(m.allHistory) != len(history) {
+		t.Fatalf("all history length = %d, want %d", len(m.allHistory), len(history))
+	}
+	if got := m.allHistory[5].title; got != selectedTitle {
+		t.Fatalf("all history moved title = %q, want %q", got, selectedTitle)
+	}
 }
 
 func TestReorderIndexFollowsMovedItem(t *testing.T) {
@@ -217,7 +223,8 @@ func TestErrorFeedbackLastsThreeSeconds(t *testing.T) {
 
 func TestEmptyLinkStartsRedErrorFeedback(t *testing.T) {
 	gtx := layout.Context{Ops: new(op.Ops), Now: time.Unix(600, 0)}
-	m := &mainWindow{}
+	reported := false
+	m := &mainWindow{onError: func(error) { reported = true }}
 	m.editor.SetText("   ")
 
 	m.startLoading(gtx, -1, false)
@@ -225,11 +232,11 @@ func TestEmptyLinkStartsRedErrorFeedback(t *testing.T) {
 	if m.loading {
 		t.Fatal("empty input should not start a load")
 	}
-	if m.loadError == "" {
-		t.Fatal("empty input should leave a user-facing message")
+	if m.loadError != "" || reported {
+		t.Fatal("empty input should not report an error")
 	}
 	if m.errorAt != gtx.Now {
-		t.Fatalf("error timestamp = %v, want %v", m.errorAt, gtx.Now)
+		t.Fatalf("feedback timestamp = %v, want %v", m.errorAt, gtx.Now)
 	}
 }
 
@@ -253,5 +260,32 @@ func TestLoadFailureStartsAndSuccessClearsRedErrorFeedback(t *testing.T) {
 	}
 	if !m.errorAt.IsZero() {
 		t.Fatalf("error timestamp = %v after success, want zero", m.errorAt)
+	}
+}
+
+func TestTruncateAtWordKeepsWholeWords(t *testing.T) {
+	fits := func(limit int) func(string) bool {
+		return func(text string) bool {
+			return len([]rune(text)) <= limit
+		}
+	}
+	tests := []struct {
+		name  string
+		text  string
+		limit int
+		want  string
+	}{
+		{"fits", "Короткий тайтл", 20, "Короткий тайтл"},
+		{"whole word", "Длинное название тайтла", 12, "Длинное…"},
+		{"drops punctuation", "Тайтл: очень длинный", 9, "Тайтл…"},
+		{"drops trailing space", "Слово ещё", 7, "Слово…"},
+		{"single long word", "Супердлинноеназвание", 6, "Супер…"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := truncateAtWord(test.text, fits(test.limit)); got != test.want {
+				t.Fatalf("truncateAtWord(%q, %d) = %q, want %q", test.text, test.limit, got, test.want)
+			}
+		})
 	}
 }

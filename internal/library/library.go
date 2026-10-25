@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/arfush/yonime/internal/animelib"
+	"github.com/arfush/yonime/internal/logging"
 	"github.com/arfush/yonime/internal/metadata"
 	"github.com/arfush/yonime/internal/store"
 	"github.com/arfush/yonime/internal/token"
@@ -23,6 +24,34 @@ const (
 	StatusOngoing
 	StatusAnnounced
 )
+
+// UserStatus is the local status the user assigns to a title. It is separate
+// from Status, which mirrors AnimeLIB's release state.
+type UserStatus int
+
+const (
+	UserStatusWatching  UserStatus = 1
+	UserStatusPlanned   UserStatus = 2
+	UserStatusFavorite  UserStatus = 3
+	UserStatusCompleted UserStatus = 4
+	UserStatusDropped   UserStatus = 5
+)
+
+// NormalizeUserStatus maps an unset or unknown value to "В планах".
+func NormalizeUserStatus(status UserStatus) UserStatus {
+	switch status {
+	case UserStatusWatching, UserStatusPlanned, UserStatusFavorite, UserStatusCompleted, UserStatusDropped:
+		return status
+	default:
+		return UserStatusPlanned
+	}
+}
+
+// Valid reports whether the value is one of the five statuses offered by the
+// UI.
+func (s UserStatus) Valid() bool {
+	return s >= UserStatusWatching && s <= UserStatusDropped
+}
 
 // Voiceover is a translation team and the episodes it covers. HasKodik marks
 // voices with episodes that only the Kodik player carries.
@@ -41,6 +70,7 @@ type Title struct {
 	Russian         string
 	Original        string
 	Status          Status
+	UserStatus      UserStatus
 	IsMovie         bool
 	CoverURL        string
 	CoverPath       string
@@ -96,8 +126,10 @@ func (l *Library) Close() error {
 func (l *Library) History() ([]Title, error) {
 	entries, err := l.store.ListHistory()
 	if err != nil {
+		logging.Error("cannot load history", "error", err)
 		return nil, err
 	}
+	logging.Debug("history loaded", "count", len(entries))
 	out := make([]Title, 0, len(entries))
 	for _, entry := range entries {
 		title := titleFromStore(entry.Title)
@@ -115,8 +147,10 @@ func (l *Library) History() ([]Title, error) {
 // Nothing about the episodes, voiceovers or the cover URL is reused between
 // loads: only the local metadata, saved selection and cover file are kept.
 func (l *Library) Load(ctx context.Context, input string) (Title, error) {
+	logging.Info("loading title", "input", input)
 	token, err := l.readToken()
 	if err != nil {
+		logging.Error("cannot read AnimeLIB token", "error", err)
 		return Title{}, err
 	}
 
@@ -124,8 +158,10 @@ func (l *Library) Load(ctx context.Context, input string) (Title, error) {
 	data, err := client.Fetch(ctx, input)
 	if err != nil {
 		if ctx.Err() != nil {
+			logging.Info("title load cancelled", "input", input)
 			return Title{}, ctx.Err()
 		}
+		logging.Error("title load failed", "input", input, "error", err)
 		return Title{}, err
 	}
 
@@ -141,6 +177,7 @@ func (l *Library) Load(ctx context.Context, input string) (Title, error) {
 		return Title{}, err
 	}
 	l.ensureCover(ctx, &title)
+	logging.Info("title loaded", "title", title.Russian, "slug", title.Slug, "episodes", len(title.Episodes), "voices", len(title.Voiceovers))
 	return title, nil
 }
 
@@ -149,8 +186,10 @@ func (l *Library) Load(ctx context.Context, input string) (Title, error) {
 // the user presses Save in the title window, so merely opening a link must not
 // add it to history.
 func (l *Library) Fetch(ctx context.Context, input string) (Title, error) {
+	logging.Info("fetching title", "input", input)
 	token, err := l.readToken()
 	if err != nil {
+		logging.Error("cannot read AnimeLIB token", "error", err)
 		return Title{}, err
 	}
 
@@ -158,8 +197,10 @@ func (l *Library) Fetch(ctx context.Context, input string) (Title, error) {
 	data, err := client.Fetch(ctx, input)
 	if err != nil {
 		if ctx.Err() != nil {
+			logging.Info("title fetch cancelled", "input", input)
 			return Title{}, ctx.Err()
 		}
+		logging.Error("title fetch failed", "input", input, "error", err)
 		return Title{}, err
 	}
 
@@ -191,15 +232,18 @@ func (l *Library) Fetch(ctx context.Context, input string) (Title, error) {
 	title.SelectedVoice = voice
 	title.SelectedEpisode = episode
 	l.ensureCover(ctx, &title)
+	logging.Info("title fetched", "title", title.Russian, "slug", title.Slug, "episodes", len(title.Episodes), "voices", len(title.Voiceovers))
 	return title, nil
 }
 
 // Save writes a URL-opened title to the local history and stores the voiceover
 // and episode chosen in the title window.
 func (l *Library) Save(title Title, voice, episode string) (Title, error) {
+	logging.Info("saving title", "title", title.Russian, "slug", title.Slug, "user_status", title.UserStatus)
 	stored := storedTitleFromLibrary(title)
 	id, err := l.store.UpsertTitle(stored)
 	if err != nil {
+		logging.Error("cannot save title", "slug", title.Slug, "error", err)
 		return Title{}, fmt.Errorf("не удалось сохранить тайтл: %w", err)
 	}
 	stored.ID = id
@@ -222,6 +266,14 @@ func (l *Library) Save(title Title, voice, episode string) (Title, error) {
 	if err := l.seedEpisodeTracking(saved); err != nil {
 		return Title{}, err
 	}
+	// UpsertTitle keeps the existing status so background metadata refreshes do
+	// not overwrite a manual choice. Save is explicit, so write the status from
+	// the title window even when the title already existed without history.
+	if err := l.store.SetUserStatus(id, int(stored.UserStatus)); err != nil {
+		logging.Error("cannot save user status", "title", id, "error", err)
+		return Title{}, err
+	}
+	saved.UserStatus = UserStatus(stored.UserStatus)
 	l.applyCover(&saved)
 	if saved.CoverPath == "" {
 		if path, ok := l.adoptPreview(saved.ID, saved.CoverURL, title.CoverPath); ok {
@@ -229,6 +281,7 @@ func (l *Library) Save(title Title, voice, episode string) (Title, error) {
 			saved.CoverNeedsRetry = false
 		}
 	}
+	logging.Info("title saved", "title", saved.ID, "slug", saved.Slug)
 	return saved, nil
 }
 
@@ -248,8 +301,11 @@ func (l *Library) TrackViewing(title Title, voice, episode string) (int64, error
 		return 0, fmt.Errorf("не удалось сохранить тайтл: %w", err)
 	}
 	if err := l.store.TrackViewing(id, episode, voice); err != nil {
+		logging.Error("cannot track viewing", "title", id, "episode", episode, "error", err)
 		return id, err
 	}
+	l.promoteWatching(id)
+	logging.Info("viewing tracked", "title", id, "episode", episode, "voice", voice)
 	return id, nil
 }
 
@@ -257,6 +313,36 @@ func (l *Library) TrackViewing(title Title, voice, episode string) (int64, error
 // window.
 func (l *Library) SaveSelection(tid int64, voice, episode string) error {
 	return l.store.SaveSelection(tid, episode, voice)
+}
+
+// SetUserStatus stores the local library status. Announced titles can only be
+// planned: their episodes do not exist yet, so "Смотрю" would be misleading.
+func (l *Library) SetUserStatus(tid int64, status UserStatus) error {
+	if !status.Valid() {
+		return errors.New("неизвестный статус тайтла")
+	}
+	if tid != 0 {
+		title, err := l.store.GetTitleByID(tid)
+		if err != nil {
+			return err
+		}
+		if title != nil && Status(title.Status) == StatusAnnounced {
+			status = UserStatusPlanned
+		}
+	}
+	return l.store.SetUserStatus(tid, int(status))
+}
+
+// promoteWatching moves a planned title to "Смотрю" when playback starts. It
+// deliberately leaves every other status alone.
+func (l *Library) promoteWatching(tid int64) {
+	if tid == 0 || l.store == nil {
+		return
+	}
+	if err := l.store.SetUserStatusFrom(tid, int(UserStatusPlanned), int(UserStatusWatching)); err != nil {
+		logging.Warn("cannot promote user status", "title", tid, "error", err)
+		return
+	}
 }
 
 // SaveProgress stores the current episode and playback position.
@@ -399,15 +485,22 @@ func (l *Library) SaveIntrodbCache(tid int64, episode string, chapters []byte, n
 // otherwise stay on disk forever after the history row is gone.
 func (l *Library) DeleteHistory(tid int64) error {
 	if err := l.store.DeleteHistory(tid); err != nil {
+		logging.Error("cannot delete history", "title", tid, "error", err)
 		return err
 	}
 	l.removeCover(tid)
+	logging.Info("history deleted", "title", tid)
 	return nil
 }
 
 // ClearHistory removes every title from the visible history.
 func (l *Library) ClearHistory() error {
-	return l.store.ClearHistory()
+	if err := l.store.ClearHistory(); err != nil {
+		logging.Error("cannot clear history", "error", err)
+		return err
+	}
+	logging.Info("history cleared")
+	return nil
 }
 
 // ReorderHistory persists an in-memory reorder.
@@ -483,6 +576,10 @@ func storedTitleFromData(data *animelib.TitleData) store.Title {
 }
 
 func storedTitleFromLibrary(title Title) store.Title {
+	userStatus := NormalizeUserStatus(title.UserStatus)
+	if title.Status == StatusAnnounced {
+		userStatus = UserStatusPlanned
+	}
 	return store.Title{
 		Slug:          title.Slug,
 		EngName:       title.Original,
@@ -490,6 +587,7 @@ func storedTitleFromLibrary(title Title) store.Title {
 		IMDbID:        title.IMDbID,
 		Season:        int64(title.Season),
 		Status:        int(title.Status),
+		UserStatus:    int(userStatus),
 		EpisodesTotal: len(title.Episodes),
 		IsMovie:       title.IsMovie,
 	}
@@ -517,6 +615,9 @@ func titleFromData(stored store.Title, data *animelib.TitleData) Title {
 		title.Russian = title.Original
 	}
 	title.Status = statusFrom(data.StatusID, data.StatusLabel)
+	if title.Status == StatusAnnounced {
+		title.UserStatus = UserStatusPlanned
+	}
 	title.IsMovie = data.IsMovie()
 	title.CoverURL = coverURL(data.Cover)
 	title.Episodes = append([]string(nil), data.Episodes...)
@@ -553,6 +654,7 @@ func titleFromStore(stored store.Title) Title {
 		IMDbID:        stored.IMDbID,
 		Season:        int(stored.Season),
 		Status:        Status(stored.Status),
+		UserStatus:    NormalizeUserStatus(UserStatus(stored.UserStatus)),
 		Episodes:      []string{},
 		EpisodesTotal: stored.EpisodesTotal,
 		IsMovie:       stored.IsMovie,
@@ -566,6 +668,9 @@ func titleFromStore(stored store.Title) Title {
 	// drawing it twice under the poster.
 	if strings.TrimSpace(title.Original) == strings.TrimSpace(title.Russian) {
 		title.Original = ""
+	}
+	if title.Status == StatusAnnounced {
+		title.UserStatus = UserStatusPlanned
 	}
 	return title
 }

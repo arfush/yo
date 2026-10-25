@@ -24,7 +24,7 @@ const guestInputConfName = "yonime-input.conf"
 // other binding untouched.
 const guestInputSection = "yonime-no-timeline"
 
-// installInputConf writes the guest input bindings into %APPDATA%\yonime\mpv
+// installInputConf writes the guest input bindings into %APPDATA%\Yonime\mpv
 // and returns their path. The file is only rewritten when its contents change.
 func installInputConf() (string, error) {
 	dir, err := appdata.MPVDir()

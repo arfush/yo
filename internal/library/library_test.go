@@ -405,6 +405,88 @@ func TestSavePersistsTitleAndSelectionOnce(t *testing.T) {
 	if history[0].SelectedEpisode != "1" {
 		t.Fatalf("selected episode = %q, want 1", history[0].SelectedEpisode)
 	}
+
+	// Saving is explicit: a status chosen in the title window is written even
+	// though UpsertTitle keeps the stored status for background refreshes.
+	title.UserStatus = UserStatusFavorite
+	if _, err := lib.Save(title, "Озвучка", "1"); err != nil {
+		t.Fatal(err)
+	}
+	history, err = lib.History()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if history[0].UserStatus != UserStatusFavorite {
+		t.Fatalf("saved user status = %d, want %d", history[0].UserStatus, UserStatusFavorite)
+	}
+}
+
+func TestAnnouncedTitleKeepsPlannedStatus(t *testing.T) {
+	dir := t.TempDir()
+	lib, err := Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = lib.Close() })
+
+	title := Title{
+		Slug:    "announced-status",
+		Russian: "Анонс",
+		Status:  StatusAnnounced,
+	}
+	saved, err := lib.Save(title, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.UserStatus != UserStatusPlanned {
+		t.Fatalf("announced status = %d, want planned", saved.UserStatus)
+	}
+	if err := lib.SetUserStatus(saved.ID, UserStatusWatching); err != nil {
+		t.Fatal(err)
+	}
+	history, err := lib.History()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if history[0].UserStatus != UserStatusPlanned {
+		t.Fatalf("announced title changed to %d, want planned", history[0].UserStatus)
+	}
+}
+
+func TestTrackViewingPromotesPlannedTitle(t *testing.T) {
+	dir := t.TempDir()
+	lib, err := Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = lib.Close() })
+
+	title := Title{
+		Slug:     "promote-status",
+		Russian:  "Промоушен",
+		Status:   StatusOngoing,
+		Episodes: []string{"1"},
+		Voiceovers: []Voiceover{
+			{Name: "Озвучка", Episodes: []string{"1"}},
+		},
+	}
+	saved, err := lib.Save(title, "Озвучка", "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.UserStatus != UserStatusPlanned {
+		t.Fatalf("new status = %d, want planned", saved.UserStatus)
+	}
+	if _, err := lib.TrackViewing(title, "Озвучка", "1"); err != nil {
+		t.Fatal(err)
+	}
+	history, err := lib.History()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if history[0].UserStatus != UserStatusWatching {
+		t.Fatalf("status after playback = %d, want watching", history[0].UserStatus)
+	}
 }
 
 func TestCoverIsReplacedWhenURLFilenameChanges(t *testing.T) {

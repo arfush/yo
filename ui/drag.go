@@ -10,6 +10,8 @@ import (
 	"gioui.org/op"
 	"gioui.org/op/clip"
 	"gioui.org/unit"
+
+	"github.com/arfush/yonime/internal/library"
 )
 
 // dragState tracks a history row being reordered by its six-dot handle.
@@ -36,6 +38,12 @@ type dragState struct {
 // column. Keeping it out of the rest of the row leaves titles and controls
 // fully clickable.
 func (m *mainWindow) addHistoryDragInput(gtx layout.Context, rect image.Rectangle) {
+	if m.filter != filterAll {
+		// Reordering a filtered subset would rewrite the full history order
+		// with a partial list, so the handle is inert until the filter is
+		// cleared.
+		return
+	}
 	left := gtx.Dp(mainRowPadding)
 	right := left + gtx.Dp(mainDragHandleWidth)
 	area := image.Rect(left, 0, right, rect.Dy())
@@ -308,6 +316,17 @@ func (m *mainWindow) historyIndexAt(y, rowHeight, gap int) int {
 // layoutOverlay draws the dragged row above the window chrome. origin is the
 // top-left of the main content in window coordinates.
 func (m *mainWindow) layoutOverlay(gtx layout.Context, origin image.Point) {
+	if m.statusMenu.open {
+		itemID := m.statusMenu.id
+		m.statusMenu.layout(gtx, m.typo, origin, func(status library.UserStatus) {
+			if m.onUserStatus == nil {
+				return
+			}
+			if item := m.historyItemByID(itemID); item.id != 0 {
+				_ = m.onUserStatus(item, status)
+			}
+		})
+	}
 	if !m.drag.active || m.drag.index < 0 || m.drag.index >= len(m.history) {
 		return
 	}
@@ -347,4 +366,9 @@ func (m *mainWindow) moveHistoryItem(from, to int) {
 	m.history[to] = item
 	m.selected = reorderIndex(m.selected, from, to)
 	m.loadingTarget = reorderIndex(m.loadingTarget, from, to)
+	if m.filter == filterAll {
+		// Dragging is allowed only in the unfiltered view. Keep the complete
+		// order in sync so the database write and later filters see the move.
+		m.allHistory = append(m.allHistory[:0], m.history...)
+	}
 }

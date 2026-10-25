@@ -71,7 +71,7 @@ $env:WATCHPARTY_CLOUDFLARE_URL = "https://yonime-watchparty.<ваш-аккаун
 
 Адрес можно ввести в настройках Yonime: **Совместный просмотр → Провайдер →
 Cloudflare Endpoint**. То же самое можно сделать файлом
-`%APPDATA%\yonime\watchparty.json`:
+`%APPDATA%\Yonime\watchparty.json`:
 
 ```json
 {

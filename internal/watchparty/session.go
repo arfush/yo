@@ -5,6 +5,8 @@ import (
 	"errors"
 	"sync"
 	"time"
+
+	"github.com/arfush/yonime/internal/logging"
 )
 
 const (
@@ -111,8 +113,10 @@ func open(ctx context.Context, cfg Config, provider Provider, key string, role R
 		cfg:      cfg,
 		updates:  make(chan Update, updatesBuffer),
 	}
+	logging.Info("opening watch-party room", "provider", provider, "role", role)
 	conn, err := session.dial(ctx)
 	if err != nil {
+		logging.Error("cannot open watch-party room", "provider", provider, "role", role, "error", err)
 		return nil, err
 	}
 	runCtx, cancel := context.WithCancel(context.Background())
@@ -260,6 +264,7 @@ func (s *Session) Close() error {
 	}
 	conn := s.conn
 	s.mu.Unlock()
+	logging.Info("closing watch-party room", "provider", s.Provider, "role", s.Role)
 
 	if conn != nil && s.Role == Host {
 		// Only the host's departure ends the room. A guest saying bye would be
@@ -309,6 +314,7 @@ func (s *Session) run(ctx context.Context, first transport) {
 				if ctx.Err() != nil {
 					return
 				}
+				logging.Warn("watch-party reconnect failed", "provider", s.Provider, "role", s.Role, "error", err)
 				s.reportError(err)
 				if !sleep(ctx, backoff) {
 					return
@@ -544,6 +550,7 @@ func (s *Session) reportError(err error) {
 	s.mu.Lock()
 	s.lastErr = err
 	s.mu.Unlock()
+	logging.Warn("watch-party relay error", "provider", s.Provider, "role", s.Role, "error", err)
 	s.notify(Update{Kind: UpdateError, Err: err})
 }
 

@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// State is persisted in %APPDATA%\yonime\updates.json. It holds only the last
+// State is persisted in %APPDATA%\Yonime\updates.json. It holds only the last
 // check time and the release cached for the footer button; credentials never
 // enter this file.
 type State struct {

@@ -79,6 +79,30 @@ func drawOutlineRect(gtx layout.Context, g geometry, r image.Rectangle) {
 	fill(gtx, iconColor, image.Rect(r.Max.X-thickness, r.Min.Y, r.Max.X, r.Max.Y))
 }
 
+// drawLogIcon paints a small document with text lines. It marks the log
+// control and uses the same thin-stroke style as the other footer icons.
+func drawLogIcon(gtx layout.Context, center image.Point, g geometry, col color.NRGBA) {
+	width := int(g.vec(8.5))
+	height := int(g.vec(10.5))
+	if width < 2 || height < 2 {
+		return
+	}
+	rect := image.Rect(
+		center.X-width/2,
+		center.Y-height/2,
+		center.X+width/2,
+		center.Y+height/2,
+	)
+	strokeRoundedRect(gtx, rect, g.vec(1.8), g.vec(1.1), col)
+	lineLeft := rect.Min.X + int(g.vec(2))
+	lineRight := rect.Max.X - int(g.vec(2))
+	lineHeight := max(1, int(g.vec(1)))
+	for index := 0; index < 3; index++ {
+		y := rect.Min.Y + int(g.vec(3.2)+g.vec(2.1)*float32(index))
+		fill(gtx, col, image.Rect(lineLeft, y, lineRight, y+lineHeight))
+	}
+}
+
 // drawDownloadIcon paints a downward arrow over a tray. It marks the update
 // control.
 func drawDownloadIcon(gtx layout.Context, center image.Point, g geometry, col color.NRGBA) {

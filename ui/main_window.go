@@ -24,6 +24,7 @@ import (
 
 	"github.com/arfush/yonime/internal/animelib"
 	"github.com/arfush/yonime/internal/library"
+	"github.com/arfush/yonime/internal/logging"
 )
 
 const (
@@ -61,6 +62,9 @@ const (
 	mainHintTextSize     = unit.Sp(10)
 	mainStatusHeight     = unit.Dp(23)
 	mainStatusPaddingX   = unit.Dp(9)
+	mainFilterSize       = unit.Sp(9.5)
+	mainFilterPaddingX   = unit.Dp(7)
+	mainFilterGap        = unit.Dp(4)
 	mainFrameTime        = time.Second / 60
 	mainSpinnerFrameTime = time.Second / 60
 	// mainErrorFeedbackDuration is how long the Next button and the mascot stay
@@ -119,13 +123,15 @@ var (
 )
 
 type historyRow struct {
-	titleClick widget.Clickable
-	playClick  widget.Clickable
-	trashClick widget.Clickable
+	titleClick  widget.Clickable
+	playClick   widget.Clickable
+	trashClick  widget.Clickable
+	statusClick widget.Clickable
 
-	hover      hoverAnim
-	playHover  hoverAnim
-	trashHover hoverAnim
+	hover       hoverAnim
+	playHover   hoverAnim
+	trashHover  hoverAnim
+	statusHover hoverAnim
 }
 
 type titleLoadResult struct {
@@ -167,9 +173,18 @@ type mainWindow struct {
 	hintForcedHide bool
 	hintForceAt    time.Time
 
-	history []historyTitle
-	rows    []historyRow
-	list    layout.List
+	// allHistory keeps the complete library order. history is the filtered view
+	// currently drawn; it is rebuilt from allHistory whenever the filter or a
+	// deletion changes.
+	allHistory []historyTitle
+	history    []historyTitle
+	rows       []historyRow
+	list       layout.List
+
+	filter       userStatusFilter
+	filterClicks [6]widget.Clickable
+	filterHovers [6]hoverAnim
+	statusMenu   userStatusMenu
 
 	listRect      image.Rectangle
 	listRowHeight int
@@ -196,6 +211,9 @@ type mainWindow struct {
 	hidden        func() bool
 	onOpenTitle   func(historyTitle)
 	onPlayHistory func(historyTitle) historyPlayResult
+	onUserStatus  func(historyTitle, library.UserStatus) error
+	onError       func(error)
+	onClearError  func()
 
 	playing   bool
 	playingID int64
@@ -221,8 +239,7 @@ func newMainWindow(typo *typography, lib *library.Library, history []library.Tit
 	m := &mainWindow{
 		typo:            typo,
 		library:         lib,
-		history:         displayHistory,
-		rows:            make([]historyRow, len(displayHistory)),
+		allHistory:      displayHistory,
 		selected:        -1,
 		loadingTarget:   -1,
 		loadResults:     make(chan titleLoadResult, 4),
@@ -234,6 +251,8 @@ func newMainWindow(typo *typography, lib *library.Library, history []library.Tit
 	m.editor.SingleLine = true
 	m.editor.InputHint = key.HintURL
 	m.list.Axis = layout.Vertical
+	m.history = m.visibleHistory(displayHistory)
+	m.rows = make([]historyRow, len(m.history))
 	return m
 }
 
@@ -291,22 +310,25 @@ func (m *mainWindow) onShown() {
 	m.editor.ClearSelection()
 }
 
-// triggerEmptyLink flashes the load-error feedback when Next is pressed with an
-// empty URL field.
+// triggerEmptyLink flashes the red feedback when Next is pressed with an empty
+// URL field. An empty field is a prompt to type, not an error, so nothing is
+// sent to the header.
 func (m *mainWindow) triggerEmptyLink(gtx layout.Context) {
 	if m.loading {
 		return
 	}
-	m.showLoadError(gtx, "Введите ссылку на тайтл AnimeLIB.")
+	m.errorAt = gtx.Now
 	m.placeholder.showFull(gtx.Now)
+	gtx.Execute(op.InvalidateCmd{})
 }
 
-// showLoadError stores the message and starts the three-second red shake on the
-// Next button and the mascot.
-func (m *mainWindow) showLoadError(gtx layout.Context, text string) {
-	m.loadError = text
-	m.errorAt = gtx.Now
-	gtx.Execute(op.InvalidateCmd{})
+func (m *mainWindow) reportError(err error) {
+	if err == nil {
+		return
+	}
+	if m.onError != nil {
+		m.onError(err)
+	}
 }
 
 // clearLoadError drops the message and the error feedback together, so a retry
@@ -314,6 +336,9 @@ func (m *mainWindow) showLoadError(gtx layout.Context, text string) {
 func (m *mainWindow) clearLoadError() {
 	m.loadError = ""
 	m.errorAt = time.Time{}
+	if m.onClearError != nil {
+		m.onClearError()
+	}
 }
 
 // errorFeedbackActive reports whether the red error state is still running.
@@ -696,7 +721,7 @@ func (m *mainWindow) startLoading(gtx layout.Context, target int, animateRow boo
 		return
 	}
 	if input == "" {
-		m.showLoadError(gtx, "Введите ссылку на тайтл AnimeLIB.")
+		m.triggerEmptyLink(gtx)
 		return
 	}
 
@@ -781,7 +806,9 @@ func (m *mainWindow) finishLoading(gtx layout.Context, result titleLoadResult) {
 
 	if result.err != nil {
 		if result.err != context.Canceled && !strings.Contains(result.err.Error(), "context canceled") {
-			m.showLoadError(gtx, result.err.Error())
+			m.loadError = result.err.Error()
+			m.errorAt = gtx.Now
+			m.reportError(result.err)
 		}
 		m.dismissRateLimitNotice()
 		gtx.Execute(op.InvalidateCmd{})
@@ -793,7 +820,8 @@ func (m *mainWindow) finishLoading(gtx layout.Context, result titleLoadResult) {
 	// even if the throttle pause is technically still winding down.
 	animelib.DismissRateLimitNotice()
 	if result.history != nil {
-		m.history = m.visibleHistory(result.history)
+		m.allHistory = result.history
+		m.history = m.visibleHistory(m.allHistory)
 		m.rows = make([]historyRow, len(m.history))
 	}
 	m.selected = -1
@@ -845,13 +873,14 @@ func (m *mainWindow) refreshHistory(selectedID int64) {
 	history, err := m.library.History()
 	if err != nil {
 		m.loadError = err.Error()
+		m.reportError(err)
 		return
 	}
-	m.history = make([]historyTitle, 0, len(history))
+	m.allHistory = make([]historyTitle, 0, len(history))
 	for _, entry := range history {
-		m.history = append(m.history, titleFromLibrary(entry))
+		m.allHistory = append(m.allHistory, titleFromLibrary(entry))
 	}
-	m.history = m.visibleHistory(m.history)
+	m.history = m.visibleHistory(m.allHistory)
 	m.rows = make([]historyRow, len(m.history))
 	if selectedID == 0 {
 		if m.selected >= len(m.history) {
@@ -912,8 +941,9 @@ func (m *mainWindow) persistHistoryOrder() {
 	if m.library == nil {
 		return
 	}
-	if err := m.library.ReorderHistory(displayTitles(m.history)); err != nil {
+	if err := m.library.ReorderHistory(displayTitles(m.allHistory)); err != nil {
 		m.loadError = err.Error()
+		m.reportError(err)
 	}
 }
 
@@ -1161,17 +1191,8 @@ func (m *mainWindow) layoutHistoryHeader(gtx layout.Context, rect image.Rectangl
 		// The countdown sits in the free space between the history title and
 		// the action button, matching the rate-limit notice in the header.
 		m.layoutUndoCountdown(gtx, middleLeft, middleRight, rect.Min.Y+rect.Dy()/2)
-	} else if m.loadError != "" && middleRight > middleLeft {
-		drawTruncatedText(
-			gtx,
-			m.typo,
-			upperFirst(m.loadError),
-			font.Font{Typeface: fontFamily, Weight: font.Normal},
-			mainClearSize,
-			mainDangerColor,
-			image.Pt(middleLeft, countTop),
-			middleRight-middleLeft,
-		)
+	} else {
+		m.layoutHistoryFilters(gtx, middleLeft, middleRight, rect.Min.Y+rect.Dy()/2)
 	}
 
 	_, clicked := m.clear.Update(gtx)
@@ -1208,6 +1229,62 @@ func (m *mainWindow) layoutHistoryHeader(gtx layout.Context, rect image.Rectangl
 		pointer.CursorPointer.Add(gtx.Ops)
 		return layout.Dimensions{Size: clearRect.Size()}
 	})
+}
+
+// layoutHistoryFilters draws the six status filters centered between the
+// history caption and the clear action. Inactive pills are neutral gray;
+// selecting one reveals its status color.
+func (m *mainWindow) layoutHistoryFilters(gtx layout.Context, left, right, centerY int) {
+	available := right - left
+	if available <= 0 {
+		return
+	}
+	gap := gtx.Dp(mainFilterGap)
+	widths := make([]int, len(userStatusFilterOptions))
+	total := 0
+	for index, option := range userStatusFilterOptions {
+		widths[index] = filterPillWidth(gtx, m.typo, option.label)
+		total += widths[index]
+	}
+	total += gap * (len(widths) - 1)
+	if total > available {
+		// On a very narrow window the pills shrink their horizontal padding
+		// instead of overflowing the header.
+		total = 0
+		for index, option := range userStatusFilterOptions {
+			_, ink := m.typo.measure(gtx, option.label, font.Font{Typeface: fontFamily, Weight: font.Medium}, mainFilterSize)
+			widths[index] = ink.Dx() + gtx.Dp(unit.Dp(4))
+			total += widths[index]
+		}
+		total += gap * (len(widths) - 1)
+	}
+	if total > available {
+		return
+	}
+	x := left + (available-total)/2
+	height := gtx.Dp(mainStatusHeight)
+	clickedIndex := -1
+	for index, option := range userStatusFilterOptions {
+		rect := image.Rect(x, centerY-height/2, x+widths[index], centerY+height/2)
+		click := &m.filterClicks[index]
+		hover := m.filterHovers[index].update(gtx, click.Hovered())
+		if click.Clicked(gtx) {
+			clickedIndex = index
+		}
+		m.layoutHitArea(gtx, rect, click, true, func(gtx layout.Context) {
+			drawFilterPill(gtx, m.typo, image.Rect(0, 0, rect.Dx(), rect.Dy()), option, m.filter == option.filter, hover)
+		})
+		x += widths[index] + gap
+	}
+	if clickedIndex >= 0 {
+		next := userStatusFilterOptions[clickedIndex].filter
+		if next != m.filter {
+			m.filter = next
+			logging.Info("history filter changed", "filter", m.filter)
+			m.applyFilter()
+			gtx.Execute(op.InvalidateCmd{})
+		}
+	}
 }
 
 func (m *mainWindow) layoutHistory(gtx layout.Context, rect image.Rectangle) {
@@ -1251,32 +1328,17 @@ func (m *mainWindow) layoutHistory(gtx layout.Context, rect image.Rectangle) {
 }
 
 func (m *mainWindow) layoutHistoryEmpty(gtx layout.Context, rect image.Rectangle) {
-	if rect.Empty() || m.loading || m.loadError == "" {
+	if rect.Empty() || m.loading || len(m.history) > 0 {
 		return
 	}
+	if m.filter == filterAll || len(m.allHistory) == 0 {
+		return
+	}
+	message := "В этом статусе пока пусто."
 	face := font.Font{Typeface: fontFamily, Weight: font.Normal}
-	y := rect.Min.Y + gtx.Dp(unit.Dp(8))
-	drawTruncatedText(
-		gtx,
-		m.typo,
-		"Не удалось загрузить тайтл",
-		font.Font{Typeface: fontFamily, Weight: font.Medium},
-		mainRowTitleSize,
-		mainDangerColor,
-		image.Pt(rect.Min.X, y),
-		rect.Dx(),
-	)
-	y += gtx.Dp(unit.Dp(22))
-	drawTruncatedText(
-		gtx,
-		m.typo,
-		upperFirst(m.loadError),
-		face,
-		mainHistoryCountSize,
-		mainMutedColor,
-		image.Pt(rect.Min.X, y),
-		rect.Dx(),
-	)
+	_, ink := m.typo.measure(gtx, message, face, mainHistoryCountSize)
+	y := rect.Min.Y + (rect.Dy()-ink.Dy())/2
+	m.typo.draw(gtx, message, face, mainHistoryCountSize, mainMutedColor, image.Pt(rect.Min.X, y))
 }
 
 type historyRowGeometry struct {
@@ -1316,18 +1378,17 @@ func (m *mainWindow) historyRowGeometry(gtx layout.Context, width, height int, i
 	trash := image.Rect(width-pad-controlSize, (height-controlSize)/2, width-pad, (height-controlSize)/2+controlSize)
 	play := image.Rect(trash.Min.X-controlGap-controlSize, trash.Min.Y, trash.Min.X-controlGap, trash.Max.Y)
 	titleX := poster.Max.X + gtx.Dp(unit.Dp(14))
-	controlsStart := play.Min.X - gtx.Dp(unit.Dp(10))
-	titleHit := image.Rect(handle.Max.X, 0, controlsStart, height)
-	if titleHit.Max.X < titleHit.Min.X+1 {
-		titleHit.Max.X = titleHit.Min.X + 1
-	}
 	statusHeight := gtx.Dp(mainStatusHeight)
 	status := image.Rect(
-		play.Min.X-gtx.Dp(unit.Dp(14))-m.statusWidth(gtx),
+		play.Min.X-gtx.Dp(unit.Dp(14))-m.userStatusWidth(gtx),
 		(height-statusHeight)/2,
 		play.Min.X-gtx.Dp(unit.Dp(14)),
 		(height-statusHeight)/2+statusHeight,
 	)
+	titleHit := image.Rect(handle.Max.X, 0, status.Min.X-gtx.Dp(unit.Dp(8)), height)
+	if titleHit.Max.X < titleHit.Min.X+1 {
+		titleHit.Max.X = titleHit.Min.X + 1
+	}
 	return historyRowGeometry{
 		handle:   handle,
 		poster:   poster,
@@ -1378,6 +1439,9 @@ func (m *mainWindow) drawHistoryRowCard(gtx layout.Context, rect image.Rectangle
 	handleColor := mainDragDotColor
 	if vis.selected || vis.dragging {
 		handleColor = mainDragDotActive
+	}
+	if m.filter != filterAll {
+		handleColor = withAlpha(handleColor, 0x55)
 	}
 	drawDragHandle(gtx, geom.handle, handleColor)
 
@@ -1460,7 +1524,7 @@ func (m *mainWindow) drawHistoryRowCard(gtx layout.Context, rect image.Rectangle
 			)
 		}
 	}
-	m.drawStatus(gtx, geom.status, item.status)
+	drawUserStatusPill(gtx, m.typo, geom.status, item.userStatus, true)
 
 	if vis.itemLoading {
 		drawControlButton(gtx, geom.play, mainControlFill, mainAccentColor1)
@@ -1529,11 +1593,21 @@ func (m *mainWindow) layoutHistoryRow(gtx layout.Context, index, width, height i
 		m.deleteRequested = true
 		m.deleteIndex = index
 	}
+	statusClickable := item.status != statusAnnounced
+	if statusClickable && row.statusClick.Clicked(gtx) && !m.drag.active {
+		stride := m.listRowHeight + m.listGap
+		top := m.listRect.Min.Y + m.historyRowTop(index, stride)
+		anchor := geom.status.Add(image.Pt(m.listRect.Min.X, top))
+		m.statusMenu.show(anchor, item.userStatus, item.id)
+		m.selected = index
+		gtx.Execute(op.InvalidateCmd{})
+	}
 
 	titleHovered := row.titleClick.Hovered()
 	playHovered := !m.loading && !m.playing && row.playClick.Hovered()
 	trashHovered := row.trashClick.Hovered()
-	rowHover := row.hover.update(gtx, titleHovered || playHovered || trashHovered)
+	statusHovered := statusClickable && row.statusClick.Hovered()
+	rowHover := row.hover.update(gtx, titleHovered || playHovered || trashHovered || statusHovered)
 	playHover := row.playHover.update(gtx, playHovered)
 	trashHover := row.trashHover.update(gtx, trashHovered)
 
@@ -1570,6 +1644,9 @@ func (m *mainWindow) layoutHistoryRow(gtx layout.Context, index, width, height i
 		m.layoutHitArea(gtx, geom.play, &row.playClick, true, nil)
 	}
 	m.layoutHitArea(gtx, geom.trash, &row.trashClick, true, nil)
+	if statusClickable {
+		m.layoutHitArea(gtx, geom.status, &row.statusClick, true, nil)
+	}
 	m.layoutHitArea(gtx, geom.titleHit, &row.titleClick, false, nil)
 
 	if itemLoading && m.animationsRun() {
@@ -1608,8 +1685,45 @@ func drawDragHandle(gtx layout.Context, rect image.Rectangle, col color.NRGBA) {
 	}
 }
 
-func (m *mainWindow) statusWidth(gtx layout.Context) int {
-	return statusPillWidth(gtx, m.typo)
+func (m *mainWindow) userStatusWidth(gtx layout.Context) int {
+	return userStatusPillWidth(gtx, m.typo)
+}
+
+func (m *mainWindow) historyItemByID(id int64) historyTitle {
+	if index := historyIndexByID(m.allHistory, id); index >= 0 {
+		return m.allHistory[index]
+	}
+	if index := historyIndexByID(m.history, id); index >= 0 {
+		return m.history[index]
+	}
+	return historyTitle{}
+}
+
+// setUserStatus updates a title in both the complete and visible history. When
+// a filter is active the row may no longer belong in the visible list, so the
+// filtered view is rebuilt instead of patched in place.
+func (m *mainWindow) setUserStatus(id int64, status library.UserStatus) {
+	if id == 0 {
+		return
+	}
+	changed := false
+	for index := range m.allHistory {
+		if m.allHistory[index].id == id {
+			m.allHistory[index].userStatus = library.NormalizeUserStatus(status)
+			changed = true
+		}
+	}
+	for index := range m.history {
+		if m.history[index].id == id {
+			m.history[index].userStatus = library.NormalizeUserStatus(status)
+		}
+	}
+	if !changed {
+		return
+	}
+	if m.filter != filterAll {
+		m.applyFilter()
+	}
 }
 
 func statusPillWidth(gtx layout.Context, typo *typography) int {
@@ -1698,13 +1812,27 @@ func truncateText(gtx layout.Context, typo *typography, text string, face font.F
 		return text
 	}
 
+	return truncateAtWord(text, func(candidate string) bool {
+		_, ink := typo.measure(gtx, candidate, face, size)
+		return ink.Dx() <= maxWidth
+	})
+}
+
+// truncateAtWord cuts text at the last whole word that fits and appends an
+// ellipsis. Punctuation and spaces before the cut are dropped, so a title never
+// ends with a dangling colon or comma. A single word wider than the available
+// space is cut by rune as a last resort.
+func truncateAtWord(text string, fits func(string) bool) string {
 	const ellipsis = "…"
+	if fits(text) {
+		return text
+	}
+
 	runes := []rune(text)
 	low, high := 0, len(runes)
 	for low < high {
 		mid := (low + high + 1) / 2
-		candidate := string(runes[:mid]) + ellipsis
-		if _, ink := typo.measure(gtx, candidate, face, size); ink.Dx() <= maxWidth {
+		if fits(string(runes[:mid]) + ellipsis) {
 			low = mid
 		} else {
 			high = mid - 1
@@ -1713,7 +1841,46 @@ func truncateText(gtx layout.Context, typo *typography, text string, face font.F
 	if low <= 0 {
 		return ""
 	}
-	return string(runes[:low]) + ellipsis
+
+	cut := low
+	if cut < len(runes) && !isTextBoundary(runes[cut]) {
+		for cut > 0 && !isTextBoundary(runes[cut-1]) {
+			cut--
+		}
+	}
+	// A word boundary can itself be a separator (a space or punctuation). Drop
+	// it before the ellipsis instead of keeping "Тайтл:…" or "Тайтл …".
+	for cut > 0 && isTextSeparator(runes[cut-1]) {
+		cut--
+	}
+	if cut == 0 {
+		// The first word is longer than the available width. Falling back to the
+		// measured rune cut keeps the row useful instead of empty.
+		cut = low
+		for cut > 0 && isTextSeparator(runes[cut-1]) {
+			cut--
+		}
+	}
+	if cut <= 0 {
+		return ""
+	}
+	return string(runes[:cut]) + ellipsis
+}
+
+func isTextBoundary(r rune) bool {
+	return unicode.IsSpace(r) || isTextSeparator(r)
+}
+
+func isTextSeparator(r rune) bool {
+	if unicode.IsSpace(r) {
+		return true
+	}
+	switch r {
+	case ',', '.', ';', ':', '!', '?', '—', '–', '-', '(', ')', '[', ']', '{', '}',
+		'«', '»', '"', '\'', '…':
+		return true
+	}
+	return false
 }
 
 func (m *mainWindow) layoutHitArea(gtx layout.Context, rect image.Rectangle, click *widget.Clickable, pointerCursor bool, draw func(layout.Context)) {

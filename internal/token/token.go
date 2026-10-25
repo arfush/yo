@@ -1,7 +1,7 @@
 // Package token reads and writes the AnimeLIB access token.
 //
 // AnimeLIB stores an OAuth token object in its localStorage. Yonime keeps the
-// same fields in %APPDATA%\yonime\animelib_token.txt as JSON, which lets the
+// same fields in %APPDATA%\Yonime\animelib_token.txt as JSON, which lets the
 // expiration be checked before the main window opens. A plain-text token is
 // still accepted for compatibility with hand-written files.
 package token

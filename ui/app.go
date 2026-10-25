@@ -26,6 +26,7 @@ import (
 	"github.com/arfush/yonime/internal/browser"
 	"github.com/arfush/yonime/internal/discord"
 	"github.com/arfush/yonime/internal/library"
+	"github.com/arfush/yonime/internal/logging"
 	"github.com/arfush/yonime/internal/metadata"
 	"github.com/arfush/yonime/internal/mpv"
 	"github.com/arfush/yonime/internal/playback"
@@ -81,15 +82,19 @@ func Run() {
 
 		a, err := newApp()
 		if err != nil {
+			logging.Error("application startup failed", "error", err)
 			fmt.Fprintln(os.Stderr, "yonime:", err)
 			os.Exit(1)
 		}
+		logging.Info("window attached")
 		a.attachWindow(w)
 		if err := a.run(w); err != nil {
+			logging.Error("application stopped with an error", "error", err)
 			a.close()
 			fmt.Fprintln(os.Stderr, "yonime:", err)
 			os.Exit(1)
 		}
+		logging.Info("application closed")
 		a.close()
 		os.Exit(0)
 	}()
@@ -110,6 +115,7 @@ type application struct {
 	// session can no longer publish or clear the new one's activity.
 	presenceSeq atomic.Uint64
 	main        *mainWindow
+	log         *logWindow
 	active      windowScreen
 	window      *app.Window
 	icon        image.Image
@@ -141,7 +147,7 @@ type application struct {
 	tokenPath         string
 	browserProfileDir string
 
-	// Update state is loaded from %APPDATA%\yonime\updates.json. The atomics
+	// Update state is loaded from %APPDATA%\Yonime\updates.json. The atomics
 	// let the UI read it every frame while the background checker refreshes it.
 	updateStore      *updates.Store
 	updateClient     *http.Client
@@ -304,9 +310,15 @@ func (a *application) attachWindow(w *app.Window) {
 	a.main.onPlayHistory = func(item historyTitle) historyPlayResult {
 		return a.playFromHistory(item)
 	}
+	a.main.onUserStatus = func(item historyTitle, status library.UserStatus) error {
+		return a.setUserStatus(item, status)
+	}
+	a.main.onError = a.reportError
+	a.main.onClearError = a.clearError
 	a.shell.onUpdate = a.openUpdate
 	a.shell.onSettings = a.openSettings
 	a.shell.onParty = a.openWatchParty
+	a.shell.onLog = a.openLog
 	a.startTray()
 	a.prepare(w)
 	a.startUpdateLoop(w)
@@ -401,6 +413,7 @@ func (a *application) prepare(w *app.Window) {
 	preparation.onDone = func() {
 		a.requireToken(w)
 	}
+	preparation.onError = a.reportError
 	a.showWindow(w, preparation)
 }
 
@@ -447,6 +460,7 @@ func (a *application) requireMPV(w *app.Window) {
 	preparation.onDone = func() {
 		a.showMain(w)
 	}
+	preparation.onError = a.reportError
 	a.showWindow(w, preparation)
 }
 
@@ -518,12 +532,15 @@ func (a *application) showUpdateScreen(release updates.Release, auto bool) {
 	screen.autoStart = true
 	screen.onDone = a.quitForUpdate
 	if auto {
-		screen.onError = func() {
+		screen.onError = func(err error) {
 			// Keep the app usable and let the silent path retry once the window
 			// goes to the tray.
+			a.reportError(err)
 			a.showWindow(a.window, a.main)
 			a.triggerUpdateCheck()
 		}
+	} else {
+		screen.onError = a.reportError
 	}
 	a.showWindow(a.window, screen)
 }
@@ -535,6 +552,7 @@ func (a *application) openSettings() {
 	if a.window == nil || a.library == nil {
 		return
 	}
+	logging.Info("settings opened")
 	if a.party == nil {
 		a.party = newPartyManager(a)
 	}
@@ -552,6 +570,7 @@ func (a *application) openSettings() {
 		SupabaseKey:   partyCfg.SupabaseKey,
 	})
 	settings.hidden = a.windowHidden
+	settings.onError = a.reportError
 	settings.onBack = func() {
 		if a.window == nil {
 			return
@@ -632,11 +651,13 @@ func (a *application) openWatchParty() {
 	if a.window == nil {
 		return
 	}
+	logging.Info("watch-party screen opened")
 	if a.party == nil {
 		a.party = newPartyManager(a)
 	}
 	screen := newWatchPartyWindow(a.shell.typo, a.window, a.party)
 	screen.hidden = a.windowHidden
+	screen.onError = a.reportError
 	screen.onBack = func() {
 		if a.window == nil {
 			return
@@ -1120,6 +1141,7 @@ func (a *application) syncFooterControls() {
 	release := a.updatesAvailable.Load()
 	onMain := a.active == a.main
 	a.shell.settingsVisible = onMain
+	a.shell.logVisible = onMain
 	a.shell.partyVisible = onMain
 	a.shell.partyActive = onMain && a.party != nil && a.party.HasRoom()
 	a.shell.updateVisible = onMain && a.updateAvailable(release)
@@ -1154,12 +1176,17 @@ func (a *application) openTitle(item historyTitle) {
 	if a.window == nil {
 		return
 	}
+	logging.Info("title page opened", "title", item.title, "id", item.id, "slug", item.slug)
 	preferredQuality := 1080
 	if a.library != nil {
 		preferredQuality = a.library.PreferredQuality()
 	}
 	title := newTitleWindow(a.shell.typo, item, preferredQuality)
 	title.hidden = a.windowHidden
+	title.onError = a.reportError
+	title.onUserStatus = func(item historyTitle, status library.UserStatus) error {
+		return a.setUserStatus(item, status)
+	}
 	title.onBack = func() {
 		if a.window == nil {
 			return
@@ -1184,6 +1211,7 @@ func (a *application) openTitle(item historyTitle) {
 		title.applySaved(item)
 		a.main.refreshHistory(saved.ID)
 		a.downloadSavedCover(saved)
+		a.clearError()
 		return nil
 	}
 	title.onQuality = func(index int) error {
@@ -1232,6 +1260,7 @@ func (a *application) playFromHistory(item historyTitle) historyPlayResult {
 	err := a.startPlayback(libraryTitleFromHistory(item), voice, episode, quality, &returnItem, false, 0)
 	if err != nil {
 		a.main.loadError = err.Error()
+		a.reportError(err)
 		a.main.playing = false
 		a.main.playingID = 0
 		if a.window != nil {
@@ -1508,6 +1537,7 @@ func (a *application) handleWatchResult(result watchResult) {
 			a.main.playingID = 0
 			if result.err != nil {
 				a.main.loadError = result.err.Error()
+				a.reportError(result.err)
 			}
 		}
 		return
@@ -1521,6 +1551,7 @@ func (a *application) handleWatchResult(result watchResult) {
 			if a.main != nil {
 				a.main.loadError = result.err.Error()
 			}
+			a.reportError(result.err)
 			// A direct Play from history must leave the user on the title page
 			// when playback cannot start (for example, the selected voice no
 			// longer has any episodes). No mpv window is left behind.
@@ -1557,6 +1588,7 @@ func (a *application) handleWatchResult(result watchResult) {
 			}
 			if result.err != nil {
 				a.main.loadError = result.err.Error()
+				a.reportError(result.err)
 			}
 		}
 		a.openTitle(updated)
@@ -1569,8 +1601,10 @@ func (a *application) handleWatchResult(result watchResult) {
 	}
 	if result.err != nil {
 		title.setWatchError(result.err.Error())
+		a.reportError(result.err)
 	} else if result.finished {
 		title.setWatching(false)
+		a.clearError()
 	}
 	if !result.finished {
 		return
@@ -1654,17 +1688,88 @@ func (a *application) showWindow(w *app.Window, screen windowScreen) {
 	}
 	if screen == a.main {
 		a.main.onShown()
-		a.shell.overlay = a.main.layoutOverlay
 		a.shell.onPress = a.main.noteWindowPress
 	} else {
-		a.shell.overlay = nil
 		a.shell.onPress = nil
+	}
+	if overlay, ok := screen.(overlayScreen); ok {
+		a.shell.overlay = overlay.layoutOverlay
+	} else {
+		a.shell.overlay = nil
 	}
 	a.shell.content = func(gtx layout.Context) layout.Dimensions {
 		screen.layout(gtx)
 		return layout.Dimensions{Size: gtx.Constraints.Max}
 	}
 	w.Invalidate()
+}
+
+// overlayScreen is implemented by screens with a popup that must be drawn above
+// the window chrome, such as the history drag preview and status menus.
+type overlayScreen interface {
+	layoutOverlay(layout.Context, image.Point)
+}
+
+// reportError logs the technical error and shows only a friendly sentence in
+// the header. Cancellation is not a user-visible failure.
+func (a *application) reportError(err error) {
+	if err == nil || errors.Is(err, context.Canceled) {
+		return
+	}
+	logging.Error("ui error", "error", err)
+	message := friendlyError(err)
+	if message == "" {
+		return
+	}
+	a.shell.setError(message, time.Now())
+	if a.window != nil {
+		a.window.Invalidate()
+	}
+}
+
+func (a *application) clearError() {
+	a.shell.clearError()
+}
+
+// setUserStatus persists a status chosen from a pill menu and updates every
+// screen that may be showing the same title.
+func (a *application) setUserStatus(item historyTitle, status library.UserStatus) error {
+	logging.Info("user status changed", "title", item.id, "status", status)
+	if item.id != 0 && a.library != nil {
+		if err := a.library.SetUserStatus(item.id, status); err != nil {
+			a.reportError(err)
+			return err
+		}
+	}
+	if a.main != nil {
+		a.main.setUserStatus(item.id, status)
+	}
+	if title, ok := a.active.(*titleWindow); ok && title.item.id == item.id {
+		title.setUserStatus(status)
+	}
+	a.clearError()
+	if a.window != nil {
+		a.window.Invalidate()
+	}
+	return nil
+}
+
+func (a *application) openLog() {
+	if a.window == nil {
+		return
+	}
+	logging.Info("log window opened")
+	screen := newLogWindow(a.shell.typo)
+	screen.hidden = a.windowHidden
+	screen.onBack = func() {
+		if a.window == nil {
+			return
+		}
+		a.showWindow(a.window, a.main)
+		a.window.Invalidate()
+	}
+	a.log = screen
+	a.showWindow(a.window, screen)
 }
 
 func (a *application) close() {

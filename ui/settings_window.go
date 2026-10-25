@@ -50,7 +50,6 @@ const (
 	settingsFieldPadX   = unit.Dp(10)
 	settingsFieldSize   = unit.Sp(12)
 	settingsLabelGap    = unit.Dp(18)
-	settingsErrorGap    = unit.Dp(5)
 	settingsPadBottom   = unit.Dp(16)
 )
 
@@ -60,7 +59,6 @@ var (
 	settingsToggleOffEdge = color.NRGBA{R: 0x3a, G: 0x34, B: 0x4a, A: 0xff}
 	settingsToggleKnob    = color.NRGBA{R: 0xf4, G: 0xf2, B: 0xfa, A: 0xff}
 	settingsToggleKnobOff = color.NRGBA{R: 0x9b, G: 0x94, B: 0xad, A: 0xff}
-	settingsErrorText     = color.NRGBA{R: 0xf0, G: 0x8a, B: 0x8a, A: 0xff}
 	settingsNoteColor     = color.NRGBA{R: 0x8a, G: 0x84, B: 0x9c, A: 0xff}
 	settingsMenuFill      = color.NRGBA{R: 0x1d, G: 0x1a, B: 0x27, A: 0xff}
 	settingsMenuSelected  = color.NRGBA{R: 0x2b, G: 0x22, B: 0x45, A: 0xff}
@@ -125,6 +123,10 @@ type settingsWindow struct {
 	backClick widget.Clickable
 	backHover hoverAnim
 
+	// onError sends technical failures to the shell header. errorText is kept
+	// for tests and for the retry logic, but it is no longer drawn inline.
+	onError func(error)
+
 	// scroll is the wheel offset of the settings content, and scrollTag carries
 	// the wheel events for the whole screen.
 	scroll    int
@@ -182,6 +184,16 @@ func newSettingsWindow(typo *typography, values settingsValues) *settingsWindow 
 
 func (w *settingsWindow) Close() {
 	w.saveRelays()
+}
+
+func (w *settingsWindow) reportError(err error) {
+	if err == nil {
+		return
+	}
+	w.errorText = err.Error()
+	if w.onError != nil {
+		w.onError(err)
+	}
 }
 
 func (w *settingsWindow) handleKeys(gtx layout.Context) {
@@ -264,19 +276,6 @@ func (w *settingsWindow) layout(gtx layout.Context) {
 	y = w.layoutSectionTitle(gtx, left, y, "Интеграции")
 	y = w.layoutDiscordPanel(gtx, image.Rect(left, y, right, y+gtx.Dp(settingsPanelHeight)))
 
-	if w.errorText != "" {
-		drawTruncatedText(
-			gtx,
-			w.typo,
-			upperFirst(w.errorText),
-			font.Font{Typeface: fontFamily, Weight: font.Normal},
-			settingsNoteSize,
-			settingsErrorText,
-			image.Pt(left, y+gtx.Dp(settingsErrorGap)),
-			right-left,
-		)
-	}
-
 	content.Pop()
 
 	// The menu floats over the panels above, so it is painted last. Its anchor
@@ -358,10 +357,6 @@ func (w *settingsWindow) contentHeight(gtx layout.Context) int {
 	}
 	height += gtx.Dp(settingsGroupGap)
 	height += title("Интеграции") + panel
-	if w.errorText != "" {
-		_, ink := w.typo.measure(gtx, "Ошибка", font.Font{Typeface: fontFamily, Weight: font.Normal}, settingsNoteSize)
-		height += gtx.Dp(settingsErrorGap) + ink.Dy()
-	}
 	height += gtx.Dp(settingsPadBottom)
 	return height
 }
@@ -793,7 +788,7 @@ func (w *settingsWindow) saveRelays() {
 	}
 	if w.onRelay != nil {
 		if err := w.onRelay(cfg); err != nil {
-			w.errorText = err.Error()
+			w.reportError(err)
 			return
 		}
 	}
@@ -987,7 +982,7 @@ func drawChevronVertical(gtx layout.Context, center image.Point, size, width int
 func (w *settingsWindow) setToggle(enabled bool) {
 	if w.onToggle != nil {
 		if err := w.onToggle(enabled); err != nil {
-			w.errorText = err.Error()
+			w.reportError(err)
 			return
 		}
 	}
@@ -998,7 +993,7 @@ func (w *settingsWindow) setToggle(enabled bool) {
 func (w *settingsWindow) setAutoUpdate(enabled bool) {
 	if w.onAutoUpdate != nil {
 		if err := w.onAutoUpdate(enabled); err != nil {
-			w.errorText = err.Error()
+			w.reportError(err)
 			return
 		}
 	}
@@ -1009,7 +1004,7 @@ func (w *settingsWindow) setAutoUpdate(enabled bool) {
 func (w *settingsWindow) setBeta(enabled bool) {
 	if w.onBeta != nil {
 		if err := w.onBeta(enabled); err != nil {
-			w.errorText = err.Error()
+			w.reportError(err)
 			return
 		}
 	}
@@ -1020,7 +1015,7 @@ func (w *settingsWindow) setBeta(enabled bool) {
 func (w *settingsWindow) setControl(enabled bool) {
 	if w.onControl != nil {
 		if err := w.onControl(enabled); err != nil {
-			w.errorText = err.Error()
+			w.reportError(err)
 			return
 		}
 	}
@@ -1031,7 +1026,7 @@ func (w *settingsWindow) setControl(enabled bool) {
 func (w *settingsWindow) setDiscord(enabled bool) {
 	if w.onDiscord != nil {
 		if err := w.onDiscord(enabled); err != nil {
-			w.errorText = err.Error()
+			w.reportError(err)
 			return
 		}
 	}
@@ -1042,7 +1037,7 @@ func (w *settingsWindow) setDiscord(enabled bool) {
 func (w *settingsWindow) setAutoSkip(segment metadata.Segment, enabled bool) {
 	if w.onAutoSkip != nil {
 		if err := w.onAutoSkip(segment, enabled); err != nil {
-			w.errorText = err.Error()
+			w.reportError(err)
 			return
 		}
 	}
@@ -1056,7 +1051,7 @@ func (w *settingsWindow) setProvider(provider watchparty.Provider) {
 	}
 	if w.onProvider != nil {
 		if err := w.onProvider(provider); err != nil {
-			w.errorText = err.Error()
+			w.reportError(err)
 			return
 		}
 	}

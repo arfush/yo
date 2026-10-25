@@ -15,6 +15,7 @@ import (
 	"github.com/arfush/yonime/internal/browser"
 	"github.com/arfush/yonime/internal/kodik"
 	"github.com/arfush/yonime/internal/library"
+	"github.com/arfush/yonime/internal/logging"
 	"github.com/arfush/yonime/internal/metadata"
 )
 
@@ -75,6 +76,7 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 	if plan == nil || len(plan.Episodes) == 0 {
 		return nil, errors.New("нет серий для воспроизведения")
 	}
+	logging.Info("playback starting", "title", plan.Russian, "slug", plan.Slug, "voice", plan.Voice, "episode_index", plan.EpisodeIndex, "episodes", len(plan.Episodes), "quality", options.Quality)
 	if plan.EpisodeIndex < 0 || plan.EpisodeIndex >= len(plan.Episodes) {
 		return nil, errors.New("некорректная серия")
 	}
@@ -104,6 +106,7 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 
 	token, err := s.lib.Token()
 	if err != nil {
+		logging.Error("cannot read token for playback", "error", err)
 		return nil, err
 	}
 	sessionCtx, cancel := context.WithCancel(context.Background())
@@ -135,6 +138,7 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 	// this fails the application stays visible and shows the error.
 	entry, err := session.resolveEntry(ctx, plan.EpisodeIndex)
 	if err != nil {
+		logging.Error("cannot resolve the selected episode", "episode_index", plan.EpisodeIndex, "error", err)
 		cancel()
 		return nil, err
 	}
@@ -146,11 +150,13 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 	}
 	mpv, err := startMPV(ctx, geometry, inputConf, options.Title, options.InputLocked)
 	if err != nil {
+		logging.Error("cannot start mpv", "error", err)
 		cancel()
 		return nil, err
 	}
 	session.mpv = mpv
 	if err := mpv.load(entry.URL); err != nil {
+		logging.Error("cannot load the first video", "episode", entry.Episode.Number, "error", err)
 		mpv.close()
 		cancel()
 		return nil, fmt.Errorf("запустить видео: %w", err)
@@ -174,6 +180,7 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 	started = true
 	s.mu.Unlock()
 
+	logging.Info("playback started", "title", plan.Russian, "episode", entry.Episode.Number)
 	if options.OnReady != nil {
 		options.OnReady()
 	}
@@ -219,6 +226,7 @@ func (s *Service) Close() {
 	session := s.session
 	s.session = nil
 	s.mu.Unlock()
+	logging.Info("playback service closing")
 	if session != nil {
 		session.stop()
 	}
@@ -591,6 +599,11 @@ func (s *Session) saveProgress(force bool, position float64) {
 
 func (s *Session) finish(err error) {
 	s.finishOnce.Do(func() {
+		if err != nil {
+			logging.Warn("playback finished with an error", "error", err)
+		} else {
+			logging.Info("playback finished")
+		}
 		s.onFinishProgress()
 		s.mu.Lock()
 		s.finished = true

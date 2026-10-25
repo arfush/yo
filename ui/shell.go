@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"time"
 
 	"gioui.org/app"
 	"gioui.org/f32"
@@ -31,6 +32,7 @@ type shell struct {
 	update   widget.Clickable
 	settings widget.Clickable
 	party    widget.Clickable
+	log      widget.Clickable
 
 	minimizeHover hoverAnim
 	maximizeHover hoverAnim
@@ -38,6 +40,7 @@ type shell struct {
 	updateHover   hoverAnim
 	settingsHover hoverAnim
 	partyHover    hoverAnim
+	logHover      hoverAnim
 
 	// updateVisible is set by the application when the cached release is newer
 	// than the running version. The settings control is always present on the
@@ -45,11 +48,20 @@ type shell struct {
 	settingsVisible bool
 	updateVisible   bool
 	partyVisible    bool
+	logVisible      bool
 	// partyActive lights the watch-party control while a room is open.
 	partyActive bool
 	onUpdate    func()
 	onSettings  func()
 	onParty     func()
+	onLog       func()
+
+	// errorText is the user-facing failure shown in the middle of the header.
+	// Technical details stay in the log; screens never draw their own errors.
+	errorText string
+	// logAlertUntil keeps the log button dull red for a few seconds after an
+	// error, pointing the user at the details without opening the window.
+	logAlertUntil time.Time
 
 	content layout.Widget
 	// hidden reports that the window is parked in the notification area, so the
@@ -82,6 +94,20 @@ func newShell(typo *typography, icon image.Image) *shell {
 
 func (s *shell) setConfig(cfg app.Config) {
 	s.cfg = cfg
+}
+
+// setError shows a friendly message in the header and highlights the log
+// button for five seconds. The caller is responsible for logging the technical
+// error before calling this method.
+func (s *shell) setError(message string, now time.Time) {
+	s.errorText = message
+	if message != "" {
+		s.logAlertUntil = now.Add(5 * time.Second)
+	}
+}
+
+func (s *shell) clearError() {
+	s.errorText = ""
 }
 
 // animationsRun reports whether the chrome may keep scheduling its own frames.
@@ -226,7 +252,11 @@ func (s *shell) layoutHeader(gtx layout.Context, w *app.Window, g geometry) {
 	s.typo.draw(gtx, "Yonime", titleFace, titleSize, titleColor, image.Pt(g.titleX, titleY))
 
 	badgeRight := s.layoutBadge(gtx, g)
-	s.rateLimit.layout(gtx, s.typo, g, badgeRight)
+	if s.errorText != "" {
+		s.layoutHeaderError(gtx, g, badgeRight)
+	} else {
+		s.rateLimit.layout(gtx, s.typo, g, badgeRight)
+	}
 
 	if s.clickControl(gtx, g, g.controls.minimize, &s.minimize, &s.minimizeHover, controlHoverColor, func(gtx layout.Context) {
 		s.drawMinimize(gtx, g)
@@ -253,6 +283,35 @@ func (s *shell) layoutHeader(gtx layout.Context, w *app.Window, g geometry) {
 	}
 
 	s.layoutDragRegions(gtx, g)
+}
+
+// layoutHeaderError centers the friendly error between the version badge and
+// the window controls. It is intentionally a single line: the full details are
+// in the log window, while the header only tells the user what went wrong.
+func (s *shell) layoutHeaderError(gtx layout.Context, g geometry, badgeRight int) {
+	left := badgeRight + g.px(14)
+	right := g.controls.minimize.Min.X - g.px(14)
+	if right <= left {
+		return
+	}
+	face := font.Font{Typeface: fontFamily, Weight: font.Medium}
+	_, ink := s.typo.measure(gtx, s.errorText, face, mainClearSize)
+	width := ink.Dx()
+	if width > right-left {
+		width = right - left
+	}
+	x := left + (right-left-width)/2
+	y := g.headerCenterY - ink.Dy()/2
+	drawTruncatedText(
+		gtx,
+		s.typo,
+		s.errorText,
+		face,
+		mainClearSize,
+		mainDangerColor,
+		image.Pt(x, y),
+		width,
+	)
 }
 
 func (s *shell) layoutLogo(gtx layout.Context, g geometry) {
@@ -420,7 +479,7 @@ func (s *shell) layoutFooter(gtx layout.Context, g geometry) {
 		return
 	}
 	if s.settingsVisible && !g.settingsRect.Empty() {
-		opened := s.layoutFooterControl(gtx, g, g.settingsRect, &s.settings, &s.settingsHover, false, func(gtx layout.Context, local image.Rectangle, progress float32, _ color.NRGBA) {
+		opened := s.layoutFooterControl(gtx, g, g.settingsRect, &s.settings, &s.settingsHover, false, false, func(gtx layout.Context, local image.Rectangle, progress float32, _ color.NRGBA) {
 			icon := mixColor(footerControlIconColor, footerControlHoverIconColor, progress)
 			drawSettingsIcon(gtx, centerOf(local), g, icon)
 		})
@@ -433,9 +492,24 @@ func (s *shell) layoutFooter(gtx layout.Context, g geometry) {
 			return
 		}
 	}
+	if s.logVisible && !g.logRect.Empty() {
+		alert := !s.logAlertUntil.IsZero() && gtx.Now.Before(s.logAlertUntil)
+		if alert && s.animationsRun() {
+			gtx.Execute(op.InvalidateCmd{At: s.logAlertUntil})
+		}
+		if s.layoutFooterControl(gtx, g, g.logRect, &s.log, &s.logHover, false, alert, func(gtx layout.Context, local image.Rectangle, progress float32, _ color.NRGBA) {
+			icon := mixColor(footerControlIconColor, footerControlHoverIconColor, progress)
+			if alert {
+				icon = mixColor(footerLogAlertIcon, footerControlHoverIconColor, progress)
+			}
+			drawLogIcon(gtx, centerOf(local), g, icon)
+		}) && s.onLog != nil {
+			s.onLog()
+		}
+	}
 	if s.partyVisible && !g.partyRect.Empty() {
 		active := s.partyActive
-		if s.layoutFooterControl(gtx, g, g.partyRect, &s.party, &s.partyHover, active, func(gtx layout.Context, local image.Rectangle, progress float32, background color.NRGBA) {
+		if s.layoutFooterControl(gtx, g, g.partyRect, &s.party, &s.partyHover, active, false, func(gtx layout.Context, local image.Rectangle, progress float32, background color.NRGBA) {
 			icon := mixColor(footerControlIconColor, footerControlHoverIconColor, progress)
 			if active {
 				icon = mixColor(footerPartyActiveIcon, footerControlHoverIconColor, progress)
@@ -446,7 +520,7 @@ func (s *shell) layoutFooter(gtx layout.Context, g geometry) {
 		}
 	}
 	if s.updateVisible && !g.updateRect.Empty() {
-		if s.layoutFooterControl(gtx, g, g.updateRect, &s.update, &s.updateHover, false, func(gtx layout.Context, local image.Rectangle, progress float32, _ color.NRGBA) {
+		if s.layoutFooterControl(gtx, g, g.updateRect, &s.update, &s.updateHover, false, false, func(gtx layout.Context, local image.Rectangle, progress float32, _ color.NRGBA) {
 			icon := mixColor(footerControlIconColor, footerControlHoverIconColor, progress)
 			drawDownloadIcon(
 				gtx,
@@ -463,7 +537,7 @@ func (s *shell) layoutFooter(gtx layout.Context, g geometry) {
 // layoutFooterControl draws one round footer button and reports a click.
 // active tints the button for a control that is currently holding state, such
 // as an open watch-party room.
-func (s *shell) layoutFooterControl(gtx layout.Context, g geometry, rect image.Rectangle, control *widget.Clickable, hover *hoverAnim, active bool, draw func(layout.Context, image.Rectangle, float32, color.NRGBA)) bool {
+func (s *shell) layoutFooterControl(gtx layout.Context, g geometry, rect image.Rectangle, control *widget.Clickable, hover *hoverAnim, active, alert bool, draw func(layout.Context, image.Rectangle, float32, color.NRGBA)) bool {
 	if rect.Empty() {
 		return false
 	}
@@ -490,6 +564,10 @@ func (s *shell) layoutFooterControl(gtx layout.Context, g geometry, rect image.R
 		if active {
 			fill = mixColor(footerPartyActiveFill, footerControlHoverFill, progress)
 			border = mixColor(footerPartyActiveBorder, footerControlHoverBorder, progress)
+		}
+		if alert {
+			fill = mixColor(footerLogAlertFill, footerControlHoverFill, progress)
+			border = mixColor(footerLogAlertBorder, footerControlHoverBorder, progress)
 		}
 		radius := g.px(float32(mainControlRadius))
 		fillRounded(gtx, fill, local, radius)

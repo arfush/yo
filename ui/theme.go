@@ -69,6 +69,11 @@ var (
 	footerPartyActiveFill   = color.NRGBA{R: 0x16, G: 0x27, B: 0x1e, A: 0xff}
 	footerPartyActiveBorder = color.NRGBA{R: 0x2c, G: 0x5a, B: 0x40, A: 0xff}
 	footerPartyActiveIcon   = color.NRGBA{R: 0x6c, G: 0xc8, B: 0x95, A: 0xff}
+
+	// A fresh error tints the log button dull red for five seconds.
+	footerLogAlertFill   = color.NRGBA{R: 0x2a, G: 0x17, B: 0x1b, A: 0xff}
+	footerLogAlertBorder = color.NRGBA{R: 0x5a, G: 0x2a, B: 0x31, A: 0xff}
+	footerLogAlertIcon   = color.NRGBA{R: 0xd7, G: 0x7a, B: 0x80, A: 0xff}
 )
 
 // geometry holds every chrome measurement converted from device-independent
@@ -96,6 +101,7 @@ type geometry struct {
 
 	footerCenterY int
 	settingsRect  image.Rectangle
+	logRect       image.Rectangle
 	partyRect     image.Rectangle
 	updateRect    image.Rectangle
 
@@ -189,12 +195,14 @@ func makeGeometry(gtx layout.Context, maximized, settingsVisible, partyVisible, 
 	controlRight := size.X - g.border - g.px(15)
 	controlTop := g.footerCenterY - controlSize/2
 	controlBottom := g.footerCenterY + controlSize/2
-	// Settings is the rightmost footer button. The watch-party control sits to
-	// its left, and the update control appears left of that only while a newer
-	// release is available.
+	// Settings is the rightmost footer button. The log control sits between it
+	// and the watch-party control; the update control appears left of the party
+	// button only while a newer release is available.
 	if settingsVisible {
 		g.settingsRect = image.Rect(controlRight-controlSize, controlTop, controlRight, controlBottom)
 		nextRight := g.settingsRect.Min.X - g.px(float32(mainControlGap))
+		g.logRect = image.Rect(nextRight-controlSize, controlTop, nextRight, controlBottom)
+		nextRight = g.logRect.Min.X - g.px(float32(mainControlGap))
 		if partyVisible {
 			g.partyRect = image.Rect(nextRight-controlSize, controlTop, nextRight, controlBottom)
 			nextRight = g.partyRect.Min.X - g.px(float32(mainControlGap))

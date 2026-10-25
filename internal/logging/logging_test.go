@@ -1,0 +1,69 @@
+package logging
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestLogFileAndLastErrorContext(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "yonime.log")
+	if err := Init(path); err != nil {
+		t.Fatal(err)
+	}
+	defer Close()
+
+	Info("history loaded", "count", 3)
+	Error("playback failed", "error", errors.New("mpv exited"))
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "history loaded") {
+		t.Fatalf("log file does not contain the info entry:\n%s", data)
+	}
+	if !strings.Contains(string(data), "ERROR playback failed") {
+		t.Fatalf("log file does not contain the error:\n%s", data)
+	}
+
+	context := LastErrorContext()
+	if !strings.Contains(context, "history loaded") {
+		t.Fatalf("last error context = %q, want the preceding line", context)
+	}
+	if !strings.Contains(context, "ERROR playback failed") {
+		t.Fatalf("last error context = %q, want the error line", context)
+	}
+}
+
+func TestSnapshotDoesNotIncludeOrdinaryLinesInCopy(t *testing.T) {
+	if err := Init(filepath.Join(t.TempDir(), "yonime.log")); err != nil {
+		t.Fatal(err)
+	}
+	defer Close()
+
+	Info("ordinary line")
+	got := LastErrorContext()
+	if strings.Contains(got, "ordinary line") {
+		t.Fatalf("copy without an error contains ordinary lines: %q", got)
+	}
+}
+
+func TestRedactsSecrets(t *testing.T) {
+	if err := Init(""); err != nil {
+		t.Fatal(err)
+	}
+	Info("request", "token", "super-secret", "url", "https://example.test")
+	lines := Snapshot()
+	if len(lines) != 1 {
+		t.Fatalf("snapshot length = %d, want 1", len(lines))
+	}
+	if strings.Contains(lines[0], "super-secret") {
+		t.Fatalf("secret leaked into the log: %q", lines[0])
+	}
+	if !strings.Contains(lines[0], "https://example.test") {
+		t.Fatalf("non-secret value was removed: %q", lines[0])
+	}
+}

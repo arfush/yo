@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -101,7 +102,7 @@ type firstRun struct {
 	// onError is called on the UI goroutine once a download fails. The
 	// automatic update card uses it to return to the main screen instead of
 	// trapping the user on a screen they did not ask for.
-	onError       func()
+	onError       func(error)
 	errorNotified bool
 
 	mu       sync.Mutex
@@ -109,6 +110,7 @@ type firstRun struct {
 	progress float64
 	closed   bool
 	cancel   context.CancelFunc
+	lastErr  error
 
 	// Animation state is only touched from the UI goroutine.
 	shownProgress float64
@@ -156,7 +158,7 @@ func (fr *firstRun) layout(gtx layout.Context) {
 	if state == firstRunError && !fr.errorNotified {
 		fr.errorNotified = true
 		if fr.onError != nil {
-			fr.onError()
+			fr.onError(fr.errorValue())
 		}
 	}
 
@@ -209,16 +211,7 @@ func (fr *firstRun) layout(gtx layout.Context) {
 		fr.typo.draw(gtx, line, face, firstRunSubtitleSize, firstRunSubtitleColor, image.Pt(px(firstRunCardPadding), descriptionTop+index*lineAdvance))
 	}
 
-	errorTop := descriptionTop + len(lines)*lineAdvance + px(6)
 	buttonTop := px(firstRunButtonTop)
-	errorHeight := int(math.Round(float64(gtx.Sp(firstRunErrorSize))))
-	if errorTop+errorHeight+px(4) > buttonTop {
-		buttonTop = errorTop + errorHeight + px(4)
-	}
-
-	if state == firstRunError {
-		fr.typo.draw(gtx, upperFirst(fr.errorText), face, firstRunErrorSize, firstRunErrorColor, image.Pt(px(firstRunCardPadding), errorTop))
-	}
 
 	button := image.Rect(
 		px(firstRunCardPadding),
@@ -494,6 +487,15 @@ func (fr *firstRun) snapshot() (firstRunState, float64, bool) {
 	return fr.state, fr.progress, fr.closed
 }
 
+func (fr *firstRun) errorValue() error {
+	fr.mu.Lock()
+	defer fr.mu.Unlock()
+	if fr.lastErr != nil {
+		return fr.lastErr
+	}
+	return errors.New("download failed")
+}
+
 func (fr *firstRun) startDownload() {
 	fr.mu.Lock()
 	if fr.closed || fr.state == firstRunPreparing || fr.state == firstRunDownloading || fr.state == firstRunDone {
@@ -502,6 +504,7 @@ func (fr *firstRun) startDownload() {
 	}
 	fr.state = firstRunPreparing
 	fr.progress = 0
+	fr.lastErr = nil
 	ctx, cancel := context.WithCancel(context.Background())
 	fr.cancel = cancel
 	fr.mu.Unlock()
@@ -541,6 +544,7 @@ func (fr *firstRun) download(ctx context.Context) {
 	fr.cancel = nil
 	if err != nil {
 		fr.state = firstRunError
+		fr.lastErr = err
 		fr.mu.Unlock()
 		logFirstRunError(err)
 		fr.window.Invalidate()

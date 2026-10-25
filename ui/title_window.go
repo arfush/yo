@@ -14,6 +14,8 @@ import (
 	"gioui.org/op"
 	"gioui.org/unit"
 	"gioui.org/widget"
+
+	"github.com/arfush/yonime/internal/library"
 )
 
 const (
@@ -141,13 +143,15 @@ type titleWindow struct {
 	// episode is watched.
 	progressEpisode int
 
-	backClick  widget.Clickable
-	saveClick  widget.Clickable
-	watchClick widget.Clickable
+	backClick       widget.Clickable
+	saveClick       widget.Clickable
+	watchClick      widget.Clickable
+	userStatusClick widget.Clickable
 
 	backHover  hoverAnim
 	saveHover  hoverAnim
 	watchHover hoverAnim
+	statusMenu userStatusMenu
 
 	tooltipIndex  int
 	tooltipKodik  bool
@@ -163,10 +167,41 @@ type titleWindow struct {
 	// transient "Сохранено" ticks stop scheduling frames.
 	hidden func() bool
 
-	onBack    func()
-	onSave    func(voice, episode string) error
-	onQuality func(index int) error
-	onWatch   func(voice, episode string, quality int) error
+	onBack       func()
+	onSave       func(voice, episode string) error
+	onQuality    func(index int) error
+	onWatch      func(voice, episode string, quality int) error
+	onUserStatus func(historyTitle, library.UserStatus) error
+	onError      func(error)
+}
+
+// setUserStatus updates the local pill without touching the database. The app
+// calls it after persistence or after the user changes an unsaved title.
+func (w *titleWindow) setUserStatus(status library.UserStatus) {
+	w.item.userStatus = library.NormalizeUserStatus(status)
+}
+
+func (w *titleWindow) canChangeUserStatus() bool {
+	return w.item.status != statusAnnounced
+}
+
+func (w *titleWindow) layoutOverlay(gtx layout.Context, origin image.Point) {
+	if !w.statusMenu.open {
+		return
+	}
+	id := w.item.id
+	w.statusMenu.layout(gtx, w.typo, origin, func(status library.UserStatus) {
+		if !w.canChangeUserStatus() {
+			return
+		}
+		previous := w.item.userStatus
+		w.setUserStatus(status)
+		if w.onUserStatus != nil {
+			if err := w.onUserStatus(historyTitle{id: id}, status); err != nil {
+				w.setUserStatus(previous)
+			}
+		}
+	})
 }
 
 func newTitleWindow(typo *typography, item historyTitle, preferredQuality int) *titleWindow {
@@ -379,27 +414,53 @@ func (w *titleWindow) layout(gtx layout.Context) {
 		drawStatusPill(gtx, w.typo, statusRect, w.item.status)
 	}
 
-	headerProgressTop := titleTop + max(titleInk.Dy(), statusHeight) + gtx.Dp(12)
-	if w.item.original != "" {
-		originalTop := headerProgressTop
+	// The user status pill shares the line with the original title. Keeping it
+	// above the progress bar leaves room for both status tags without pushing
+	// the bar into the episode columns.
+	statusLineTop := titleTop + max(titleInk.Dy(), statusHeight) + gtx.Dp(10)
+	userWidth := userStatusPillWidth(gtx, w.typo)
+	userRect := image.Rect(
+		headerX,
+		statusLineTop,
+		headerX+userWidth,
+		statusLineTop+statusHeight,
+	)
+	userClicked := w.userStatusClick.Clicked(gtx)
+	statusStack := op.Offset(userRect.Min).Push(gtx.Ops)
+	statusGtx := gtx
+	statusGtx.Constraints = layout.Exact(userRect.Size())
+	w.userStatusClick.Layout(statusGtx, func(gtx layout.Context) layout.Dimensions {
+		if w.canChangeUserStatus() {
+			pointer.CursorPointer.Add(gtx.Ops)
+		}
+		drawUserStatusPill(gtx, w.typo, image.Rect(0, 0, userRect.Dx(), userRect.Dy()), w.item.userStatus, true)
+		return layout.Dimensions{Size: userRect.Size()}
+	})
+	statusStack.Pop()
+	if userClicked && w.canChangeUserStatus() {
+		w.statusMenu.show(userRect, w.item.userStatus, w.item.id)
+		gtx.Execute(op.InvalidateCmd{})
+	}
+
+	originalFace := font.Font{Typeface: fontFamily, Weight: font.Normal}
+	_, originalInk := w.typo.measure(gtx, w.item.original, originalFace, titlePageOriginalSize)
+	originalX := userRect.Max.X + gtx.Dp(12)
+	originalWidth := size.X - padX - originalX
+	originalTop := statusLineTop + (statusHeight-originalInk.Dy())/2
+	if w.item.original != "" && originalWidth > 0 {
 		drawTruncatedText(
 			gtx,
 			w.typo,
 			w.item.original,
-			font.Font{Typeface: fontFamily, Weight: font.Normal},
+			originalFace,
 			titlePageOriginalSize,
 			mainMutedColor,
-			image.Pt(headerX, originalTop),
-			size.X-padX-headerX,
+			image.Pt(originalX, originalTop),
+			originalWidth,
 		)
-		_, originalInk := w.typo.measure(
-			gtx,
-			w.item.original,
-			font.Font{Typeface: fontFamily, Weight: font.Normal},
-			titlePageOriginalSize,
-		)
-		headerProgressTop = originalTop + originalInk.Dy() + gtx.Dp(24)
 	}
+	lineHeight := max(statusHeight, originalInk.Dy())
+	headerProgressTop := statusLineTop + lineHeight + gtx.Dp(10)
 
 	columnsTop := poster.Max.Y + gtx.Dp(titlePageColumnsGapTop)
 	w.layoutHeaderProgress(gtx, image.Rect(headerX, headerProgressTop, size.X-padX, columnsTop))
@@ -938,6 +999,9 @@ func (w *titleWindow) layoutQualities(gtx layout.Context, rect image.Rectangle) 
 			if w.onQuality != nil {
 				if err := w.onQuality(i); err != nil {
 					w.watchError = err.Error()
+					if w.onError != nil {
+						w.onError(err)
+					}
 				}
 			}
 			gtx.Execute(op.InvalidateCmd{})
@@ -1079,9 +1143,7 @@ func (w *titleWindow) layoutFooter(gtx layout.Context) {
 	}
 
 	saveLabel := "Сохранить"
-	if w.saveError != "" {
-		saveLabel = "Ошибка"
-	} else if !w.savedUntil.IsZero() && gtx.Now.Before(w.savedUntil) {
+	if !w.savedUntil.IsZero() && gtx.Now.Before(w.savedUntil) {
 		saveLabel = "Сохранено"
 		if w.animationsRun() {
 			gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(200 * time.Millisecond)})
@@ -1103,6 +1165,9 @@ func (w *titleWindow) layoutFooter(gtx layout.Context) {
 		if w.onSave != nil {
 			if err := w.onSave(w.selectedVoiceName(), w.selectedEpisodeLabel()); err != nil {
 				w.saveError = err.Error()
+				if w.onError != nil {
+					w.onError(err)
+				}
 			}
 		}
 		if w.saveError == "" {
@@ -1152,6 +1217,9 @@ func (w *titleWindow) layoutFooter(gtx layout.Context) {
 			w.watchError = ""
 			if err := w.onWatch(w.selectedVoiceName(), w.selectedEpisodeLabel(), titleQualityValues[w.selectedQuality]); err != nil {
 				w.watchError = err.Error()
+				if w.onError != nil {
+					w.onError(err)
+				}
 			} else {
 				w.watching = true
 			}
@@ -1159,33 +1227,6 @@ func (w *titleWindow) layoutFooter(gtx layout.Context) {
 		}
 	}
 
-	if w.watchError != "" {
-		statusLeft := backRect.Max.X + gtx.Dp(unit.Dp(18))
-		statusRight := saveRect.Min.X - gtx.Dp(unit.Dp(18))
-		if watchRect != (image.Rectangle{}) && watchRect.Min.X < statusRight {
-			statusRight = watchRect.Min.X - gtx.Dp(unit.Dp(18))
-		}
-		if statusRight > statusLeft {
-			face := font.Font{Typeface: fontFamily, Weight: font.Normal}
-			message := upperFirst(w.watchError)
-			_, ink := w.typo.measure(gtx, message, face, titlePageNoteSize)
-			available := statusRight - statusLeft
-			x := statusLeft
-			if ink.Dx() <= available {
-				x += (available - ink.Dx()) / 2
-			}
-			drawTruncatedText(
-				gtx,
-				w.typo,
-				message,
-				face,
-				titlePageNoteSize,
-				color.NRGBA{R: 0xf0, G: 0x8a, B: 0x8a, A: 0xff},
-				image.Pt(x, (size.Y-ink.Dy())/2),
-				available,
-			)
-		}
-	}
 }
 
 func (w *titleWindow) layoutFooterButton(gtx layout.Context, rect image.Rectangle, click *widget.Clickable, hover *hoverAnim, primary bool, draw func(layout.Context)) bool {

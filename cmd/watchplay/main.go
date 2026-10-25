@@ -97,7 +97,7 @@ func watchpartyConfigHint() string {
 	if path, err := appdata.WatchPartyConfigPath(); err == nil {
 		return path
 	}
-	return "%APPDATA%\\yonime\\watchparty.json"
+	return "%APPDATA%\\Yonime\\watchparty.json"
 }
 
 type command struct {
