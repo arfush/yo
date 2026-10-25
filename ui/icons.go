@@ -79,11 +79,12 @@ func drawOutlineRect(gtx layout.Context, g geometry, r image.Rectangle) {
 	fill(gtx, iconColor, image.Rect(r.Max.X-thickness, r.Min.Y, r.Max.X, r.Max.Y))
 }
 
-// drawLogIcon paints a small document with text lines. It marks the log
-// control and uses the same thin-stroke style as the other footer icons.
+// drawLogIcon paints a document with text lines. It is deliberately close to
+// the size of the gear and tray glyphs: the old 8.5x10.5 dp document read as a
+// speck next to them in the footer.
 func drawLogIcon(gtx layout.Context, center image.Point, g geometry, col color.NRGBA) {
-	width := int(g.vec(8.5))
-	height := int(g.vec(10.5))
+	width := int(g.vec(12))
+	height := int(g.vec(14))
 	if width < 2 || height < 2 {
 		return
 	}
@@ -93,13 +94,19 @@ func drawLogIcon(gtx layout.Context, center image.Point, g geometry, col color.N
 		center.X+width/2,
 		center.Y+height/2,
 	)
-	strokeRoundedRect(gtx, rect, g.vec(1.8), g.vec(1.1), col)
-	lineLeft := rect.Min.X + int(g.vec(2))
-	lineRight := rect.Max.X - int(g.vec(2))
-	lineHeight := max(1, int(g.vec(1)))
-	for index := 0; index < 3; index++ {
-		y := rect.Min.Y + int(g.vec(3.2)+g.vec(2.1)*float32(index))
-		fill(gtx, col, image.Rect(lineLeft, y, lineRight, y+lineHeight))
+	strokeRoundedRect(gtx, rect, g.vec(2.2), g.vec(1.3), col)
+	lineLeft := rect.Min.X + int(g.vec(2.5))
+	lineRight := rect.Max.X - int(g.vec(2.5))
+	lineHeight := max(1, int(g.vec(1.3)))
+	for index := 0; index < 4; index++ {
+		y := rect.Min.Y + int(g.vec(3.6)+g.vec(2.5)*float32(index))
+		right := lineRight
+		if index == 3 {
+			// A shorter last line keeps the glyph from looking like a solid
+			// striped block at small sizes.
+			right -= int(g.vec(2.5))
+		}
+		fill(gtx, col, image.Rect(lineLeft, y, right, y+lineHeight))
 	}
 }
 

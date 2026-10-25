@@ -270,7 +270,7 @@ func (w *titleWindow) applyProgress(episode string, resumeAt, duration float64) 
 	}
 }
 
-// layoutHeaderProgress paints the watched-episode bar under the original title.
+// layoutHeaderProgress paints the watched-episode bar under the status row.
 // rect ends at the columns below the header, so a short window simply skips it.
 // A film has no series counter, so only its progress bar is drawn.
 func (w *titleWindow) layoutHeaderProgress(gtx layout.Context, rect image.Rectangle) {
@@ -385,14 +385,7 @@ func (w *titleWindow) layout(gtx layout.Context) {
 	titleFace := font.Font{Typeface: fontFamily, Weight: font.Bold}
 	_, titleInk := w.typo.measure(gtx, w.item.title, titleFace, titlePageTitleSize)
 	titleTop := poster.Min.Y + gtx.Dp(19)
-	titleMax := size.X - padX - statusWidth - gtx.Dp(12) - headerX
-	if titleMax < gtx.Dp(90) {
-		titleMax = size.X - padX - headerX
-	}
-	titleWidth := titleInk.Dx()
-	if titleWidth > titleMax {
-		titleWidth = titleMax
-	}
+	titleMax := size.X - padX - headerX
 	drawTruncatedText(
 		gtx,
 		w.typo,
@@ -403,26 +396,23 @@ func (w *titleWindow) layout(gtx layout.Context) {
 		image.Pt(headerX, titleTop),
 		titleMax,
 	)
-	statusLeft := headerX + titleWidth + gtx.Dp(12)
-	statusRect := image.Rect(
-		statusLeft,
-		titleTop+(titleInk.Dy()-statusHeight)/2,
-		statusLeft+statusWidth,
-		titleTop+(titleInk.Dy()-statusHeight)/2+statusHeight,
-	)
-	if statusRect.Max.X <= size.X-padX {
-		drawStatusPill(gtx, w.typo, statusRect, w.item.status)
-	}
 
-	// The user status pill shares the line with the original title. Keeping it
-	// above the progress bar leaves room for both status tags without pushing
-	// the bar into the episode columns.
+	// The English title used to sit on this line. It is replaced by the two
+	// status tags in the same order as history: release first, user second.
 	statusLineTop := titleTop + max(titleInk.Dy(), statusHeight) + gtx.Dp(10)
-	userWidth := userStatusPillWidth(gtx, w.typo)
-	userRect := image.Rect(
+	releaseRect := image.Rect(
 		headerX,
 		statusLineTop,
-		headerX+userWidth,
+		headerX+statusWidth,
+		statusLineTop+statusHeight,
+	)
+	drawStatusPill(gtx, w.typo, releaseRect, w.item.status)
+
+	statusGap := gtx.Dp(mainStatusGap)
+	userRect := image.Rect(
+		releaseRect.Max.X+statusGap,
+		statusLineTop,
+		releaseRect.Max.X+statusGap+statusWidth,
 		statusLineTop+statusHeight,
 	)
 	userClicked := w.userStatusClick.Clicked(gtx)
@@ -438,29 +428,13 @@ func (w *titleWindow) layout(gtx layout.Context) {
 	})
 	statusStack.Pop()
 	if userClicked && w.canChangeUserStatus() {
-		w.statusMenu.show(userRect, w.item.userStatus, w.item.id)
+		w.statusMenu.show(userRect, w.item.userStatus, w.item.id, userRect.Dx(), userRect.Dy())
 		gtx.Execute(op.InvalidateCmd{})
 	}
 
-	originalFace := font.Font{Typeface: fontFamily, Weight: font.Normal}
-	_, originalInk := w.typo.measure(gtx, w.item.original, originalFace, titlePageOriginalSize)
-	originalX := userRect.Max.X + gtx.Dp(12)
-	originalWidth := size.X - padX - originalX
-	originalTop := statusLineTop + (statusHeight-originalInk.Dy())/2
-	if w.item.original != "" && originalWidth > 0 {
-		drawTruncatedText(
-			gtx,
-			w.typo,
-			w.item.original,
-			originalFace,
-			titlePageOriginalSize,
-			mainMutedColor,
-			image.Pt(originalX, originalTop),
-			originalWidth,
-		)
-	}
-	lineHeight := max(statusHeight, originalInk.Dy())
-	headerProgressTop := statusLineTop + lineHeight + gtx.Dp(10)
+	// Keep the bar at its old, slightly lower position now that the status row
+	// occupies the line where the English title used to be.
+	headerProgressTop := statusLineTop + statusHeight + gtx.Dp(18)
 
 	columnsTop := poster.Max.Y + gtx.Dp(titlePageColumnsGapTop)
 	w.layoutHeaderProgress(gtx, image.Rect(headerX, headerProgressTop, size.X-padX, columnsTop))

@@ -37,7 +37,7 @@ const (
 	mainNextInset        = unit.Dp(10)
 	mainInputGap         = unit.Dp(12)
 	mainHistoryGap       = unit.Dp(18)
-	mainHistoryHeight    = unit.Dp(28)
+	mainHistoryHeight    = unit.Dp(34)
 	mainListGap          = unit.Dp(6)
 	mainHistoryTailSpace = unit.Dp(14)
 	mainRowHeight        = unit.Dp(88)
@@ -62,9 +62,11 @@ const (
 	mainHintTextSize     = unit.Sp(10)
 	mainStatusHeight     = unit.Dp(23)
 	mainStatusPaddingX   = unit.Dp(9)
-	mainFilterSize       = unit.Sp(9.5)
-	mainFilterPaddingX   = unit.Dp(7)
-	mainFilterGap        = unit.Dp(4)
+	mainStatusGap        = unit.Dp(6)
+	mainFilterSize       = unit.Sp(10.5)
+	mainFilterPaddingX   = unit.Dp(10)
+	mainFilterGap        = unit.Dp(6)
+	mainFilterHeight     = unit.Dp(28)
 	mainFrameTime        = time.Second / 60
 	mainSpinnerFrameTime = time.Second / 60
 	// mainErrorFeedbackDuration is how long the Next button and the mascot stay
@@ -1262,7 +1264,7 @@ func (m *mainWindow) layoutHistoryFilters(gtx layout.Context, left, right, cente
 		return
 	}
 	x := left + (available-total)/2
-	height := gtx.Dp(mainStatusHeight)
+	height := gtx.Dp(mainFilterHeight)
 	clickedIndex := -1
 	for index, option := range userStatusFilterOptions {
 		rect := image.Rect(x, centerY-height/2, x+widths[index], centerY+height/2)
@@ -1322,33 +1324,17 @@ func (m *mainWindow) layoutHistory(gtx layout.Context, rect image.Rectangle) {
 	// The strip is added after the list so it sits above row content and only
 	// captures presses in the six-dot handle column.
 	m.addHistoryDragInput(gtx, rect)
-	if len(m.history) == 0 {
-		m.layoutHistoryEmpty(gtx, rect)
-	}
-}
-
-func (m *mainWindow) layoutHistoryEmpty(gtx layout.Context, rect image.Rectangle) {
-	if rect.Empty() || m.loading || len(m.history) > 0 {
-		return
-	}
-	if m.filter == filterAll || len(m.allHistory) == 0 {
-		return
-	}
-	message := "В этом статусе пока пусто."
-	face := font.Font{Typeface: fontFamily, Weight: font.Normal}
-	_, ink := m.typo.measure(gtx, message, face, mainHistoryCountSize)
-	y := rect.Min.Y + (rect.Dy()-ink.Dy())/2
-	m.typo.draw(gtx, message, face, mainHistoryCountSize, mainMutedColor, image.Pt(rect.Min.X, y))
 }
 
 type historyRowGeometry struct {
-	handle   image.Rectangle
-	poster   image.Rectangle
-	play     image.Rectangle
-	trash    image.Rectangle
-	status   image.Rectangle
-	titleHit image.Rectangle
-	titleX   int
+	handle        image.Rectangle
+	poster        image.Rectangle
+	play          image.Rectangle
+	trash         image.Rectangle
+	releaseStatus image.Rectangle
+	status        image.Rectangle
+	titleHit      image.Rectangle
+	titleX        int
 }
 
 type historyRowVisual struct {
@@ -1378,25 +1364,34 @@ func (m *mainWindow) historyRowGeometry(gtx layout.Context, width, height int, i
 	trash := image.Rect(width-pad-controlSize, (height-controlSize)/2, width-pad, (height-controlSize)/2+controlSize)
 	play := image.Rect(trash.Min.X-controlGap-controlSize, trash.Min.Y, trash.Min.X-controlGap, trash.Max.Y)
 	titleX := poster.Max.X + gtx.Dp(unit.Dp(14))
+	statusWidth := m.userStatusWidth(gtx)
 	statusHeight := gtx.Dp(mainStatusHeight)
+	statusGap := gtx.Dp(mainStatusGap)
 	status := image.Rect(
-		play.Min.X-gtx.Dp(unit.Dp(14))-m.userStatusWidth(gtx),
+		play.Min.X-gtx.Dp(unit.Dp(14))-statusWidth,
 		(height-statusHeight)/2,
 		play.Min.X-gtx.Dp(unit.Dp(14)),
 		(height-statusHeight)/2+statusHeight,
 	)
-	titleHit := image.Rect(handle.Max.X, 0, status.Min.X-gtx.Dp(unit.Dp(8)), height)
+	releaseStatus := image.Rect(
+		status.Min.X-statusGap-statusWidth,
+		status.Min.Y,
+		status.Min.X-statusGap,
+		status.Max.Y,
+	)
+	titleHit := image.Rect(handle.Max.X, 0, releaseStatus.Min.X-gtx.Dp(unit.Dp(8)), height)
 	if titleHit.Max.X < titleHit.Min.X+1 {
 		titleHit.Max.X = titleHit.Min.X + 1
 	}
 	return historyRowGeometry{
-		handle:   handle,
-		poster:   poster,
-		play:     play,
-		trash:    trash,
-		status:   status,
-		titleHit: titleHit,
-		titleX:   titleX,
+		handle:        handle,
+		poster:        poster,
+		play:          play,
+		trash:         trash,
+		releaseStatus: releaseStatus,
+		status:        status,
+		titleHit:      titleHit,
+		titleX:        titleX,
 	}
 }
 
@@ -1447,9 +1442,9 @@ func (m *mainWindow) drawHistoryRowCard(gtx layout.Context, rect image.Rectangle
 
 	m.drawPoster(gtx, geom.poster, item)
 
-	titleRight := geom.status.Min.X - gtx.Dp(unit.Dp(14))
-	if titleRight < geom.titleX {
-		titleRight = geom.play.Min.X - gtx.Dp(unit.Dp(14))
+	titleRight := geom.releaseStatus.Min.X - gtx.Dp(unit.Dp(14))
+	if titleRight < geom.titleX+1 {
+		titleRight = geom.titleX + 1
 	}
 	titleFace := font.Font{Typeface: fontFamily, Weight: font.SemiBold}
 	_, titleInk := m.typo.measure(gtx, item.title, titleFace, mainRowTitleSize)
@@ -1524,6 +1519,7 @@ func (m *mainWindow) drawHistoryRowCard(gtx layout.Context, rect image.Rectangle
 			)
 		}
 	}
+	drawStatusPill(gtx, m.typo, geom.releaseStatus, item.status)
 	drawUserStatusPill(gtx, m.typo, geom.status, item.userStatus, true)
 
 	if vis.itemLoading {
@@ -1598,7 +1594,7 @@ func (m *mainWindow) layoutHistoryRow(gtx layout.Context, index, width, height i
 		stride := m.listRowHeight + m.listGap
 		top := m.listRect.Min.Y + m.historyRowTop(index, stride)
 		anchor := geom.status.Add(image.Pt(m.listRect.Min.X, top))
-		m.statusMenu.show(anchor, item.userStatus, item.id)
+		m.statusMenu.show(anchor, item.userStatus, item.id, geom.status.Dx(), geom.status.Dy())
 		m.selected = index
 		gtx.Execute(op.InvalidateCmd{})
 	}
@@ -1728,17 +1724,18 @@ func (m *mainWindow) setUserStatus(id int64, status library.UserStatus) {
 
 func statusPillWidth(gtx layout.Context, typo *typography) int {
 	face := font.Font{Typeface: fontFamily, Weight: font.Medium}
-	_, done := typo.measure(gtx, "Завершён", face, mainStatusSize)
-	_, live := typo.measure(gtx, "Онгоинг", face, mainStatusSize)
-	_, announced := typo.measure(gtx, "Анонс", face, mainStatusSize)
-	// All status pills share the widest label's width so the column does not
-	// jump between rows.
-	width := done.Dx()
-	if live.Dx() > width {
-		width = live.Dx()
+	// Release and user statuses share one width so both pills in a row look
+	// like a single, stable column even when their labels differ.
+	width := 0
+	for _, label := range []string{"Завершён", "Онгоинг", "Анонс"} {
+		if _, ink := typo.measure(gtx, label, face, mainStatusSize); ink.Dx() > width {
+			width = ink.Dx()
+		}
 	}
-	if announced.Dx() > width {
-		width = announced.Dx()
+	for _, status := range userStatusMenuOptions {
+		if _, ink := typo.measure(gtx, userStatusLabel(status), face, mainStatusSize); ink.Dx() > width {
+			width = ink.Dx()
+		}
 	}
 	return 2*gtx.Dp(mainStatusPaddingX) + width
 }
@@ -1767,25 +1764,7 @@ func drawStatusPill(gtx layout.Context, typo *typography, rect image.Rectangle, 
 		fillColor = mainStatusAnnFill
 		borderColor = mainStatusAnnBorder
 	}
-
-	radius := gtx.Dp(unit.Dp(7))
-	fillRounded(gtx, borderColor, rect, radius)
-	fillRounded(gtx, fillColor, rect.Inset(gtx.Dp(unit.Dp(1))), radius-gtx.Dp(unit.Dp(1)))
-	_, ink := typo.measure(gtx, label, font.Font{Typeface: fontFamily, Weight: font.Medium}, mainStatusSize)
-	textY := rect.Min.Y + (rect.Dy()-ink.Dy())/2
-	if status == statusCompleted {
-		// "Завершён" has both an ascender mark and a descender; the bare ink
-		// box reads a hair high next to the other labels.
-		textY += gtx.Dp(unit.Dp(1))
-	}
-	typo.draw(
-		gtx,
-		label,
-		font.Font{Typeface: fontFamily, Weight: font.Medium},
-		mainStatusSize,
-		textColor,
-		image.Pt(rect.Min.X+(rect.Dx()-ink.Dx())/2, textY),
-	)
+	drawPill(gtx, typo, rect, label, mainStatusSize, textColor, fillColor, borderColor)
 }
 
 func (m *mainWindow) drawTruncated(gtx layout.Context, text string, face font.Font, size unit.Sp, col color.NRGBA, at image.Point, maxWidth int) {

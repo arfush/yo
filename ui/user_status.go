@@ -38,7 +38,7 @@ var userStatusFilterOptions = []userStatusFilterOption{
 	{filter: filterWatching, status: library.UserStatusWatching, label: "Смотрю"},
 	{filter: filterPlanned, status: library.UserStatusPlanned, label: "В планах"},
 	{filter: filterFavorite, status: library.UserStatusFavorite, label: "Обожаю"},
-	{filter: filterCompleted, status: library.UserStatusCompleted, label: "Просмотрено"},
+	{filter: filterCompleted, status: library.UserStatusCompleted, label: "Досмотрел"},
 	{filter: filterDropped, status: library.UserStatusDropped, label: "Брошено"},
 }
 
@@ -84,7 +84,7 @@ func userStatusLabel(status library.UserStatus) string {
 	case library.UserStatusFavorite:
 		return "Обожаю"
 	case library.UserStatusCompleted:
-		return "Просмотрено"
+		return "Досмотрел"
 	case library.UserStatusDropped:
 		return "Брошено"
 	default:
@@ -119,18 +119,10 @@ func (f userStatusFilter) matches(status library.UserStatus) bool {
 	return true
 }
 
+// userStatusPillWidth is shared with the release-status pills, so the two tags
+// in a history row or on the title page always have exactly the same size.
 func userStatusPillWidth(gtx layout.Context, typo *typography) int {
-	face := font.Font{Typeface: fontFamily, Weight: font.Medium}
-	width := 0
-	for _, option := range userStatusFilterOptions {
-		if option.filter == filterAll {
-			continue
-		}
-		if _, ink := typo.measure(gtx, option.label, face, mainStatusSize); ink.Dx() > width {
-			width = ink.Dx()
-		}
-	}
-	return 2*gtx.Dp(mainStatusPaddingX) + width
+	return statusPillWidth(gtx, typo)
 }
 
 func filterPillWidth(gtx layout.Context, typo *typography, label string) int {
@@ -172,17 +164,45 @@ func drawFilterPill(gtx layout.Context, typo *typography, rect image.Rectangle, 
 	drawPill(gtx, typo, rect, option.label, mainFilterSize, textColor, fillColor, borderColor)
 }
 
+// drawUserStatusMenuItem keeps the menu quiet until the pointer reaches an
+// option: the neutral gray is tinted with the status color, but never as bright
+// as the already selected pill above the menu.
+func drawUserStatusMenuItem(gtx layout.Context, typo *typography, rect image.Rectangle, status library.UserStatus, hover float32) {
+	if rect.Empty() {
+		return
+	}
+	textColor, fillColor, borderColor := userStatusColors(status)
+	textColor = mixColor(userStatusMutedText, textColor, hover*0.50)
+	fillColor = mixColor(userStatusMutedFill, fillColor, hover*0.35)
+	borderColor = mixColor(userStatusMutedEdge, borderColor, hover*0.50)
+	drawPill(gtx, typo, rect, userStatusLabel(status), mainStatusSize, textColor, fillColor, borderColor)
+}
+
 func drawPill(gtx layout.Context, typo *typography, rect image.Rectangle, label string, size unit.Sp, textColor, fillColor, borderColor color.NRGBA) {
 	radius := gtx.Dp(unit.Dp(7))
 	fillRounded(gtx, borderColor, rect, radius)
 	fillRounded(gtx, fillColor, rect.Inset(gtx.Dp(unit.Dp(1))), radius-gtx.Dp(unit.Dp(1)))
 	face := font.Font{Typeface: fontFamily, Weight: font.Medium}
-	_, ink := typo.measure(gtx, label, face, size)
-	textY := rect.Min.Y + (rect.Dy()-ink.Dy())/2
-	if label == "Завершён" || label == "Просмотрено" {
-		textY += gtx.Dp(unit.Dp(1))
+	typo.drawCentered(gtx, label, face, size, textColor, centerOf(rect))
+}
+
+const (
+	userStatusMenuPad  = unit.Dp(4)
+	userStatusMenuGap  = unit.Dp(2)
+	userStatusMenuDrop = unit.Dp(7)
+)
+
+// userStatusMenuOptionsFor keeps the menu order but removes the status already
+// shown in the pill that opened it.
+func userStatusMenuOptionsFor(current library.UserStatus) []library.UserStatus {
+	current = library.NormalizeUserStatus(current)
+	options := make([]library.UserStatus, 0, len(userStatusMenuOptions)-1)
+	for _, status := range userStatusMenuOptions {
+		if status != current {
+			options = append(options, status)
+		}
 	}
-	typo.draw(gtx, label, face, size, textColor, image.Pt(rect.Min.X+(rect.Dx()-ink.Dx())/2, textY))
+	return options
 }
 
 // userStatusMenu is a small popup anchored to a status pill. It is drawn by the
@@ -194,16 +214,23 @@ type userStatusMenu struct {
 	current library.UserStatus
 	id      int64
 
-	clicks  [5]widget.Clickable
-	hovers  [5]hoverAnim
-	dismiss widget.Clickable
+	// pillWidth and pillHeight come from the status block that opened the menu,
+	// so history and title-page menus match their own pills.
+	pillWidth  int
+	pillHeight int
+
+	clicks [5]widget.Clickable
+	hovers [5]hoverAnim
+	scrim  widget.Clickable
 }
 
-func (m *userStatusMenu) show(anchor image.Rectangle, current library.UserStatus, id int64) {
+func (m *userStatusMenu) show(anchor image.Rectangle, current library.UserStatus, id int64, pillWidth, pillHeight int) {
 	m.open = true
 	m.anchor = anchor
 	m.current = library.NormalizeUserStatus(current)
 	m.id = id
+	m.pillWidth = max(pillWidth, 1)
+	m.pillHeight = max(pillHeight, 1)
 }
 
 func (m *userStatusMenu) close() {
@@ -214,81 +241,109 @@ func (m *userStatusMenu) layout(gtx layout.Context, typo *typography, origin ima
 	if !m.open {
 		return
 	}
-
-	// A click anywhere outside the menu dismisses it. The menu options are
-	// drawn afterwards, so they sit above this full-window handler.
-	gtx.Constraints = layout.Exact(gtx.Constraints.Max)
-	_, dismissed := m.dismiss.Update(gtx)
-	if dismissed {
+	size := gtx.Constraints.Max
+	if size.X <= 0 || size.Y <= 0 {
+		m.close()
+		return
+	}
+	options := userStatusMenuOptionsFor(m.current)
+	if len(options) == 0 {
 		m.close()
 		return
 	}
 
-	cardWidth := gtx.Dp(unit.Dp(176))
-	itemHeight := gtx.Dp(unit.Dp(31))
-	padding := gtx.Dp(unit.Dp(6))
-	cardHeight := len(userStatusMenuOptions)*itemHeight + 2*padding
-	margin := gtx.Dp(unit.Dp(8))
-	x := m.anchor.Min.X
-	y := m.anchor.Max.Y + gtx.Dp(unit.Dp(7))
-	// The overlay is laid out in window coordinates but anchored in content
-	// coordinates, so the free space to the right and below is reduced by the
-	// content origin.
-	maxX := gtx.Constraints.Max.X - origin.X - cardWidth - margin
-	maxY := gtx.Constraints.Max.Y - origin.Y - cardHeight - margin
-	if x > maxX {
-		x = maxX
+	pad := gtx.Dp(userStatusMenuPad)
+	gap := gtx.Dp(userStatusMenuGap)
+	itemWidth := m.pillWidth
+	itemHeight := m.pillHeight
+	menuWidth := itemWidth + 2*pad
+	menuHeight := len(options)*itemHeight + 2*pad
+	if len(options) > 1 {
+		menuHeight += (len(options) - 1) * gap
 	}
-	if x < margin {
-		x = margin
-	}
-	if y > maxY {
-		y = m.anchor.Min.Y - cardHeight - gtx.Dp(unit.Dp(7))
-	}
-	if y < margin {
-		y = margin
-	}
-	card := image.Rect(x, y, x+cardWidth, y+cardHeight)
+	menu := placeUserStatusMenu(
+		m.anchor.Add(origin),
+		menuWidth,
+		menuHeight,
+		gtx.Dp(userStatusMenuDrop),
+		gtx.Dp(unit.Dp(8)),
+		image.Rectangle{Max: size},
+	)
 
-	// The anchor and the clamp above are content-local; move the card into
-	// window coordinates before painting it.
-	stack := op.Offset(origin).Push(gtx.Ops)
-	defer stack.Pop()
+	// The scrim goes first so the options registered after it stay on top and
+	// receive their own clicks; anything else closes the menu.
+	if layoutOverlayScrim(gtx, image.Rectangle{Max: size}, &m.scrim) {
+		m.close()
+		gtx.Execute(op.InvalidateCmd{})
+		return
+	}
 
-	shadow := card.Add(image.Pt(0, gtx.Dp(unit.Dp(6))))
-	fillRounded(gtx, color.NRGBA{A: 0x88}, shadow, gtx.Dp(unit.Dp(12)))
-	fillRounded(gtx, userStatusMutedEdge, card, gtx.Dp(unit.Dp(12)))
-	fillRounded(gtx, color.NRGBA{R: 0x17, G: 0x15, B: 0x1f, A: 0xff}, card.Inset(gtx.Dp(unit.Dp(1))), gtx.Dp(unit.Dp(11)))
+	radius := gtx.Dp(unit.Dp(8))
+	fillRounded(gtx, titlePanelBorder, menu, radius)
+	fillRounded(gtx, settingsMenuFill, menu.Inset(gtx.Dp(unit.Dp(1))), radius-gtx.Dp(unit.Dp(1)))
 
-	for index, status := range userStatusMenuOptions {
+	for index, status := range options {
 		rect := image.Rect(
-			card.Min.X+padding,
-			card.Min.Y+padding+index*itemHeight,
-			card.Max.X-padding,
-			card.Min.Y+padding+(index+1)*itemHeight,
+			menu.Min.X+pad,
+			menu.Min.Y+pad+index*(itemHeight+gap),
+			menu.Min.X+pad+itemWidth,
+			menu.Min.Y+pad+index*(itemHeight+gap)+itemHeight,
 		)
 		click := &m.clicks[index]
 		hover := m.hovers[index].update(gtx, click.Hovered())
-		if hover > 0 {
-			fillRounded(gtx, mixColor(color.NRGBA{R: 0x17, G: 0x15, B: 0x1f, A: 0xff}, color.NRGBA{R: 0x22, G: 0x1c, B: 0x34, A: 0xff}, hover), rect, gtx.Dp(unit.Dp(8)))
-		}
-		pill := rect.Inset(gtx.Dp(unit.Dp(1)))
-		drawUserStatusPill(gtx, typo, pill, status, true)
-		if library.NormalizeUserStatus(m.current) == status {
-			strokeRoundedRect(gtx, pill, float32(gtx.Dp(unit.Dp(7))), float32(gtx.Dp(unit.Dp(1))), color.NRGBA{R: 0xf4, G: 0xf2, B: 0xfa, A: 0x66})
-		}
+		clicked := click.Clicked(gtx)
 
 		stack := op.Offset(rect.Min).Push(gtx.Ops)
 		cgtx := gtx
 		cgtx.Constraints = layout.Exact(rect.Size())
-		_, clicked := click.Update(cgtx)
+		click.Layout(cgtx, func(gtx layout.Context) layout.Dimensions {
+			drawUserStatusMenuItem(gtx, typo, image.Rectangle{Max: rect.Size()}, status, hover)
+			return layout.Dimensions{Size: rect.Size()}
+		})
 		stack.Pop()
 		if clicked {
 			m.close()
 			if onSelect != nil {
 				onSelect(status)
 			}
+			gtx.Execute(op.InvalidateCmd{})
 			return
 		}
 	}
+}
+
+// placeUserStatusMenu prefers to open below the pill and flips above it when
+// the footer would clip the panel.
+func placeUserStatusMenu(anchor image.Rectangle, width, height, drop, margin int, bounds image.Rectangle) image.Rectangle {
+	x := anchor.Min.X
+	y := anchor.Max.Y + drop
+	if x+width > bounds.Max.X-margin {
+		x = bounds.Max.X - margin - width
+	}
+	if x < bounds.Min.X+margin {
+		x = bounds.Min.X + margin
+	}
+	if y+height > bounds.Max.Y-margin {
+		y = anchor.Min.Y - drop - height
+	}
+	if y < bounds.Min.Y+margin {
+		y = bounds.Min.Y + margin
+	}
+	return image.Rect(x, y, x+width, y+height)
+}
+
+// layoutOverlayScrim registers an invisible full-window click target. It is
+// laid out before the menu options, which therefore sit above it.
+func layoutOverlayScrim(gtx layout.Context, rect image.Rectangle, click *widget.Clickable) bool {
+	if rect.Empty() {
+		return false
+	}
+	stack := op.Offset(rect.Min).Push(gtx.Ops)
+	defer stack.Pop()
+	cgtx := gtx
+	cgtx.Constraints = layout.Exact(rect.Size())
+	click.Layout(cgtx, func(gtx layout.Context) layout.Dimensions {
+		return layout.Dimensions{Size: rect.Size()}
+	})
+	return click.Clicked(gtx)
 }
