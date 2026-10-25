@@ -127,6 +127,7 @@ type watchPartyWindow struct {
 	joinFeedback bool
 
 	waitSince time.Time
+	waitHat   int
 
 	results chan partyResult
 
@@ -139,6 +140,7 @@ func newWatchPartyWindow(typo *typography, w *app.Window, party *partyManager) *
 		typo:    typo,
 		window:  w,
 		party:   party,
+		waitHat: mascotHatNone,
 		results: make(chan partyResult, 4),
 	}
 	screen.editor.SingleLine = true
@@ -153,8 +155,7 @@ func newWatchPartyWindow(typo *typography, w *app.Window, party *partyManager) *
 	case snapshot.Role == watchparty.Host:
 		screen.mode = wpCreated
 	default:
-		screen.mode = wpWaiting
-		screen.waitSince = time.Now()
+		screen.enterWaiting()
 	}
 	// The guest may have been on the main screen when the host left; the
 	// reason waits in the manager until the card is opened again.
@@ -620,6 +621,9 @@ func (w *watchPartyWindow) layoutWaiting(gtx layout.Context, snapshot partySnaps
 	if w.waitSince.IsZero() {
 		w.waitSince = gtx.Now
 	}
+	if w.waitHat < 0 || w.waitHat >= mascotHatCount {
+		w.waitHat = nextMascotHat()
+	}
 	if waitingTimedOut(gtx.Now, w.waitSince, snapshot) {
 		w.party.Delete()
 		w.mode = wpJoin
@@ -643,7 +647,7 @@ func (w *watchPartyWindow) layoutWaiting(gtx layout.Context, snapshot partySnaps
 		centerX+mascotSize/2,
 		bottom,
 	)
-	drawCatgirl(gtx, mascot, gtx.Now, time.Time{}, mascotHatFor(snapshot.Key))
+	drawCatgirl(gtx, mascot, gtx.Now, time.Time{}, w.waitHat)
 
 	face := font.Font{Typeface: fontFamily, Weight: font.Normal}
 	w.typo.drawCentered(gtx, wpWaitingText, face, wpWaitSize, firstRunSubtitleColor, image.Pt(centerX, bottom+gtx.Dp(unit.Dp(26))))
@@ -824,8 +828,7 @@ func (w *watchPartyWindow) drain() {
 			case partyCreated:
 				w.mode = wpCreated
 			case partyJoined:
-				w.mode = wpWaiting
-				w.waitSince = time.Now()
+				w.enterWaiting()
 				w.editor.SetText("")
 			}
 			w.window.Invalidate()
@@ -852,6 +855,14 @@ func (w *watchPartyWindow) create() {
 		w.results <- partyResult{kind: partyCreated, err: err}
 		w.window.Invalidate()
 	}()
+}
+
+// enterWaiting starts a fresh wait, either after a join or when the card is
+// reopened for a room that is still active. Every opening gets the next hat.
+func (w *watchPartyWindow) enterWaiting() {
+	w.mode = wpWaiting
+	w.waitSince = time.Now()
+	w.waitHat = nextMascotHat()
 }
 
 func (w *watchPartyWindow) openJoin() {

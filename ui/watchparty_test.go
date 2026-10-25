@@ -67,7 +67,7 @@ func TestWatchPartyReopensCreatedFormForHost(t *testing.T) {
 	}
 }
 
-func TestWatchPartyReopensWaitingScreenForGuest(t *testing.T) {
+func TestWatchPartyReopensWaitingScreenWithANewHat(t *testing.T) {
 	party := &partyManager{
 		provider: watchparty.Cloudflare,
 		session:  &watchparty.Session{Key: "YOCBQOPGZ", Provider: watchparty.Cloudflare, Role: watchparty.Guest},
@@ -75,6 +75,16 @@ func TestWatchPartyReopensWaitingScreenForGuest(t *testing.T) {
 	screen := newWatchPartyWindow(nil, nil, party)
 	if screen.mode != wpWaiting {
 		t.Fatalf("mode = %v, want wpWaiting for a guest", screen.mode)
+	}
+	if screen.waitHat < 0 || screen.waitHat >= mascotHatCount {
+		t.Fatalf("first wait hat = %d, want a hat in [0, %d)", screen.waitHat, mascotHatCount)
+	}
+	reopened := newWatchPartyWindow(nil, nil, party)
+	if reopened.mode != wpWaiting {
+		t.Fatalf("reopened mode = %v, want wpWaiting for a guest", reopened.mode)
+	}
+	if reopened.waitHat == screen.waitHat {
+		t.Fatalf("reopening the waiting screen kept hat %d", screen.waitHat)
 	}
 }
 

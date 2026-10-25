@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"image"
 	"testing"
 	"time"
@@ -11,25 +10,22 @@ import (
 	"gioui.org/unit"
 )
 
-func TestMascotHatForIsStable(t *testing.T) {
-	for _, key := range []string{"", "YOCBQOPGZ", "YOSZZZZZZ"} {
-		first := mascotHatFor(key)
-		if first < 0 || first >= mascotHatCount {
-			t.Fatalf("mascotHatFor(%q) = %d, want a hat in [0, %d)", key, first, mascotHatCount)
+func TestNextMascotHatChangesOnEveryOpen(t *testing.T) {
+	previous := nextMascotHat()
+	seen := map[int]bool{previous: true}
+	for index := 1; index < mascotHatCount; index++ {
+		hat := nextMascotHat()
+		if hat < 0 || hat >= mascotHatCount {
+			t.Fatalf("nextMascotHat() = %d, want a hat in [0, %d)", hat, mascotHatCount)
 		}
-		if again := mascotHatFor(key); again != first {
-			t.Fatalf("mascotHatFor(%q) changed from %d to %d", key, first, again)
+		if hat == previous {
+			t.Fatalf("hat %d repeated on consecutive waiting screens", hat)
 		}
+		seen[hat] = true
+		previous = hat
 	}
-}
-
-func TestMascotHatForVariesAcrossRooms(t *testing.T) {
-	seen := make(map[int]bool)
-	for index := 0; index < 100; index++ {
-		seen[mascotHatFor(fmt.Sprintf("YOC%06d", index))] = true
-	}
-	if len(seen) < 5 {
-		t.Fatalf("only %d hats were selected across 100 rooms, the hash is too flat", len(seen))
+	if len(seen) != mascotHatCount {
+		t.Fatalf("%d calls covered %d hats, want all %d", mascotHatCount, len(seen), mascotHatCount)
 	}
 }
 

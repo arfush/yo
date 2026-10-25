@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"sync/atomic"
 
 	"gioui.org/f32"
 	"gioui.org/layout"
@@ -27,20 +28,18 @@ var (
 	hatBrown = color.NRGBA{R: 0x7a, G: 0x5a, B: 0x4a, A: 0xff}
 	hatTan   = color.NRGBA{R: 0xd8, G: 0xc3, B: 0xb0, A: 0xff}
 	hatGreen = color.NRGBA{R: 0x6f, G: 0xb0, B: 0x79, A: 0xff}
+
+	// mascotHatCursor makes every reopened waiting screen pick the next hat.
+	// The app shows one waiting screen at a time, so a package counter is
+	// enough and guarantees that two openings never show the same hat.
+	mascotHatCursor atomic.Uint32
 )
 
-// mascotHatFor picks an outfit from the room key. The hash is stable for the
-// whole wait, so the mascot does not change hats on every frame or reconnect.
-func mascotHatFor(key string) int {
-	if key == "" {
-		return 0
-	}
-	hash := uint32(2166136261)
-	for index := 0; index < len(key); index++ {
-		hash ^= uint32(key[index])
-		hash *= 16777619
-	}
-	return int(hash % mascotHatCount)
+// nextMascotHat returns the hat for a waiting screen. Cycling instead of
+// hashing the room key is deliberate: reopening the same room must still look
+// new, but the hat must stay fixed for as long as the screen is open.
+func nextMascotHat() int {
+	return int((mascotHatCursor.Add(1) - 1) % uint32(mascotHatCount))
 }
 
 // drawMascotHat paints one of the waiting-screen outfits. Every shape uses the
