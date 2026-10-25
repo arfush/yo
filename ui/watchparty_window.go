@@ -643,7 +643,7 @@ func (w *watchPartyWindow) layoutWaiting(gtx layout.Context, snapshot partySnaps
 		centerX+mascotSize/2,
 		bottom,
 	)
-	drawCatgirl(gtx, mascot, gtx.Now, time.Time{})
+	drawCatgirl(gtx, mascot, gtx.Now, time.Time{}, mascotHatFor(snapshot.Key))
 
 	face := font.Font{Typeface: fontFamily, Weight: font.Normal}
 	w.typo.drawCentered(gtx, wpWaitingText, face, wpWaitSize, firstRunSubtitleColor, image.Pt(centerX, bottom+gtx.Dp(unit.Dp(26))))

@@ -34,8 +34,9 @@ const (
 
 // drawCatgirl paints the purple cat-girl mascot in the URL field. Her paws
 // alternate in a small "nya" gesture while the character gently bobs. When
-// linkAt is recent, she reaches to the right and taps the placeholder.
-func drawCatgirl(gtx layout.Context, rect image.Rectangle, now time.Time, linkAt time.Time) {
+// linkAt is recent, she reaches to the right and taps the placeholder. Hat is
+// one of the mascotHatCount outfits, or mascotHatNone for a bare head.
+func drawCatgirl(gtx layout.Context, rect image.Rectangle, now time.Time, linkAt time.Time, hat int) {
 	if rect.Empty() {
 		return
 	}
@@ -164,6 +165,9 @@ func drawCatgirl(gtx layout.Context, rect image.Rectangle, now time.Time, linkAt
 	)
 
 	// Paws sit in front so the gesture stays readable at 42 dp.
+	if hat != mascotHatNone {
+		drawMascotHat(gtx, hat, r, pt, px)
+	}
 	drawPaw(gtx, leftHand, scale)
 	drawPaw(gtx, rightHand, scale)
 }

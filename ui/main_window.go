@@ -926,7 +926,7 @@ func (m *mainWindow) layoutInput(gtx layout.Context, rect image.Rectangle, focus
 	}
 	// Draw the mascot after the editor so her extended paw reads as tapping
 	// the prompt during the empty-link feedback.
-	drawCatgirl(gtx, mascot, gtx.Now, m.emptyLinkAt)
+	drawCatgirl(gtx, mascot, gtx.Now, m.emptyLinkAt, mascotHatNone)
 
 	m.drawHint(gtx, hintRect)
 	m.layoutNext(gtx, nextRect)
