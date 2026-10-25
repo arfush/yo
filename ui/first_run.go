@@ -98,6 +98,11 @@ type firstRun struct {
 	// onDone is called on the UI goroutine once the component is installed.
 	onDone   func()
 	notified bool
+	// onError is called on the UI goroutine once a download fails. The
+	// automatic update card uses it to return to the main screen instead of
+	// trapping the user on a screen they did not ask for.
+	onError       func()
+	errorNotified bool
 
 	mu       sync.Mutex
 	state    firstRunState
@@ -147,6 +152,12 @@ func (fr *firstRun) layout(gtx layout.Context) {
 			}
 		}
 		return
+	}
+	if state == firstRunError && !fr.errorNotified {
+		fr.errorNotified = true
+		if fr.onError != nil {
+			fr.onError()
+		}
 	}
 
 	scale := gtx.Metric.PxPerDp
@@ -498,6 +509,7 @@ func (fr *firstRun) startDownload() {
 	fr.shownProgress = 0
 	fr.animTarget = 0
 	fr.animLast = time.Time{}
+	fr.errorNotified = false
 	fr.window.Invalidate()
 	go fr.download(ctx)
 }

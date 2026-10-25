@@ -51,6 +51,14 @@ const (
 	// autoUpdateDownloadTimeout bounds the silent download. It is deliberately
 	// generous because the executable is tens of megabytes.
 	autoUpdateDownloadTimeout = 30 * time.Minute
+	// updateCheckInterval is how often the release feed is polled while the
+	// network works. A four-hour interval meant a release published after launch
+	// was noticed only on the next restart.
+	updateCheckInterval = 30 * time.Minute
+	// updateRetryInterval shortens the next attempt after a network failure. The
+	// footer shows the cached release even when the check failed, so a long
+	// interval would leave a visible update without a silent install.
+	updateRetryInterval = 5 * time.Minute
 )
 
 // Run starts the Yonime desktop application.
@@ -102,9 +110,6 @@ type application struct {
 	// only close request that is allowed to end the process.
 	hidden   atomic.Bool
 	quitting atomic.Bool
-	// mainActive mirrors active == main for the background auto-updater. The
-	// window screen itself is only touched on the UI goroutine.
-	mainActive atomic.Bool
 
 	watchResults chan watchResult
 
@@ -137,11 +142,28 @@ type application struct {
 	// version with the same number still install its fixed build.
 	currentSHA string
 
-	// One silent auto-update may run at a time. It waits until the main screen
-	// is idle and never installs while mpv or a watch party is active.
+	// One silent auto-update may run at a time. It replaces the executable only
+	// while the window sits in the tray: a visible window means the user is
+	// working, and mpv or a watch party must never be interrupted.
 	autoUpdateMu      sync.Mutex
 	autoUpdateRunning bool
 	autoUpdateCancel  context.CancelFunc
+	// autoUpdateWake tells a waiting install that its conditions may have
+	// changed: the window went to the tray or mpv closed.
+	autoUpdateWake chan struct{}
+	// autoUpdateStartup is true from launch until the first release check
+	// finishes. During that window an available update is presented as the
+	// download card instead of the main screen.
+	autoUpdateStartup atomic.Bool
+	// autoUpdateCard carries a release the UI goroutine should present as the
+	// download card. The check runs off the UI goroutine and cannot open a
+	// screen itself.
+	autoUpdateCard chan updates.Release
+	// playbackStarting covers the network work between a Play click and the
+	// moment Service.Start registers the session; playback.Active only covers
+	// the resolve inside the service. A silent update must not quit the app in
+	// that gap.
+	playbackStarting atomic.Bool
 }
 
 type watchResult struct {
@@ -234,10 +256,13 @@ func newApp() (*application, error) {
 		updateClient:      &http.Client{Timeout: 25 * time.Second},
 		downloadClient:    &http.Client{Timeout: 30 * time.Minute},
 		updateWake:        make(chan struct{}, 1),
+		autoUpdateWake:    make(chan struct{}, 1),
+		autoUpdateCard:    make(chan updates.Release, 1),
 		currentSHA:        currentSHA,
 	}
 	state := updateStore.State()
 	app.updatesAvailable.Store(state.Available)
+	app.autoUpdateStartup.Store(true)
 	app.party = newPartyManager(app)
 	return app, nil
 }
@@ -300,6 +325,8 @@ func (a *application) startTray() {
 func (a *application) hideToTray() {
 	a.hidden.Store(true)
 	go hideAppWindow()
+	// A pending silent install may proceed now that the user parked the window.
+	a.wakeAutoUpdate()
 }
 
 // restoreWindow brings the window back from the notification area. While mpv is
@@ -404,29 +431,56 @@ func (a *application) requireMPV(w *app.Window) {
 }
 
 func (a *application) showMain(w *app.Window) {
+	// At launch an available update is presented as a download card instead of
+	// the main screen, so the user sees what is being installed.
+	if a.offerStartupUpdate(a.updatesAvailable.Load()) {
+		return
+	}
 	a.showWindow(w, a.main)
 	w.Invalidate()
 }
 
+// offerStartupUpdate shows the download card instead of the first main screen
+// of a launch when the cached release can be installed automatically. It
+// reports whether the card replaced the main screen.
+func (a *application) offerStartupUpdate(release *updates.Release) bool {
+	if release == nil || !a.autoUpdatesEnabled() || !a.updateAvailable(release) {
+		return false
+	}
+	if !a.autoUpdateStartup.CompareAndSwap(true, false) {
+		return false
+	}
+	a.showUpdateScreen(*release, true)
+	return true
+}
+
 func (a *application) openUpdate() {
 	release := a.updatesAvailable.Load()
-	if !a.updateAvailable(release) {
+	if !a.updateAvailable(release) || a.window == nil {
 		return
 	}
+	// The user is installing manually; stop a waiting silent install so it
+	// cannot replace the executable behind the update screen.
+	a.cancelAutoUpdate()
+	a.autoUpdateStartup.Store(false)
+	a.showUpdateScreen(*release, false)
+}
+
+// showUpdateScreen presents the download card and quits the application once
+// the verified executable is ready, so the helper can replace it. auto marks the
+// card shown without a click: a failed automatic download returns to the main
+// screen instead of trapping the user on the card.
+func (a *application) showUpdateScreen(release updates.Release, auto bool) {
 	if a.window == nil {
 		return
 	}
-	// The user is installing manually; stop a pending silent install so it
-	// cannot replace the executable behind the update screen.
-	a.cancelAutoUpdate()
-	update := *release
 	screen := newFirstRun(
 		a.shell.typo,
 		a.window,
 		"Обновление Yonime",
-		fmt.Sprintf("Скачиваем %s. Приложение перезапустится автоматически.", update.Version),
+		fmt.Sprintf("Скачиваем %s. Приложение перезапустится автоматически.", release.Version),
 		func(ctx context.Context, report func(downloadProgress)) error {
-			return a.downloadAndApply(ctx, update, report)
+			return a.downloadAndApply(ctx, release, report)
 		},
 	)
 	screen.buttonText = "Скачать"
@@ -434,6 +488,14 @@ func (a *application) openUpdate() {
 	screen.errorText = "Не удалось обновить. Попробуй ещё раз."
 	screen.autoStart = true
 	screen.onDone = a.quitForUpdate
+	if auto {
+		screen.onError = func() {
+			// Keep the app usable and let the silent path retry once the window
+			// goes to the tray.
+			a.showWindow(a.window, a.main)
+			a.triggerUpdateCheck()
+		}
+	}
 	a.showWindow(a.window, screen)
 }
 
@@ -652,17 +714,24 @@ func (a *application) quitForUpdate() {
 }
 
 func (a *application) startUpdateLoop(w *app.Window) {
+	if updates.Repository == "" {
+		return
+	}
 	go func() {
-		a.checkForUpdates(w)
-		ticker := time.NewTicker(4 * time.Hour)
-		defer ticker.Stop()
+		timer := time.NewTimer(a.checkForUpdates(w))
+		defer timer.Stop()
 		for {
 			select {
-			case <-ticker.C:
-				a.checkForUpdates(w)
+			case <-timer.C:
 			case <-a.updateWake:
-				a.checkForUpdates(w)
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
 			}
+			timer.Reset(a.checkForUpdates(w))
 		}
 	}()
 }
@@ -674,18 +743,22 @@ func (a *application) triggerUpdateCheck() {
 	}
 }
 
-func (a *application) checkForUpdates(w *app.Window) {
-	if updates.Repository == "" {
-		return
-	}
+// checkForUpdates refreshes the cached release and returns how long the loop
+// should sleep before the next attempt. A failed request retries soon: the
+// footer keeps showing the cached release, and the user must not be left with a
+// visible update that never installs.
+func (a *application) checkForUpdates(w *app.Window) time.Duration {
 	if !a.updateChecking.CompareAndSwap(false, true) {
 		// A settings change or the periodic timer may ask for another check
 		// while the current one is still running.
 		a.updatePending.Store(true)
-		return
+		return updateCheckInterval
 	}
 	defer func() {
 		a.updateChecking.Store(false)
+		// The first check ends the launch window: a later check must not open
+		// the card over a user who is already working.
+		a.autoUpdateStartup.Store(false)
 		if a.updatePending.Swap(false) {
 			a.triggerUpdateCheck()
 		}
@@ -704,7 +777,7 @@ func (a *application) checkForUpdates(w *app.Window) {
 			// successful check.
 			fmt.Fprintln(os.Stderr, "yonime: проверка обновлений:", err)
 			_ = a.updateStore.SaveLastCheck(now)
-			return
+			return updateRetryInterval
 		}
 	}
 	if saveErr := a.updateStore.RecordCheck(release, now); saveErr != nil {
@@ -715,15 +788,42 @@ func (a *application) checkForUpdates(w *app.Window) {
 		w.Invalidate()
 	}
 	a.maybeAutoUpdate(release)
+	return updateCheckInterval
 }
 
-// maybeAutoUpdate starts a silent install when the feature is enabled and the
-// freshly checked release is newer than the running build.
+// maybeAutoUpdate runs on the update loop goroutine. During the launch window it
+// hands the release to the UI goroutine, which presents the download card;
+// afterwards the install waits for the tray.
 func (a *application) maybeAutoUpdate(release *updates.Release) {
 	if release == nil || !a.autoUpdatesEnabled() || !a.updateAvailable(release) {
 		return
 	}
+	if a.autoUpdateStartup.CompareAndSwap(true, false) {
+		select {
+		case a.autoUpdateCard <- *release:
+		default:
+		}
+		if a.window != nil {
+			a.window.Invalidate()
+		}
+		return
+	}
 	a.startAutoUpdate(*release)
+}
+
+// processUpdateCard opens the download card queued by the launch check on the UI
+// goroutine: showWindow touches the shell and the active screen.
+func (a *application) processUpdateCard() {
+	select {
+	case release := <-a.autoUpdateCard:
+		if a.active == a.main && !a.hidden.Load() {
+			a.showUpdateScreen(release, true)
+			return
+		}
+		// The user already moved on: fall back to the silent tray path.
+		a.startAutoUpdate(release)
+	default:
+	}
 }
 
 func (a *application) startAutoUpdate(release updates.Release) {
@@ -787,21 +887,33 @@ func (a *application) waitForAutoUpdate(ctx context.Context) bool {
 		select {
 		case <-ctx.Done():
 			return false
+		case <-a.autoUpdateWake:
+			// The screen changed or mpv closed; recheck immediately instead of
+			// waiting for the next poll.
 		case <-ticker.C:
 		}
 	}
 }
 
-func (a *application) autoUpdateIdle() bool {
-	playing := a.playback != nil && a.playback.Active()
-	party := a.party != nil && a.party.HasRoom()
-	return autoUpdateSafe(playing, party, a.mainActive.Load(), a.quitting.Load())
+// wakeAutoUpdate nudges a waiting silent install to re-evaluate its conditions.
+func (a *application) wakeAutoUpdate() {
+	select {
+	case a.autoUpdateWake <- struct{}{}:
+	default:
+	}
 }
 
-// autoUpdateSafe keeps the policy free of UI state so it can be tested. An
-// update may only replace the process while the main screen is idle.
-func autoUpdateSafe(playing, party, main, quitting bool) bool {
-	return !playing && !party && main && !quitting
+func (a *application) autoUpdateIdle() bool {
+	playing := a.playbackStarting.Load() || (a.playback != nil && a.playback.Active())
+	party := a.party != nil && a.party.HasRoom()
+	return autoUpdateSafe(playing, party, a.hidden.Load(), a.quitting.Load())
+}
+
+// autoUpdateSafe keeps the policy free of UI state so it can be tested. The
+// executable may only be replaced while the window is in the tray, nothing is
+// playing and no watch party is running.
+func autoUpdateSafe(playing, party, hidden, quitting bool) bool {
+	return !playing && !party && hidden && !quitting
 }
 
 func (a *application) cancelAutoUpdate() {
@@ -1093,6 +1205,8 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 		}
 	}
 	go func() {
+		a.playbackStarting.Store(true)
+		defer a.playbackStarting.Store(false)
 		ctx, cancel := context.WithTimeout(context.Background(), playbackStartTimeout)
 		defer cancel()
 		if len(title.Voiceovers) == 0 || len(title.Episodes) == 0 {
@@ -1197,6 +1311,11 @@ func (a *application) processWatchResults(gtx layout.Context) {
 }
 
 func (a *application) handleWatchResult(result watchResult) {
+	if result.finished {
+		// mpv is gone, so a pending silent install may proceed even when the
+		// screen stayed the same.
+		a.wakeAutoUpdate()
+	}
 	if result.party {
 		// A room-driven session keeps its progress like any other playback, so
 		// the list has to show the new position (and the title a guest watched
@@ -1361,7 +1480,6 @@ func (a *application) showWindow(w *app.Window, screen windowScreen) {
 		a.active.Close()
 	}
 	a.active = screen
-	a.mainActive.Store(screen == a.main)
 	a.shell.footer = nil
 	if fs, ok := screen.(footerScreen); ok {
 		a.shell.footer = func(gtx layout.Context) layout.Dimensions {
@@ -1386,7 +1504,6 @@ func (a *application) showWindow(w *app.Window, screen windowScreen) {
 
 func (a *application) close() {
 	a.cancelAutoUpdate()
-	a.mainActive.Store(false)
 	a.stopEpisodeLoop()
 	if a.party != nil {
 		a.party.Close()
@@ -1437,6 +1554,7 @@ func (a *application) run(w *app.Window) error {
 			a.hideToTray()
 		case app.FrameEvent:
 			gtx := app.NewContext(&ops, e)
+			a.processUpdateCard()
 			a.processWatchResults(gtx)
 			a.syncFooterControls()
 			a.shell.layout(gtx, w)
