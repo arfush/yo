@@ -359,7 +359,19 @@ func (w *titleWindow) setWatchError(message string) {
 
 func (w *titleWindow) handleKeys(gtx layout.Context) {
 	for {
-		ev, ok := gtx.Event(key.Filter{Name: key.NameEscape})
+		ev, ok := gtx.Event(
+			key.Filter{Name: key.NameEscape},
+			key.Filter{Name: key.NameLeftArrow},
+			key.Filter{Name: key.NameRightArrow},
+			key.Filter{Name: key.NameUpArrow},
+			key.Filter{Name: key.NameDownArrow},
+			key.Filter{Name: key.NameReturn},
+			key.Filter{Name: key.NameEnter},
+			key.Filter{Name: "S"},
+			key.Filter{Name: "s"},
+			key.Filter{Name: "Ы"},
+			key.Filter{Name: "ы"},
+		)
 		if !ok {
 			break
 		}
@@ -367,15 +379,81 @@ func (w *titleWindow) handleKeys(gtx layout.Context) {
 		if !ok || e.State != key.Press {
 			continue
 		}
-		if w.statusMenu.open {
-			w.statusMenu.close()
-			gtx.Execute(op.InvalidateCmd{})
+		if e.Name == key.NameEscape {
+			if w.statusMenu.open {
+				w.statusMenu.close()
+				gtx.Execute(op.InvalidateCmd{})
+				continue
+			}
+			if w.onBack != nil {
+				w.onBack()
+			}
 			continue
 		}
-		if w.onBack != nil {
-			w.onBack()
+		if w.statusMenu.open {
+			continue
+		}
+		switch {
+		case e.Name == key.NameLeftArrow:
+			w.stepEpisode(gtx, -1)
+		case e.Name == key.NameRightArrow:
+			w.stepEpisode(gtx, 1)
+		case e.Name == key.NameUpArrow:
+			w.stepVoice(gtx, -1)
+		case e.Name == key.NameDownArrow:
+			w.stepVoice(gtx, 1)
+		case isSaveKey(e.Name):
+			w.save(gtx)
+		case e.Name == key.NameReturn, e.Name == key.NameEnter:
+			w.watch(gtx)
 		}
 	}
+}
+
+// stepEpisode moves the episode cursor by delta and skips episodes missing
+// from the selected voiceover. It does not wrap: the ends are hard stops.
+func (w *titleWindow) stepEpisode(gtx layout.Context, delta int) {
+	if len(w.item.episodes) == 0 {
+		return
+	}
+	index := w.selectedEpisode
+	if index < 0 || index >= len(w.item.episodes) {
+		index = 0
+	} else {
+		index += delta
+	}
+	for index >= 0 && index < len(w.item.episodes) {
+		if !w.episodeMissing(w.item.episodes[index]) {
+			w.selectedEpisode = index
+			w.episodeList.ScrollTo(index)
+			gtx.Execute(op.InvalidateCmd{})
+			return
+		}
+		index += delta
+	}
+}
+
+func (w *titleWindow) stepVoice(gtx layout.Context, delta int) {
+	count := len(w.item.voices)
+	if count == 0 {
+		return
+	}
+	index := w.selectedVoice
+	if index < 0 || index >= count {
+		index = 0
+	} else {
+		index += delta
+	}
+	if index < 0 || index >= count {
+		return
+	}
+	previousEpisode := w.selectedEpisode
+	w.selectVoice(index)
+	w.voiceList.ScrollTo(index)
+	if w.selectedEpisode != previousEpisode {
+		w.episodeList.ScrollTo(w.selectedEpisode)
+	}
+	gtx.Execute(op.InvalidateCmd{})
 }
 
 func (w *titleWindow) layout(gtx layout.Context) {
@@ -1167,21 +1245,7 @@ func (w *titleWindow) layoutFooter(gtx layout.Context) {
 			capHeight,
 		)
 	}) {
-		w.saveError = ""
-		if w.onSave != nil {
-			if err := w.onSave(w.selectedVoiceName(), w.selectedEpisodeLabel()); err != nil {
-				w.saveError = err.Error()
-				if w.onError != nil {
-					w.onError(err)
-				}
-			}
-		}
-		if w.saveError == "" {
-			w.savedUntil = gtx.Now.Add(1500 * time.Millisecond)
-			if w.animationsRun() {
-				gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(200 * time.Millisecond)})
-			}
-		}
+		w.save(gtx)
 	}
 
 	if !watchRect.Empty() {
@@ -1219,20 +1283,72 @@ func (w *titleWindow) layoutFooter(gtx layout.Context) {
 				capHeight,
 			)
 		})
-		if watchClicked && !w.watching && w.onWatch != nil {
-			w.watchError = ""
-			if err := w.onWatch(w.selectedVoiceName(), w.selectedEpisodeLabel(), titleQualityValues[w.selectedQuality]); err != nil {
-				w.watchError = err.Error()
-				if w.onError != nil {
-					w.onError(err)
-				}
-			} else {
-				w.watching = true
-			}
-			gtx.Execute(op.InvalidateCmd{})
+		if watchClicked {
+			w.watch(gtx)
 		}
 	}
+}
 
+// save is shared by the footer button and the S shortcut.
+func (w *titleWindow) save(gtx layout.Context) {
+	w.saveError = ""
+	if w.onSave != nil {
+		if err := w.onSave(w.selectedVoiceName(), w.selectedEpisodeLabel()); err != nil {
+			w.saveError = err.Error()
+			if w.onError != nil {
+				w.onError(err)
+			}
+		}
+	}
+	if w.saveError == "" {
+		w.savedUntil = gtx.Now.Add(1500 * time.Millisecond)
+		if w.animationsRun() {
+			gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(200 * time.Millisecond)})
+		}
+	}
+	gtx.Execute(op.InvalidateCmd{})
+}
+
+// watch is shared by the footer button and Enter. The watch control is absent
+// for announced titles, so the shortcut must enforce the same rule.
+func (w *titleWindow) watch(gtx layout.Context) {
+	if w.watching || w.item.status == statusAnnounced || w.onWatch == nil {
+		return
+	}
+	w.watchError = ""
+	if err := w.onWatch(w.selectedVoiceName(), w.selectedEpisodeLabel(), titleQualityValues[w.selectedQuality]); err != nil {
+		w.watchError = err.Error()
+		if w.onError != nil {
+			w.onError(err)
+		}
+	} else {
+		w.watching = true
+	}
+	gtx.Execute(op.InvalidateCmd{})
+}
+
+func (w *titleWindow) shortcutInfo() shortcutInfo {
+	items := []shortcutItem{
+		{keys: "F1", label: "Открыть или закрыть сводку"},
+	}
+	if len(w.item.episodes) > 1 && !w.item.movie {
+		items = append(items, shortcutItem{keys: "← / →", label: "Предыдущая или следующая серия"})
+	}
+	if len(w.item.voices) > 1 {
+		items = append(items, shortcutItem{keys: "↑ / ↓", label: "Предыдущая или следующая озвучка"})
+	}
+	items = append(items, shortcutItem{keys: "S", label: "Сохранить изменения"})
+	if w.item.status != statusAnnounced {
+		items = append(items, shortcutItem{keys: "Enter", label: "Запустить просмотр"})
+	}
+	items = append(items,
+		shortcutItem{keys: "Esc", label: "Вернуться или закрыть меню"},
+	)
+	return shortcutInfo{
+		page:  "Страница тайтла",
+		items: items,
+		note:  "Клавиши работают в русской и английской раскладке.",
+	}
 }
 
 func (w *titleWindow) layoutFooterButton(gtx layout.Context, rect image.Rectangle, click *widget.Clickable, hover *hoverAnim, primary bool, draw func(layout.Context)) bool {

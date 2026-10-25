@@ -16,6 +16,7 @@ import (
 
 	"gioui.org/app"
 	"gioui.org/io/event"
+	"gioui.org/io/key"
 	"gioui.org/io/system"
 	"gioui.org/layout"
 	"gioui.org/op"
@@ -117,6 +118,7 @@ type application struct {
 	main        *mainWindow
 	log         *logWindow
 	active      windowScreen
+	shortcuts   *shortcutsWindow
 	window      *app.Window
 	icon        image.Image
 	// tray is the notification-area icon. It stays nil when the platform has no
@@ -1700,6 +1702,18 @@ func (a *application) showWindow(w *app.Window, screen windowScreen) {
 		a.active.Close()
 	}
 	a.active = screen
+	a.shortcuts = nil
+	a.installScreen(screen)
+	if screen == a.main {
+		a.main.onShown()
+	}
+	w.Invalidate()
+}
+
+// installScreen wires an active screen into the shell without changing its
+// state. It is used both for normal navigation and after the F1 summary closes,
+// where main.onShown must not run because it would clear the URL field.
+func (a *application) installScreen(screen windowScreen) {
 	a.shell.footer = nil
 	if fs, ok := screen.(footerScreen); ok {
 		a.shell.footer = func(gtx layout.Context) layout.Dimensions {
@@ -1708,7 +1722,6 @@ func (a *application) showWindow(w *app.Window, screen windowScreen) {
 		}
 	}
 	if screen == a.main {
-		a.main.onShown()
 		a.shell.onPress = a.main.noteWindowPress
 	} else {
 		a.shell.onPress = nil
@@ -1719,10 +1732,92 @@ func (a *application) showWindow(w *app.Window, screen windowScreen) {
 		a.shell.overlay = nil
 	}
 	a.shell.content = func(gtx layout.Context) layout.Dimensions {
-		screen.layout(gtx)
+		if a.shortcuts != nil {
+			a.shortcuts.layout(gtx)
+		} else {
+			screen.layout(gtx)
+		}
 		return layout.Dimensions{Size: gtx.Constraints.Max}
 	}
-	w.Invalidate()
+}
+
+// toggleShortcuts opens the F1 summary for the page that is currently active.
+// The active screen keeps its state; only the content renderer is replaced, so
+// returning restores its scroll position and selections exactly.
+func (a *application) toggleShortcuts() {
+	if a.window == nil {
+		return
+	}
+	if a.shortcuts != nil {
+		a.closeShortcuts()
+		return
+	}
+	if a.active == nil {
+		return
+	}
+	a.hidePopups()
+	a.shortcuts = newShortcutsWindow(a.shell.typo, shortcutInfoFor(a.active))
+	a.shortcuts.onBack = a.closeShortcuts
+	// An empty footer widget suppresses the default footer controls; setting
+	// the field to nil would draw them instead.
+	a.shell.footer = func(gtx layout.Context) layout.Dimensions {
+		return layout.Dimensions{Size: gtx.Constraints.Max}
+	}
+	a.shell.overlay = nil
+	a.shell.onPress = nil
+	a.window.Invalidate()
+}
+
+func (a *application) closeShortcuts() {
+	if a.shortcuts == nil {
+		return
+	}
+	a.shortcuts = nil
+	if a.active != nil {
+		a.installScreen(a.active)
+	}
+	if a.window != nil {
+		a.window.Invalidate()
+	}
+}
+
+func shortcutInfoFor(screen windowScreen) shortcutInfo {
+	if source, ok := screen.(shortcutSource); ok {
+		return source.shortcutInfo()
+	}
+	return shortcutInfo{
+		page: "Приложение",
+		items: []shortcutItem{
+			{keys: "F1", label: "Открыть или закрыть сводку"},
+		},
+		note: "Esc или кнопка «Вернуться» закрывают сводку.",
+	}
+}
+
+// handleGlobalKeys consumes F1 before the active screen sees it. Escape is
+// claimed only while the summary is open, so normal screens keep their own
+// Escape behaviour.
+func (a *application) handleGlobalKeys(gtx layout.Context) {
+	filters := []event.Filter{key.Filter{Name: key.NameF1}}
+	if a.shortcuts != nil {
+		filters = append(filters, key.Filter{Name: key.NameEscape})
+	}
+	for {
+		ev, ok := gtx.Event(filters...)
+		if !ok {
+			break
+		}
+		e, ok := ev.(key.Event)
+		if !ok || e.State != key.Press {
+			continue
+		}
+		switch e.Name {
+		case key.NameF1:
+			a.toggleShortcuts()
+		case key.NameEscape:
+			a.closeShortcuts()
+		}
+	}
 }
 
 // overlayScreen is implemented by screens with a popup that must be drawn above
@@ -1852,6 +1947,7 @@ func (a *application) run(w *app.Window) error {
 			a.processUpdateCard()
 			a.processWatchResults(gtx)
 			a.syncFooterControls()
+			a.handleGlobalKeys(gtx)
 			a.shell.layout(gtx, w)
 			e.Frame(gtx.Ops)
 		case app.ConfigEvent:

@@ -9,6 +9,7 @@ import (
 	"gioui.org/io/key"
 	"gioui.org/layout"
 	"gioui.org/op"
+	"gioui.org/unit"
 )
 
 func testHistory() []historyTitle {
@@ -287,5 +288,41 @@ func TestTruncateAtWordKeepsWholeWords(t *testing.T) {
 				t.Fatalf("truncateAtWord(%q, %d) = %q, want %q", test.text, test.limit, got, test.want)
 			}
 		})
+	}
+}
+
+func TestHistoryFilterSpanIgnoresCountWidth(t *testing.T) {
+	gtx := layout.Context{Metric: unit.Metric{PxPerDp: 1, PxPerSp: 1}}
+	rect := image.Rect(28, 0, 805, 34)
+	titleInk := image.Rect(0, 0, 56, 16)
+	clearRect := image.Rect(700, 0, 777, 34)
+	shortCount := image.Rect(0, 0, 16, 12)
+	longCount := image.Rect(0, 0, 28, 12)
+	left, right := historyFilterSpan(gtx, rect, titleInk, shortCount, clearRect)
+	longLeft, longRight := historyFilterSpan(gtx, rect, titleInk, longCount, clearRect)
+	if left != longLeft || right != longRight {
+		t.Fatalf("span moved with count: %d..%d vs %d..%d", left, right, longLeft, longRight)
+	}
+}
+
+func TestFilterRowShrinksOnNarrowWindow(t *testing.T) {
+	typo, err := newTypography()
+	if err != nil {
+		t.Fatal(err)
+	}
+	gtx := layout.Context{Metric: unit.Metric{PxPerDp: 1, PxPerSp: 1}}
+	wide := measureFilterRow(gtx, typo, 2000)
+	narrow := measureFilterRow(gtx, typo, 200)
+	if wide.size != mainFilterSize {
+		t.Fatalf("wide row size = %v, want %v", wide.size, mainFilterSize)
+	}
+	if wide.gap <= gtx.Dp(mainFilterGap) {
+		t.Fatalf("wide row gap = %d, want it to grow", wide.gap)
+	}
+	if narrow.size >= wide.size {
+		t.Fatalf("narrow row size = %v, want smaller than %v", narrow.size, wide.size)
+	}
+	if narrow.gap >= wide.gap {
+		t.Fatalf("narrow row gap = %d, want smaller than %d", narrow.gap, wide.gap)
 	}
 }

@@ -126,9 +126,13 @@ func userStatusPillWidth(gtx layout.Context, typo *typography) int {
 	return statusPillWidth(gtx, typo)
 }
 
-func filterPillWidth(gtx layout.Context, typo *typography, label string) int {
-	_, ink := typo.measure(gtx, label, font.Font{Typeface: fontFamily, Weight: font.Medium}, mainFilterSize)
-	return 2*gtx.Dp(mainFilterPaddingX) + ink.Dx()
+// filterPillWidth lets the history header shrink the pills when the window is
+// narrower than the designed size. The label and padding must use the same
+// metrics as drawFilterPill, otherwise the hit area would drift from the
+// painted pill.
+func filterPillWidth(gtx layout.Context, typo *typography, label string, size unit.Sp, padding unit.Dp) int {
+	_, ink := typo.measure(gtx, label, font.Font{Typeface: fontFamily, Weight: font.Medium}, size)
+	return 2*gtx.Dp(padding) + ink.Dx()
 }
 
 // drawUserStatusPill paints the same shape as the release-status pills. When
@@ -144,7 +148,7 @@ func drawUserStatusPill(gtx layout.Context, typo *typography, rect image.Rectang
 	drawPill(gtx, typo, rect, userStatusLabel(status), mainStatusSize, textColor, fillColor, borderColor)
 }
 
-func drawFilterPill(gtx layout.Context, typo *typography, rect image.Rectangle, option userStatusFilterOption, selected bool, hover float32) {
+func drawFilterPill(gtx layout.Context, typo *typography, rect image.Rectangle, option userStatusFilterOption, selected bool, hover float32, size unit.Sp) {
 	if rect.Empty() {
 		return
 	}
@@ -162,7 +166,7 @@ func drawFilterPill(gtx layout.Context, typo *typography, rect image.Rectangle, 
 		textColor = mixColor(textColor, color.NRGBA{R: 0xf4, G: 0xf2, B: 0xfa, A: 0xff}, hover*0.35)
 		borderColor = mixColor(borderColor, color.NRGBA{R: 0x6b, G: 0x5a, B: 0x91, A: 0xff}, hover*0.55)
 	}
-	drawPill(gtx, typo, rect, option.label, mainFilterSize, textColor, fillColor, borderColor)
+	drawPill(gtx, typo, rect, option.label, size, textColor, fillColor, borderColor)
 }
 
 // drawUserStatusMenuItem keeps the menu quiet until the pointer reaches an

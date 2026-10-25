@@ -59,17 +59,22 @@ const (
 	// Status pills are deliberately 10% larger than the original 10sp/23dp/9dp
 	// set: the release and user tags carry real information and were too easy
 	// to skim in a history row.
-	mainStatusSize       = unit.Sp(11)
-	mainPosterTitleSize  = unit.Sp(15)
-	mainInputTextSize    = unit.Sp(14)
-	mainHintTextSize     = unit.Sp(10)
-	mainStatusHeight     = unit.Dp(25.3)
-	mainStatusPaddingX   = unit.Dp(9.9)
-	mainStatusGap        = unit.Dp(6)
-	mainFilterSize       = unit.Sp(10.5)
-	mainFilterPaddingX   = unit.Dp(10)
-	mainFilterGap        = unit.Dp(6)
-	mainFilterHeight     = unit.Dp(28)
+	mainStatusSize      = unit.Sp(11)
+	mainPosterTitleSize = unit.Sp(15)
+	mainInputTextSize   = unit.Sp(14)
+	mainHintTextSize    = unit.Sp(10)
+	mainStatusHeight    = unit.Dp(25.3)
+	mainStatusPaddingX  = unit.Dp(9.9)
+	mainStatusGap       = unit.Dp(6)
+	mainFilterSize      = unit.Sp(10.5)
+	mainFilterPaddingX  = unit.Dp(10)
+	mainFilterGap       = unit.Dp(6)
+	mainFilterMaxGap    = unit.Dp(12)
+	mainFilterHeight    = unit.Dp(28)
+	// mainFilterReserve keeps the filter row anchored when the number in
+	// "История (n)" grows from one digit to another. Four digits fit comfortably;
+	// wider counts only push the row if they actually collide with it.
+	mainFilterReserve    = unit.Dp(42)
 	mainFrameTime        = time.Second / 60
 	mainSpinnerFrameTime = time.Second / 60
 	// mainErrorFeedbackDuration is how long the Next button and the mascot stay
@@ -519,14 +524,29 @@ func (m *mainWindow) handleKeys(gtx layout.Context) {
 		}
 	}
 
-	for {
-		ev, ok := gtx.Event(
-			key.Filter{Name: key.NameEscape},
-			key.Filter{Name: key.NameUpArrow},
-			key.Filter{Name: key.NameDownArrow},
-			key.Filter{Name: key.NameReturn},
-			key.Filter{Name: key.NameEnter},
+	filters := []event.Filter{
+		key.Filter{Name: key.NameEscape},
+		key.Filter{Name: key.NameUpArrow},
+		key.Filter{Name: key.NameDownArrow},
+		key.Filter{Name: key.NameReturn},
+		key.Filter{Name: key.NameEnter},
+	}
+	// Single-letter shortcuts and plain Delete belong to the text editor while
+	// it has focus. Registering their filters then would consume the events
+	// before the editor sees them, even if the handler itself did nothing.
+	if !gtx.Focused(&m.editor) {
+		filters = append(filters,
+			key.Filter{Name: key.NameLeftArrow},
+			key.Filter{Name: key.NameRightArrow},
+			key.Filter{Name: key.NameDeleteForward},
+			key.Filter{Name: "P"},
+			key.Filter{Name: "p"},
+			key.Filter{Name: "З"},
+			key.Filter{Name: "з"},
 		)
+	}
+	for {
+		ev, ok := gtx.Event(filters...)
 		if !ok {
 			break
 		}
@@ -534,8 +554,7 @@ func (m *mainWindow) handleKeys(gtx layout.Context) {
 		if !ok || e.State != key.Press {
 			continue
 		}
-		switch e.Name {
-		case key.NameEscape:
+		if e.Name == key.NameEscape {
 			if m.statusMenu.open {
 				m.statusMenu.close()
 				gtx.Execute(op.InvalidateCmd{})
@@ -543,11 +562,29 @@ func (m *mainWindow) handleKeys(gtx layout.Context) {
 			}
 			m.cancelLoading(gtx)
 			m.focusHistory(gtx)
-		case key.NameUpArrow:
+			continue
+		}
+		if m.statusMenu.open {
+			continue
+		}
+		switch {
+		case e.Name == key.NameLeftArrow:
+			m.stepFilter(gtx, -1)
+		case e.Name == key.NameRightArrow:
+			m.stepFilter(gtx, 1)
+		case e.Name == key.NameUpArrow:
 			m.moveSelection(gtx, -1)
-		case key.NameDownArrow:
+		case e.Name == key.NameDownArrow:
 			m.moveSelection(gtx, 1)
-		case key.NameReturn, key.NameEnter:
+		case isPlayKey(e.Name):
+			if m.selected >= 0 && m.selected < len(m.history) {
+				m.playHistory(gtx, m.selected)
+			}
+		case e.Name == key.NameDeleteForward:
+			if m.selected >= 0 && m.selected < len(m.history) {
+				m.deleteHistoryItem(gtx, m.selected)
+			}
+		case e.Name == key.NameReturn, e.Name == key.NameEnter:
 			if m.loading {
 				continue
 			}
@@ -566,12 +603,41 @@ func (m *mainWindow) handleKeys(gtx layout.Context) {
 	}
 }
 
-func isCtrlK(name key.Name) bool {
+func matchesLetterKey(name key.Name, latin, localized string) bool {
 	switch strings.ToUpper(string(name)) {
-	case "K", "Л":
+	case latin, localized:
 		return true
 	default:
 		return false
+	}
+}
+
+func isCtrlK(name key.Name) bool {
+	return matchesLetterKey(name, "K", "Л")
+}
+
+func isPlayKey(name key.Name) bool {
+	return matchesLetterKey(name, "P", "З")
+}
+
+func isSaveKey(name key.Name) bool {
+	return matchesLetterKey(name, "S", "Ы")
+}
+
+func (m *mainWindow) shortcutInfo() shortcutInfo {
+	return shortcutInfo{
+		page: "Главная",
+		items: []shortcutItem{
+			{keys: "F1", label: "Открыть или закрыть сводку"},
+			{keys: "← / →", label: "Переключить фильтр истории"},
+			{keys: "↑ / ↓", label: "Выбрать тайтл в истории"},
+			{keys: "Enter", label: "Открыть выбранный тайтл"},
+			{keys: "P", label: "Смотреть выбранный тайтл"},
+			{keys: "Del", label: "Удалить тайтл из истории"},
+			{keys: "Ctrl + K", label: "Перейти к полю ссылки"},
+			{keys: "Esc", label: "Вернуться к истории или отменить загрузку"},
+		},
+		note: "Клавиши работают в русской и английской раскладке.",
 	}
 }
 
@@ -657,6 +723,31 @@ func (m *mainWindow) moveSelection(gtx layout.Context, delta int) {
 	m.focusHistory(gtx)
 	m.selected = nextSelection(m.selected, delta, len(m.history))
 	m.ensureSelectionVisible()
+	gtx.Execute(op.InvalidateCmd{})
+}
+
+// playHistory is shared by the row play control and the P shortcut. Failure
+// falls back to the title page, exactly like a mouse click.
+func (m *mainWindow) playHistory(gtx layout.Context, index int) {
+	if m.loading || m.playing || index < 0 || index >= len(m.history) {
+		return
+	}
+	item := m.history[index]
+	m.selected = index
+	m.focusHistory(gtx)
+	result := historyPlayFailed
+	if m.onPlayHistory != nil {
+		result = m.onPlayHistory(item)
+	}
+	switch result {
+	case historyPlayStarted:
+		m.playing = true
+		m.playingID = item.id
+	case historyPlayFailed:
+		// Fall back to the title page when direct playback is not possible
+		// (no voiceovers, missing mpv, and so on).
+		m.startLoading(gtx, index, true)
+	}
 	gtx.Execute(op.InvalidateCmd{})
 }
 
@@ -1202,7 +1293,8 @@ func (m *mainWindow) layoutHistoryHeader(gtx layout.Context, rect image.Rectangl
 		// the action button, matching the rate-limit notice in the header.
 		m.layoutUndoCountdown(gtx, middleLeft, middleRight, rect.Min.Y+rect.Dy()/2)
 	} else {
-		m.layoutHistoryFilters(gtx, middleLeft, middleRight, rect.Min.Y+rect.Dy()/2)
+		filterLeft, filterRight := historyFilterSpan(gtx, rect, titleInk, countInk, clearRect)
+		m.layoutHistoryFilters(gtx, filterLeft, filterRight, rect.Min.Y+rect.Dy()/2)
 	}
 
 	_, clicked := m.clear.Update(gtx)
@@ -1241,60 +1333,153 @@ func (m *mainWindow) layoutHistoryHeader(gtx layout.Context, rect image.Rectangl
 	})
 }
 
-// layoutHistoryFilters draws the six status filters centered between the
-// history caption and the clear action. Inactive pills are neutral gray;
-// selecting one reveals its status color.
+type filterRowMetrics struct {
+	widths  []int
+	gap     int
+	size    unit.Sp
+	padding unit.Dp
+	total   int
+}
+
+type filterPillStep struct {
+	size    unit.Sp
+	padding unit.Dp
+	gap     unit.Dp
+}
+
+// filterPillSteps are tried from the designed metrics to a compact version.
+// The last step is used even if the window is smaller still, so the filters do
+// not disappear completely on an unexpectedly narrow viewport.
+var filterPillSteps = [...]filterPillStep{
+	{size: mainFilterSize, padding: mainFilterPaddingX, gap: mainFilterGap},
+	{size: 10, padding: unit.Dp(7), gap: unit.Dp(4)},
+	{size: 9, padding: unit.Dp(5), gap: unit.Dp(3)},
+	{size: 8, padding: unit.Dp(3), gap: unit.Dp(2)},
+}
+
+// measureFilterRow picks the largest pill metrics that fit in available. On a
+// wide window the gaps grow a little, up to mainFilterMaxGap, so the row
+// follows the window instead of staying a fixed cluster.
+func measureFilterRow(gtx layout.Context, typo *typography, available int) filterRowMetrics {
+	measure := func(step filterPillStep) filterRowMetrics {
+		metrics := filterRowMetrics{
+			widths:  make([]int, len(userStatusFilterOptions)),
+			size:    step.size,
+			padding: step.padding,
+			gap:     gtx.Dp(step.gap),
+		}
+		for index, option := range userStatusFilterOptions {
+			metrics.widths[index] = filterPillWidth(gtx, typo, option.label, step.size, step.padding)
+			metrics.total += metrics.widths[index]
+		}
+		metrics.total += metrics.gap * (len(metrics.widths) - 1)
+		return metrics
+	}
+
+	metrics := measure(filterPillSteps[0])
+	if metrics.total > available {
+		for _, step := range filterPillSteps[1:] {
+			metrics = measure(step)
+			if metrics.total <= available {
+				break
+			}
+		}
+		return metrics
+	}
+
+	maxGap := gtx.Dp(mainFilterMaxGap)
+	if metrics.gap < maxGap && len(metrics.widths) > 1 {
+		grow := (available - metrics.total) / (len(metrics.widths) - 1)
+		if grow > maxGap-metrics.gap {
+			grow = maxGap - metrics.gap
+		}
+		if grow > 0 {
+			metrics.gap += grow
+			metrics.total += grow * (len(metrics.widths) - 1)
+		}
+	}
+	return metrics
+}
+
+// historyFilterSpan is the stable free area used by the filter row. The count
+// reserve, rather than the current "(n)" width, keeps the row from moving when
+// titles are added or removed. The right edge follows the clear action, so the
+// span still adapts to window resizes.
+func historyFilterSpan(gtx layout.Context, rect, titleInk, countInk, clearRect image.Rectangle) (int, int) {
+	countReserve := max(gtx.Dp(mainFilterReserve), countInk.Dx())
+	left := rect.Min.X + titleInk.Dx() + gtx.Dp(unit.Dp(7)) + countReserve + gtx.Dp(unit.Dp(14))
+	right := clearRect.Min.X - gtx.Dp(unit.Dp(12))
+	return left, right
+}
+
+// centeredFilterRowStart keeps a row inside its available span. A row wider
+// than the span starts at the left edge; at that point the header clips it
+// rather than dropping the controls.
+func centeredFilterRowStart(left, available, total int) int {
+	if total >= available {
+		return left
+	}
+	return left + (available-total)/2
+}
+
+// layoutHistoryFilters draws the six status filters centred in the stable
+// middle span. Inactive pills are neutral gray; selecting one reveals its
+// status color.
 func (m *mainWindow) layoutHistoryFilters(gtx layout.Context, left, right, centerY int) {
 	available := right - left
 	if available <= 0 {
 		return
 	}
-	gap := gtx.Dp(mainFilterGap)
-	widths := make([]int, len(userStatusFilterOptions))
-	total := 0
-	for index, option := range userStatusFilterOptions {
-		widths[index] = filterPillWidth(gtx, m.typo, option.label)
-		total += widths[index]
-	}
-	total += gap * (len(widths) - 1)
-	if total > available {
-		// On a very narrow window the pills shrink their horizontal padding
-		// instead of overflowing the header.
-		total = 0
-		for index, option := range userStatusFilterOptions {
-			_, ink := m.typo.measure(gtx, option.label, font.Font{Typeface: fontFamily, Weight: font.Medium}, mainFilterSize)
-			widths[index] = ink.Dx() + gtx.Dp(unit.Dp(4))
-			total += widths[index]
-		}
-		total += gap * (len(widths) - 1)
-	}
-	if total > available {
-		return
-	}
-	x := left + (available-total)/2
+	metrics := measureFilterRow(gtx, m.typo, available)
+	x := centeredFilterRowStart(left, available, metrics.total)
 	height := gtx.Dp(mainFilterHeight)
 	clickedIndex := -1
 	for index, option := range userStatusFilterOptions {
-		rect := image.Rect(x, centerY-height/2, x+widths[index], centerY+height/2)
+		rect := image.Rect(x, centerY-height/2, x+metrics.widths[index], centerY+height/2)
 		click := &m.filterClicks[index]
 		hover := m.filterHovers[index].update(gtx, click.Hovered())
 		if click.Clicked(gtx) {
 			clickedIndex = index
 		}
 		m.layoutHitArea(gtx, rect, click, true, func(gtx layout.Context) {
-			drawFilterPill(gtx, m.typo, image.Rect(0, 0, rect.Dx(), rect.Dy()), option, m.filter == option.filter, hover)
+			drawFilterPill(gtx, m.typo, image.Rect(0, 0, rect.Dx(), rect.Dy()), option, m.filter == option.filter, hover, metrics.size)
 		})
-		x += widths[index] + gap
+		x += metrics.widths[index] + metrics.gap
 	}
 	if clickedIndex >= 0 {
-		next := userStatusFilterOptions[clickedIndex].filter
-		if next != m.filter {
-			m.filter = next
-			logging.Info("history filter changed", "filter", m.filter)
-			m.applyFilter()
-			gtx.Execute(op.InvalidateCmd{})
+		m.setFilter(gtx, userStatusFilterOptions[clickedIndex].filter)
+	}
+}
+
+// setFilter applies a history filter from either a mouse click or a keyboard
+// shortcut. It is a no-op when the filter is already selected.
+func (m *mainWindow) setFilter(gtx layout.Context, next userStatusFilter) {
+	if next == m.filter {
+		return
+	}
+	m.filter = next
+	logging.Info("history filter changed", "filter", m.filter)
+	m.applyFilter()
+	gtx.Execute(op.InvalidateCmd{})
+}
+
+// stepFilter moves through the filter pills in their visual order and wraps
+// around, so the left and right arrows always have a visible result.
+func (m *mainWindow) stepFilter(gtx layout.Context, delta int) {
+	count := len(userStatusFilterOptions)
+	if count == 0 {
+		return
+	}
+	current := 0
+	for index, option := range userStatusFilterOptions {
+		if option.filter == m.filter {
+			current = index
+			break
 		}
 	}
+	delta %= count
+	next := (current + delta + count) % count
+	m.setFilter(gtx, userStatusFilterOptions[next].filter)
 }
 
 func (m *mainWindow) layoutHistory(gtx layout.Context, rect image.Rectangle) {
@@ -1574,22 +1759,7 @@ func (m *mainWindow) layoutHistoryRow(gtx layout.Context, index, width, height i
 	if !m.loading && !m.playing {
 		_, playClicked = row.playClick.Update(gtx)
 		if playClicked && !m.drag.active {
-			m.selected = index
-			m.focusHistory(gtx)
-			result := historyPlayFailed
-			if m.onPlayHistory != nil {
-				result = m.onPlayHistory(item)
-			}
-			switch result {
-			case historyPlayStarted:
-				m.playing = true
-				m.playingID = item.id
-			case historyPlayFailed:
-				// Fall back to the title page when direct playback is not
-				// possible (no voiceovers, missing mpv, and so on).
-				m.startLoading(gtx, index, true)
-			}
-			gtx.Execute(op.InvalidateCmd{})
+			m.playHistory(gtx, index)
 		}
 	}
 	_, trashClicked := row.trashClick.Update(gtx)
