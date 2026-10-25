@@ -34,16 +34,19 @@ func NewKey(provider Provider) (string, error) {
 		return "", fmt.Errorf("неизвестный провайдер %q", provider)
 	}
 	buf := make([]byte, keySuffixLength)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	// Rejection sampling keeps every letter equally likely; 256 is not a
-	// multiple of 26, so a plain modulo would slightly favour A..F.
-	for index, value := range buf {
-		for value >= 26 {
-			value %= 26
+	for index := range buf {
+		for {
+			if _, err := rand.Read(buf[index : index+1]); err != nil {
+				return "", err
+			}
+			// 234 is the largest multiple of 26 that fits in a byte. Values
+			// above it are redrawn so every letter stays equally likely;
+			// folding the whole byte range with a modulo would favour A..V.
+			if buf[index] < 234 {
+				buf[index] = keyAlphabet[buf[index]%26]
+				break
+			}
 		}
-		buf[index] = keyAlphabet[value]
 	}
 	return KeyPrefix + string(code) + string(buf), nil
 }
