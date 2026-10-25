@@ -9,7 +9,6 @@ package discord
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -25,37 +24,26 @@ const (
 	// activityTypeWatching renders the card as "Смотрит Yonime" instead of
 	// "Играет в Yonime".
 	activityTypeWatching = 3
-	// maxTextRunes is Discord's limit for details, state and asset tooltips.
+	// maxTextRunes is Discord's limit for details and state.
 	maxTextRunes = 128
 	// minUpdateInterval keeps the manager well below Discord's rate limit of
 	// five SET_ACTIVITY calls per twenty seconds. The activity only changes when
 	// the episode does, so this delay is invisible in practice.
 	minUpdateInterval = 4 * time.Second
-	// statusDisplayDetails makes Discord show the activity details (title and
-	// episode) in the compact status line above the profile instead of the
-	// application name "Yonime". See StatusDisplayTypes in the Discord docs.
-	statusDisplayDetails = 2
-	// artworkProxy pads the portrait AniList cover into the square slot that
-	// Discord uses for the large activity image. Discord center-crops the
-	// source, which cuts off the top and bottom of a poster; Photon's letterbox
-	// mode keeps the whole cover and fills the sides with black, which blends
-	// into the dark activity card.
-	artworkProxy = "https://i0.wp.com/"
-	artworkSize  = "512,512"
 	// reconnectDelay is how long to wait before dialing again when Discord is
 	// not running. A late Discord start is picked up within this window.
 	reconnectDelay = 10 * time.Second
 )
 
-// Presence is the data shown in the activity card. The episode and total are
-// only used for the details line; Cover may be empty, in which case Discord
-// falls back to the application art.
+// Presence is the text shown in the activity card. Yonime deliberately
+// publishes no artwork: Discord renders a square image and would crop a
+// portrait poster, and sending the cover through an image proxy is not worth
+// the extra dependency. The app icon is enough.
 type Presence struct {
 	Title   string
 	Episode string
 	Total   int
 	Movie   bool
-	Cover   string
 }
 
 // Details is the second line of the card. Serial episodes read
@@ -79,60 +67,20 @@ func (p Presence) Details() string {
 	return truncate(title, budget) + suffix
 }
 
-// Name is the activity name Discord prints where it normally shows the
-// application name, such as the Active Now list and the profile card header.
-// Without it every friend sees only "Watching Yonime". The episode count stays
-// in Details, so the activity name remains short.
-func (p Presence) Name() string {
-	return truncate(strings.TrimSpace(p.Title), maxTextRunes)
-}
-
 // key identifies the activity content. The manager skips updates whose key did
 // not change, which keeps the polling loop in the UI from touching the pipe.
 func (p Presence) key() string {
-	return p.Name() + "\x00" + p.Details() + "\x00" + p.Cover
+	return p.Details()
 }
 
-// artworkURL pads a portrait cover into the square slot Discord uses for the
-// large activity image. Discord center-crops the source, which cuts off the top
-// and bottom of an AniList poster; the proxy's letterbox mode keeps the whole
-// cover and fills the sides with the card background color.
-func artworkURL(cover string) string {
-	cover = strings.TrimSpace(cover)
-	if cover == "" {
-		return ""
-	}
-	parsed, err := url.Parse(cover)
-	if err != nil || parsed.Host == "" || (parsed.Scheme != "https" && parsed.Scheme != "http") {
-		return cover
-	}
-	if strings.EqualFold(parsed.Host, "i0.wp.com") {
-		return cover
-	}
-	query := parsed.Query()
-	query.Set("lb", artworkSize)
-	parsed.RawQuery = query.Encode()
-	return artworkProxy + parsed.Host + parsed.EscapedPath() + "?" + parsed.RawQuery
-}
-
-// activity builds the SET_ACTIVITY payload. It has to stay a plain map rather
-// than a struct: Discord distinguishes a missing assets block from an empty one.
+// activity builds the SET_ACTIVITY payload. The application name is left to
+// Discord ("Yonime"), and the default status display type keeps the compact
+// line free of the "Watching" verb. Details carries the title and episode.
 func (p Presence) activity() map[string]any {
-	activity := map[string]any{
-		"type":                activityTypeWatching,
-		"details":             p.Details(),
-		"status_display_type": statusDisplayDetails,
+	return map[string]any{
+		"type":    activityTypeWatching,
+		"details": p.Details(),
 	}
-	if name := p.Name(); name != "" {
-		activity["name"] = name
-	}
-	if cover := artworkURL(p.Cover); cover != "" {
-		activity["assets"] = map[string]any{
-			"large_image": cover,
-			"large_text":  truncate(strings.TrimSpace(p.Title), maxTextRunes),
-		}
-	}
-	return activity
 }
 
 // Manager owns the single presence connection. Set and Clear may be called from

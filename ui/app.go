@@ -1366,7 +1366,6 @@ func (a *application) trackPresence(session *playback.Session, title library.Tit
 		Episode: plan.Episode,
 		Total:   title.EpisodesTotal,
 		Movie:   title.IsMovie,
-		Cover:   plan.PosterURL,
 	}
 	if base.Total <= 0 {
 		base.Total = len(plan.Episodes)

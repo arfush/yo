@@ -67,46 +67,23 @@ func TestPresenceDetailsKeepsTheEpisodeWhenTheTitleIsLong(t *testing.T) {
 	}
 }
 
-func TestPresenceActivityUsesPaddedExternalCover(t *testing.T) {
-	presence := Presence{Title: "Фрирен", Cover: "https://s4.anilist.co/cover.jpg"}
+// TestPresenceActivityKeepsTheAppNameAndHasNoArtwork locks the requested
+// shape: Discord shows the application name "Yonime", the compact status line
+// stays on the default name, and no cover is uploaded anywhere.
+func TestPresenceActivityKeepsTheAppNameAndHasNoArtwork(t *testing.T) {
+	presence := Presence{Title: "Фрирен", Episode: "5", Total: 12}
 	activity := presence.activity()
 
 	if activity["type"] != activityTypeWatching {
 		t.Fatalf("type = %v, want %d", activity["type"], activityTypeWatching)
 	}
-	if activity["details"] != "Фрирен" {
+	if activity["details"] != "Фрирен 5/12" {
 		t.Fatalf("details = %v", activity["details"])
 	}
-	if activity["name"] != "Фрирен" {
-		t.Fatalf("name = %v, want the title instead of the app name", activity["name"])
-	}
-	if activity["status_display_type"] != statusDisplayDetails {
-		t.Fatalf("status_display_type = %v, want %d", activity["status_display_type"], statusDisplayDetails)
-	}
-	assets, ok := activity["assets"].(map[string]any)
-	if !ok {
-		t.Fatalf("assets = %#v, want a map", activity["assets"])
-	}
-	want := "https://i0.wp.com/s4.anilist.co/cover.jpg?lb=512%2C512"
-	if assets["large_image"] != want {
-		t.Fatalf("large_image = %v, want %v", assets["large_image"], want)
-	}
-}
-
-// TestArtworkURLKeepsUnknownCover guards the fallback: if a future source is
-// not an absolute URL, Discord gets it unchanged instead of a broken proxy URL.
-func TestArtworkURLKeepsUnknownCover(t *testing.T) {
-	for _, cover := range []string{"", "asset-key", "ftp://example.com/cover.jpg"} {
-		if got := artworkURL(cover); got != cover {
-			t.Fatalf("artworkURL(%q) = %q, want it unchanged", cover, got)
+	for _, key := range []string{"assets", "name", "status_display_type"} {
+		if _, ok := activity[key]; ok {
+			t.Fatalf("%s must be absent: %#v", key, activity)
 		}
-	}
-}
-
-func TestPresenceActivitySkipsAssetsWithoutCover(t *testing.T) {
-	activity := Presence{Title: "Фрирен"}.activity()
-	if _, ok := activity["assets"]; ok {
-		t.Fatalf("assets must be absent without a cover: %#v", activity)
 	}
 }
 
@@ -144,8 +121,11 @@ func TestClientSendsSetActivityFrame(t *testing.T) {
 	if frame.Args.Activity["details"] != "Фрирен 5/12" {
 		t.Fatalf("details = %v", frame.Args.Activity["details"])
 	}
-	if frame.Args.Activity["name"] != "Фрирен" {
-		t.Fatalf("name = %v", frame.Args.Activity["name"])
+	if _, ok := frame.Args.Activity["name"]; ok {
+		t.Fatalf("name must stay unset so Discord uses the app name: %#v", frame.Args.Activity)
+	}
+	if _, ok := frame.Args.Activity["assets"]; ok {
+		t.Fatalf("assets must stay unset: %#v", frame.Args.Activity)
 	}
 }
 

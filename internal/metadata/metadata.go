@@ -194,19 +194,16 @@ func imdbSearch(ctx context.Context, title string) string {
 	return ""
 }
 
-// AniListTitle returns the franchise season number and the poster URL of a MAL
-// id. Both come from one query. The poster is the only artwork Discord can show:
-// AnimeLIB's CDN rejects requests without a Referer header, and Discord's image
-// proxy does not send one.
-func AniListTitle(ctx context.Context, malID int) (season int, cover string) {
+// AniListTitle returns the franchise season number of a MAL id.
+func AniListTitle(ctx context.Context, malID int) int {
 	if malID <= 0 {
-		return -1, ""
+		return -1
 	}
-	edges, cover, err := anilistPrequelEdges(ctx, malID)
+	edges, err := anilistPrequelEdges(ctx, malID)
 	if err != nil {
-		return -1, ""
+		return -1
 	}
-	season = 1
+	season := 1
 	node := &anilistNode{Relations: &anilistRelations{Edges: edges}}
 	for depth := 0; depth < 20; depth++ {
 		prequel := findPrequelTV(node.Relations.Edges)
@@ -217,22 +214,16 @@ func AniListTitle(ctx context.Context, malID int) (season int, cover string) {
 		node = prequel
 	}
 	if season < 1 {
-		return -1, cover
+		return -1
 	}
-	return season, cover
+	return season
 }
 
 // SeasonNumber counts TV prequels in AniList's relation chain. It returns -1
 // when AniList cannot answer. The query depth matches main.go's reference
 // implementation; for most franchises it is enough to distinguish seasons.
 func SeasonNumber(ctx context.Context, malID int) int {
-	season, _ := AniListTitle(ctx, malID)
-	return season
-}
-
-type anilistCover struct {
-	ExtraLarge string `json:"extraLarge"`
-	Large      string `json:"large"`
+	return AniListTitle(ctx, malID)
 }
 
 type anilistNode struct {
@@ -259,56 +250,48 @@ func findPrequelTV(edges []anilistEdge) *anilistNode {
 	return nil
 }
 
-func anilistPrequelEdges(ctx context.Context, malID int) ([]anilistEdge, string, error) {
-	const query = `query ($idMal: Int) { Media(idMal: $idMal, type: ANIME) { coverImage { extraLarge large } relations { edges { relationType node { idMal format relations { edges { relationType node { idMal format relations { edges { relationType node { idMal format } } } } } } } } } } }`
+func anilistPrequelEdges(ctx context.Context, malID int) ([]anilistEdge, error) {
+	const query = `query ($idMal: Int) { Media(idMal: $idMal, type: ANIME) { relations { edges { relationType node { idMal format relations { edges { relationType node { idMal format relations { edges { relationType node { idMal format } } } } } } } } } } }`
 	payload, err := json.Marshal(map[string]any{
 		"query":     query,
 		"variables": map[string]int{"idMal": malID},
 	})
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://graphql.anilist.co", bytes.NewReader(payload))
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", userAgent)
 	response, err := httpClient.Do(req)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("AniList HTTP %d", response.StatusCode)
+		return nil, fmt.Errorf("AniList HTTP %d", response.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, 4<<20))
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	var parsed struct {
 		Data struct {
 			Media *struct {
-				Cover     *anilistCover     `json:"coverImage"`
 				Relations *anilistRelations `json:"relations"`
 			} `json:"Media"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	if parsed.Data.Media == nil || parsed.Data.Media.Relations == nil {
-		return nil, "", errors.New("AniList returned no relations")
+		return nil, errors.New("AniList returned no relations")
 	}
-	cover := ""
-	if parsed.Data.Media.Cover != nil {
-		cover = strings.TrimSpace(parsed.Data.Media.Cover.ExtraLarge)
-		if cover == "" {
-			cover = strings.TrimSpace(parsed.Data.Media.Cover.Large)
-		}
-	}
-	return parsed.Data.Media.Relations.Edges, cover, nil
+	return parsed.Data.Media.Relations.Edges, nil
 }
 
 // Chapters returns introdb chapters for one episode. The second return value

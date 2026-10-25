@@ -33,11 +33,8 @@ type PlaybackPlan struct {
 	Episodes     []PlaybackEpisode
 	Season       int
 	IMDbID       string
-	// PosterURL is the AniList poster used by Discord. AnimeLIB's cover CDN
-	// requires a Referer header, so its URL cannot be shown outside the app.
-	PosterURL string
-	ResumeAt  float64
-	Duration  float64
+	ResumeAt     float64
+	Duration     float64
 }
 
 // PlaybackPlan resolves the selected voice, the next available episode and the
@@ -147,7 +144,6 @@ func (l *Library) PlaybackPlan(ctx context.Context, title Title, voiceName, epis
 
 	var (
 		season int
-		poster string
 		imdbID string
 		wg     sync.WaitGroup
 	)
@@ -155,7 +151,7 @@ func (l *Library) PlaybackPlan(ctx context.Context, title Title, voiceName, epis
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			season, poster = metadata.AniListTitle(ctx, malID)
+			season = metadata.AniListTitle(ctx, malID)
 		}()
 	}
 	imdbID = strings.TrimSpace(title.IMDbID)
@@ -220,7 +216,6 @@ func (l *Library) PlaybackPlan(ctx context.Context, title Title, voiceName, epis
 		Episodes:     episodes,
 		Season:       season,
 		IMDbID:       imdbID,
-		PosterURL:    poster,
 		ResumeAt:     resumeAt,
 		Duration:     duration,
 	}, nil
