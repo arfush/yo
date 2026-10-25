@@ -918,7 +918,7 @@ func (s *Session) resolveEntry(ctx context.Context, index int) (*playlistEntry, 
 	if animelibPlayer != nil {
 		link := pickAnimelibQuality(animelibPlayer.Qualities, s.quality)
 		if link.Href != "" {
-			mediaURL, joinErr := s.joinAnimelib(resolveCtx, link.Href)
+			mediaURL, joinErr := s.joinAnimelib(resolveCtx, link.Href, animelibPlayer.VideoDomain)
 			if joinErr == nil && mediaURL != "" {
 				// Subtitles belong to the player that is actually playing.
 				// Never borrow tracks from another voice or from a Kodik
@@ -956,7 +956,7 @@ func (s *Session) resolveEntry(ctx context.Context, index int) (*playlistEntry, 
 	return nil, fmt.Errorf("озвучка %q недоступна для серии %s", s.plan.Voice, episode.Number)
 }
 
-func (s *Session) joinAnimelib(ctx context.Context, href string) (string, error) {
+func (s *Session) joinAnimelib(ctx context.Context, href, domain string) (string, error) {
 	if isAbsoluteURL(href) {
 		return href, nil
 	}
@@ -964,10 +964,8 @@ func (s *Session) joinAnimelib(ctx context.Context, href string) (string, error)
 	if err != nil {
 		return "", err
 	}
-	for _, base := range bases {
-		if joined := animelib.JoinVideoBase(base, href); joined != "" {
-			return joined, nil
-		}
+	if joined := animelib.JoinVideoBase(pickVideoBase(bases, domain), href); joined != "" {
+		return joined, nil
 	}
 	return "", errors.New("нет видео-серверов AnimeLIB")
 }
@@ -1193,6 +1191,37 @@ func (s *Session) subtitleForPlayer(ctx context.Context, player *animelib.Episod
 	return resolveRelativeSubtitle(src, player.VideoDomain, bases), label
 }
 
+// videoBaseHost maps the API's video_domain to the CDN host that actually
+// stores the file. The constants endpoint lists several servers and a relative
+// href belongs to exactly one of them: joining it to the first server yields a
+// 404 for titles hosted on a secondary one.
+func videoBaseHost(domain string) string {
+	switch strings.ToLower(strings.TrimSpace(domain)) {
+	case "secondary_1":
+		return "video2.cdnlibs.org"
+	case "secondary_2":
+		return "video1.imglib.info"
+	default:
+		return "video1.cdnlibs.org"
+	}
+}
+
+// pickVideoBase returns the server matching the player's domain and falls back
+// to the first known server when the list does not contain it.
+func pickVideoBase(bases []string, domain string) string {
+	wantedHost := videoBaseHost(domain)
+	for _, base := range bases {
+		parsed, err := url.Parse(strings.TrimSpace(base))
+		if err == nil && strings.EqualFold(parsed.Hostname(), wantedHost) {
+			return base
+		}
+	}
+	if len(bases) > 0 {
+		return bases[0]
+	}
+	return ""
+}
+
 // resolveRelativeSubtitle joins a relative subtitle path to the video server
 // named by the player's video_domain. The API currently returns absolute
 // subtitle URLs, but relative paths exist in older clients' data.
@@ -1204,23 +1233,7 @@ func resolveRelativeSubtitle(src, domain string, bases []string) string {
 	if isAbsoluteURL(src) {
 		return src
 	}
-	wantedHost := "video1.cdnlibs.org"
-	switch strings.ToLower(strings.TrimSpace(domain)) {
-	case "secondary_1":
-		wantedHost = "video2.cdnlibs.org"
-	case "secondary_2":
-		wantedHost = "video1.imglib.info"
-	}
-	for _, base := range bases {
-		parsed, err := url.Parse(strings.TrimSpace(base))
-		if err == nil && strings.EqualFold(parsed.Hostname(), wantedHost) {
-			return animelib.JoinVideoBase(base, src)
-		}
-	}
-	if len(bases) > 0 {
-		return animelib.JoinVideoBase(bases[0], src)
-	}
-	return ""
+	return animelib.JoinVideoBase(pickVideoBase(bases, domain), src)
 }
 
 func sameTeam(left, right string) bool {
