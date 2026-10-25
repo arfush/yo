@@ -24,6 +24,7 @@ import (
 	"github.com/arfush/yonime/internal/appdata"
 	"github.com/arfush/yonime/internal/browser"
 	"github.com/arfush/yonime/internal/library"
+	"github.com/arfush/yonime/internal/metadata"
 	"github.com/arfush/yonime/internal/mpv"
 	"github.com/arfush/yonime/internal/playback"
 	"github.com/arfush/yonime/internal/token"
@@ -531,6 +532,7 @@ func (a *application) openSettings() {
 		AutoUpdate:    a.library.AutoUpdateEnabled(),
 		Beta:          a.library.BetaUpdatesEnabled(),
 		SharedControl: a.library.SharedControlEnabled(),
+		AutoSkip:      a.library.AutoSkipSegments(),
 		Provider:      a.party.Provider(),
 		CloudflareURL: partyCfg.CloudflareURL,
 		SupabaseURL:   partyCfg.SupabaseURL,
@@ -584,6 +586,9 @@ func (a *application) openSettings() {
 		}
 		a.party.SetSharedControl(enabled)
 		return nil
+	}
+	settings.onAutoSkip = func(segment metadata.Segment, enabled bool) error {
+		return a.library.SetAutoSkipSegment(segment, enabled)
 	}
 	settings.onProvider = func(provider watchparty.Provider) error {
 		// SetProvider stores the choice, so the next room and the party card
@@ -1274,11 +1279,16 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 		if partyGuest && a.party != nil {
 			inputLocked = !a.party.GuestControlAllowed()
 		}
+		// Auto-skip belongs to the room owner. A guest follows the host's
+		// picture, so its own chapter settings must not move the timeline.
+		var autoSkip map[metadata.Segment]bool
+		if !partyGuest {
+			autoSkip = a.library.AutoSkipSegments()
+		}
 		session, err := a.playback.Start(ctx, plan, playback.StartOptions{
 			Quality:          quality,
 			Window:           window,
-			HeaderFonts:      headerFonts(),
-			HeaderBadgeWidth: a.shell.badgeWidth,
+			AutoSkipSegments: autoSkip,
 			InputLocked:      inputLocked,
 			OnReady: func() {
 				a.hidden.Store(true)

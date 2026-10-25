@@ -125,34 +125,6 @@ func TestVersionBadgeCentersItsLabel(t *testing.T) {
 	}
 }
 
-// TestVersionBadgeMatchesMPVHeader keeps the width handed to the mpv overlay in
-// sync with the pill the application draws: the Lua script rebuilds the pill as
-// text width + 2*pad + 2*border, so a mismatch would show up as two different
-// badges.
-func TestVersionBadgeMatchesMPVHeader(t *testing.T) {
-	typo, err := newTypography()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for _, scale := range []float32{1, 1.25, 1.5, 2} {
-		gtx := badgeTestContext(scale)
-		g := makeGeometry(gtx, false, true, true, true)
-		s := &shell{typo: typo}
-		right := s.layoutBadge(gtx, g)
-
-		border := g.leastPx(1)
-		pad := g.px(badgePaddingX)
-		textPx := s.badgeWidth * scale
-		if got, want := float64(textPx)+float64(2*pad+2*border), float64(right-g.badgeX); math.Abs(got-want) > 0.5 {
-			t.Errorf("scale %v: mpv would draw a %.2fpx pill, the application draws %dpx", scale, got, right-g.badgeX)
-		}
-		if s.badgeWidth <= 0 {
-			t.Errorf("scale %v: badge width handed to mpv is %v", scale, s.badgeWidth)
-		}
-	}
-}
-
 func TestVersionBadgeShapesKnownVersions(t *testing.T) {
 	typo, err := newTypography()
 	if err != nil {

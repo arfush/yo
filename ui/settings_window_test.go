@@ -68,7 +68,11 @@ func TestSettingsWindowProviderMenuOpensInsideTheContentArea(t *testing.T) {
 		Constraints: layout.Exact(image.Pt(833, 442)),
 	}
 	gtx = gtx.Disabled()
-	settings.scroll = settings.contentHeight(gtx)
+	// Lay out once to learn where the provider row sits, then scroll it into
+	// the viewport. Scrolling to the very bottom now leaves it far above the
+	// content area because the auto-skip section follows it.
+	settings.layout(gtx)
+	settings.scroll = clampScroll(settings.providerAnchor.Max.Y-100, settings.contentHeight(gtx), 442)
 	settings.layout(gtx)
 
 	if settings.providerAnchor.Empty() {

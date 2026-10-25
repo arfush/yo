@@ -95,7 +95,7 @@ func TestGuestInputSectionBlocksOnlyTheTimeline(t *testing.T) {
 	}
 
 	// These must keep working. In particular, wheel up/down is volume in mpv,
-	// and MBTN_LEFT belongs to the custom header and the OS window dragging.
+	// and MBTN_LEFT belongs to the OSC.
 	allowed := []string{"WHEEL_UP", "WHEEL_DOWN", "MBTN_LEFT", "MBTN_LEFT_DBL", "f", "v", "j", "[", "]", "9", "0", "m"}
 	for _, key := range allowed {
 		if strings.Contains(conf, "\n"+key+" ") {

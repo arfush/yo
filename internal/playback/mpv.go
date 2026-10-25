@@ -18,7 +18,6 @@ import (
 
 	"github.com/arfush/yonime/internal/metadata"
 	"github.com/arfush/yonime/internal/mpv"
-	"github.com/arfush/yonime/internal/version"
 )
 
 type mpvEventKind int
@@ -61,26 +60,9 @@ type mpvProcess struct {
 	lastErr         error
 }
 
-// headerScriptOpts builds the script-opts value for the Lua header. mpv matches
-// the keys verbatim, dashes included, and the script declares them that way, so
-// a renamed option would be silently ignored and the header would fall back to
-// estimating the badge width from a character table.
-func headerScriptOpts(badgeWidth float32, title string) string {
-	opts := "yonime-header-version=" + version.String() + ",osc-windowcontrols=no"
-	if badgeWidth > 0 {
-		opts += ",yonime-header-badge-width=" + strconv.FormatFloat(float64(badgeWidth), 'f', -1, 32)
-	}
-	if title != "" && title != "Yonime" {
-		// The Lua header draws its own title, so the role has to be passed
-		// there as well as in the native window title.
-		opts += ",title=" + title
-	}
-	return opts
-}
-
 // inputLockArgs disables the player's built-in controls for a guest whose host
-// does not allow shared control. The Lua header keeps its own close, minimise
-// and maximise bindings, so a guest can still leave.
+// does not allow shared control. The native window controls keep the guest able
+// to leave.
 func inputLockArgs(locked bool) []string {
 	if !locked {
 		return nil
@@ -91,7 +73,7 @@ func inputLockArgs(locked bool) []string {
 	return []string{"--osc=no"}
 }
 
-func startMPV(ctx context.Context, geometry string, header headerAssets, title string, inputLocked bool) (*mpvProcess, error) {
+func startMPV(ctx context.Context, geometry, inputConfPath, title string, inputLocked bool) (*mpvProcess, error) {
 	path, err := findMPV()
 	if err != nil {
 		return nil, err
@@ -121,24 +103,8 @@ func startMPV(ctx context.Context, geometry string, header headerAssets, title s
 		args = append(args, "--geometry="+geometry)
 	}
 	args = append(args, inputLockArgs(inputLocked)...)
-	if header.InputConfPath != "" {
-		args = append(args, "--input-conf="+header.InputConfPath)
-	}
-	if header.ScriptPath != "" {
-		// The header script owns the top video margin, so the OSC must not
-		// apply boxvideo margins on its own; doing both made the bottom bar
-		// appear inconsistently. windowcontrols are hidden because the script
-		// draws its own.
-		args = append(args,
-			"--title-bar=no",
-			"--border=yes",
-			"--window-dragging=yes",
-			"--script="+header.ScriptPath,
-			"--script-opts="+headerScriptOpts(header.BadgeWidth, title),
-		)
-		if header.FontsDir != "" {
-			args = append(args, "--osd-fonts-dir="+header.FontsDir, "--osd-font=Inter")
-		}
+	if inputConfPath != "" {
+		args = append(args, "--input-conf="+inputConfPath)
 	}
 	cmd := exec.Command(path, args...)
 	cmd.Dir = filepath.Dir(path)

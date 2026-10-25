@@ -31,14 +31,10 @@ type WindowRect struct {
 type StartOptions struct {
 	Quality int
 	Window  WindowRect
-	// HeaderFonts maps file names to the Inter faces mpv's OSD needs for the
-	// custom window header. The UI owns the embedded fonts; playback installs
-	// them next to the Lua script.
-	HeaderFonts map[string][]byte
-	// HeaderBadgeWidth is the version-label width in dp, measured by the UI.
-	// The Lua header uses it to size its pill exactly like the app's header;
-	// zero means the script falls back to its character table.
-	HeaderBadgeWidth float32
+	// AutoSkipSegments lists the introdb chapter types that playback jumps
+	// over automatically. It is empty for a watch-party guest: the room owner
+	// decides what is skipped.
+	AutoSkipSegments map[metadata.Segment]bool
 	// InputLocked blocks timeline control in mpv for a watch-party guest whose
 	// host keeps playback to itself. Other player controls stay available.
 	InputLocked bool
@@ -112,22 +108,24 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 	}
 	sessionCtx, cancel := context.WithCancel(context.Background())
 	session := &Session{
-		service:        s,
-		plan:           plan,
-		options:        options,
-		client:         animelib.New(token),
-		ctx:            sessionCtx,
-		cancel:         cancel,
-		resolved:       make(map[int]*playlistEntry),
-		details:        make(map[int]*animelib.EpisodeDetail),
-		detailFlight:   make(map[int]chan struct{}),
-		chapterSem:     make(chan struct{}, 2),
-		quality:        options.Quality,
-		lastWrite:      time.Time{},
-		lastPos:        plan.ResumeAt,
-		currentEp:      -1,
-		chaptersNoData: make(map[string]bool),
-		inputLocked:    options.InputLocked,
+		service:         s,
+		plan:            plan,
+		options:         options,
+		client:          animelib.New(token),
+		ctx:             sessionCtx,
+		cancel:          cancel,
+		resolved:        make(map[int]*playlistEntry),
+		details:         make(map[int]*animelib.EpisodeDetail),
+		detailFlight:    make(map[int]chan struct{}),
+		chapterSem:      make(chan struct{}, 2),
+		quality:         options.Quality,
+		lastWrite:       time.Time{},
+		lastPos:         plan.ResumeAt,
+		currentEp:       -1,
+		chaptersNoData:  make(map[string]bool),
+		autoSkip:        options.AutoSkipSegments,
+		skippedChapters: make(map[int]bool),
+		inputLocked:     options.InputLocked,
 	}
 	if session.quality <= 0 {
 		session.quality = 1080
@@ -141,13 +139,12 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 		return nil, err
 	}
 	geometry := geometryString(options.Window.X, options.Window.Y, options.Window.Width, options.Window.Height)
-	header, err := installHeaderAssets(options.HeaderFonts)
+	inputConf, err := installInputConf()
 	if err != nil {
 		cancel()
 		return nil, err
 	}
-	header.BadgeWidth = options.HeaderBadgeWidth
-	mpv, err := startMPV(ctx, geometry, header, options.Title, options.InputLocked)
+	mpv, err := startMPV(ctx, geometry, inputConf, options.Title, options.InputLocked)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -292,6 +289,11 @@ type Session struct {
 	// inputLocked mirrors the mpv input section so the guest loop only toggles
 	// it when the setting changes.
 	inputLocked bool
+	// autoSkip holds the introdb segment types that are jumped over. The event
+	// loop marks each chapter once so a manual rewind into an intro does not
+	// trap the viewer in a seek loop.
+	autoSkip        map[metadata.Segment]bool
+	skippedChapters map[int]bool
 
 	loadMu   sync.Mutex
 	ensureMu sync.Mutex
@@ -389,6 +391,9 @@ func (s *Session) onFileLoaded(position int) {
 		s.resumeApplied = true
 	}
 	s.lastPos = resume
+	// Chapter indices belong to the previous file. A fresh map keeps the skip
+	// state from leaking into the next episode.
+	s.skippedChapters = make(map[int]bool)
 	s.mu.Unlock()
 
 	if resume > 0 {
@@ -425,8 +430,37 @@ func (s *Session) onPlaylistPos(position int) {
 func (s *Session) onTimePos(seconds float64) {
 	s.mu.Lock()
 	s.lastPos = seconds
+	entry := s.entryAtLocked(s.current)
+	paused := s.paused
+	autoSkip := s.autoSkip
 	s.mu.Unlock()
+
+	if !paused && len(autoSkip) > 0 && entry != nil {
+		s.applyAutoSkip(entry, seconds, autoSkip)
+	}
 	s.saveProgress(false, seconds)
+}
+
+// applyAutoSkip jumps over an enabled introdb chapter. The event loop is the
+// only caller, so the skipped-chapter map needs no separate lock beyond s.mu.
+func (s *Session) applyAutoSkip(entry *playlistEntry, position float64, enabled map[metadata.Segment]bool) {
+	s.chaptersMu.Lock()
+	chapters := append([]metadata.Chapter(nil), entry.chapters...)
+	s.chaptersMu.Unlock()
+	if len(chapters) < 2 {
+		return
+	}
+
+	s.mu.Lock()
+	target, index, ok := autoSkipTarget(chapters, position, enabled, s.skippedChapters)
+	if ok {
+		s.skippedChapters[index] = true
+	}
+	mpv := s.mpv
+	s.mu.Unlock()
+	if ok && mpv != nil {
+		_ = mpv.seek(target)
+	}
 }
 
 func (s *Session) onDuration(seconds float64) {

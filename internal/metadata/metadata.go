@@ -32,6 +32,54 @@ type Chapter struct {
 	Time  float64 `json:"time"`
 }
 
+// Segment identifies one introdb segment type. The keys are stable because
+// they are stored in the settings table.
+type Segment string
+
+const (
+	SegmentRecap       Segment = "recap"
+	SegmentIntro       Segment = "intro"
+	SegmentOutro       Segment = "outro"
+	SegmentPreview     Segment = "preview"
+	SegmentCredits     Segment = "credits"
+	SegmentPostCredits Segment = "post_credits"
+)
+
+var segmentOrder = []Segment{
+	SegmentRecap,
+	SegmentIntro,
+	SegmentOutro,
+	SegmentPreview,
+	SegmentCredits,
+	SegmentPostCredits,
+}
+
+// Segments returns every introdb segment type in display order.
+func Segments() []Segment {
+	return append([]Segment(nil), segmentOrder...)
+}
+
+// SegmentFromChapterTitle maps an mpv chapter title back to its introdb
+// segment. The titles come from buildChapters and stay English because mpv
+// shows them above its seek bar.
+func SegmentFromChapterTitle(title string) (Segment, bool) {
+	switch title {
+	case "Recap":
+		return SegmentRecap, true
+	case "Opening":
+		return SegmentIntro, true
+	case "Ending":
+		return SegmentOutro, true
+	case "Preview":
+		return SegmentPreview, true
+	case "Credits":
+		return SegmentCredits, true
+	case "Post-credits":
+		return SegmentPostCredits, true
+	}
+	return "", false
+}
+
 // MALID extracts a MyAnimeList id from a Shikimori link.
 func MALID(shikimoriURL string) int {
 	match := malRe.FindStringSubmatch(strings.TrimSpace(shikimoriURL))

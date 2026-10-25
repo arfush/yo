@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/arfush/yonime/internal/animelib"
+	"github.com/arfush/yonime/internal/metadata"
 	"github.com/arfush/yonime/internal/store"
 )
 
@@ -40,6 +41,40 @@ func TestChoiceFallsBackToCompleteVoiceAndEpisode(t *testing.T) {
 // TestTrackViewingTracksUnseenTitles covers a watch-party guest: the title may
 // be new for them and only known from the room, but it still has to land in
 // their history with the host's voice and keep the progress mpv writes.
+// TestAutoSkipSegmentsDefaultsAndPersist keeps the per-type switches working:
+// recap and opening start enabled, the rest are opt-in, and every choice is
+// stored by segment key.
+func TestAutoSkipSegmentsDefaultsAndPersist(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "yonime.sqlite")
+	lib, err := Open(path, filepath.Join(dir, "token.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	segments := lib.AutoSkipSegments()
+	if !segments[metadata.SegmentRecap] || !segments[metadata.SegmentIntro] {
+		t.Fatalf("recap and intro must be enabled by default: %v", segments)
+	}
+	if segments[metadata.SegmentOutro] || segments[metadata.SegmentCredits] {
+		t.Fatalf("outro and credits must be opt-in: %v", segments)
+	}
+	if err := lib.SetAutoSkipSegment(metadata.SegmentOutro, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	lib, err = Open(path, filepath.Join(dir, "token.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = lib.Close() })
+	if !lib.AutoSkipSegments()[metadata.SegmentOutro] {
+		t.Fatal("enabled outro did not survive reopen")
+	}
+}
+
 func TestTrackViewingTracksUnseenTitles(t *testing.T) {
 	dir := t.TempDir()
 	lib, err := Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))

@@ -389,10 +389,16 @@ func (a *app) start(ctx context.Context, plan *library.PlaybackPlan, resumeAt fl
 	a.epoch++
 	epoch := a.epoch
 	a.mu.Unlock()
+	// A guest follows the host's timeline; only the room owner skips chapters.
+	autoSkip := a.lib.AutoSkipSegments()
+	if a.role == "гость" {
+		autoSkip = nil
+	}
 	options := playback.StartOptions{
-		Quality:     a.lib.PreferredQuality(),
-		Title:       title,
-		InputLocked: inputLocked,
+		Quality:          a.lib.PreferredQuality(),
+		Title:            title,
+		AutoSkipSegments: autoSkip,
+		InputLocked:      inputLocked,
 		OnFinish: func(err error) {
 			a.mu.Lock()
 			if a.epoch != epoch {

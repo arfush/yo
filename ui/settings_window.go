@@ -16,6 +16,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
+	"github.com/arfush/yonime/internal/metadata"
 	"github.com/arfush/yonime/internal/watchparty"
 )
 
@@ -72,6 +73,7 @@ type settingsValues struct {
 	AutoUpdate    bool
 	Beta          bool
 	SharedControl bool
+	AutoSkip      map[metadata.Segment]bool
 	Provider      watchparty.Provider
 	CloudflareURL string
 	SupabaseURL   string
@@ -104,6 +106,10 @@ type settingsWindow struct {
 	controlClick    widget.Clickable
 	controlHover    hoverAnim
 
+	autoSkip      map[metadata.Segment]bool
+	autoSkipClick map[metadata.Segment]*widget.Clickable
+	autoSkipHover map[metadata.Segment]*hoverAnim
+
 	// providerClick is the select itself, providerItems are its options and
 	// providerScrim catches clicks outside the open menu.
 	providerClick  widget.Clickable
@@ -131,18 +137,27 @@ type settingsWindow struct {
 	onAutoUpdate func(bool) error
 	onBeta       func(bool) error
 	onControl    func(bool) error
+	onAutoSkip   func(metadata.Segment, bool) error
 	onProvider   func(watchparty.Provider) error
 	onRelay      func(watchparty.Config) error
 }
 
 func newSettingsWindow(typo *typography, values settingsValues) *settingsWindow {
 	w := &settingsWindow{
-		typo:       typo,
-		enabled:    values.Notifications,
-		autoUpdate: values.AutoUpdate,
-		beta:       values.Beta,
-		control:    values.SharedControl,
-		provider:   values.Provider,
+		typo:          typo,
+		enabled:       values.Notifications,
+		autoUpdate:    values.AutoUpdate,
+		beta:          values.Beta,
+		control:       values.SharedControl,
+		provider:      values.Provider,
+		autoSkip:      make(map[metadata.Segment]bool),
+		autoSkipClick: make(map[metadata.Segment]*widget.Clickable),
+		autoSkipHover: make(map[metadata.Segment]*hoverAnim),
+	}
+	for _, segment := range metadata.Segments() {
+		w.autoSkip[segment] = values.AutoSkip[segment]
+		w.autoSkipClick[segment] = &widget.Clickable{}
+		w.autoSkipHover[segment] = &hoverAnim{}
 	}
 	w.cloudflareEditor.SingleLine = true
 	w.cloudflareEditor.Submit = true
@@ -227,6 +242,16 @@ func (w *settingsWindow) layout(gtx layout.Context) {
 	y, relaySubmitted, relayFocusLost = w.layoutRelayPanels(gtx, left, right, y)
 	if relaySubmitted || relayFocusLost {
 		w.saveRelays()
+	}
+	y += gtx.Dp(settingsGroupGap)
+
+	y = w.layoutSectionTitle(gtx, left, y, "Автопропуск")
+	segments := metadata.Segments()
+	for index, segment := range segments {
+		y = w.layoutAutoSkipPanel(gtx, image.Rect(left, y, right, y+gtx.Dp(settingsPanelHeight)), segment)
+		if index < len(segments)-1 {
+			y += gtx.Dp(settingsRowGap)
+		}
 	}
 
 	if w.errorText != "" {
@@ -315,6 +340,12 @@ func (w *settingsWindow) contentHeight(gtx layout.Context) int {
 	height += title("Совместный просмотр") + 2*panel
 	height += (relays + 1) * gtx.Dp(settingsRowGap)
 	height += relays * panel
+	height += gtx.Dp(settingsGroupGap)
+	segments := len(metadata.Segments())
+	height += title("Автопропуск") + segments*panel
+	if segments > 1 {
+		height += (segments - 1) * gtx.Dp(settingsRowGap)
+	}
 	if w.errorText != "" {
 		_, ink := w.typo.measure(gtx, "Ошибка", font.Font{Typeface: fontFamily, Weight: font.Normal}, settingsNoteSize)
 		height += gtx.Dp(settingsErrorGap) + ink.Dy()
@@ -427,6 +458,41 @@ func (w *settingsWindow) layoutControlPanel(gtx layout.Context, rect image.Recta
 		&w.controlClick,
 	)
 	return rect.Max.Y
+}
+
+func (w *settingsWindow) layoutAutoSkipPanel(gtx layout.Context, rect image.Rectangle, segment metadata.Segment) int {
+	w.drawPanel(gtx, rect)
+	click := w.autoSkipClick[segment]
+	hover := w.autoSkipHover[segment]
+	clicked := click.Clicked(gtx)
+	progress := hover.update(gtx, click.Hovered() && w.animationsRun())
+	if clicked {
+		w.setAutoSkip(segment, !w.autoSkip[segment])
+		gtx.Execute(op.InvalidateCmd{})
+	}
+
+	label, note := autoSkipText(segment)
+	w.layoutToggleRow(gtx, rect, label, note, w.autoSkip[segment], progress, click)
+	return rect.Max.Y
+}
+
+// autoSkipText is the settings wording for one introdb segment.
+func autoSkipText(segment metadata.Segment) (string, string) {
+	switch segment {
+	case metadata.SegmentRecap:
+		return "Рекап", "Повтор событий прошлых серий"
+	case metadata.SegmentIntro:
+		return "Опенинг", "Вступительная заставка"
+	case metadata.SegmentOutro:
+		return "Эндинг", "Завершающая заставка"
+	case metadata.SegmentPreview:
+		return "Превью", "Анонс следующей серии"
+	case metadata.SegmentCredits:
+		return "Титры", "Финальные титры серии"
+	case metadata.SegmentPostCredits:
+		return "Сцена после титров", "Фрагмент после финальных титров"
+	}
+	return string(segment), ""
 }
 
 // layoutToggleRow paints a label with an optional note and a toggle on the
@@ -925,6 +991,17 @@ func (w *settingsWindow) setControl(enabled bool) {
 		}
 	}
 	w.control = enabled
+	w.errorText = ""
+}
+
+func (w *settingsWindow) setAutoSkip(segment metadata.Segment, enabled bool) {
+	if w.onAutoSkip != nil {
+		if err := w.onAutoSkip(segment, enabled); err != nil {
+			w.errorText = err.Error()
+			return
+		}
+	}
+	w.autoSkip[segment] = enabled
 	w.errorText = ""
 }
 

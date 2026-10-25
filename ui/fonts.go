@@ -16,27 +16,6 @@ type typography struct {
 	*textRenderer
 }
 
-// headerFonts returns the Inter faces that mpv's OSD uses for the custom
-// window header. The four static faces keep the title bold and the version
-// badge medium, matching the application's own chrome.
-func headerFonts() map[string][]byte {
-	names := []string{
-		"Inter-Regular.ttf",
-		"Inter-Medium.ttf",
-		"Inter-SemiBold.ttf",
-		"Inter-Bold.ttf",
-	}
-	fonts := make(map[string][]byte, len(names))
-	for _, name := range names {
-		data, err := fontAssets.ReadFile("assets/" + name)
-		if err != nil {
-			continue
-		}
-		fonts[name] = data
-	}
-	return fonts
-}
-
 func newTypography() (*typography, error) {
 	specs := []struct {
 		name   string

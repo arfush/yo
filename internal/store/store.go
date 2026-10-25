@@ -654,6 +654,18 @@ func (s *Store) SetSharedControlEnabled(enabled bool) error {
 	return err
 }
 
+// AutoSkipSegment reports whether chapters of this introdb segment type are
+// skipped automatically. Defaults live in the library, which knows the
+// product policy for a fresh database.
+func (s *Store) AutoSkipSegment(segment string, defaultValue bool) bool {
+	return s.boolSetting("autoskip_"+segment, defaultValue)
+}
+
+// SetAutoSkipSegment stores the per-type auto-skip choice.
+func (s *Store) SetAutoSkipSegment(segment string, enabled bool) error {
+	return s.setBoolSetting("autoskip_"+segment, enabled)
+}
+
 // WatchPartyProvider returns the relay the user picked for new rooms. An empty
 // string means the user never picked one and the first configured relay wins.
 func (s *Store) WatchPartyProvider() string {

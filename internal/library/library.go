@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/arfush/yonime/internal/animelib"
+	"github.com/arfush/yonime/internal/metadata"
 	"github.com/arfush/yonime/internal/store"
 	"github.com/arfush/yonime/internal/token"
 )
@@ -304,6 +305,33 @@ func (l *Library) SharedControlEnabled() bool {
 // SetSharedControlEnabled stores the shared-control choice.
 func (l *Library) SetSharedControlEnabled(enabled bool) error {
 	return l.store.SetSharedControlEnabled(enabled)
+}
+
+// AutoSkipSegments returns the introdb segments that playback should skip.
+// Recap and the opening are on by default; the rest may be enabled in the
+// settings.
+func (l *Library) AutoSkipSegments() map[metadata.Segment]bool {
+	segments := metadata.Segments()
+	out := make(map[metadata.Segment]bool, len(segments))
+	if l == nil || l.store == nil {
+		return out
+	}
+	for _, segment := range segments {
+		out[segment] = l.store.AutoSkipSegment(string(segment), defaultAutoSkip(segment))
+	}
+	return out
+}
+
+func defaultAutoSkip(segment metadata.Segment) bool {
+	return segment == metadata.SegmentRecap || segment == metadata.SegmentIntro
+}
+
+// SetAutoSkipSegment stores the per-type auto-skip choice.
+func (l *Library) SetAutoSkipSegment(segment metadata.Segment, enabled bool) error {
+	if l == nil || l.store == nil {
+		return errors.New("база данных недоступна")
+	}
+	return l.store.SetAutoSkipSegment(string(segment), enabled)
 }
 
 // AutoUpdateEnabled reports whether updates may install without asking.
