@@ -68,8 +68,8 @@ const (
 	mainStatusGap       = unit.Dp(6)
 	mainFilterSize      = unit.Sp(10.5)
 	mainFilterPaddingX  = unit.Dp(10)
-	mainFilterGap       = unit.Dp(6)
-	mainFilterMaxGap    = unit.Dp(12)
+	mainFilterGap       = unit.Dp(4)
+	mainFilterMaxGap    = unit.Dp(6)
 	mainFilterHeight    = unit.Dp(28)
 	// mainFilterReserve keeps the filter row anchored when the number in
 	// "История (n)" grows from one digit to another. Four digits fit comfortably;
@@ -1357,8 +1357,8 @@ var filterPillSteps = [...]filterPillStep{
 }
 
 // measureFilterRow picks the largest pill metrics that fit in available. On a
-// wide window the gaps grow a little, up to mainFilterMaxGap, so the row
-// follows the window instead of staying a fixed cluster.
+// wide window the gaps grow a little, up to mainFilterMaxGap, so the row still
+// follows the window, but the pills stay a compact cluster.
 func measureFilterRow(gtx layout.Context, typo *typography, available int) filterRowMetrics {
 	measure := func(step filterPillStep) filterRowMetrics {
 		metrics := filterRowMetrics{
