@@ -55,19 +55,23 @@ type logWindow struct {
 	list  layout.List
 	lines map[string]*logLineState
 
-	backClick widget.Clickable
-	copyClick widget.Clickable
-	backHover hoverAnim
-	copyHover hoverAnim
-	copiedAt  time.Time
-	onBack    func()
-	hidden    func() bool
+	back     footerButton
+	copy     footerButton
+	copiedAt time.Time
+	onBack   func()
+	hidden   func() bool
 }
 
 func newLogWindow(typo *typography) *logWindow {
 	w := &logWindow{
 		typo:  typo,
 		lines: make(map[string]*logLineState),
+		back:  newBackFooterButton(),
+		copy: footerButton{
+			label: "Скопировать",
+			style: footerCopyStyle,
+			size:  titlePageButtonSize,
+		},
 	}
 	w.list.Axis = layout.Vertical
 	// The window opens on the newest entry. The list keeps following the end
@@ -381,7 +385,7 @@ func (w *logWindow) layoutFooter(gtx layout.Context) {
 	backRect := image.Rect(padX, top, padX+backWidth, top+height)
 	copyRect := image.Rect(size.X-padX-copyWidth, top, size.X-padX, top+height)
 
-	if w.layoutButton(gtx, backRect, &w.backClick, &w.backHover, false, "Вернуться") {
+	if w.back.layout(gtx, w.typo, backRect) {
 		if w.onBack != nil {
 			w.onBack()
 		}
@@ -395,7 +399,8 @@ func (w *logWindow) layoutFooter(gtx layout.Context) {
 			gtx.Execute(op.InvalidateCmd{At: w.copiedAt})
 		}
 	}
-	if w.layoutButton(gtx, copyRect, &w.copyClick, &w.copyHover, true, label) {
+	w.copy.label = label
+	if w.copy.layout(gtx, w.typo, copyRect) {
 		text := log.LastErrorContext()
 		gtx.Execute(clipboard.WriteCmd{
 			Type: "application/text",
@@ -406,35 +411,4 @@ func (w *logWindow) layoutFooter(gtx layout.Context) {
 			gtx.Execute(op.InvalidateCmd{At: w.copiedAt})
 		}
 	}
-}
-
-func (w *logWindow) layoutButton(gtx layout.Context, rect image.Rectangle, click *widget.Clickable, hover *hoverAnim, primary bool, label string) bool {
-	if rect.Empty() {
-		return false
-	}
-	clicked := click.Clicked(gtx)
-	progress := hover.update(gtx, click.Hovered())
-	stack := op.Offset(rect.Min).Push(gtx.Ops)
-	defer stack.Pop()
-	cgtx := gtx
-	cgtx.Constraints = layout.Exact(rect.Size())
-	click.Layout(cgtx, func(gtx layout.Context) layout.Dimensions {
-		local := image.Rect(0, 0, rect.Dx(), rect.Dy())
-		fill := mixColor(titleButtonFill, titleButtonHover, progress)
-		border := mixColor(titleButtonBorder, titleButtonHoverBorder, progress)
-		text := titleButtonText
-		if primary {
-			fill = mixColor(color.NRGBA{R: 0x4a, G: 0x35, B: 0x72, A: 0xff}, color.NRGBA{R: 0x5d, G: 0x45, B: 0x8a, A: 0xff}, progress)
-			border = mixColor(color.NRGBA{R: 0x6d, G: 0x52, B: 0xa0, A: 0xff}, footerControlHoverBorder, progress)
-			text = color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}
-		}
-		radius := gtx.Dp(unit.Dp(10))
-		fillRounded(gtx, fill, local, radius)
-		strokeRoundedRect(gtx, local.Inset(gtx.Dp(unit.Dp(1))), float32(radius), float32(gtx.Dp(unit.Dp(1))), border)
-		face := font.Font{Typeface: fontFamily, Weight: font.Medium}
-		_, ink := w.typo.measure(gtx, label, face, titlePageButtonSize)
-		w.typo.draw(gtx, label, face, titlePageButtonSize, text, image.Pt((local.Dx()-ink.Dx())/2, (local.Dy()-ink.Dy())/2))
-		return layout.Dimensions{Size: rect.Size()}
-	})
-	return clicked
 }

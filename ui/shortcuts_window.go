@@ -3,13 +3,9 @@ package ui
 import (
 	"image"
 
-	"gioui.org/f32"
 	"gioui.org/font"
-	"gioui.org/io/pointer"
 	"gioui.org/layout"
-	"gioui.org/op"
 	"gioui.org/unit"
-	"gioui.org/widget"
 )
 
 const (
@@ -44,14 +40,13 @@ type shortcutsWindow struct {
 	typo *typography
 	info shortcutInfo
 
-	backClick widget.Clickable
-	backHover hoverAnim
+	back footerButton
 
 	onBack func()
 }
 
 func newShortcutsWindow(typo *typography, info shortcutInfo) *shortcutsWindow {
-	return &shortcutsWindow{typo: typo, info: info}
+	return &shortcutsWindow{typo: typo, info: info, back: newBackFooterButton()}
 }
 
 func (w *shortcutsWindow) Close() {}
@@ -154,7 +149,7 @@ func (w *shortcutsWindow) layoutFooter(gtx layout.Context) {
 	height := gtx.Dp(titlePageButtonHeight)
 	top := (size.Y - height) / 2
 	button := image.Rect(padX, top, padX+gtx.Dp(unit.Dp(120)), top+height)
-	if w.layoutBack(gtx, button) && w.onBack != nil {
+	if w.back.layout(gtx, w.typo, button) && w.onBack != nil {
 		w.onBack()
 	}
 }
@@ -165,61 +160,4 @@ func (w *shortcutsWindow) keyWidth(gtx layout.Context, keys string) int {
 	}
 	_, ink := w.typo.measure(gtx, keys, font.Font{Typeface: fontFamily, Weight: font.Medium}, shortcutKeySize)
 	return max(ink.Dx()+2*gtx.Dp(unit.Dp(8)), gtx.Dp(unit.Dp(26)))
-}
-
-func (w *shortcutsWindow) layoutBack(gtx layout.Context, rect image.Rectangle) bool {
-	if rect.Empty() {
-		return false
-	}
-	_, clicked := w.backClick.Update(gtx)
-	progress := w.backHover.update(gtx, w.backClick.Hovered())
-
-	stack := op.Offset(rect.Min).Push(gtx.Ops)
-	defer stack.Pop()
-	cgtx := gtx
-	cgtx.Constraints = layout.Exact(rect.Size())
-	w.backClick.Layout(cgtx, func(gtx layout.Context) layout.Dimensions {
-		pointer.CursorPointer.Add(gtx.Ops)
-		local := image.Rect(0, 0, rect.Dx(), rect.Dy())
-		radius := gtx.Dp(unit.Dp(8))
-		fill := mixColor(titleButtonFill, titleButtonHover, progress)
-		border := mixColor(titleButtonBorder, titleButtonHoverBorder, progress)
-		fillRounded(gtx, border, local, radius)
-		fillRounded(gtx, fill, local.Inset(gtx.Dp(unit.Dp(1))), radius-gtx.Dp(unit.Dp(1)))
-		strokeRoundedRect(
-			gtx,
-			local.Inset(gtx.Dp(unit.Dp(1))),
-			float32(radius),
-			float32(gtx.Dp(unit.Dp(1))),
-			border,
-		)
-
-		face := font.Font{Typeface: fontFamily, Weight: font.Medium}
-		_, ink := w.typo.measure(gtx, "Вернуться", face, titlePageButtonSize)
-		_, capInk := w.typo.measure(gtx, "Н", face, titlePageButtonSize)
-		capHeight := capInk.Dy()
-		iconSize := gtx.Dp(unit.Dp(11))
-		gap := gtx.Dp(unit.Dp(8))
-		groupWidth := iconSize + gap + ink.Dx()
-		start := (local.Dx() - groupWidth) / 2
-		centerY := float32(local.Dy()) / 2
-		drawChevronLeft(
-			gtx,
-			image.Pt(start+iconSize/2, int(centerY)),
-			iconSize,
-			gtx.Dp(unit.Dp(1.5)),
-			titleButtonText,
-		)
-		w.typo.paintCentered(
-			gtx,
-			"Вернуться",
-			face,
-			titlePageButtonSize,
-			titleButtonText,
-			f32.Pt(float32(start+iconSize+gap)+float32(ink.Dx())/2, centerY),
-			capHeight,
-		)
-		return layout.Dimensions{Size: rect.Size()}
-	})
-	return clicked
 }

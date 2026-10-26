@@ -3,7 +3,7 @@ package ui
 import "testing"
 
 func TestSavedTitleButtonUsesMutedGreen(t *testing.T) {
-	fill, border, text := titleFooterButtonPalette(titleFooterSaved, 0)
+	fill, border, text := footerSavedStyle.palette(0)
 	for name, col := range map[string]struct{ r, g, b uint8 }{
 		"fill":   {fill.R, fill.G, fill.B},
 		"border": {border.R, border.G, border.B},
@@ -17,7 +17,7 @@ func TestSavedTitleButtonUsesMutedGreen(t *testing.T) {
 		t.Fatalf("saved text is too bright for a muted state: %#x", text.G)
 	}
 
-	fill, border, text = titleFooterButtonPalette(titleFooterSecondary, 0)
+	fill, border, text = footerSecondaryStyle.palette(0)
 	if fill.G > fill.R || border.G > border.R || text.G > text.R {
 		t.Fatal("the ordinary footer button gained the saved green tone")
 	}

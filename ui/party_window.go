@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"gioui.org/app"
-	"gioui.org/f32"
 	"gioui.org/font"
 	"gioui.org/io/clipboard"
 	"gioui.org/io/key"
@@ -120,8 +119,7 @@ type partyWindow struct {
 	rotateButton widget.Clickable
 	unlockButton widget.Clickable
 	secretCopy   widget.Clickable
-	backClick    widget.Clickable
-	backHover    hoverAnim
+	back         footerButton
 	editor       widget.Editor
 	// keyEditor displays the created room key. It is read-only but selectable,
 	// so the key can be copied with Ctrl+C straight from the card.
@@ -157,6 +155,7 @@ func newPartyWindow(typo *typography, w *app.Window, manager *partyManager) *par
 		party:   manager,
 		waitHat: mascotHatNone,
 		results: make(chan partyResult, 4),
+		back:    newBackFooterButton(),
 	}
 	screen.editor.SingleLine = true
 	screen.editor.Submit = true
@@ -1013,51 +1012,7 @@ func (w *partyWindow) layoutFooter(gtx layout.Context) {
 		return
 	}
 
-	buttonFace := font.Font{Typeface: fontFamily, Weight: font.Medium}
-	_, capInk := w.typo.measure(gtx, "Н", buttonFace, settingsButtonSize)
-	centerY := float32(height) / 2
-
-	clicked := w.backClick.Clicked(gtx)
-	progress := w.backHover.update(gtx, w.backClick.Hovered())
-	stack := op.Offset(backRect.Min).Push(gtx.Ops)
-	btnGtx := gtx
-	btnGtx.Constraints = layout.Exact(backRect.Size())
-	w.backClick.Layout(btnGtx, func(gtx layout.Context) layout.Dimensions {
-		pointer.CursorPointer.Add(gtx.Ops)
-		local := image.Rect(0, 0, backRect.Dx(), backRect.Dy())
-		radius := gtx.Dp(unit.Dp(8))
-		fill := mixColor(titleButtonFill, titleButtonHover, progress)
-		border := mixColor(titleButtonBorder, titleButtonHoverBorder, progress)
-		fillRounded(gtx, border, local, radius)
-		fillRounded(gtx, fill, local.Inset(gtx.Dp(unit.Dp(1))), radius-gtx.Dp(unit.Dp(1)))
-		strokeRoundedRect(gtx, local.Inset(gtx.Dp(unit.Dp(1))), float32(radius), float32(gtx.Dp(unit.Dp(1))), border)
-
-		_, ink := w.typo.measure(gtx, "Вернуться", buttonFace, settingsButtonSize)
-		iconSize := gtx.Dp(unit.Dp(11))
-		gap := gtx.Dp(unit.Dp(8))
-		groupWidth := float32(iconSize + gap + ink.Dx())
-		start := (float32(local.Dx()) - groupWidth) / 2
-		drawChevronLeft(
-			gtx,
-			image.Pt(int(math.Round(float64(start+float32(iconSize)/2))), int(math.Round(float64(centerY)))),
-			iconSize,
-			gtx.Dp(unit.Dp(1.5)),
-			titleButtonText,
-		)
-		w.typo.paintCentered(
-			gtx,
-			"Вернуться",
-			buttonFace,
-			settingsButtonSize,
-			titleButtonText,
-			f32.Pt(start+float32(iconSize+gap)+float32(ink.Dx())/2, centerY),
-			capInk.Dy(),
-		)
-		return layout.Dimensions{Size: backRect.Size()}
-	})
-	stack.Pop()
-
-	if clicked && w.onBack != nil {
+	if w.back.layout(gtx, w.typo, backRect) && w.onBack != nil {
 		w.onBack()
 	}
 }

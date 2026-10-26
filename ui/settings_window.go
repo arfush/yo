@@ -125,8 +125,7 @@ type settingsWindow struct {
 	providerOpen   bool
 	providerAnchor image.Rectangle
 
-	backClick widget.Clickable
-	backHover hoverAnim
+	back footerButton
 
 	// onError sends technical failures to the shell header. errorText is kept
 	// for tests and for the retry logic, but it is no longer drawn inline.
@@ -167,6 +166,7 @@ func newSettingsWindow(typo *typography, values settingsValues) *settingsWindow 
 		autoSkip:      make(map[metadata.Segment]bool),
 		autoSkipClick: make(map[metadata.Segment]*widget.Clickable),
 		autoSkipHover: make(map[metadata.Segment]*hoverAnim),
+		back:          newBackFooterButton(),
 	}
 	for _, segment := range metadata.Segments() {
 		w.autoSkip[segment] = values.AutoSkip[segment]
@@ -1177,69 +1177,11 @@ func (w *settingsWindow) layoutFooter(gtx layout.Context) {
 	backWidth := gtx.Dp(unit.Dp(120))
 	backRect := image.Rect(padX, top, padX+backWidth, top+height)
 
-	buttonFace := font.Font{Typeface: fontFamily, Weight: font.Medium}
-	_, capInk := w.typo.measure(gtx, "Н", buttonFace, settingsButtonSize)
-	capHeight := capInk.Dy()
-	centerY := float32(height) / 2
-
-	if w.layoutSettingsButton(gtx, backRect, &w.backClick, &w.backHover, func(gtx layout.Context) {
-		local := image.Rect(0, 0, backRect.Dx(), backRect.Dy())
-		_, ink := w.typo.measure(gtx, "Вернуться", buttonFace, settingsButtonSize)
-		iconSize := gtx.Dp(unit.Dp(11))
-		gap := gtx.Dp(unit.Dp(8))
-		groupWidth := float32(iconSize + gap + ink.Dx())
-		start := (float32(local.Dx()) - groupWidth) / 2
-		drawChevronLeft(
-			gtx,
-			image.Pt(
-				int(math.Round(float64(start+float32(iconSize)/2))),
-				int(math.Round(float64(centerY))),
-			),
-			iconSize,
-			gtx.Dp(unit.Dp(1.5)),
-			titleButtonText,
-		)
-		w.typo.paintCentered(
-			gtx,
-			"Вернуться",
-			buttonFace,
-			settingsButtonSize,
-			titleButtonText,
-			f32.Pt(start+float32(iconSize+gap)+float32(ink.Dx())/2, centerY),
-			capHeight,
-		)
-	}) {
+	if w.back.layout(gtx, w.typo, backRect) {
 		if w.onBack != nil {
 			w.onBack()
 		}
 	}
-}
-
-func (w *settingsWindow) layoutSettingsButton(gtx layout.Context, rect image.Rectangle, click *widget.Clickable, hover *hoverAnim, draw func(layout.Context)) bool {
-	if rect.Empty() {
-		return false
-	}
-	clicked := click.Clicked(gtx)
-	progress := hover.update(gtx, click.Hovered())
-	w.layoutClickableDraw(gtx, rect, click, func(gtx layout.Context) {
-		local := image.Rect(0, 0, rect.Dx(), rect.Dy())
-		radius := gtx.Dp(unit.Dp(8))
-		fill := mixColor(titleButtonFill, titleButtonHover, progress)
-		border := mixColor(titleButtonBorder, titleButtonHoverBorder, progress)
-		fillRounded(gtx, border, local, radius)
-		fillRounded(gtx, fill, local.Inset(gtx.Dp(unit.Dp(1))), radius-gtx.Dp(unit.Dp(1)))
-		strokeRoundedRect(
-			gtx,
-			local.Inset(gtx.Dp(unit.Dp(1))),
-			float32(radius),
-			float32(gtx.Dp(unit.Dp(1))),
-			border,
-		)
-		if draw != nil {
-			draw(gtx)
-		}
-	})
-	return clicked
 }
 
 func (w *settingsWindow) layoutClickableDraw(gtx layout.Context, rect image.Rectangle, click *widget.Clickable, draw func(layout.Context)) {
