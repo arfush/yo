@@ -1,6 +1,7 @@
 package token
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"os"
@@ -62,6 +63,55 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	}
 	if got != want {
 		t.Fatalf("got %+v, want %+v", got, want)
+	}
+}
+
+func TestSaveWritesTokenContainer(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "token.txt")
+	if err := Save(path, Token{AccessToken: "access"}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(raw, []byte(tokenMagic)) {
+		t.Fatalf("token file has no container marker: %q", raw[:min(len(raw), 32)])
+	}
+}
+
+func TestLoadMigratesPlaintextToken(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "token.txt")
+	plain := []byte(`{"access_token":"access","token_type":"Bearer"}`)
+	if err := os.WriteFile(path, plain, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.AccessToken != "access" {
+		t.Fatalf("access token = %q", got.AccessToken)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(raw, []byte(tokenMagic)) {
+		t.Fatalf("plaintext token was not migrated: %q", raw[:min(len(raw), 32)])
+	}
+	if bytes.Equal(raw, plain) {
+		t.Fatal("token file was not rewritten")
+	}
+}
+
+func TestLoadRejectsDamagedProtectedToken(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "token.txt")
+	if err := os.WriteFile(path, append([]byte(tokenMagic), []byte("garbage")...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("damaged protected token was accepted")
 	}
 }
 

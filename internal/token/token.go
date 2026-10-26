@@ -1,12 +1,15 @@
 // Package token reads and writes the AnimeLIB access token.
 //
 // AnimeLIB stores an OAuth token object in its localStorage. Yonime keeps the
-// same fields in %APPDATA%\Yonime\animelib_token.txt as JSON, which lets the
-// expiration be checked before the main window opens. A plain-text token is
-// still accepted for compatibility with hand-written files.
+// same fields in %APPDATA%\Yonime\animelib_token.txt, encrypted with user-scoped
+// Windows DPAPI, so the expiration can be checked before the main window opens
+// and the file is useless to another user or machine. A plain-text token is
+// still accepted for compatibility with hand-written and pre-DPAPI files; Load
+// rewrites it in the protected container.
 package token
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -16,6 +19,10 @@ import (
 	"strings"
 	"time"
 )
+
+// tokenMagic marks the DPAPI container. Its presence is enough to reject a
+// plain-text file: the bytes after it are only meaningful to DPAPI.
+const tokenMagic = "YONIME-TOKEN\x01"
 
 // ExpiryMargin makes a token that is about to expire count as expired, so the
 // user is not sent through authorization in the middle of a session.
@@ -33,7 +40,9 @@ type Token struct {
 	TokenType    string `json:"token_type,omitempty"`
 }
 
-// Load reads and parses a token file.
+// Load reads and parses a token file. A plain-text file is migrated to the
+// DPAPI container on the first successful read; migration is best effort so a
+// read-only file still lets the user start the application.
 func Load(path string) (Token, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -42,9 +51,19 @@ func Load(path string) (Token, error) {
 		}
 		return Token{}, err
 	}
+	protected := bytes.HasPrefix(data, []byte(tokenMagic))
+	if protected {
+		data, err = unprotect(data[len(tokenMagic):])
+		if err != nil {
+			return Token{}, fmt.Errorf("%s: %w", filepath.Base(path), err)
+		}
+	}
 	token, err := Parse(data)
 	if err != nil {
 		return Token{}, fmt.Errorf("%s: %w", filepath.Base(path), err)
+	}
+	if !protected {
+		_ = Save(path, token)
 	}
 	return token, nil
 }
@@ -85,6 +104,7 @@ func Parse(data []byte) (Token, error) {
 }
 
 // Save writes the token atomically, creating the parent directory if needed.
+// The JSON payload is sealed with DPAPI before it reaches the disk.
 func Save(path string, token Token) error {
 	if strings.TrimSpace(token.AccessToken) == "" {
 		return errors.New("нельзя сохранить пустой токен")
@@ -94,6 +114,13 @@ func Save(path string, token Token) error {
 		return err
 	}
 	data = append(data, '\n')
+	protected, err := protect(data)
+	if err != nil {
+		return fmt.Errorf("protect %s: %w", filepath.Base(path), err)
+	}
+	payload := make([]byte, 0, len(tokenMagic)+len(protected))
+	payload = append(payload, tokenMagic...)
+	payload = append(payload, protected...)
 
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -106,7 +133,7 @@ func Save(path string, token Token) error {
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName)
 
-	if _, err := tmp.Write(data); err != nil {
+	if _, err := tmp.Write(payload); err != nil {
 		tmp.Close()
 		return err
 	}
