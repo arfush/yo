@@ -78,7 +78,7 @@ const (
 	mainSpinnerFrameTime = time.Second / 60
 	// mainErrorFeedbackDuration is how long the Next button and the mascot stay
 	// red after an empty link or a failed load.
-	mainErrorFeedbackDuration = 3 * time.Second
+	mainErrorFeedbackDuration = 5 * time.Second
 	// mainIconShakeOffset is the peak horizontal offset of the Next arrow. The
 	// arrow is only about 13 dp wide, so a large offset reads as jumping.
 	mainIconShakeOffset = unit.Dp(0.7)
@@ -1062,98 +1062,84 @@ func displayTitles(items []historyTitle) []library.Title {
 }
 
 func (m *mainWindow) layoutInput(gtx layout.Context, rect image.Rectangle, focused bool) {
-	radius := gtx.Dp(mainInputRadius)
-	border := color.NRGBA{R: mainInputBorder.R, G: mainInputBorder.G, B: mainInputBorder.B, A: mainInputBorder.A}
-	if focused {
-		border = mainInputFocusBorder
+	field := actionField{
+		typo:        m.typo,
+		editor:      &m.editor,
+		submit:      &m.next,
+		submitHover: &m.nextHover,
+		box: fieldBoxStyle{
+			fill:        mainInputColor,
+			border:      mainInputBorder,
+			focusBorder: mainInputFocusBorder,
+			errorBorder: mainDangerColor,
+			radius:      mainInputRadius,
+		},
+		textSize:     mainInputTextSize,
+		paddingX:     unit.Dp(12),
+		gap:          mainInputGap,
+		leadingSize:  mainMascotSize,
+		leadingInset: unit.Dp(11),
+		leading: func(gtx layout.Context, mascot image.Rectangle, visual fieldVisual) {
+			mood := mascotNormal
+			switch {
+			case visual.loading:
+				mood = mascotLoading
+			case visual.invalid:
+				mood = mascotAlert
+			}
+			shake := float32(0)
+			if visual.invalid {
+				shake = errorShake(visual.now, m.errorAt)
+			}
+			offset := op.Offset(image.Pt(errorShakePixels(gtx, shake, mainMascotShakeOffset), 0)).Push(gtx.Ops)
+			drawCatgirl(gtx, mascot, visual.now, seasonalMascotHat(visual.now), mood)
+			offset.Pop()
+		},
+		trailing: func(gtx layout.Context, _ int) (int, func(image.Rectangle)) {
+			face := font.Font{Typeface: fontFamily, Weight: font.Medium}
+			_, ink := m.typo.measure(gtx, "Ctrl + K", face, mainHintTextSize)
+			width := ink.Dx() + 2*gtx.Dp(mainHintPaddingX)
+			return width, func(rect image.Rectangle) { m.drawHint(gtx, rect) }
+		},
+		placeholder: func(gtx layout.Context, rect image.Rectangle) {
+			m.drawInputPlaceholder(gtx, rect)
+		},
+		loading:       m.loading,
+		errorAt:       m.errorAt,
+		animationsRun: m.animationsRun,
+		onSubmit: func(gtx layout.Context) {
+			if strings.TrimSpace(m.editor.Text()) == "" {
+				m.triggerEmptyLink(gtx)
+				return
+			}
+			m.startLoading(gtx, -1, false)
+		},
 	}
-
-	fillRounded(gtx, border, rect, radius)
-	inner := rect.Inset(gtx.Dp(unit.Dp(1)))
-	if inner.Empty() {
-		return
-	}
-	fillRounded(gtx, mainInputColor, inner, radius-gtx.Dp(unit.Dp(1)))
-
-	mascotSize := gtx.Dp(mainMascotSize)
-	mascot := image.Rect(
-		inner.Min.X+gtx.Dp(unit.Dp(11)),
-		inner.Min.Y+(inner.Dy()-mascotSize)/2,
-		inner.Min.X+gtx.Dp(unit.Dp(11))+mascotSize,
-		inner.Min.Y+(inner.Dy()-mascotSize)/2+mascotSize,
-	)
-
-	nextSize := gtx.Dp(mainNextSize)
-	nextInset := gtx.Dp(mainNextInset)
-	nextRect := image.Rect(
-		inner.Max.X-nextInset-nextSize,
-		inner.Min.Y+(inner.Dy()-nextSize)/2,
-		inner.Max.X-nextInset,
-		inner.Min.Y+(inner.Dy()-nextSize)/2+nextSize,
-	)
-
-	hintFace := font.Font{Typeface: fontFamily, Weight: font.Medium}
-	_, hintInk := m.typo.measure(gtx, "Ctrl + K", hintFace, mainHintTextSize)
-	hintWidth := hintInk.Dx() + 2*gtx.Dp(mainHintPaddingX)
-	hintHeight := gtx.Dp(mainHintHeight)
-	hintRect := image.Rect(
-		nextRect.Min.X-gtx.Dp(mainHintGap)-hintWidth,
-		inner.Min.Y+(inner.Dy()-hintHeight)/2,
-		nextRect.Min.X-gtx.Dp(mainHintGap),
-		inner.Min.Y+(inner.Dy()-hintHeight)/2+hintHeight,
-	)
-
-	textLeft := mascot.Max.X + gtx.Dp(mainInputGap)
-	textRight := hintRect.Min.X - gtx.Dp(mainInputGap)
-	lineHeight := gtx.Dp(unit.Dp(20))
-	editorRect := image.Rect(
-		textLeft,
-		inner.Min.Y+(inner.Dy()-lineHeight)/2,
-		textRight,
-		inner.Min.Y+(inner.Dy()-lineHeight)/2+lineHeight,
-	)
-	if !editorRect.Empty() {
-		m.layoutEditor(gtx, editorRect)
-	}
-	// Draw the mascot after the editor so the error tremor moves her over the
-	// prompt instead of the text painting on top of her.
-	shake := errorShake(gtx.Now, m.errorAt)
-	offset := op.Offset(image.Pt(errorShakePixels(gtx, shake, mainMascotShakeOffset), 0)).Push(gtx.Ops)
-	drawCatgirl(gtx, mascot, gtx.Now, seasonalMascotHat(gtx.Now), errorFeedbackActive(gtx.Now, m.errorAt))
-	offset.Pop()
-
-	m.drawHint(gtx, hintRect)
-	m.layoutNext(gtx, nextRect)
+	field.layout(gtx, rect, focused)
 }
 
-func (m *mainWindow) layoutEditor(gtx layout.Context, rect image.Rectangle) {
-	stack := op.Offset(rect.Min).Push(gtx.Ops)
-	defer stack.Pop()
-
-	face := font.Font{Typeface: fontFamily, Weight: font.Normal}
-	if m.editor.Len() == 0 {
-		text := m.placeholder.visibleText()
-		if text != "" {
-			_, ink := m.typo.measure(gtx, text, face, mainInputTextSize)
-			if !ink.Empty() {
-				m.drawTruncated(
-					gtx,
-					text,
-					face,
-					mainInputTextSize,
-					mainPlaceholderColor,
-					image.Pt(0, (rect.Dy()-ink.Dy())/2),
-					rect.Dx(),
-				)
-			}
-		}
+func (m *mainWindow) drawInputPlaceholder(gtx layout.Context, rect image.Rectangle) {
+	if m.editor.Len() != 0 {
+		return
 	}
-
-	textMaterial := colorMaterial(gtx, mainTextColor)
-	selectMaterial := colorMaterial(gtx, mainSelectionColor)
-	editorGtx := gtx
-	editorGtx.Constraints = layout.Exact(rect.Size())
-	m.editor.Layout(editorGtx, m.typo.shaper, face, mainInputTextSize, textMaterial, selectMaterial)
+	text := m.placeholder.visibleText()
+	if text == "" {
+		return
+	}
+	face := font.Font{Typeface: fontFamily, Weight: font.Normal}
+	_, ink := m.typo.measure(gtx, text, face, mainInputTextSize)
+	if ink.Empty() {
+		return
+	}
+	m.drawTruncated(
+		gtx,
+		text,
+		face,
+		mainInputTextSize,
+		mainPlaceholderColor,
+		image.Pt(rect.Min.X, rect.Min.Y+(rect.Dy()-ink.Dy())/2),
+		rect.Dx(),
+	)
 }
 
 func (m *mainWindow) drawHint(gtx layout.Context, rect image.Rectangle) {
@@ -1191,66 +1177,6 @@ func (m *mainWindow) drawHint(gtx layout.Context, rect image.Rectangle) {
 		withAlpha(mainHintTextColor, uint8(float64(0xff)*float64(progress))),
 		center,
 	)
-}
-
-func (m *mainWindow) layoutNext(gtx layout.Context, rect image.Rectangle) {
-	if m.loading {
-		m.drawNextFace(gtx, rect, 0, true, false)
-		drawSpinner(gtx, centerOf(rect), gtx.Dp(unit.Dp(9)), gtx.Dp(unit.Dp(1.7)), 0, mainTextColor)
-		if m.animationsRun() {
-			gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(mainSpinnerFrameTime)})
-		}
-		return
-	}
-
-	_, clicked := m.next.Update(gtx)
-	hovered := m.next.Hovered()
-	hover := m.nextHover.update(gtx, hovered)
-	if clicked {
-		if strings.TrimSpace(m.editor.Text()) == "" {
-			m.triggerEmptyLink(gtx)
-		} else {
-			m.startLoading(gtx, -1, false)
-		}
-	}
-
-	errored := errorFeedbackActive(gtx.Now, m.errorAt)
-
-	stack := op.Offset(rect.Min).Push(gtx.Ops)
-	defer stack.Pop()
-	cgtx := gtx
-	cgtx.Constraints = layout.Exact(rect.Size())
-	m.next.Layout(cgtx, func(gtx layout.Context) layout.Dimensions {
-		pointer.CursorPointer.Add(gtx.Ops)
-		m.drawNextFace(gtx, image.Rectangle{Max: rect.Size()}, hover, false, errored)
-		return layout.Dimensions{Size: rect.Size()}
-	})
-}
-
-func (m *mainWindow) drawNextFace(gtx layout.Context, rect image.Rectangle, hover float32, disabled, alarm bool) {
-	if rect.Empty() {
-		return
-	}
-	radius := rect.Dy() / 2
-	c1, c2 := mainAccentColor1, mainAccentColor2
-	if disabled {
-		c1, c2 = mainDisabledColor1, mainDisabledColor2
-	} else if alarm {
-		c1, c2 = mainDangerColor, mainDangerColor2
-	} else if hover > 0 {
-		c1 = mixColor(c1, color.NRGBA{R: 0xae, G: 0x8b, B: 0xff, A: 0xff}, hover)
-		c2 = mixColor(c2, color.NRGBA{R: 0x82, G: 0x3e, B: 0xee, A: 0xff}, hover)
-	}
-	fillRoundedGradient(gtx, rect, rect, radius, c1, c2)
-	if !disabled {
-		iconCenter := centerOf(rect)
-		if alarm {
-			// Only the arrow trembles; the red circle itself stays in place.
-			shake := errorShake(gtx.Now, m.errorAt)
-			iconCenter.X += errorShakePixels(gtx, shake, mainIconShakeOffset)
-		}
-		drawChevronRight(gtx, iconCenter, rect.Dx()/3, gtx.Dp(unit.Dp(2)), color.NRGBA{A: 0xff, R: 0xff, G: 0xff, B: 0xff})
-	}
 }
 
 func (m *mainWindow) layoutHistoryHeader(gtx layout.Context, rect image.Rectangle) {
@@ -1291,16 +1217,8 @@ func (m *mainWindow) layoutHistoryHeader(gtx layout.Context, rect image.Rectangl
 		return
 	}
 
-	middleLeft := rect.Min.X + titleInk.Dx() + gtx.Dp(unit.Dp(7)) + countInk.Dx() + gtx.Dp(unit.Dp(14))
-	middleRight := clearRect.Min.X - gtx.Dp(unit.Dp(12))
-	if m.undo.active {
-		// The countdown sits in the free space between the history title and
-		// the action button, matching the rate-limit notice in the header.
-		m.layoutUndoCountdown(gtx, middleLeft, middleRight, rect.Min.Y+rect.Dy()/2)
-	} else {
-		filterLeft, filterRight := historyFilterSpan(gtx, rect, titleInk, countInk, clearRect)
-		m.layoutHistoryFilters(gtx, filterLeft, filterRight, rect.Min.Y+rect.Dy()/2)
-	}
+	filterLeft, filterRight := historyFilterSpan(gtx, rect, titleInk, countInk, clearRect)
+	m.layoutHistoryFilters(gtx, filterLeft, filterRight, rect.Min.Y+rect.Dy()/2)
 
 	_, clicked := m.clear.Update(gtx)
 	hovered := m.clear.Hovered()

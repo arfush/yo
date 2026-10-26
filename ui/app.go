@@ -1180,6 +1180,11 @@ func (a *application) syncFooterControls() {
 	a.shell.partyVisible = onMain
 	a.shell.partyActive = onMain && a.party != nil && a.party.HasRoom()
 	a.shell.updateVisible = onMain && a.updateAvailable(release)
+	if onMain && a.main != nil {
+		a.shell.notice = a.main.headerNotice
+	} else {
+		a.shell.notice = nil
+	}
 }
 
 // updateAvailable applies the same rule to the footer button, the update

@@ -125,7 +125,7 @@ type settingsWindow struct {
 	providerOpen   bool
 	providerAnchor image.Rectangle
 
-	back footerButton
+	back footerNamedButton
 
 	// onError sends technical failures to the shell header. errorText is kept
 	// for tests and for the retry logic, but it is no longer drawn inline.

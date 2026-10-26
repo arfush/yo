@@ -2,13 +2,11 @@ package ui
 
 import (
 	"fmt"
-	"image"
 	"image/color"
 	"math"
 	"math/rand"
 	"time"
 
-	"gioui.org/font"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/unit"
@@ -86,49 +84,18 @@ func rateLimitWaitLabel(remaining time.Duration) string {
 	return fmt.Sprintf("%d с", seconds)
 }
 
-func (b *rateLimitBanner) layout(gtx layout.Context, typo *typography, g geometry, badgeRight int) {
+func (b *rateLimitBanner) notice(gtx layout.Context, g geometry) (headerNotice, bool) {
 	b.update()
 	if !b.active {
-		return
+		return headerNotice{}, false
 	}
 	// Repaint while the notice is visible so it disappears promptly once the
 	// request gets through, even on screens that do not otherwise animate.
 	gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(200 * time.Millisecond)})
 
 	text := b.phrase
-
-	// The pause is tied to the API's fixed 60-second window, so show how long
-	// is left of it right next to the phrase. The banner repaints several times
-	// per second below, which keeps the countdown moving.
 	if remaining := animelib.RateLimitRemaining(); remaining > 0 {
-		text += " · " + rateLimitWaitLabel(remaining)
+		text += " ? " + rateLimitWaitLabel(remaining)
 	}
-
-	// Stay between the version badge and the window controls, centered in the
-	// free space of the header. The badge grows with the version string, so use
-	// its real right edge instead of a fixed offset.
-	left := g.px(170)
-	if candidate := badgeRight + g.px(12); candidate > left {
-		left = candidate
-	}
-	right := g.controls.minimize.Min.X - g.px(16)
-	available := right - left
-	if available <= 0 {
-		return
-	}
-
-	face := font.Font{Typeface: fontFamily, Weight: font.Medium}
-	_, ink := typo.measure(gtx, text, face, rateLimitTextSize)
-	x := g.size.X/2 - ink.Dx()/2
-	if ink.Dx() > available {
-		// Too wide for the middle: start at the left edge and let the shared
-		// truncation helper cut the tail.
-		x = left
-	} else if x < left {
-		x = left
-	} else if x+ink.Dx() > right {
-		x = right - ink.Dx()
-	}
-	y := g.headerCenterY - ink.Dy()/2
-	drawTruncatedText(gtx, typo, text, face, rateLimitTextSize, rateLimitTextColor, image.Pt(x, y), available)
+	return headerNotice{text: text, tone: headerNoticeRate}, true
 }

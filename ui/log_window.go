@@ -55,8 +55,8 @@ type logWindow struct {
 	list  layout.List
 	lines map[string]*logLineState
 
-	back     footerButton
-	copy     footerButton
+	back     footerNamedButton
+	copy     footerNamedButton
 	copiedAt time.Time
 	onBack   func()
 	hidden   func() bool
@@ -67,7 +67,7 @@ func newLogWindow(typo *typography) *logWindow {
 		typo:  typo,
 		lines: make(map[string]*logLineState),
 		back:  newBackFooterButton(),
-		copy: footerButton{
+		copy: footerNamedButton{
 			label: "Скопировать",
 			style: footerCopyStyle,
 			size:  titlePageButtonSize,

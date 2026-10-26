@@ -40,7 +40,7 @@ type shortcutsWindow struct {
 	typo *typography
 	info shortcutInfo
 
-	back footerButton
+	back footerNamedButton
 
 	onBack func()
 }

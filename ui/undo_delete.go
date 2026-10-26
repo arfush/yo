@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"gioui.org/f32"
-	"gioui.org/font"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
@@ -331,6 +330,20 @@ func (m *mainWindow) finalizeHistoryDeletes() {
 	}
 }
 
+// headerNotice exposes the undo countdown to the shell header. The history
+// header keeps the "????????" action and the filters; only the transient
+// sentence moves up.
+func (m *mainWindow) headerNotice(now time.Time) headerNotice {
+	remaining := m.undo.remaining(now)
+	if !m.undo.active || remaining <= 0 {
+		return headerNotice{}
+	}
+	return headerNotice{
+		text: m.undo.phrase + " ? " + rateLimitWaitLabel(remaining),
+		tone: headerNoticeUndo,
+	}
+}
+
 // updateUndoDelete commits expired deletions and keeps repainting while the
 // countdown is visible so the seconds tick down promptly.
 func (m *mainWindow) updateUndoDelete(gtx layout.Context) {
@@ -343,31 +356,6 @@ func (m *mainWindow) updateUndoDelete(gtx layout.Context) {
 		return
 	}
 	gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(100 * time.Millisecond)})
-}
-
-// layoutUndoCountdown renders the phrase and the remaining seconds between the
-// history title and the clear/undo action, in the free middle of the header.
-func (m *mainWindow) layoutUndoCountdown(gtx layout.Context, left, right, centerY int) {
-	remaining := m.undo.remaining(gtx.Now)
-	if !m.undo.active || remaining <= 0 {
-		return
-	}
-	available := right - left
-	if available <= 0 {
-		return
-	}
-
-	text := m.undo.phrase + " · " + rateLimitWaitLabel(remaining)
-	face := font.Font{Typeface: fontFamily, Weight: font.Medium}
-	_, ink := m.typo.measure(gtx, text, face, mainClearSize)
-	x := left + available/2 - ink.Dx()/2
-	if ink.Dx() > available || x < left {
-		x = left
-	} else if x+ink.Dx() > right {
-		x = right - ink.Dx()
-	}
-	y := centerY - ink.Dy()/2
-	drawTruncatedText(gtx, m.typo, text, face, mainClearSize, undoCountdownColor, image.Pt(x, y), available)
 }
 
 // drawUndoArrow paints a return arrow: an arc over the top with a short tail on

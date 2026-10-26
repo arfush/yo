@@ -197,16 +197,16 @@ func TestReorderIndexFollowsMovedItem(t *testing.T) {
 	}
 }
 
-func TestErrorFeedbackLastsThreeSeconds(t *testing.T) {
+func TestErrorFeedbackLastsFiveSeconds(t *testing.T) {
 	start := time.Unix(500, 0)
 	if !errorFeedbackActive(start, start) {
 		t.Fatal("feedback should be active right after the error")
 	}
-	if !errorFeedbackActive(start.Add(2900*time.Millisecond), start) {
-		t.Fatal("feedback should still be active just before three seconds")
+	if !errorFeedbackActive(start.Add(4900*time.Millisecond), start) {
+		t.Fatal("feedback should still be active just before five seconds")
 	}
 	if errorFeedbackActive(start.Add(mainErrorFeedbackDuration), start) {
-		t.Fatal("feedback should stop at three seconds")
+		t.Fatal("feedback should stop at five seconds")
 	}
 	if errorFeedbackActive(start, time.Time{}) {
 		t.Fatal("an unset timestamp should not start the feedback")

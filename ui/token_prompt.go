@@ -57,7 +57,7 @@ const (
 )
 
 const (
-	tokenErrorDuration    = 3 * time.Second
+	tokenErrorDuration    = 5 * time.Second
 	tokenShakeDuration    = 520 * time.Millisecond
 	tokenShakeAmplitudeDp = 2.4
 )
@@ -101,6 +101,7 @@ type tokenPrompt struct {
 	button       widget.Clickable
 	domainButton widget.Clickable
 	nextButton   widget.Clickable
+	nextHover    hoverAnim
 	editor       widget.Editor
 
 	domain     string
@@ -114,11 +115,12 @@ type tokenPrompt struct {
 	onDone   func()
 	notified bool
 
-	mu      sync.Mutex
-	state   tokenPromptState
-	errorAt time.Time
-	closed  bool
-	cancel  context.CancelFunc
+	mu            sync.Mutex
+	state         tokenPromptState
+	errorAt       time.Time
+	domainErrorAt time.Time
+	closed        bool
+	cancel        context.CancelFunc
 }
 
 func newTokenPrompt(typo *typography, manager *browser.Manager, w *app.Window, tokenPath, profileDir string) *tokenPrompt {
@@ -302,71 +304,26 @@ func (tp *tokenPrompt) layoutDomainCard(gtx layout.Context, cardWidth, pad int, 
 }
 
 func (tp *tokenPrompt) layoutDomainField(gtx layout.Context, rect image.Rectangle) {
-	radius := gtx.Dp(mainInputRadius)
-	border := mainInputBorder
-	if gtx.Focused(&tp.editor) {
-		border = mainInputFocusBorder
+	field := actionField{
+		typo:        tp.typo,
+		editor:      &tp.editor,
+		submit:      &tp.nextButton,
+		submitHover: &tp.nextHover,
+		box: fieldBoxStyle{
+			fill:        mainInputColor,
+			border:      mainInputBorder,
+			focusBorder: mainInputFocusBorder,
+			errorBorder: mainDangerColor,
+			radius:      mainInputRadius,
+		},
+		textSize:      mainInputTextSize,
+		paddingX:      unit.Dp(12),
+		gap:           mainInputGap,
+		errorAt:       tp.domainErrorAt,
+		animationsRun: func() bool { return true },
+		onSubmit:      func(layout.Context) { tp.applyDomain() },
 	}
-
-	fillRounded(gtx, border, rect, radius)
-	inner := rect.Inset(gtx.Dp(unit.Dp(1)))
-	if inner.Empty() {
-		return
-	}
-	fillRounded(gtx, mainInputColor, inner, max(1, radius-gtx.Dp(unit.Dp(1))))
-
-	nextSize := gtx.Dp(mainNextSize)
-	nextInset := gtx.Dp(mainNextInset)
-	nextRect := image.Rect(
-		inner.Max.X-nextInset-nextSize,
-		inner.Min.Y+(inner.Dy()-nextSize)/2,
-		inner.Max.X-nextInset,
-		inner.Min.Y+(inner.Dy()-nextSize)/2+nextSize,
-	)
-
-	if !nextRect.Empty() {
-		clicked := tp.nextButton.Clicked(gtx)
-		hovered := tp.nextButton.Hovered()
-		stack := op.Offset(nextRect.Min).Push(gtx.Ops)
-		tp.drawNextButton(gtx, nextRect.Size(), hovered)
-		stack.Pop()
-
-		btnGtx := gtx
-		btnGtx.Constraints = layout.Exact(nextRect.Size())
-		stack = op.Offset(nextRect.Min).Push(gtx.Ops)
-		tp.nextButton.Layout(btnGtx, func(gtx layout.Context) layout.Dimensions {
-			pointer.CursorPointer.Add(gtx.Ops)
-			return layout.Dimensions{Size: nextRect.Size()}
-		})
-		stack.Pop()
-		if clicked {
-			tp.applyDomain()
-		}
-	}
-
-	lineHeight := gtx.Dp(unit.Dp(20))
-	editorRect := image.Rect(
-		inner.Min.X+gtx.Dp(unit.Dp(12)),
-		inner.Min.Y+(inner.Dy()-lineHeight)/2,
-		nextRect.Min.X-gtx.Dp(unit.Dp(12)),
-		inner.Min.Y+(inner.Dy()-lineHeight)/2+lineHeight,
-	)
-	if editorRect.Empty() {
-		return
-	}
-
-	editorGtx := gtx
-	editorGtx.Constraints = layout.Exact(editorRect.Size())
-	stack := op.Offset(editorRect.Min).Push(gtx.Ops)
-	tp.editor.Layout(
-		editorGtx,
-		tp.typo.shaper,
-		font.Font{Typeface: fontFamily, Weight: font.Normal},
-		mainInputTextSize,
-		colorMaterial(gtx, mainTextColor),
-		colorMaterial(gtx, mainSelectionColor),
-	)
-	stack.Pop()
+	field.layout(gtx, rect, gtx.Focused(&tp.editor))
 }
 
 func (tp *tokenPrompt) drawNextButton(gtx layout.Context, size image.Point, hovered bool) {
@@ -416,11 +373,13 @@ func (tp *tokenPrompt) handleKeys(gtx layout.Context) {
 func (tp *tokenPrompt) applyDomain() {
 	domain, err := browser.NormalizeDomain(strings.TrimSpace(tp.editor.Text()))
 	if err != nil || domain == "" {
+		tp.domainErrorAt = time.Now()
 		tp.editor.SetCaret(0, len(tp.editor.Text()))
 		tp.focusField = true
 		tp.window.Invalidate()
 		return
 	}
+	tp.domainErrorAt = time.Time{}
 	tp.domain = domain
 	tp.mode = tokenModeMain
 	tp.focusField = false

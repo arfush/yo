@@ -41,11 +41,11 @@ func (s footerButtonStyle) palette(progress float32) (fill, border, text color.N
 		s.text
 }
 
-// footerButton is the shared footer control: an 8 dp rounded rect with a 1 dp
-// inner stroke, optional leading icon and a cap-height-centred label. The
-// caller supplies the text, icon, size and palette; the control itself has no
-// defaults.
-type footerButton struct {
+// footerNamedButton is the shared labelled footer control: an 8 dp rounded
+// rect with a 1 dp inner stroke, optional leading icon and a cap-height-centred
+// label. The caller supplies the text, icon, size and palette; the control
+// itself has no defaults.
+type footerNamedButton struct {
 	click widget.Clickable
 	hover hoverAnim
 
@@ -59,7 +59,7 @@ type footerButton struct {
 // layout draws the button into rect and reports a click. reserve optionally
 // names the widest label so an icon does not jump when the text changes (for
 // example "Смотреть" -> "Запуск...").
-func (b *footerButton) layout(gtx layout.Context, typo *typography, rect image.Rectangle) bool {
+func (b *footerNamedButton) layout(gtx layout.Context, typo *typography, rect image.Rectangle) bool {
 	if rect.Empty() {
 		return false
 	}
@@ -94,7 +94,7 @@ func (b *footerButton) layout(gtx layout.Context, typo *typography, rect image.R
 	return clicked
 }
 
-func (b *footerButton) drawContent(gtx layout.Context, typo *typography, local image.Rectangle) {
+func (b *footerNamedButton) drawContent(gtx layout.Context, typo *typography, local image.Rectangle) {
 	face := font.Font{Typeface: fontFamily, Weight: font.Medium}
 	_, labelInk := typo.measure(gtx, b.label, face, b.size)
 	labelWidth := labelInk.Dx()
@@ -187,8 +187,8 @@ var (
 
 // newBackFooterButton returns the standard "Вернуться" action. The palette is
 // the shared secondary one; a caller that needs another colour can replace it.
-func newBackFooterButton() footerButton {
-	return footerButton{
+func newBackFooterButton() footerNamedButton {
+	return footerNamedButton{
 		label: "Вернуться",
 		icon:  footerButtonBackIcon,
 		style: footerSecondaryStyle,
@@ -199,8 +199,8 @@ func newBackFooterButton() footerButton {
 // newWatchFooterButton returns the primary "Смотреть" action. It uses the same
 // shape as the back button with a play icon, a primary palette and a reserved
 // width for the loading label.
-func newWatchFooterButton() footerButton {
-	return footerButton{
+func newWatchFooterButton() footerNamedButton {
+	return footerNamedButton{
 		label:   "Смотреть",
 		reserve: "Запуск...",
 		icon:    footerButtonPlayIcon,

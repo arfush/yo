@@ -3,7 +3,7 @@ package ui
 import "testing"
 
 func TestFooterButtonHasNoBuiltInAppearance(t *testing.T) {
-	var button footerButton
+	var button footerNamedButton
 	if button.label != "" {
 		t.Fatalf("base button has a default label: %q", button.label)
 	}

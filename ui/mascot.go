@@ -43,18 +43,28 @@ const (
 	mascotBobPeriod  = 3.6
 )
 
+// mascotMood selects the palette and small motion of the URL-field mascot.
+type mascotMood int
+
+const (
+	mascotNormal mascotMood = iota
+	mascotAlert
+	mascotLoading
+)
+
 // drawCatgirl paints the cat-girl mascot in the URL field. Her paws alternate
 // in a small "nya" gesture while the character gently bobs. Alert switches her
-// palette to red for the load-error feedback. Hat is one of the mascotHatCount
-// outfits, or mascotHatNone for a bare head.
-func drawCatgirl(gtx layout.Context, rect image.Rectangle, now time.Time, hat int, alert bool) {
+// palette to red for the load-error feedback; loading adds a few orbiting
+// sparkles and a slightly livelier bob without changing the palette. Hat is one
+// of the mascotHatCount outfits, or mascotHatNone for a bare head.
+func drawCatgirl(gtx layout.Context, rect image.Rectangle, now time.Time, hat int, mood mascotMood) {
 	if rect.Empty() {
 		return
 	}
 	hair, hairShadow, hairLight := catHairColor, catHairShadow, catHairLight
 	face, earInner, paw := catFaceColor, catEarInnerColor, catPawColor
 	blush, dress, dressLight := catBlushColor, catDressColor, catDressLight
-	if alert {
+	if mood == mascotAlert {
 		hair, hairShadow, hairLight = catAlertHair, catAlertHairShadow, catAlertHairLight
 		face, earInner, paw = catAlertFace, catAlertEarInner, catAlertPaw
 		blush, dress, dressLight = catAlertBlush, catAlertDress, catAlertDressLight
@@ -62,7 +72,11 @@ func drawCatgirl(gtx layout.Context, rect image.Rectangle, now time.Time, hat in
 
 	scale := float32(rect.Dx()) / 42
 	phase := float64(now.UnixNano()) / 1e9
-	bob := float32(math.Sin(phase*2*math.Pi/mascotBobPeriod)) * 0.8
+	bobAmplitude, bobPeriod := float32(0.8), mascotBobPeriod
+	if mood == mascotLoading {
+		bobAmplitude, bobPeriod = 1.2, 2.8
+	}
+	bob := float32(math.Sin(phase*2*math.Pi/bobPeriod)) * bobAmplitude
 	wave := float32(math.Sin(phase * 2 * math.Pi / mascotWavePeriod))
 	leftLift := smoothStep(wave*0.5+0.5) * 4.4
 	rightLift := smoothStep(0.5-wave*0.5) * 4.4
@@ -179,6 +193,20 @@ func drawCatgirl(gtx layout.Context, rect image.Rectangle, now time.Time, hat in
 	)
 
 	// Paws sit in front so the gesture stays readable at 42 dp.
+	if mood == mascotLoading {
+		// Three tiny sparkles orbit the right ear like a quiet loading pulse.
+		// They stay outside the face so the expression remains readable at 42 dp.
+		for index := 0; index < 3; index++ {
+			angle := phase*2*math.Pi/1.7 + float64(index)*2*math.Pi/3
+			alpha := uint8(0x55 + int(0x6a*(0.5+0.5*math.Sin(phase*4+float64(index)))))
+			fillCircle(
+				gtx,
+				image.Pt(cx+px(float32(10.5+3.3*math.Cos(angle))), cy+px(float32(-15.5+2.2*math.Sin(angle)))),
+				max(1, px(0.65)),
+				withAlpha(hairLight, alpha),
+			)
+		}
+	}
 	if hat != mascotHatNone {
 		drawMascotHat(gtx, hat, r, pt, px)
 	}

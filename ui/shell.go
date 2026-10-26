@@ -72,6 +72,9 @@ type shell struct {
 	// rateLimit draws a temporary phrase in the middle of the header while
 	// AnimeLIB asks the client to slow down.
 	rateLimit rateLimitBanner
+	// notice lets the active screen provide a transient header line. The shell
+	// still owns the priority and the shared layout.
+	notice func(time.Time) headerNotice
 	// footer lets a screen own the footer area, such as the title window.
 	footer layout.Widget
 	// overlay is drawn after the chrome so a dragged history card can move
@@ -282,11 +285,19 @@ func (s *shell) layoutHeader(gtx layout.Context, w *app.Window, g geometry) {
 	s.typo.draw(gtx, "Yonime", titleFace, titleSize, titleColor, image.Pt(g.titleX, titleY))
 
 	badgeRight := s.layoutBadge(gtx, g)
-	if s.errorText != "" {
-		s.layoutHeaderError(gtx, g, badgeRight)
-	} else {
-		s.rateLimit.layout(gtx, s.typo, g, badgeRight)
+	notice := headerNotice{}
+	if s.notice != nil {
+		notice = s.notice(gtx.Now)
 	}
+	if notice.empty() && s.errorText != "" {
+		notice = headerNotice{text: s.errorText, tone: headerNoticeError}
+	}
+	if notice.empty() {
+		if rate, ok := s.rateLimit.notice(gtx, g); ok {
+			notice = rate
+		}
+	}
+	layoutHeaderNotice(gtx, s.typo, g, badgeRight, notice)
 
 	if s.clickControl(gtx, g, g.controls.minimize, &s.minimize, &s.minimizeHover, controlHoverColor, func(gtx layout.Context) {
 		s.drawMinimize(gtx, g)
@@ -313,48 +324,6 @@ func (s *shell) layoutHeader(gtx layout.Context, w *app.Window, g geometry) {
 	}
 
 	s.layoutDragRegions(gtx, g)
-}
-
-// layoutHeaderError centers the friendly error between the version badge and
-// the window controls. It is intentionally a single line: the full details are
-// in the log window, while the header only tells the user what went wrong.
-func (s *shell) layoutHeaderError(gtx layout.Context, g geometry, badgeRight int) {
-	left := badgeRight + g.px(14)
-	right := g.controls.minimize.Min.X - g.px(14)
-	if right <= left {
-		return
-	}
-	face := font.Font{Typeface: fontFamily, Weight: font.Medium}
-	label := truncateText(gtx, s.typo, s.errorText, face, mainClearSize, right-left)
-	if label == "" {
-		return
-	}
-	glyphs, ink := s.typo.measure(gtx, label, face, mainClearSize)
-	if len(glyphs) == 0 || ink.Empty() {
-		return
-	}
-	// The error is nudged 2% of the window width to the left of the exact
-	// midpoint, as requested for the header layout.
-	shift := int(math.Round(float64(g.size.X) * 0.02))
-	x := left + (right-left-ink.Dx())/2 - shift
-	if x < left {
-		x = left
-	}
-	// Match the baseline-to-ink-top middle of "Yonime" instead of centering the
-	// full ink box: descenders such as "у" would otherwise lift the sentence.
-	capHeight := int(glyphs[0].Y) - ink.Min.Y
-	if capHeight <= 0 || capHeight > ink.Dy() {
-		capHeight = ink.Dy()
-	}
-	s.typo.paintCentered(
-		gtx,
-		label,
-		face,
-		mainClearSize,
-		mainDangerColor,
-		f32.Pt(float32(x)+float32(ink.Dx())/2, float32(g.headerCenterY)),
-		capHeight,
-	)
 }
 
 func (s *shell) layoutLogo(gtx layout.Context, g geometry) {
@@ -602,26 +571,25 @@ func (s *shell) layoutFooterControl(gtx layout.Context, g geometry, rect image.R
 	control.Layout(cgtx, func(gtx layout.Context) layout.Dimensions {
 		pointer.CursorPointer.Add(gtx.Ops)
 		local := image.Rect(0, 0, rect.Dx(), rect.Dy())
-		fill := mixColor(footerControlFillColor, footerControlHoverFill, progress)
-		border := mixColor(footerControlBorderColor, footerControlHoverBorder, progress)
+		style := iconButtonStyle{
+			shape:       iconButtonRounded,
+			fill:        footerControlFillColor,
+			fillHover:   footerControlHoverFill,
+			border:      footerControlBorderColor,
+			borderHover: footerControlHoverBorder,
+			radius:      mainControlRadius,
+		}
 		if active {
-			fill = mixColor(footerPartyActiveFill, footerControlHoverFill, progress)
-			border = mixColor(footerPartyActiveBorder, footerControlHoverBorder, progress)
+			style.fill = footerPartyActiveFill
+			style.border = footerPartyActiveBorder
 		}
 		if alert {
-			fill = mixColor(footerLogAlertFill, footerControlHoverFill, progress)
-			border = mixColor(footerLogAlertBorder, footerControlHoverBorder, progress)
+			style.fill = footerLogAlertFill
+			style.border = footerLogAlertBorder
 		}
-		radius := g.px(float32(mainControlRadius))
-		fillRounded(gtx, fill, local, radius)
-		strokeRoundedRect(
-			gtx,
-			local.Inset(g.leastPx(1)),
-			float32(radius),
-			float32(g.leastPx(1)),
-			border,
-		)
+		drawIconButtonSurface(gtx, local, style, progress)
 		if draw != nil {
+			fill, _ := style.palette(progress)
 			draw(gtx, local, progress, fill)
 		}
 		return layout.Dimensions{Size: rect.Size()}

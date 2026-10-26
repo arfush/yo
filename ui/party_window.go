@@ -119,7 +119,7 @@ type partyWindow struct {
 	rotateButton widget.Clickable
 	unlockButton widget.Clickable
 	secretCopy   widget.Clickable
-	back         footerButton
+	back         footerNamedButton
 	editor       widget.Editor
 	// keyEditor displays the created room key. It is read-only but selectable,
 	// so the key can be copied with Ctrl+C straight from the card.
@@ -924,7 +924,7 @@ func (w *partyWindow) layoutWaiting(gtx layout.Context, snapshot partySnapshot) 
 		centerX+mascotSize/2,
 		bottom,
 	)
-	drawCatgirl(gtx, mascot, gtx.Now, w.waitHat, false)
+	drawCatgirl(gtx, mascot, gtx.Now, w.waitHat, mascotNormal)
 
 	face := font.Font{Typeface: fontFamily, Weight: font.Normal}
 	waitText := wpWaitingText
