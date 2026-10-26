@@ -31,9 +31,11 @@ const (
 	updateDirName = "update"
 	updateLogName = "update.log"
 	logName       = "yonime.log"
-	// partyName keeps the historical file name: existing installs must keep
-	// reading their relay configuration after the package rename.
-	partyName = "watchparty.json"
+	// partyName is the relay configuration file. Releases before the party
+	// rename stored it as legacyPartyName; PartyConfigPath moves that file once
+	// so an existing override keeps working.
+	partyName       = "party.json"
+	legacyPartyName = "watchparty.json"
 )
 
 // Dir returns the per-user data directory and creates it when necessary.
@@ -165,7 +167,31 @@ func TokenPath() (string, error) {
 // PartyConfigPath returns the relay configuration the user edits after
 // deploying the Worker or the Supabase project.
 func PartyConfigPath() (string, error) {
-	return path(partyName)
+	dir, err := Dir()
+	if err != nil {
+		return "", err
+	}
+	return migratePartyConfig(dir), nil
+}
+
+// migratePartyConfig renames the pre-rename watchparty.json once. If the
+// rename fails, the legacy path is returned instead of silently dropping the
+// user's relay override; the next launch retries the migration.
+func migratePartyConfig(dir string) string {
+	current := filepath.Join(dir, partyName)
+	if _, err := os.Stat(current); err == nil {
+		return current
+	} else if !os.IsNotExist(err) {
+		return current
+	}
+	legacy := filepath.Join(dir, legacyPartyName)
+	if _, err := os.Stat(legacy); err != nil {
+		return current
+	}
+	if err := os.Rename(legacy, current); err != nil {
+		return legacy
+	}
+	return current
 }
 
 // BrowserProfileDir returns the persistent Chromium profile path. The profile

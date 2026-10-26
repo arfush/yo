@@ -98,7 +98,7 @@ func TestParseSeek(t *testing.T) {
 // the example relay that ships in watchplay.json.
 func TestCleanConfigDropsRepositoryPlaceholders(t *testing.T) {
 	example := party.Config{
-		CloudflareURL: "wss://yonime-watchparty.example.workers.dev",
+		CloudflareURL: "wss://yonime-party.example.workers.dev",
 		SupabaseURL:   "wss://abcdefghijkl.supabase.co",
 		SupabaseKey:   "sb_publishable_...",
 	}
@@ -107,7 +107,7 @@ func TestCleanConfigDropsRepositoryPlaceholders(t *testing.T) {
 	}
 
 	real := party.Config{
-		CloudflareURL: "wss://yonime-watchparty.me.workers.dev",
+		CloudflareURL: "wss://yonime-party.me.workers.dev",
 	}
 	cleaned := cleanConfig(real)
 	if !usable(cleaned) {

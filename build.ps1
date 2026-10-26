@@ -51,8 +51,8 @@ if ($env:YONIME_DISCORD_APP_ID) {
     $ldflags += " -X github.com/arfush/yonime/internal/discord.AppID=$($env:YONIME_DISCORD_APP_ID.Trim())"
 }
 
-# Watch-party relays are deployed once and baked into the official build so the
-# shipped exe needs no watchparty.json. Environment variables win; the rest comes
+# Party relays are deployed once and baked into the official build so the
+# shipped exe needs no party.json. Environment variables win; the rest comes
 # from watchplay.json in the repository root. That file is never written here.
 $partyFile = Join-Path $PSScriptRoot "watchplay.json"
 $partyDefaults = $null

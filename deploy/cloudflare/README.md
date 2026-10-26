@@ -1,7 +1,7 @@
 # Совместный просмотр через Cloudflare
 
 Реле — Worker + Durable Object. Одна комната = один Durable Object, которому
-клиент отдаёт не ключ, а его адрес: `sha256("yonime/watchparty/room\0" + ключ)`,
+клиент отдаёт не ключ, а его адрес: `sha256("yonime/party/room\0" + ключ)`,
 первые 16 байт в hex (32 символа). Ключ вида `YOC4K7Q2M` (буква `C` после `YO`
 означает Cloudflare) остаётся у собеседников. Сайт `*.workers.dev` работает на
 бесплатном плане, отдельный домен не нужен.
@@ -24,13 +24,13 @@ wrangler deploy
 `wrangler deploy` напечатает адрес вида:
 
 ```text
-https://yonime-watchparty.<ваш-аккаунт>.workers.dev
+https://yonime-party.<ваш-аккаунт>.workers.dev
 ```
 
 Проверка, что реле живо:
 
 ```bash
-curl https://yonime-watchparty.<ваш-аккаунт>.workers.dev/health
+curl https://yonime-party.<ваш-аккаунт>.workers.dev/health
 # ok
 ```
 
@@ -62,7 +62,7 @@ curl https://yonime-watchparty.<ваш-аккаунт>.workers.dev/health
 Локальная сборка:
 
 ```powershell
-$env:WATCHPARTY_CLOUDFLARE_URL = "https://yonime-watchparty.<ваш-аккаунт>.workers.dev"
+$env:WATCHPARTY_CLOUDFLARE_URL = "https://yonime-party.<ваш-аккаунт>.workers.dev"
 .\build.ps1 -Version 1.0 -Arch amd64
 ```
 
@@ -73,11 +73,11 @@ $env:WATCHPARTY_CLOUDFLARE_URL = "https://yonime-watchparty.<ваш-аккаун
 
 Адрес можно ввести в настройках Yonime: **Совместный просмотр → Провайдер →
 Cloudflare Endpoint**. То же самое можно сделать файлом
-`%APPDATA%\Yonime\watchparty.json`:
+`%APPDATA%\Yonime\party.json`:
 
 ```json
 {
-  "cloudflare_url": "https://yonime-watchparty.<ваш-аккаунт>.workers.dev"
+  "cloudflare_url": "https://yonime-party.<ваш-аккаунт>.workers.dev"
 }
 ```
 
@@ -89,7 +89,7 @@ Cloudflare Endpoint**. То же самое можно сделать файло
 Вшить адрес вручную тоже можно:
 
 ```bash
-go build -ldflags "-X github.com/arfush/yonime/party.CloudflareURL=https://yonime-watchparty.example.workers.dev" ./cmd/yonime
+go build -ldflags "-X github.com/arfush/yonime/party.CloudflareURL=https://yonime-party.example.workers.dev" ./cmd/yonime
 ```
 
 ## Что внутри

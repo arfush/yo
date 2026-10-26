@@ -10,13 +10,16 @@ import (
 	"github.com/coder/websocket"
 )
 
-// ProtocolVersion is the current watch-party wire format. Bump it whenever a
-// change makes old and new clients unable to understand each other.
+// ProtocolVersion is the current party wire format. Bump it whenever a change
+// makes old and new clients unable to understand each other.
 //
 // Version 2 encrypts every room payload with a key derived from the room key
-// and the optional secret, and routes rooms by a hash of the key. A 1.x client
-// cannot read a 2.x frame and must leave instead of guessing.
-const ProtocolVersion = "2.0"
+// and the optional secret, and routes rooms by a hash of the key. Version 3
+// moves both hashes to the "party" namespace and renames the Supabase topic;
+// a 2.x client resolves a different room address and must not be mixed with a
+// 3.x peer. The version check turns such a mix into a clear "update Yonime"
+// error instead of a silently desynchronised room.
+const ProtocolVersion = "3.0"
 
 const (
 	messageHello   = "hello"

@@ -146,6 +146,17 @@ func TestSanitizeKeyInput(t *testing.T) {
 	}
 }
 
+func TestAddressPinsPartyNamespace(t *testing.T) {
+	address, err := Address("YOC4K7Q2M")
+	if err != nil {
+		t.Fatalf("Address: %v", err)
+	}
+	const want = "f3170f4fcb568e94d760867684515e2e"
+	if address != want {
+		t.Fatalf("address = %q, want %q; changing it breaks rooms across versions", address, want)
+	}
+}
+
 func TestAddressHidesTheKey(t *testing.T) {
 	key := "YOC4K7Q2M"
 	address, err := Address(key)

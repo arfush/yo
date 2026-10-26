@@ -1,7 +1,7 @@
 # Совместный просмотр через Supabase
 
 Реле на Supabase Realtime: каждая комната — это публичный broadcast-канал
-`realtime:watchparty:<АДРЕС>`, где адрес — это `sha256` от ключа комнаты (32
+`realtime:party:<АДРЕС>`, где адрес — это `sha256` от ключа комнаты (32
 шестнадцатеричных символа). Ни таблиц, ни RLS-политик, ни edge-функций
 создавать не нужно: достаточно publishable-ключа проекта. Сам ключ и секрет
 комнаты на Supabase не попадают, а содержимое сообщений зашифровано AES-GCM.
@@ -55,7 +55,7 @@ curl "https://abcdefghijkl.supabase.co/realtime/v1/websocket?apikey=<PUBLISHABLE
 
 URL и ключ можно ввести в настройках Yonime: **Совместный просмотр → Провайдер
 → Supabase Endpoint / Supabase Publishable Key**. То же самое можно сделать
-файлом `%APPDATA%\Yonime\watchparty.json`:
+файлом `%APPDATA%\Yonime\party.json`:
 
 ```json
 {

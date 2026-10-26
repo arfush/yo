@@ -12,7 +12,7 @@ import (
 
 // These are filled by the release build through -ldflags so a fork can ship a
 // ready relay. They stay empty in a normal build and the user supplies the
-// endpoints in watchparty.json instead.
+// endpoints in party.json instead.
 var (
 	CloudflareURL = ""
 	SupabaseURL   = ""
@@ -66,7 +66,7 @@ func SaveConfig(path string, cfg Config) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create party config directory: %w", err)
 	}
-	tmp, err := os.CreateTemp(dir, ".watchparty-*.json")
+	tmp, err := os.CreateTemp(dir, ".party-*.json")
 	if err != nil {
 		return fmt.Errorf("create party config: %w", err)
 	}

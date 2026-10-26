@@ -8,7 +8,7 @@ import (
 )
 
 func TestSaveConfigRoundTrip(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "watchparty.json")
+	path := filepath.Join(t.TempDir(), "party.json")
 	cfg := Config{
 		CloudflareURL: " https://party.example.workers.dev/ ",
 		SupabaseURL:   "https://abcd.supabase.co/",
@@ -43,7 +43,7 @@ func TestConfigFileOverridesBuiltInRelay(t *testing.T) {
 	CloudflareURL = "wss://built-in.example.workers.dev"
 	t.Cleanup(func() { CloudflareURL = oldCloudflare })
 
-	path := filepath.Join(t.TempDir(), "watchparty.json")
+	path := filepath.Join(t.TempDir(), "party.json")
 	if err := os.WriteFile(path, []byte(`{"cloudflare_url":""}`), 0o600); err != nil {
 		t.Fatal(err)
 	}

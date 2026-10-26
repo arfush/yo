@@ -27,7 +27,7 @@ const (
 	supabaseJoinTimeout    = 12 * time.Second
 )
 
-const supabaseTopicPrefix = "realtime:watchparty:"
+const supabaseTopicPrefix = "realtime:party:"
 
 // dialSupabase connects to the project's Realtime endpoint and joins the room
 // channel. Joining happens before the transport is returned so no room message

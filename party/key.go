@@ -64,7 +64,7 @@ func Address(key string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256([]byte("yonime/watchparty/room\x00" + normalized))
+	sum := sha256.Sum256([]byte("yonime/party/room\x00" + normalized))
 	return hex.EncodeToString(sum[:addressBytes]), nil
 }
 
