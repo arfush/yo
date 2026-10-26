@@ -91,7 +91,42 @@ var (
 	titleButtonHover       = color.NRGBA{R: 0x22, G: 0x1c, B: 0x34, A: 0xff}
 	titleButtonHoverBorder = color.NRGBA{R: 0x4a, G: 0x3c, B: 0x69, A: 0xff}
 	titleButtonText        = color.NRGBA{R: 0xe4, G: 0xe0, B: 0xec, A: 0xff}
+
+	titleSavedFill        = color.NRGBA{R: 0x12, G: 0x24, B: 0x1b, A: 0xff}
+	titleSavedHover       = color.NRGBA{R: 0x18, G: 0x31, B: 0x24, A: 0xff}
+	titleSavedBorder      = color.NRGBA{R: 0x2b, G: 0x52, B: 0x3d, A: 0xff}
+	titleSavedHoverBorder = color.NRGBA{R: 0x3a, G: 0x6f, B: 0x53, A: 0xff}
+	titleSavedText        = color.NRGBA{R: 0x7f, G: 0xcf, B: 0x9d, A: 0xff}
 )
+
+// titleFooterButtonTone selects the fill and text of a footer action. Saved is
+// deliberately a separate tone so "Сохранено" stays visibly green until the
+// label returns to "Сохранить".
+type titleFooterButtonTone int
+
+const (
+	titleFooterSecondary titleFooterButtonTone = iota
+	titleFooterPrimary
+	titleFooterSaved
+)
+
+func titleFooterButtonPalette(tone titleFooterButtonTone, progress float32) (fill, border, text color.NRGBA) {
+	switch tone {
+	case titleFooterPrimary:
+		fill = mixColor(mainAccentColor1, color.NRGBA{R: 0xae, G: 0x8b, B: 0xff, A: 0xff}, progress)
+		border = mixColor(mainAccentColor2, color.NRGBA{R: 0x82, G: 0x3e, B: 0xee, A: 0xff}, progress)
+		text = color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}
+	case titleFooterSaved:
+		fill = mixColor(titleSavedFill, titleSavedHover, progress)
+		border = mixColor(titleSavedBorder, titleSavedHoverBorder, progress)
+		text = titleSavedText
+	default:
+		fill = mixColor(titleButtonFill, titleButtonHover, progress)
+		border = mixColor(titleButtonBorder, titleButtonHoverBorder, progress)
+		text = titleButtonText
+	}
+	return fill, border, text
+}
 
 var titleQualityLabels = []string{"720 HD", "1080 FHD", "1440 2K", "2160 4K"}
 var titleQualityValues = []int{720, 1080, 1440, 2160}
@@ -1193,7 +1228,7 @@ func (w *titleWindow) layoutFooter(gtx layout.Context) {
 	}
 	saveRect := image.Rect(right-saveWidth, top, right, top+height)
 
-	if w.layoutFooterButton(gtx, backRect, &w.backClick, &w.backHover, false, func(gtx layout.Context) {
+	if w.layoutFooterButton(gtx, backRect, &w.backClick, &w.backHover, titleFooterSecondary, func(gtx layout.Context, textColor color.NRGBA) {
 		local := image.Rect(0, 0, backRect.Dx(), backRect.Dy())
 		_, ink := w.typo.measure(gtx, "Вернуться", buttonFace, titlePageButtonSize)
 		iconSize := gtx.Dp(unit.Dp(11))
@@ -1208,14 +1243,14 @@ func (w *titleWindow) layoutFooter(gtx layout.Context) {
 			),
 			iconSize,
 			gtx.Dp(unit.Dp(1.5)),
-			titleButtonText,
+			textColor,
 		)
 		w.typo.paintCentered(
 			gtx,
 			"Вернуться",
 			buttonFace,
 			titlePageButtonSize,
-			titleButtonText,
+			textColor,
 			f32.Pt(start+float32(iconSize+gap)+float32(ink.Dx())/2, centerY),
 			capHeight,
 		)
@@ -1227,20 +1262,22 @@ func (w *titleWindow) layoutFooter(gtx layout.Context) {
 	}
 
 	saveLabel := "Сохранить"
+	saveTone := titleFooterSecondary
 	if !w.savedUntil.IsZero() && gtx.Now.Before(w.savedUntil) {
 		saveLabel = "Сохранено"
+		saveTone = titleFooterSaved
 		if w.animationsRun() {
-			gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(200 * time.Millisecond)})
+			gtx.Execute(op.InvalidateCmd{At: w.savedUntil})
 		}
 	}
-	if w.layoutFooterButton(gtx, saveRect, &w.saveClick, &w.saveHover, false, func(gtx layout.Context) {
+	if w.layoutFooterButton(gtx, saveRect, &w.saveClick, &w.saveHover, saveTone, func(gtx layout.Context, textColor color.NRGBA) {
 		local := image.Rect(0, 0, saveRect.Dx(), saveRect.Dy())
 		w.typo.paintCentered(
 			gtx,
 			saveLabel,
 			buttonFace,
 			titlePageButtonSize,
-			titleButtonText,
+			textColor,
 			f32.Pt(float32(local.Dx())/2, centerY),
 			capHeight,
 		)
@@ -1253,7 +1290,7 @@ func (w *titleWindow) layoutFooter(gtx layout.Context) {
 		if w.watching {
 			watchLabel = "Запуск..."
 		}
-		watchClicked := w.layoutFooterButton(gtx, watchRect, &w.watchClick, &w.watchHover, true, func(gtx layout.Context) {
+		watchClicked := w.layoutFooterButton(gtx, watchRect, &w.watchClick, &w.watchHover, titleFooterPrimary, func(gtx layout.Context, textColor color.NRGBA) {
 			local := image.Rect(0, 0, watchRect.Dx(), watchRect.Dy())
 			// Reserve the widest label's width so the play icon keeps its place
 			// when the label switches to "Запуск...".
@@ -1271,14 +1308,14 @@ func (w *titleWindow) layoutFooter(gtx layout.Context) {
 					int(math.Round(float64(centerY))),
 				),
 				iconSize,
-				color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff},
+				textColor,
 			)
 			w.typo.paintCentered(
 				gtx,
 				watchLabel,
 				buttonFace,
 				titlePageButtonSize,
-				color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff},
+				textColor,
 				f32.Pt(start+float32(iconSize+gap)+float32(labelWidth)/2, centerY),
 				capHeight,
 			)
@@ -1292,6 +1329,7 @@ func (w *titleWindow) layoutFooter(gtx layout.Context) {
 // save is shared by the footer button and the S shortcut.
 func (w *titleWindow) save(gtx layout.Context) {
 	w.saveError = ""
+	w.savedUntil = time.Time{}
 	if w.onSave != nil {
 		if err := w.onSave(w.selectedVoiceName(), w.selectedEpisodeLabel()); err != nil {
 			w.saveError = err.Error()
@@ -1303,7 +1341,7 @@ func (w *titleWindow) save(gtx layout.Context) {
 	if w.saveError == "" {
 		w.savedUntil = gtx.Now.Add(1500 * time.Millisecond)
 		if w.animationsRun() {
-			gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(200 * time.Millisecond)})
+			gtx.Execute(op.InvalidateCmd{At: w.savedUntil})
 		}
 	}
 	gtx.Execute(op.InvalidateCmd{})
@@ -1350,7 +1388,7 @@ func (w *titleWindow) shortcutInfo() shortcutInfo {
 	}
 }
 
-func (w *titleWindow) layoutFooterButton(gtx layout.Context, rect image.Rectangle, click *widget.Clickable, hover *hoverAnim, primary bool, draw func(layout.Context)) bool {
+func (w *titleWindow) layoutFooterButton(gtx layout.Context, rect image.Rectangle, click *widget.Clickable, hover *hoverAnim, tone titleFooterButtonTone, draw func(layout.Context, color.NRGBA)) bool {
 	if rect.Empty() {
 		return false
 	}
@@ -1359,13 +1397,10 @@ func (w *titleWindow) layoutFooterButton(gtx layout.Context, rect image.Rectangl
 	w.layoutClickableDraw(gtx, rect, click, func(gtx layout.Context) {
 		local := image.Rect(0, 0, rect.Dx(), rect.Dy())
 		radius := gtx.Dp(unit.Dp(8))
-		if primary {
-			c1 := mixColor(mainAccentColor1, color.NRGBA{R: 0xae, G: 0x8b, B: 0xff, A: 0xff}, progress)
-			c2 := mixColor(mainAccentColor2, color.NRGBA{R: 0x82, G: 0x3e, B: 0xee, A: 0xff}, progress)
-			fillRoundedGradient(gtx, local, local, radius, c1, c2)
+		fill, border, text := titleFooterButtonPalette(tone, progress)
+		if tone == titleFooterPrimary {
+			fillRoundedGradient(gtx, local, local, radius, fill, border)
 		} else {
-			fill := mixColor(titleButtonFill, titleButtonHover, progress)
-			border := mixColor(titleButtonBorder, titleButtonHoverBorder, progress)
 			fillRounded(gtx, border, local, radius)
 			fillRounded(gtx, fill, local.Inset(gtx.Dp(unit.Dp(1))), radius-gtx.Dp(unit.Dp(1)))
 			strokeRoundedRect(
@@ -1377,7 +1412,7 @@ func (w *titleWindow) layoutFooterButton(gtx layout.Context, rect image.Rectangl
 			)
 		}
 		if draw != nil {
-			draw(gtx)
+			draw(gtx, text)
 		}
 	})
 	return clicked
