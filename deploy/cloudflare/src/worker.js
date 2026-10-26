@@ -1,22 +1,28 @@
 // Yonime watch-party relay.
 //
-// One Durable Object instance per room key keeps the last host anchor in
-// memory and forwards it to the guests. The class deliberately does not use
-// hibernatable WebSockets: a room lives for the length of an episode and the
-// in-memory state is what makes a late joiner start at the right second.
+// One Durable Object instance per room address keeps the host card and the last
+// host anchor in memory and forwards them to the guests. The class deliberately
+// does not use hibernatable WebSockets: a room lives for the length of an
+// episode and the in-memory state is what makes a late joiner start at the
+// right second.
 //
-// Wire format is shared with the client in internal/watchparty:
+// The address is sha256(room key), so this Worker never learns the key the two
+// people shared. Everything below the type field is encrypted by the client:
 //
-//	{t:"hello"}                 guest asks for a fresh anchor
-//	{t:"state", state:{...}}    host publishes an anchor
-//	{t:"control", control:{}}   guest asks the host to pause/play/seek
+//	{t:"card", card:{...}}      host publishes the lock state and KDF salt
+//	{t:"hello"}                 guest asks for a card and a fresh anchor
+//	{t:"state", d:"..."}        host publishes an encrypted anchor
+//	{t:"control", d:"..."}      guest asks the host to pause/play/seek
 //	{t:"welcome", host:true}    relay reports whether the host is present
 //	{t:"close"}                 host closed the room on purpose
 //	{t:"bye"}                   host socket dropped; guests start a grace window
 //	{t:"error", error:"..."}    relay refused something
+//
+// The relay only reads "t": the card is public metadata, and "d" is opaque
+// AES-GCM ciphertext that a room without a secret can decrypt too.
 
-const KEY_LENGTH = 9;
-const KEY_PATTERN = /^YO[A-Z]{7}$/;
+const ADDRESS_LENGTH = 32;
+const ADDRESS_PATTERN = /^[0-9a-f]{32}$/;
 
 export default {
   async fetch(request, env) {
@@ -27,7 +33,7 @@ export default {
     }
     if (url.pathname !== "/room") {
       return new Response(
-        "Yonime watch-party relay. Connect to /room?key=<KEY>&role=host|guest",
+        "Yonime watch-party relay. Connect to /room?room=<ADDRESS>&role=host|guest",
         { status: 200, headers: { "content-type": "text/plain; charset=utf-8" } },
       );
     }
@@ -35,27 +41,27 @@ export default {
       return new Response("expected a WebSocket upgrade", { status: 426 });
     }
 
-    const key = normalizeKey(url.searchParams.get("key") ?? "");
-    if (!key) {
-      return new Response("bad room key", { status: 400 });
+    const address = normalizeAddress(url.searchParams.get("room") ?? "");
+    if (!address) {
+      return new Response("bad room address", { status: 400 });
     }
     const role = url.searchParams.get("role") === "host" ? "host" : "guest";
 
-    const id = env.ROOMS.idFromName(key);
+    const id = env.ROOMS.idFromName(address);
     const stub = env.ROOMS.get(id);
     const target = new URL("https://room.internal/ws");
-    target.searchParams.set("key", key);
+    target.searchParams.set("room", address);
     target.searchParams.set("role", role);
     return stub.fetch(target.toString(), request);
   },
 };
 
-function normalizeKey(value) {
-  const key = value.trim().toUpperCase();
-  if (key.length !== KEY_LENGTH || !KEY_PATTERN.test(key)) {
+function normalizeAddress(value) {
+  const address = value.trim().toLowerCase();
+  if (address.length !== ADDRESS_LENGTH || !ADDRESS_PATTERN.test(address)) {
     return "";
   }
-  return key;
+  return address;
 }
 
 export class Room {
@@ -63,7 +69,9 @@ export class Room {
     this.state = state;
     this.host = null;
     this.guests = new Set();
-    // lastState is the raw host frame, forwarded verbatim to a new guest.
+    // The two frames are forwarded verbatim, so their encryption is the
+    // client's concern and this class never has to parse the room body.
+    this.card = null;
     this.lastState = null;
   }
 
@@ -96,8 +104,9 @@ export class Room {
       }
     }
     this.host = socket;
-    // A new host session starts from an empty room; the client publishes its
-    // own anchor right after connecting.
+    // A new host session starts from an empty room; the client publishes the
+    // card and its own anchor right after connecting.
+    this.card = null;
     this.lastState = null;
     this.send(socket, { t: "welcome", host: true });
 
@@ -110,6 +119,10 @@ export class Room {
         return;
       }
       switch (message.t) {
+        case "card":
+          this.card = event.data;
+          this.broadcast(message, socket);
+          break;
         case "state":
           this.lastState = event.data;
           this.broadcast(message, socket);
@@ -141,6 +154,11 @@ export class Room {
     this.guests.add(socket);
     const hosted = this.host !== null;
     this.send(socket, { t: "welcome", host: hosted });
+    if (hosted && this.card) {
+      // The card tells the guest whether a secret is needed before the host
+      // answers, and lets it verify a typed secret without a round trip.
+      socket.send(this.card);
+    }
     if (hosted && this.lastState) {
       socket.send(this.lastState);
     }
@@ -184,6 +202,7 @@ export class Room {
       return;
     }
     this.host = null;
+    this.card = null;
     this.lastState = null;
     try {
       socket.close(1000, "host left");
@@ -209,6 +228,8 @@ export class Room {
     } catch {
       if (socket === this.host) {
         this.host = null;
+        this.card = null;
+        this.lastState = null;
       } else {
         this.guests.delete(socket);
       }

@@ -49,3 +49,38 @@ func TestClockResetDropsSamples(t *testing.T) {
 		t.Fatal("Reset must drop every sample")
 	}
 }
+
+// TestClockForgetsOldArrivals covers a paused room: heartbeats are rare, so a
+// count-only window would keep an estimate from many minutes ago. The old tight
+// sample must not pin the offset once it is stale.
+func TestClockForgetsOldArrivals(t *testing.T) {
+	var clock Clock
+	hostMS := time.Unix(1_700_000_000, 0).UnixMilli()
+
+	// A very tight arrival, then fifteen minutes of pause, then a loose one.
+	clock.Add(hostMS, hostMS+10)
+	clock.Add(hostMS+15*60*1000, hostMS+15*60*1000+300)
+
+	offset, ok := clock.Offset()
+	if !ok {
+		t.Fatal("the clock reports no offset")
+	}
+	if want := -300 * time.Millisecond; offset != want {
+		t.Fatalf("offset = %v, want %v: the sample from before the pause was kept", offset, want)
+	}
+}
+
+// TestClockWindowIsBounded keeps the memory of a long session from growing
+// without limit even when every sample is still fresh.
+func TestClockWindowIsBounded(t *testing.T) {
+	var clock Clock
+	for i := 0; i < clockSamples+20; i++ {
+		clock.Add(1000, int64(2000+i))
+	}
+	clock.mu.Lock()
+	kept := len(clock.samples)
+	clock.mu.Unlock()
+	if kept != clockSamples {
+		t.Fatalf("kept %d samples, want %d", kept, clockSamples)
+	}
+}

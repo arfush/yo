@@ -575,6 +575,7 @@ func (a *application) openSettings() {
 		SharedControl: a.library.SharedControlEnabled(),
 		Discord:       a.library.DiscordPresenceEnabled(),
 		AutoSkip:      a.library.AutoSkipSegments(),
+		Name:          a.party.Name(),
 		Provider:      a.party.Provider(),
 		CloudflareURL: partyCfg.CloudflareURL,
 		SupabaseURL:   partyCfg.SupabaseURL,
@@ -652,6 +653,9 @@ func (a *application) openSettings() {
 	}
 	settings.onRelay = func(cfg watchparty.Config) error {
 		return a.party.SetRelayConfig(cfg)
+	}
+	settings.onName = func(name string) error {
+		return a.party.SetName(name)
 	}
 	a.showWindow(a.window, settings)
 }
@@ -910,6 +914,27 @@ func (a *application) processUpdateCard() {
 		// The user already moved on: fall back to the silent tray path.
 		a.startAutoUpdate(release)
 	default:
+	}
+}
+
+// processPartyState opens the secret form when a guest's room became locked
+// while the guest was on the main screen. The manager raises the flag from its
+// consume loop; consuming it here keeps screen navigation on the UI goroutine.
+func (a *application) processPartyState() {
+	if a.party == nil {
+		return
+	}
+	if a.active == a.main {
+		if a.party.takeSecretNotice() {
+			a.openWatchParty()
+		}
+		return
+	}
+	// The party screen reads NeedsSecret directly. Drop the notice so it does
+	// not reopen the card after the user leaves a room that was already
+	// handled.
+	if _, ok := a.active.(*watchPartyWindow); ok {
+		a.party.takeSecretNotice()
 	}
 }
 
@@ -1941,6 +1966,7 @@ func (a *application) run(w *app.Window) error {
 		case app.FrameEvent:
 			gtx := app.NewContext(&ops, e)
 			a.processUpdateCard()
+			a.processPartyState()
 			a.processWatchResults(gtx)
 			a.syncFooterControls()
 			a.handleGlobalKeys(gtx)

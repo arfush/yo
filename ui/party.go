@@ -60,6 +60,12 @@ type partySnapshot struct {
 	HostEverSeen bool
 	State        watchparty.State
 	Notice       string
+	// Locked and NeedsSecret describe the secret gate. The host shows Secret on
+	// its card; a guest that already proved one keeps it here too.
+	Locked      bool
+	NeedsSecret bool
+	Secret      string
+	HostName    string
 }
 
 type hostMeta struct {
@@ -78,6 +84,7 @@ type partyManager struct {
 	mu       sync.Mutex
 	provider watchparty.Provider
 	control  bool
+	name     string
 	session  *watchparty.Session
 	state    watchparty.State
 	hasState bool
@@ -87,6 +94,11 @@ type partyManager struct {
 	// as a wrong key.
 	hostEverSeen bool
 	notice       string
+	// secretAsked makes the secret prompt fire once per rotation instead of on
+	// every card frame. secretNotice asks the app to open the party screen when
+	// the room locks under a guest that is on the main page.
+	secretAsked  bool
+	secretNotice bool
 	// closedNotice explains why the last guest room disappeared. The party
 	// screen consumes it on the UI goroutine, so the fields it mutates stay
 	// owned by layout.
@@ -119,7 +131,28 @@ func newPartyManager(app *application) *partyManager {
 		saved = app.library.WatchPartyProvider()
 	}
 	manager.provider = preferredProvider(manager.cfg, saved)
+	manager.name = loadPartyName(app)
 	return manager
+}
+
+// loadPartyName restores the nickname from the settings, generating and storing
+// a GitHub-style default on the first run.
+func loadPartyName(app *application) string {
+	if app != nil && app.library != nil {
+		if saved := app.library.WatchPartyName(); saved != "" {
+			if normalized, err := watchparty.NormalizeName(saved); err == nil {
+				return normalized
+			}
+		}
+	}
+	name, err := watchparty.NewName()
+	if err != nil {
+		return "yonime"
+	}
+	if app != nil && app.library != nil {
+		_ = app.library.SetWatchPartyName(name)
+	}
+	return name
 }
 
 // preferredProvider is the relay a new room starts with: the one picked in the
@@ -251,6 +284,41 @@ func guestControlAllowed(state watchparty.State, local bool) bool {
 	return local
 }
 
+// Name returns the nickname this client sends to the other side.
+func (m *partyManager) Name() string {
+	if m == nil {
+		return ""
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.name
+}
+
+// SetName validates and stores the nickname, applies it to the open room and
+// keeps it for the next one.
+func (m *partyManager) SetName(name string) error {
+	if m == nil {
+		return errors.New("совместный просмотр недоступен")
+	}
+	normalized, err := watchparty.NormalizeName(name)
+	if err != nil {
+		return err
+	}
+	if m.app != nil && m.app.library != nil {
+		if err := m.app.library.SetWatchPartyName(normalized); err != nil {
+			return err
+		}
+	}
+	m.mu.Lock()
+	m.name = normalized
+	room := m.session
+	m.mu.Unlock()
+	if room != nil {
+		room.SetName(normalized)
+	}
+	return nil
+}
+
 // Create opens a fresh room and returns its key.
 func (m *partyManager) Create(provider watchparty.Provider) (string, error) {
 	if m == nil {
@@ -269,7 +337,7 @@ func (m *partyManager) Create(provider watchparty.Provider) (string, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), partyCreateTimeout)
 	defer cancel()
-	session, err := watchparty.Create(ctx, cfg, provider)
+	session, err := watchparty.Create(ctx, cfg, provider, m.Name())
 	if err != nil {
 		return "", err
 	}
@@ -305,18 +373,113 @@ func (m *partyManager) Join(key string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), partyJoinTimeout)
 	defer cancel()
-	session, err := watchparty.Join(ctx, cfg, normalized)
+	session, err := watchparty.Join(ctx, cfg, normalized, m.Name())
 	if err != nil {
 		return err
 	}
 	probeCtx, probeCancel := context.WithTimeout(ctx, partyHostWait)
-	defer probeCancel()
-	if err := session.WaitHost(probeCtx); err != nil {
+	err = session.WaitHost(probeCtx)
+	probeCancel()
+	if err != nil {
+		_ = session.Close()
+		return err
+	}
+	// The card tells the UI whether the room needs a secret before the first
+	// anchor arrives. Waiting for it also rejects a host from an older build,
+	// which would never send one.
+	cardCtx, cardCancel := context.WithTimeout(ctx, partyHostWait)
+	err = session.WaitCard(cardCtx)
+	cardCancel()
+	if err != nil {
 		_ = session.Close()
 		return err
 	}
 	m.adopt(session)
 	return nil
+}
+
+// LockRoom closes the open room with a fresh secret and returns it. Calling it
+// again on a locked room rotates the secret: the room address, and therefore
+// the relay object, stays the same.
+func (m *partyManager) LockRoom() (string, error) {
+	room, err := m.hostRoom()
+	if err != nil {
+		return "", err
+	}
+	secret, err := watchparty.NewSecret()
+	if err != nil {
+		return "", err
+	}
+	if _, err := room.Lock(secret); err != nil {
+		return "", err
+	}
+	m.mu.Lock()
+	m.secretAsked = false
+	m.mu.Unlock()
+	m.invalidate()
+	return secret, nil
+}
+
+// UnlockRoom opens a locked room again, so the key alone is enough.
+func (m *partyManager) UnlockRoom() error {
+	room, err := m.hostRoom()
+	if err != nil {
+		return err
+	}
+	if err := room.Unlock(); err != nil {
+		return err
+	}
+	m.invalidate()
+	return nil
+}
+
+// SubmitSecret lets a guest prove the secret and asks the host for a fresh
+// anchor. A wrong value is refused locally by the room card.
+func (m *partyManager) SubmitSecret(secret string) error {
+	if m == nil {
+		return errors.New("комната не создана")
+	}
+	m.mu.Lock()
+	room := m.session
+	m.mu.Unlock()
+	if room == nil || room.Role != watchparty.Guest {
+		return errors.New("секрет вводит только гость комнаты")
+	}
+	if err := room.SubmitSecret(secret); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	m.secretAsked = false
+	m.mu.Unlock()
+	m.invalidate()
+	return nil
+}
+
+// hostRoom returns the open room if this client is its creator.
+func (m *partyManager) hostRoom() (*watchparty.Session, error) {
+	if m == nil {
+		return nil, errors.New("комната не создана")
+	}
+	m.mu.Lock()
+	room := m.session
+	m.mu.Unlock()
+	if room == nil || room.Role != watchparty.Host {
+		return nil, watchparty.ErrHostOnly
+	}
+	return room, nil
+}
+
+// takeSecretNotice reports once that the open room started asking for a secret,
+// so the app can bring the guest to the secret form.
+func (m *partyManager) takeSecretNotice() bool {
+	if m == nil {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	notice := m.secretNotice
+	m.secretNotice = false
+	return notice
 }
 
 // Delete closes the room and forgets the key.
@@ -333,6 +496,8 @@ func (m *partyManager) Delete() {
 	m.hostSeen = false
 	m.hostEverSeen = false
 	m.notice = ""
+	m.secretAsked = false
+	m.secretNotice = false
 	// hostSession/hostMeta describe the running mpv session, not the room:
 	// keep them so a room created later can publish the current episode.
 	m.guestRunning = watchparty.State{}
@@ -385,6 +550,12 @@ func (m *partyManager) Snapshot() partySnapshot {
 		snapshot.Key = m.session.Key
 		snapshot.Role = m.session.Role
 		snapshot.Provider = m.session.Provider
+		if card, ok := m.session.Card(); ok {
+			snapshot.Locked = card.Locked
+		}
+		snapshot.NeedsSecret = m.session.NeedsSecret()
+		snapshot.Secret = m.session.Secret()
+		snapshot.HostName = m.session.HostName()
 	}
 	return snapshot
 }
@@ -426,6 +597,8 @@ func (m *partyManager) adopt(session *watchparty.Session) {
 	m.hostSeen = false
 	m.hostEverSeen = false
 	m.notice = ""
+	m.secretAsked = false
+	m.secretNotice = false
 	// hostSession/hostMeta describe the running mpv session, not the room: a
 	// room created in the middle of an episode publishes it right away.
 	m.guestRunning = watchparty.State{}
@@ -486,6 +659,26 @@ func (m *partyManager) consume(session *watchparty.Session, stop chan struct{}) 
 			m.hostSeen = true
 			m.hostEverSeen = true
 			m.notice = ""
+			// A readable anchor proves the key generation in effect, so the
+			// next rotation has to prompt again.
+			m.secretAsked = false
+		case watchparty.UpdateCard:
+			if session.Role == watchparty.Guest {
+				if session.NeedsSecret() {
+					if !m.secretAsked {
+						m.secretAsked = true
+						m.secretNotice = true
+					}
+					// The anchor belongs to the previous key generation:
+					// stop following it while the secret is unknown instead
+					// of drifting away from the host.
+					m.state = watchparty.State{}
+					m.hasState = false
+					m.started = false
+				} else {
+					m.secretAsked = false
+				}
+			}
 		case watchparty.UpdateHostSeen:
 			m.hostSeen = true
 			m.hostEverSeen = true

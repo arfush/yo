@@ -31,8 +31,9 @@ const supabaseTopicPrefix = "realtime:watchparty:"
 
 // dialSupabase connects to the project's Realtime endpoint and joins the room
 // channel. Joining happens before the transport is returned so no room message
-// can be lost between connect and join.
-func dialSupabase(ctx context.Context, cfg Config, key string, role Role, name string) (transport, error) {
+// can be lost between connect and join. The channel topic is the hashed room
+// address, never the key.
+func dialSupabase(ctx context.Context, cfg Config, address string, role Role) (transport, error) {
 	endpoint, err := cfg.SupabaseEndpoint()
 	if err != nil {
 		return nil, err
@@ -51,9 +52,8 @@ func dialSupabase(ctx context.Context, cfg Config, key string, role Role, name s
 	}
 	t := &supabaseTransport{
 		wsTransport: newWSTransport(conn),
-		topic:       supabaseTopicPrefix + key,
+		topic:       supabaseTopicPrefix + address,
 		role:        role,
-		name:        name,
 	}
 	if err := t.join(dialCtx); err != nil {
 		t.close()
@@ -67,7 +67,6 @@ type supabaseTransport struct {
 
 	topic string
 	role  Role
-	name  string
 
 	refMu sync.Mutex
 	ref   int64
@@ -108,12 +107,12 @@ func (t *supabaseTransport) join(ctx context.Context) error {
 			}
 			return closeError(err)
 		}
-		frame, ok := decodePhoenixFrame(raw)
-		if !ok || frame.Event != supabaseEventReply || frame.Ref != ref {
+		joinFrame, ok := decodePhoenixFrame(raw)
+		if !ok || joinFrame.Event != supabaseEventReply || joinFrame.Ref != ref {
 			continue
 		}
-		if frame.Status != "ok" {
-			return fmt.Errorf("Supabase отклонил комнату: %s", supabaseReason(frame.Payload))
+		if joinFrame.Status != "ok" {
+			return fmt.Errorf("Supabase отклонил комнату: %s", supabaseReason(joinFrame.Payload))
 		}
 		return nil
 	}
@@ -173,7 +172,7 @@ func decodePhoenixFrame(raw []byte) (phoenixFrame, bool) {
 	return frame, true
 }
 
-func (t *supabaseTransport) write(msg message) error {
+func (t *supabaseTransport) write(msg frame) error {
 	payload, err := json.Marshal(msg)
 	if err != nil {
 		return err
@@ -195,7 +194,7 @@ func (t *supabaseTransport) write(msg message) error {
 	return t.writeRaw(data)
 }
 
-func (t *supabaseTransport) run(ctx context.Context, deliver func(message)) error {
+func (t *supabaseTransport) run(ctx context.Context, deliver func(frame)) error {
 	heartbeatCtx, stopHeartbeat := context.WithCancel(ctx)
 	defer stopHeartbeat()
 	go t.heartbeat(heartbeatCtx)
@@ -208,31 +207,34 @@ func (t *supabaseTransport) run(ctx context.Context, deliver func(message)) erro
 			}
 			return closeError(err)
 		}
-		frame, ok := decodePhoenixFrame(raw)
+		phx, ok := decodePhoenixFrame(raw)
 		if !ok {
 			continue
 		}
-		switch frame.Event {
+		switch phx.Event {
 		case supabaseEventBroadcast:
 			var envelope struct {
 				Event   string          `json:"event"`
 				Payload json.RawMessage `json:"payload"`
 			}
-			if json.Unmarshal(frame.Payload, &envelope) != nil {
+			if json.Unmarshal(phx.Payload, &envelope) != nil {
 				continue
 			}
 			if envelope.Event != supabaseBroadcastEvent {
 				continue
 			}
-			var msg message
+			var msg frame
 			if json.Unmarshal(envelope.Payload, &msg) != nil {
 				continue
+			}
+			if msg.Type == messageError && msg.Error == "" {
+				msg.Error = "ошибка комнаты"
 			}
 			deliver(msg)
 		case supabaseEventError, supabaseEventClose:
 			return errors.New("канал комнаты закрыт")
 		case supabaseEventReply:
-			if frame.Status != "" && frame.Status != "ok" {
+			if phx.Status != "" && phx.Status != "ok" {
 				return errors.New("Supabase отклонил сообщение комнаты")
 			}
 		}

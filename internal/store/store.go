@@ -885,6 +885,25 @@ func (s *Store) SetWatchPartyProvider(provider string) error {
 	return err
 }
 
+// WatchPartyName returns the nickname shown in watch-party rooms. An empty
+// string means the user never picked one and the UI generates a default.
+func (s *Store) WatchPartyName() string {
+	var value string
+	if err := s.db.QueryRow("SELECT value FROM settings WHERE key = 'party_name'").Scan(&value); err != nil {
+		return ""
+	}
+	return value
+}
+
+// SetWatchPartyName remembers the nickname used in watch-party rooms.
+func (s *Store) SetWatchPartyName(name string) error {
+	_, err := s.db.Exec(`
+        INSERT INTO settings (key, value) VALUES ('party_name', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+		name)
+	return err
+}
+
 // GetIntrodbCache returns cached chapters for one episode. The boolean is true
 // when introdb previously reported that it has no entry.
 func (s *Store) GetIntrodbCache(tid int64, episode string) ([]byte, bool, bool) {

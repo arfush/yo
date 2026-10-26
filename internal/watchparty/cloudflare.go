@@ -12,9 +12,9 @@ import (
 
 // dialCloudflare opens a room on the Worker deployed from deploy/cloudflare.
 // The Worker answers with a welcome message that tells the caller whether a
-// host is already present.
-func dialCloudflare(ctx context.Context, cfg Config, key string, role Role) (transport, error) {
-	endpoint, err := cfg.CloudflareEndpoint(key, role)
+// host is already present. It only learns the hashed room address.
+func dialCloudflare(ctx context.Context, cfg Config, address string, role Role) (transport, error) {
+	endpoint, err := cfg.CloudflareEndpoint(address, role)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +52,7 @@ type cloudflareTransport struct {
 	*wsTransport
 }
 
-func (t *cloudflareTransport) run(ctx context.Context, deliver func(message)) error {
+func (t *cloudflareTransport) run(ctx context.Context, deliver func(frame)) error {
 	for {
 		data, err := t.read(ctx)
 		if err != nil {
@@ -61,16 +61,12 @@ func (t *cloudflareTransport) run(ctx context.Context, deliver func(message)) er
 			}
 			return closeError(err)
 		}
-		var msg message
+		var msg frame
 		if err := json.Unmarshal(data, &msg); err != nil {
 			continue
 		}
-		if msg.Type == messageError {
-			if msg.Error == "" {
-				msg.Error = "ошибка комнаты"
-			}
-			deliver(msg)
-			continue
+		if msg.Type == messageError && msg.Error == "" {
+			msg.Error = "ошибка комнаты"
 		}
 		deliver(msg)
 	}

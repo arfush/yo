@@ -3,7 +3,7 @@
 // behaviour can be tested from two terminals:
 //
 //	watchplay create <slug> <озвучка> <серия>
-//	watchplay open <ключ комнаты>
+//	watchplay open <ключ комнаты> [секрет]
 package main
 
 import (
@@ -83,7 +83,7 @@ func usage() {
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Использование:")
 	fmt.Fprintln(out, "  watchplay create <slug AnimeLIB> <озвучка> <серия>")
-	fmt.Fprintln(out, "  watchplay open <ключ комнаты>")
+	fmt.Fprintln(out, "  watchplay open <ключ комнаты> [секрет]")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Флаги:")
 	flag.PrintDefaults()
@@ -116,8 +116,8 @@ func parseCommand(args []string) (command, error) {
 		}
 		return command{name: "create", args: args[1:]}, nil
 	case "open":
-		if len(args) != 2 {
-			return command{}, fmt.Errorf("%w: open требует ключ комнаты", errUsage)
+		if len(args) < 2 || len(args) > 3 {
+			return command{}, fmt.Errorf("%w: open требует ключ комнаты и, если комната закрыта, секрет", errUsage)
 		}
 		return command{name: "open", args: args[1:]}, nil
 	case "help", "-h", "--help":
@@ -178,7 +178,7 @@ func run(ctx context.Context, providerFlag string, args []string) error {
 	case "create":
 		return a.host(ctx, cfg, provider, cmd.args)
 	case "open":
-		return a.guest(ctx, cfg, cmd.args[0])
+		return a.guest(ctx, cfg, cmd.args[0], cmd.args[1:])
 	}
 	return errUsage
 }
@@ -315,7 +315,7 @@ func (a *app) host(ctx context.Context, cfg watchparty.Config, provider watchpar
 	a.role = "создатель"
 
 	roomCtx, roomCancel := context.WithTimeout(ctx, roomTimeout)
-	room, err := watchparty.Create(roomCtx, cfg, provider)
+	room, err := watchparty.Create(roomCtx, cfg, provider, "watchplay-host")
 	roomCancel()
 	if err != nil {
 		return err
@@ -352,15 +352,39 @@ func (a *app) host(ctx context.Context, cfg watchparty.Config, provider watchpar
 	return a.commands(ctx, room, true)
 }
 
-func (a *app) guest(ctx context.Context, cfg watchparty.Config, key string) error {
+func (a *app) guest(ctx context.Context, cfg watchparty.Config, key string, extra []string) error {
 	roomCtx, cancel := context.WithTimeout(ctx, roomTimeout)
-	room, err := watchparty.Join(roomCtx, cfg, key)
+	room, err := watchparty.Join(roomCtx, cfg, key, "watchplay-guest")
 	cancel()
 	if err != nil {
 		return err
 	}
 	defer room.Close()
 	a.role = "гость"
+	// Wait for the host before waiting for its card: a reachable relay with an
+	// empty room must report "room not found" instead of the version-mismatch
+	// error that WaitCard returns when no one answers.
+	hostCtx, hostCancel := context.WithTimeout(ctx, roomTimeout)
+	err = room.WaitHost(hostCtx)
+	hostCancel()
+	if err != nil {
+		return err
+	}
+	cardCtx, cardCancel := context.WithTimeout(ctx, roomTimeout)
+	err = room.WaitCard(cardCtx)
+	cardCancel()
+	if err != nil {
+		return err
+	}
+	if room.NeedsSecret() {
+		if len(extra) == 0 {
+			return errors.New("комната закрыта секретом: watchplay open <ключ> <секрет>")
+		}
+		if err := room.SubmitSecret(extra[0]); err != nil {
+			return err
+		}
+		fmt.Printf("Секрет принят: %s\n", watchparty.FormatSecret(room.Secret()))
+	}
 	// Closing mpv ends the session: the command loop stops and the room is
 	// closed by the deferred Close above.
 	ctx, leave := context.WithCancel(ctx)
@@ -856,9 +880,9 @@ func (a *app) control(action func(*playback.Session) error) error {
 func (a *app) printCommands(host bool) {
 	fmt.Println()
 	if host {
-		fmt.Println("Команды: pause, play, seek <сек|+сек|-сек>, status, quit")
+		fmt.Println("Команды: pause, play, seek <сек|+сек|-сек>, lock, unlock, status, quit")
 	} else {
-		fmt.Println("Команды: pause, play, seek <сек|+сек|-сек>, status, reopen, quit")
+		fmt.Println("Команды: pause, play, seek <сек|+сек|-сек>, secret <секрет>, status, reopen, quit")
 		fmt.Println("Управлять можно, если создатель включает совместное управление.")
 	}
 	fmt.Println()
@@ -908,6 +932,44 @@ func (a *app) runCommand(ctx context.Context, line string, room *watchparty.Sess
 		a.printCommands(host)
 	case "status", "st":
 		a.printStatus(room, host)
+	case "lock", "unlock":
+		if !host {
+			fmt.Println("Закрыть комнату может только создатель.")
+			return true
+		}
+		if strings.ToLower(fields[0]) == "unlock" {
+			if err := room.Unlock(); err != nil {
+				fmt.Println("комната:", err)
+				return true
+			}
+			fmt.Println("Комната открыта: гостю достаточно ключа.")
+			return true
+		}
+		secret, err := watchparty.NewSecret()
+		if err != nil {
+			fmt.Println("секрет:", err)
+			return true
+		}
+		if _, err := room.Lock(secret); err != nil {
+			fmt.Println("комната:", err)
+			return true
+		}
+		fmt.Printf("Комната закрыта. Секрет: %s\n", watchparty.FormatSecret(secret))
+		fmt.Printf("Гость: watchplay open %s %s\n", room.Key, secret)
+	case "secret":
+		if host {
+			fmt.Println("Секрет вводит гость; создатель меняет его командой lock.")
+			return true
+		}
+		if len(fields) < 2 {
+			fmt.Println("Использование: secret <секрет>")
+			return true
+		}
+		if err := room.SubmitSecret(fields[1]); err != nil {
+			fmt.Println("секрет:", err)
+			return true
+		}
+		fmt.Println("Секрет принят.")
 	case "reopen":
 		if host {
 			fmt.Println("Команда только для гостя: свой плеер создатель открывает заново самим запуском.")

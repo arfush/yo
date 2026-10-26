@@ -1,11 +1,13 @@
 package watchparty
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -14,9 +16,20 @@ import (
 	"github.com/coder/websocket"
 )
 
+// TestMain lowers the Argon2id cost for the unit tests. Every card costs one
+// derivation, and a room test derives a handful of them; at production cost the
+// suite would spend most of its time in the KDF. The parameter defaults stay in
+// the source for the release build.
+func TestMain(m *testing.M) {
+	kdfTime, kdfMemory, kdfThreads = 1, 8*1024, 1
+	os.Exit(m.Run())
+}
+
 // testHub is a miniature version of the Cloudflare relay: one host, any number
-// of guests, and the last state replayed to a newcomer. It lets the session,
-// clock and reconnect code be exercised without an external service.
+// of guests, the card and the last state replayed to a newcomer. It lets the
+// session, clock and reconnect code be exercised without an external service.
+// Like the real Worker it only reads the frame type and never the encrypted
+// body.
 type testHub struct {
 	server *httptest.Server
 	url    string
@@ -24,7 +37,9 @@ type testHub struct {
 	mu     sync.Mutex
 	host   *websocket.Conn
 	guests map[*websocket.Conn]bool
+	card   []byte
 	last   []byte
+	rooms  []string
 	// quiet mimics Supabase, which neither announces the host on connect nor
 	// replays the last anchor. The guest has to make the host answer a hello.
 	quiet bool
@@ -49,11 +64,15 @@ func (h *testHub) serve(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	key := r.URL.Query().Get("key")
-	if !ValidKey(key) {
-		http.Error(w, "bad key", http.StatusBadRequest)
+	room := r.URL.Query().Get("room")
+	if !validAddress(room) {
+		http.Error(w, "bad room address", http.StatusBadRequest)
 		return
 	}
+	h.mu.Lock()
+	h.rooms = append(h.rooms, room)
+	h.mu.Unlock()
+
 	role := r.URL.Query().Get("role")
 	conn, err := websocket.Accept(w, r, nil)
 	if err != nil {
@@ -68,20 +87,29 @@ func (h *testHub) serve(w http.ResponseWriter, r *http.Request) {
 			_ = h.host.Close(websocket.StatusNormalClosure, "replaced")
 		}
 		h.host = conn
+		h.card = nil
 		h.last = nil
 		h.mu.Unlock()
-		h.send(conn, message{Type: messageWelcome, Host: boolPtr(true)})
+		h.send(conn, frame{Type: messageWelcome, Host: boolPtr(true)})
 
 		for {
 			_, data, err := conn.Read(ctx)
 			if err != nil {
 				break
 			}
-			var msg message
+			var msg frame
 			if json.Unmarshal(data, &msg) != nil {
 				continue
 			}
 			switch msg.Type {
+			case messageCard:
+				h.mu.Lock()
+				h.card = data
+				guests := h.guestList()
+				h.mu.Unlock()
+				for _, guest := range guests {
+					h.write(guest, data)
+				}
 			case messageState:
 				h.mu.Lock()
 				h.last = data
@@ -95,7 +123,7 @@ func (h *testHub) serve(w http.ResponseWriter, r *http.Request) {
 				guests := h.guestList()
 				h.mu.Unlock()
 				for _, guest := range guests {
-					h.send(guest, message{Type: messageClose})
+					h.send(guest, frame{Type: messageClose})
 				}
 			case messageBye:
 				h.dropHost(conn)
@@ -108,11 +136,15 @@ func (h *testHub) serve(w http.ResponseWriter, r *http.Request) {
 	h.mu.Lock()
 	h.guests[conn] = true
 	hosted := h.host != nil
+	card := h.card
 	last := h.last
 	quiet := h.quiet
 	h.mu.Unlock()
 	if !quiet {
-		h.send(conn, message{Type: messageWelcome, Host: boolPtr(hosted)})
+		h.send(conn, frame{Type: messageWelcome, Host: boolPtr(hosted)})
+		if hosted && card != nil {
+			h.write(conn, card)
+		}
 		if hosted && last != nil {
 			h.write(conn, last)
 		}
@@ -123,7 +155,7 @@ func (h *testHub) serve(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			break
 		}
-		var msg message
+		var msg frame
 		if json.Unmarshal(data, &msg) != nil {
 			continue
 		}
@@ -145,9 +177,9 @@ func (h *testHub) serve(w http.ResponseWriter, r *http.Request) {
 			quiet := h.quiet
 			h.mu.Unlock()
 			if host != nil {
-				h.send(host, message{Type: messageHello, Role: Guest})
+				h.send(host, frame{Type: messageHello, Role: Guest})
 			} else if !quiet {
-				h.send(conn, message{Type: messageWelcome, Host: boolPtr(false)})
+				h.send(conn, frame{Type: messageWelcome, Host: boolPtr(false)})
 			}
 		}
 	}
@@ -162,11 +194,12 @@ func (h *testHub) dropHost(conn *websocket.Conn) {
 	if h.host == conn {
 		h.host = nil
 	}
+	h.card = nil
 	h.last = nil
 	guests := h.guestList()
 	h.mu.Unlock()
 	for _, guest := range guests {
-		h.send(guest, message{Type: messageBye})
+		h.send(guest, frame{Type: messageBye})
 	}
 }
 
@@ -178,7 +211,7 @@ func (h *testHub) signalBye() {
 	guests := h.guestList()
 	h.mu.Unlock()
 	for _, guest := range guests {
-		h.send(guest, message{Type: messageBye})
+		h.send(guest, frame{Type: messageBye})
 	}
 }
 
@@ -186,6 +219,12 @@ func (h *testHub) guestByeCount() int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.guestByes
+}
+
+func (h *testHub) seenRooms() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]string(nil), h.rooms...)
 }
 
 func (h *testHub) guestList() []*websocket.Conn {
@@ -196,7 +235,7 @@ func (h *testHub) guestList() []*websocket.Conn {
 	return list
 }
 
-func (h *testHub) send(conn *websocket.Conn, msg message) {
+func (h *testHub) send(conn *websocket.Conn, msg frame) {
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return
@@ -211,6 +250,18 @@ func (h *testHub) write(conn *websocket.Conn, data []byte) {
 }
 
 func boolPtr(value bool) *bool { return &value }
+
+func validAddress(address string) bool {
+	if len(address) != 32 {
+		return false
+	}
+	for _, r := range address {
+		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f') {
+			return false
+		}
+	}
+	return true
+}
 
 func waitFor(t *testing.T, timeout time.Duration, condition func() bool) {
 	t.Helper()
@@ -228,7 +279,7 @@ func TestHostAndGuestShareAnAnchor(t *testing.T) {
 	hub := newTestHub(t)
 	cfg := Config{CloudflareURL: hub.url}
 
-	host, err := Create(context.Background(), cfg, Cloudflare)
+	host, err := Create(context.Background(), cfg, Cloudflare, "quiet-tanuki")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -237,7 +288,7 @@ func TestHostAndGuestShareAnAnchor(t *testing.T) {
 		t.Fatalf("Create returned key %q", host.Key)
 	}
 
-	guest, err := Join(context.Background(), cfg, strings.ToLower(host.Key))
+	guest, err := Join(context.Background(), cfg, strings.ToLower(host.Key), "brave-otter")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -273,6 +324,9 @@ func TestHostAndGuestShareAnAnchor(t *testing.T) {
 	if state.Anchor <= 0 {
 		t.Fatalf("guest state has no anchor: %+v", state)
 	}
+	if name := guest.HostName(); name != "quiet-tanuki" {
+		t.Fatalf("host name = %q, want quiet-tanuki", name)
+	}
 
 	// The guest extrapolates on its own clock, so the position must be at or
 	// slightly past the anchor position, never far away from it.
@@ -285,17 +339,47 @@ func TestHostAndGuestShareAnAnchor(t *testing.T) {
 	}
 }
 
+func TestRelayOnlySeesTheHashedAddress(t *testing.T) {
+	hub := newTestHub(t)
+	cfg := Config{CloudflareURL: hub.url}
+
+	host, err := Create(context.Background(), cfg, Cloudflare, "")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer host.Close()
+	address, err := Address(host.Key)
+	if err != nil {
+		t.Fatalf("Address: %v", err)
+	}
+	if host.Address != address {
+		t.Fatalf("session address = %q, want %q", host.Address, address)
+	}
+	rooms := hub.seenRooms()
+	if len(rooms) == 0 {
+		t.Fatal("the relay saw no room")
+	}
+	for _, room := range rooms {
+		if room != address {
+			t.Fatalf("relay saw room %q, want the address %q", room, address)
+		}
+		if strings.EqualFold(room, host.Key) {
+			t.Fatalf("relay saw the key %q", room)
+		}
+	}
+}
+
 func TestWaitHostConfirmsAnExistingRoom(t *testing.T) {
 	hub := newTestHub(t)
 	cfg := Config{CloudflareURL: hub.url}
 
-	host, err := Create(context.Background(), cfg, Cloudflare)
+	host, err := Create(context.Background(), cfg, Cloudflare, "")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	defer host.Close()
 
-	guest, err := Join(context.Background(), cfg, host.Key)
+	guest, err := Join(context.Background(), cfg, host.Key, "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -313,13 +397,13 @@ func TestWaitHostRetriesAThrottledHello(t *testing.T) {
 	hub.quiet = true
 	cfg := Config{CloudflareURL: hub.url}
 
-	host, err := Create(context.Background(), cfg, Cloudflare)
+	host, err := Create(context.Background(), cfg, Cloudflare, "")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	defer host.Close()
 
-	first, err := Join(context.Background(), cfg, host.Key)
+	first, err := Join(context.Background(), cfg, host.Key, "")
 	if err != nil {
 		t.Fatalf("first Join: %v", err)
 	}
@@ -332,7 +416,7 @@ func TestWaitHostRetriesAThrottledHello(t *testing.T) {
 
 	// The second hello lands inside the host's helloThrottle window. WaitHost
 	// has to ask again instead of declaring the room empty.
-	second, err := Join(context.Background(), cfg, host.Key)
+	second, err := Join(context.Background(), cfg, host.Key, "")
 	if err != nil {
 		t.Fatalf("second Join: %v", err)
 	}
@@ -352,7 +436,7 @@ func TestWaitHostReportsAnEmptyRoom(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewKey: %v", err)
 	}
-	guest, err := Join(context.Background(), cfg, key)
+	guest, err := Join(context.Background(), cfg, key, "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -369,11 +453,11 @@ func TestGuestLearnsWhenTheHostLeaves(t *testing.T) {
 	hub := newTestHub(t)
 	cfg := Config{CloudflareURL: hub.url}
 
-	host, err := Create(context.Background(), cfg, Cloudflare)
+	host, err := Create(context.Background(), cfg, Cloudflare, "")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	guest, err := Join(context.Background(), cfg, host.Key)
+	guest, err := Join(context.Background(), cfg, host.Key, "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -401,12 +485,12 @@ func TestHostGetsAReconnectWindow(t *testing.T) {
 	hub := newTestHub(t)
 	cfg := Config{CloudflareURL: hub.url}
 
-	host, err := Create(context.Background(), cfg, Cloudflare)
+	host, err := Create(context.Background(), cfg, Cloudflare, "")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	defer host.Close()
-	guest, err := Join(context.Background(), cfg, host.Key)
+	guest, err := Join(context.Background(), cfg, host.Key, "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -441,12 +525,12 @@ func TestGuestLeavesWithoutAnnouncingIt(t *testing.T) {
 	hub := newTestHub(t)
 	cfg := Config{CloudflareURL: hub.url}
 
-	host, err := Create(context.Background(), cfg, Cloudflare)
+	host, err := Create(context.Background(), cfg, Cloudflare, "")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	defer host.Close()
-	guest, err := Join(context.Background(), cfg, host.Key)
+	guest, err := Join(context.Background(), cfg, host.Key, "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -468,12 +552,12 @@ func TestGuestControlReachesTheHost(t *testing.T) {
 	hub := newTestHub(t)
 	cfg := Config{CloudflareURL: hub.url}
 
-	host, err := Create(context.Background(), cfg, Cloudflare)
+	host, err := Create(context.Background(), cfg, Cloudflare, "")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	defer host.Close()
-	guest, err := Join(context.Background(), cfg, host.Key)
+	guest, err := Join(context.Background(), cfg, host.Key, "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -514,12 +598,12 @@ func TestGuestNoticesASilentHost(t *testing.T) {
 	hub := newTestHub(t)
 	cfg := Config{CloudflareURL: hub.url}
 
-	host, err := Create(context.Background(), cfg, Cloudflare)
+	host, err := Create(context.Background(), cfg, Cloudflare, "")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	defer host.Close()
-	guest, err := Join(context.Background(), cfg, host.Key)
+	guest, err := Join(context.Background(), cfg, host.Key, "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -540,12 +624,16 @@ func TestMessagesCarryTheProtocolVersion(t *testing.T) {
 	hub := newTestHub(t)
 	cfg := Config{CloudflareURL: hub.url}
 
-	host, err := Create(context.Background(), cfg, Cloudflare)
+	host, err := Create(context.Background(), cfg, Cloudflare, "")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	defer host.Close()
 
+	want := State{TitleSlug: "secret-anime-title", Episode: "4", Playing: true, Position: 5}
+	if err := host.Publish(want); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
 	waitFor(t, 3*time.Second, func() bool {
 		hub.mu.Lock()
 		defer hub.mu.Unlock()
@@ -557,6 +645,12 @@ func TestMessagesCarryTheProtocolVersion(t *testing.T) {
 	if !strings.Contains(last, `"v":"`+ProtocolVersion+`"`) {
 		t.Fatalf("host state does not carry protocol %s: %s", ProtocolVersion, last)
 	}
+	if !strings.Contains(last, `"d":"`) {
+		t.Fatalf("host state is not encrypted: %s", last)
+	}
+	if strings.Contains(last, want.TitleSlug) {
+		t.Fatalf("host state leaks the title on the wire: %s", last)
+	}
 }
 
 func TestGuestLeavesOnProtocolMismatch(t *testing.T) {
@@ -567,7 +661,7 @@ func TestGuestLeavesOnProtocolMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewKey: %v", err)
 	}
-	guest, err := Join(context.Background(), cfg, key)
+	guest, err := Join(context.Background(), cfg, key, "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -583,11 +677,7 @@ func TestGuestLeavesOnProtocolMismatch(t *testing.T) {
 	// A host left over from an older build sends no version at all; a future
 	// one sends another value. Both have to be refused before the anchor is
 	// stored.
-	hub.send(guests[0], message{
-		Type:    messageState,
-		Version: "0.9",
-		State:   &State{TitleSlug: "old-title", Episode: "1", Playing: true},
-	})
+	hub.send(guests[0], frame{Type: messageState, Version: "0.9", Data: "AAAA"})
 
 	deadline := time.After(3 * time.Second)
 	for {
@@ -609,26 +699,81 @@ func TestGuestLeavesOnProtocolMismatch(t *testing.T) {
 	}
 }
 
+// Supabase broadcasts every frame to every participant. A guest must not be
+// able to replace the host's card or anchor with a forged one.
+func TestHostIgnoresFramesFromGuests(t *testing.T) {
+	const key = "YOC4K7Q2M"
+	card, contentKey, err := newCard(key, "", false, 1)
+	if err != nil {
+		t.Fatalf("newCard: %v", err)
+	}
+	host := &Session{
+		Key:     key,
+		Role:    Host,
+		card:    card,
+		hasCard: true,
+		key:     contentKey,
+		updates: make(chan Update, 8),
+	}
+	forgedCard, forgedKey, err := newCard(key, "4K7Q2M9XBT", true, 99)
+	if err != nil {
+		t.Fatalf("forged card: %v", err)
+	}
+	host.handle(frame{Version: ProtocolVersion, Type: messageCard, Card: &forgedCard})
+
+	host.mu.Lock()
+	active := host.card
+	activeKey := append([]byte(nil), host.key...)
+	host.mu.Unlock()
+	if active.Epoch != 1 || active.Locked || !bytes.Equal(activeKey, contentKey) {
+		t.Fatalf("host accepted a guest card: epoch=%d locked=%v", active.Epoch, active.Locked)
+	}
+
+	body, err := json.Marshal(payload{Name: "intruder", State: &State{TitleSlug: "forged"}})
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	data, err := sealContent(forgedKey, body)
+	if err != nil {
+		t.Fatalf("seal payload: %v", err)
+	}
+	host.handle(frame{Version: ProtocolVersion, Type: messageState, Data: data})
+	if _, ok := host.State(); ok {
+		t.Fatal("host stored an anchor from a guest")
+	}
+	if name := host.HostName(); name != "" {
+		t.Fatalf("host name came from a guest frame: %q", name)
+	}
+
+	host.mu.Lock()
+	host.hostSeen = true
+	host.mu.Unlock()
+	host.handle(frame{Version: ProtocolVersion, Type: messageBye})
+	if !host.HostSeen() {
+		t.Fatal("a guest bye made the host think its own socket had left")
+	}
+}
+
 func TestJoinRejectsAMistypedKey(t *testing.T) {
 	hub := newTestHub(t)
 	cfg := Config{CloudflareURL: hub.url}
 
-	if _, err := Join(context.Background(), cfg, "YOCBQOPG"); err == nil {
+	if _, err := Join(context.Background(), cfg, "YOCBQ0PG", ""); err == nil {
 		t.Fatal("Join accepted a key that is too short")
 	}
-	if _, err := Join(context.Background(), cfg, "XXCBQOPGZ"); err == nil {
+	if _, err := Join(context.Background(), cfg, "XXCBQ0PGZ", ""); err == nil {
 		t.Fatal("Join accepted a key without the YO prefix")
 	}
-	if _, err := Join(context.Background(), cfg, "YOFBQOPGZ"); err == nil {
+	if _, err := Join(context.Background(), cfg, "YOFBQ0PGZ", ""); err == nil {
 		t.Fatal("Join accepted a key without a known relay")
 	}
 }
 
 func TestCreateNeedsAConfiguredProvider(t *testing.T) {
-	if _, err := Create(context.Background(), Config{}, Cloudflare); err == nil {
+	if _, err := Create(context.Background(), Config{}, Cloudflare, ""); err == nil {
 		t.Fatal("Create accepted an empty Cloudflare configuration")
 	}
-	if _, err := Create(context.Background(), Config{SupabaseURL: "https://x"}, Supabase); err == nil {
+	if _, err := Create(context.Background(), Config{SupabaseURL: "https://x"}, Supabase, ""); err == nil {
 		t.Fatal("Create accepted Supabase without an anon key")
 	}
 }
@@ -641,7 +786,7 @@ func TestHostPublishesRightAfterCreate(t *testing.T) {
 	hub := newTestHub(t)
 	cfg := Config{CloudflareURL: hub.url}
 
-	host, err := Create(context.Background(), cfg, Cloudflare)
+	host, err := Create(context.Background(), cfg, Cloudflare, "")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -654,7 +799,7 @@ func TestHostPublishesRightAfterCreate(t *testing.T) {
 		t.Fatalf("Publish right after Create: %v", err)
 	}
 
-	guest, err := Join(context.Background(), cfg, host.Key)
+	guest, err := Join(context.Background(), cfg, host.Key, "")
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -663,4 +808,236 @@ func TestHostPublishesRightAfterCreate(t *testing.T) {
 		state, ok := guest.State()
 		return ok && state.TitleSlug == want.TitleSlug
 	})
+}
+
+func TestLockedRoomNeedsTheSecret(t *testing.T) {
+	hub := newTestHub(t)
+	cfg := Config{CloudflareURL: hub.url}
+
+	host, err := Create(context.Background(), cfg, Cloudflare, "")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer host.Close()
+
+	secret, err := NewSecret()
+	if err != nil {
+		t.Fatalf("NewSecret: %v", err)
+	}
+	if _, err := host.Lock(secret); err != nil {
+		t.Fatalf("Lock: %v", err)
+	}
+
+	guest, err := Join(context.Background(), cfg, host.Key, "")
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+	defer guest.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := guest.WaitHost(ctx); err != nil {
+		t.Fatalf("WaitHost: %v", err)
+	}
+	if err := guest.WaitCard(ctx); err != nil {
+		t.Fatalf("WaitCard: %v", err)
+	}
+	if !guest.NeedsSecret() {
+		t.Fatal("a locked room did not ask for a secret")
+	}
+	if _, ok := guest.State(); ok {
+		t.Fatal("a guest without the secret read an anchor")
+	}
+
+	if err := guest.SubmitSecret("0000000000"); !errors.Is(err, ErrWrongSecret) {
+		t.Fatalf("SubmitSecret with a wrong secret = %v, want ErrWrongSecret", err)
+	}
+	if !guest.NeedsSecret() {
+		t.Fatal("a wrong secret cleared the prompt")
+	}
+	if err := guest.SubmitSecret(secret); err != nil {
+		t.Fatalf("SubmitSecret: %v", err)
+	}
+	if guest.NeedsSecret() {
+		t.Fatal("the accepted secret did not clear the prompt")
+	}
+
+	want := State{TitleSlug: "demo-title", Episode: "7", Playing: true, Position: 60}
+	if err := host.Publish(want); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	waitFor(t, 3*time.Second, func() bool {
+		state, ok := guest.State()
+		return ok && state.TitleSlug == want.TitleSlug
+	})
+	// A wrong-secret attempt must never reach the host as a control or state
+	// change; the card check refuses it locally.
+	if got := guest.Secret(); got != secret {
+		t.Fatalf("guest secret = %q, want %q", got, secret)
+	}
+}
+
+func TestGuestInTheRoomIsAskedForANewSecret(t *testing.T) {
+	hub := newTestHub(t)
+	cfg := Config{CloudflareURL: hub.url}
+
+	host, err := Create(context.Background(), cfg, Cloudflare, "")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer host.Close()
+	guest, err := Join(context.Background(), cfg, host.Key, "")
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+	defer guest.Close()
+
+	want := State{TitleSlug: "demo-title", Episode: "1", Playing: true, Position: 5}
+	if err := host.Publish(want); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	waitFor(t, 3*time.Second, func() bool {
+		_, ok := guest.State()
+		return ok
+	})
+
+	secret, err := NewSecret()
+	if err != nil {
+		t.Fatalf("NewSecret: %v", err)
+	}
+	if _, err := host.Lock(secret); err != nil {
+		t.Fatalf("Lock: %v", err)
+	}
+	waitFor(t, 3*time.Second, guest.NeedsSecret)
+
+	// The old anchor stays available for the drift loop until the UI stops the
+	// guest playback, but no new anchor is readable.
+	if err := guest.SubmitSecret(secret); err != nil {
+		t.Fatalf("SubmitSecret: %v", err)
+	}
+	waitFor(t, 3*time.Second, func() bool { return !guest.NeedsSecret() })
+}
+
+func TestUnlockLetsEveryGuestBackIn(t *testing.T) {
+	hub := newTestHub(t)
+	cfg := Config{CloudflareURL: hub.url}
+
+	host, err := Create(context.Background(), cfg, Cloudflare, "")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer host.Close()
+	secret, err := NewSecret()
+	if err != nil {
+		t.Fatalf("NewSecret: %v", err)
+	}
+	if _, err := host.Lock(secret); err != nil {
+		t.Fatalf("Lock: %v", err)
+	}
+
+	guest, err := Join(context.Background(), cfg, host.Key, "")
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+	defer guest.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := guest.WaitCard(ctx); err != nil {
+		t.Fatalf("WaitCard: %v", err)
+	}
+	if !guest.NeedsSecret() {
+		t.Fatal("the room was not locked")
+	}
+	if err := host.Unlock(); err != nil {
+		t.Fatalf("Unlock: %v", err)
+	}
+	waitFor(t, 3*time.Second, func() bool { return !guest.NeedsSecret() })
+
+	want := State{TitleSlug: "demo-title", Episode: "2", Playing: true, Position: 9}
+	if err := host.Publish(want); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	waitFor(t, 3*time.Second, func() bool {
+		state, ok := guest.State()
+		return ok && state.TitleSlug == want.TitleSlug
+	})
+}
+
+func TestSecretRotationInvalidatesTheOldSecret(t *testing.T) {
+	hub := newTestHub(t)
+	cfg := Config{CloudflareURL: hub.url}
+
+	host, err := Create(context.Background(), cfg, Cloudflare, "")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer host.Close()
+	first, err := NewSecret()
+	if err != nil {
+		t.Fatalf("NewSecret: %v", err)
+	}
+	if _, err := host.Lock(first); err != nil {
+		t.Fatalf("Lock: %v", err)
+	}
+	guest, err := Join(context.Background(), cfg, host.Key, "")
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+	defer guest.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := guest.WaitCard(ctx); err != nil {
+		t.Fatalf("WaitCard: %v", err)
+	}
+	if err := guest.SubmitSecret(first); err != nil {
+		t.Fatalf("SubmitSecret(first): %v", err)
+	}
+	waitFor(t, 3*time.Second, func() bool { return !guest.NeedsSecret() })
+
+	second, err := NewSecret()
+	if err != nil {
+		t.Fatalf("NewSecret: %v", err)
+	}
+	if _, err := host.Lock(second); err != nil {
+		t.Fatalf("Lock again: %v", err)
+	}
+	waitFor(t, 3*time.Second, guest.NeedsSecret)
+	if err := guest.SubmitSecret(first); !errors.Is(err, ErrWrongSecret) {
+		t.Fatalf("the old secret opened the rotated room: %v", err)
+	}
+	if err := guest.SubmitSecret(second); err != nil {
+		t.Fatalf("SubmitSecret(second): %v", err)
+	}
+}
+
+func TestRoomCardIsCleartextAndSecretIsNot(t *testing.T) {
+	hub := newTestHub(t)
+	cfg := Config{CloudflareURL: hub.url}
+
+	host, err := Create(context.Background(), cfg, Cloudflare, "")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer host.Close()
+	secret, err := NewSecret()
+	if err != nil {
+		t.Fatalf("NewSecret: %v", err)
+	}
+	if _, err := host.Lock(secret); err != nil {
+		t.Fatalf("Lock: %v", err)
+	}
+
+	waitFor(t, 3*time.Second, func() bool {
+		hub.mu.Lock()
+		defer hub.mu.Unlock()
+		return hub.card != nil
+	})
+	hub.mu.Lock()
+	card := string(hub.card)
+	hub.mu.Unlock()
+	if !strings.Contains(card, `"locked":true`) {
+		t.Fatalf("card does not announce the lock: %s", card)
+	}
+	if strings.Contains(card, secret) || strings.Contains(card, host.Key) {
+		t.Fatalf("card leaks a secret or the key: %s", card)
+	}
 }

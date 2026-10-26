@@ -33,8 +33,8 @@ func TestNewKeyFormat(t *testing.T) {
 				t.Fatalf("ProviderFromKey(%q) = %q, %v; want %q", key, got, err, provider)
 			}
 			for _, r := range key[keyProviderIndex+1:] {
-				if r < 'A' || r > 'Z' {
-					t.Fatalf("key %q contains %q", key, r)
+				if !isKeyChar(byte(r)) {
+					t.Fatalf("key %q contains %q, which is outside the alphabet", key, r)
 				}
 			}
 			seen[key] = true
@@ -51,6 +51,24 @@ func TestNewKeyRejectsAnUnknownProvider(t *testing.T) {
 	}
 }
 
+func TestKeyAlphabetIsCrockfordBase32(t *testing.T) {
+	if len(keyAlphabet) != 32 {
+		t.Fatalf("alphabet has %d symbols, want 32", len(keyAlphabet))
+	}
+	for _, forbidden := range []byte{'I', 'L', 'O', 'U'} {
+		if strings.IndexByte(keyAlphabet, forbidden) >= 0 {
+			t.Fatalf("alphabet contains the confusable letter %q", forbidden)
+		}
+	}
+	seen := make(map[byte]bool)
+	for _, r := range []byte(keyAlphabet) {
+		if seen[r] {
+			t.Fatalf("alphabet repeats %q", r)
+		}
+		seen[r] = true
+	}
+}
+
 func TestNormalizeKey(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -58,16 +76,21 @@ func TestNormalizeKey(t *testing.T) {
 		want  string
 		ok    bool
 	}{
-		{name: "cloudflare", input: "YOCBQOPGZ", want: "YOCBQOPGZ", ok: true},
-		{name: "supabase", input: "YOSBQOPGZ", want: "YOSBQOPGZ", ok: true},
-		{name: "lower case", input: "yocbqopgz", want: "YOCBQOPGZ", ok: true},
-		{name: "spaces", input: "  yocbqopgz  ", want: "YOCBQOPGZ", ok: true},
-		{name: "wrong prefix", input: "XXCBQOPGZ", ok: false},
-		{name: "too short", input: "YOCBQOPG", ok: false},
-		{name: "too long", input: "YOCBQOPGZZ", ok: false},
-		{name: "digits", input: "YOCBQ0PGZ", ok: false},
-		{name: "cyrillic", input: "УОCBQOPGZ", ok: false},
-		{name: "unknown provider", input: "YOFBQOPGZ", ok: false},
+		{name: "cloudflare", input: "YOC4K7Q2M", want: "YOC4K7Q2M", ok: true},
+		{name: "supabase", input: "YOSBQ0PGZ", want: "YOSBQ0PGZ", ok: true},
+		{name: "lower case", input: "yoc4k7q2m", want: "YOC4K7Q2M", ok: true},
+		{name: "spaces and hyphen", input: "  yoc4-k7q2m  ", want: "YOC4K7Q2M", ok: true},
+		{name: "o instead of zero", input: "YOC4K7Q2O", want: "YOC4K7Q20", ok: true},
+		{name: "i instead of one", input: "YOC4K7Q2I", want: "YOC4K7Q21", ok: true},
+		{name: "l instead of one", input: "YOC4K7Q2L", want: "YOC4K7Q21", ok: true},
+		{name: "u instead of v", input: "YOC4K7Q2U", want: "YOC4K7Q2V", ok: true},
+		{name: "zero in the prefix", input: "Y0C4K7Q2M", want: "YOC4K7Q2M", ok: true},
+		{name: "digits", input: "YOC012345", want: "YOC012345", ok: true},
+		{name: "wrong prefix", input: "XXC4K7Q2M", ok: false},
+		{name: "too short", input: "YOC4K7Q2", ok: false},
+		{name: "too long", input: "YOC4K7Q2MM", ok: false},
+		{name: "cyrillic", input: "УОC4K7Q2M", ok: false},
+		{name: "unknown provider", input: "YOF4K7Q2M", ok: false},
 		{name: "empty", input: "", ok: false},
 	}
 	for _, tc := range cases {
@@ -91,8 +114,8 @@ func TestNormalizeKey(t *testing.T) {
 
 func TestProviderFromKey(t *testing.T) {
 	cases := map[string]Provider{
-		"YOCBQOPGZ":   Cloudflare,
-		" yosbqopgz ": Supabase,
+		"YOC4K7Q2M":   Cloudflare,
+		" yos4k7q2m ": Supabase,
 	}
 	for key, want := range cases {
 		got, err := ProviderFromKey(key)
@@ -103,7 +126,55 @@ func TestProviderFromKey(t *testing.T) {
 			t.Fatalf("ProviderFromKey(%q) = %q, want %q", key, got, want)
 		}
 	}
-	if _, err := ProviderFromKey("YOFBQOPGZ"); err == nil {
+	if _, err := ProviderFromKey("YOF4K7Q2M"); err == nil {
 		t.Fatal("ProviderFromKey accepted a key without a known relay")
+	}
+}
+
+func TestSanitizeKeyInput(t *testing.T) {
+	cases := map[string]string{
+		"yoc4k7q2m":      "YOC4K7Q2M",
+		"YOC-4K7-Q2M":    "YOC4K7Q2M",
+		"YOC4K7Q2MEXTRA": "YOC4K7Q2M",
+		"YOC4K7Q2O":      "YOC4K7Q20",
+		"привет":         "",
+	}
+	for input, want := range cases {
+		if got := SanitizeKeyInput(input); got != want {
+			t.Fatalf("SanitizeKeyInput(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestAddressHidesTheKey(t *testing.T) {
+	key := "YOC4K7Q2M"
+	address, err := Address(key)
+	if err != nil {
+		t.Fatalf("Address: %v", err)
+	}
+	if len(address) != 32 {
+		t.Fatalf("address %q has %d characters, want 32", address, len(address))
+	}
+	for _, r := range address {
+		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f') {
+			t.Fatalf("address %q contains %q outside hex", address, r)
+		}
+	}
+	if strings.Contains(address, key) || strings.Contains(strings.ToLower(address), strings.ToLower(key)) {
+		t.Fatalf("address %q leaks the key %q", address, key)
+	}
+	again, err := Address(strings.ToLower(key))
+	if err != nil {
+		t.Fatalf("Address lower case: %v", err)
+	}
+	if again != address {
+		t.Fatalf("Address is not stable: %q != %q", again, address)
+	}
+	other, err := Address("YOC4K7Q2N")
+	if err != nil {
+		t.Fatalf("Address other: %v", err)
+	}
+	if other == address {
+		t.Fatal("two keys produced the same room address")
 	}
 }

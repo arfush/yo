@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"image"
 	"image/color"
 	"math"
@@ -73,6 +74,7 @@ type settingsValues struct {
 	SharedControl bool
 	Discord       bool
 	AutoSkip      map[metadata.Segment]bool
+	Name          string
 	Provider      watchparty.Provider
 	CloudflareURL string
 	SupabaseURL   string
@@ -92,10 +94,13 @@ type settingsWindow struct {
 	cloudflareEditor   widget.Editor
 	supabaseURLEditor  widget.Editor
 	supabaseKeyEditor  widget.Editor
+	nameEditor         widget.Editor
 	cloudflareFocused  bool
 	supabaseURLFocused bool
 	supabaseKeyFocused bool
+	nameFocused        bool
 	relayDirty         bool
+	nameDirty          bool
 
 	toggleClick     widget.Clickable
 	toggleHover     hoverAnim
@@ -147,6 +152,7 @@ type settingsWindow struct {
 	onAutoSkip   func(metadata.Segment, bool) error
 	onProvider   func(watchparty.Provider) error
 	onRelay      func(watchparty.Config) error
+	onName       func(string) error
 }
 
 func newSettingsWindow(typo *typography, values settingsValues) *settingsWindow {
@@ -179,11 +185,16 @@ func newSettingsWindow(typo *typography, values settingsValues) *settingsWindow 
 	w.supabaseKeyEditor.Submit = true
 	w.supabaseKeyEditor.InputHint = key.HintText
 	w.supabaseKeyEditor.SetText(values.SupabaseKey)
+	w.nameEditor.SingleLine = true
+	w.nameEditor.Submit = true
+	w.nameEditor.InputHint = key.HintText
+	w.nameEditor.SetText(values.Name)
 	return w
 }
 
 func (w *settingsWindow) Close() {
 	w.saveRelays()
+	w.saveName()
 }
 
 // dismissPopup closes the provider menu when the window loses focus.
@@ -259,6 +270,12 @@ func (w *settingsWindow) layout(gtx layout.Context) {
 
 	y = w.layoutSectionTitle(gtx, left, y, "Совместный просмотр")
 	y = w.layoutControlPanel(gtx, image.Rect(left, y, right, y+gtx.Dp(settingsPanelHeight)))
+	y += gtx.Dp(settingsRowGap)
+	var nameSubmitted, nameFocusLost bool
+	y, nameSubmitted, nameFocusLost = w.layoutNamePanel(gtx, image.Rect(left, y, right, y+gtx.Dp(settingsPanelHeight)))
+	if nameSubmitted || nameFocusLost {
+		w.saveName()
+	}
 	y += gtx.Dp(settingsRowGap)
 	y = w.layoutProviderPanel(gtx, image.Rect(left, y, right, y+gtx.Dp(settingsPanelHeight)))
 	var relaySubmitted, relayFocusLost bool
@@ -351,8 +368,8 @@ func (w *settingsWindow) contentHeight(gtx layout.Context) int {
 	height += gtx.Dp(settingsGroupGap)
 	height += title("Обновление") + 2*panel + gtx.Dp(settingsRowGap)
 	height += gtx.Dp(settingsGroupGap)
-	height += title("Совместный просмотр") + 2*panel
-	height += (relays + 1) * gtx.Dp(settingsRowGap)
+	height += title("Совместный просмотр") + 3*panel
+	height += (relays + 2) * gtx.Dp(settingsRowGap)
 	height += relays * panel
 	height += gtx.Dp(settingsGroupGap)
 	segments := len(metadata.Segments())
@@ -573,6 +590,29 @@ func (w *settingsWindow) layoutToggleRow(
 	})
 }
 
+// layoutNamePanel edits the nickname shown to the other side of a room. An
+// empty name would leave the other person without a hint about who is hosting,
+// so the field is validated on commit.
+func (w *settingsWindow) layoutNamePanel(gtx layout.Context, rect image.Rectangle) (int, bool, bool) {
+	if rect.Empty() {
+		return rect.Max.Y, false, false
+	}
+	w.drawPanel(gtx, rect)
+	fieldRect := relayFieldRect(gtx, rect)
+	if fieldRect.Empty() {
+		return rect.Max.Y, false, false
+	}
+	face := font.Font{Typeface: fontFamily, Weight: font.Medium}
+	_, ink := w.typo.measure(gtx, "Имя в комнате", face, settingsLabelSize)
+	left := rect.Min.X + gtx.Dp(settingsPanelPadX)
+	top := rect.Min.Y + (rect.Dy()-ink.Dy())/2
+	w.typo.draw(gtx, "Имя в комнате", face, settingsLabelSize, mainTextColor, image.Pt(left, top))
+
+	submitted := w.layoutSettingsEditor(gtx, fieldRect, &w.nameEditor, "например, quiet-tanuki", &w.nameDirty)
+	focusLost := relayFocusLost(gtx, &w.nameEditor, &w.nameFocused)
+	return rect.Max.Y, submitted, focusLost
+}
+
 func (w *settingsWindow) layoutProviderPanel(gtx layout.Context, rect image.Rectangle) int {
 	w.drawPanel(gtx, rect)
 	labelFace := font.Font{Typeface: fontFamily, Weight: font.Medium}
@@ -675,7 +715,7 @@ func (w *settingsWindow) layoutRelayPanel(
 		fieldRect.Min.X-gtx.Dp(settingsLabelGap)-labelLeft,
 	)
 
-	submitted := w.layoutRelayField(gtx, fieldRect, editor, hint)
+	submitted := w.layoutSettingsEditor(gtx, fieldRect, editor, hint, &w.relayDirty)
 	focusLost := relayFocusLost(gtx, editor, wasFocused)
 	return submitted, focusLost
 }
@@ -698,9 +738,9 @@ func relayFieldRect(gtx layout.Context, rect image.Rectangle) image.Rectangle {
 	)
 }
 
-// layoutRelayField paints one editable endpoint. Enter and leaving the field
-// both commit the whole relay block; typing only marks it dirty.
-func (w *settingsWindow) layoutRelayField(gtx layout.Context, rect image.Rectangle, editor *widget.Editor, hint string) bool {
+// layoutSettingsEditor paints one editable settings value. Enter and leaving
+// the field both commit the block that owns it; typing only marks it dirty.
+func (w *settingsWindow) layoutSettingsEditor(gtx layout.Context, rect image.Rectangle, editor *widget.Editor, hint string, dirty *bool) bool {
 	if rect.Empty() {
 		return false
 	}
@@ -712,9 +752,9 @@ func (w *settingsWindow) layoutRelayField(gtx layout.Context, rect image.Rectang
 		}
 		switch event.(type) {
 		case widget.ChangeEvent:
-			w.relayDirty = true
+			*dirty = true
 		case widget.SubmitEvent:
-			w.relayDirty = true
+			*dirty = true
 			submitted = true
 		}
 	}
@@ -798,6 +838,28 @@ func (w *settingsWindow) saveRelays() {
 		}
 	}
 	w.relayDirty = false
+	w.errorText = ""
+}
+
+// saveName validates and stores the room nickname. A rejected value keeps the
+// dirty flag set, so the next focus change or Enter retries the same text
+// instead of silently discarding what the user typed.
+func (w *settingsWindow) saveName() {
+	if !w.nameDirty {
+		return
+	}
+	normalized, err := watchparty.NormalizeName(w.nameEditor.Text())
+	if err != nil {
+		w.reportError(errors.New("никнейм — до 24 символов, без служебных знаков и не похож на ключ комнаты"))
+		return
+	}
+	if w.onName != nil {
+		if err := w.onName(normalized); err != nil {
+			w.reportError(err)
+			return
+		}
+	}
+	w.nameDirty = false
 	w.errorText = ""
 }
 

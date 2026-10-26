@@ -524,6 +524,20 @@ func (l *Library) SetWatchPartyProvider(provider string) error {
 	return l.store.SetWatchPartyProvider(provider)
 }
 
+// WatchPartyName returns the stored room nickname, or "" when the user never
+// picked one.
+func (l *Library) WatchPartyName() string {
+	if l == nil || l.store == nil {
+		return ""
+	}
+	return l.store.WatchPartyName()
+}
+
+// SetWatchPartyName stores the room nickname.
+func (l *Library) SetWatchPartyName(name string) error {
+	return l.store.SetWatchPartyName(name)
+}
+
 // IntrodbCache returns cached chapters or a no-data marker. The third result
 // reports whether an entry exists at all.
 func (l *Library) IntrodbCache(tid int64, episode string) ([]byte, bool, bool) {

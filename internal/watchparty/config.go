@@ -157,8 +157,9 @@ func (c Config) Configured(p Provider) bool {
 // ErrNotConfigured is returned when the selected provider has no endpoint.
 var ErrNotConfigured = errors.New("провайдер не настроен")
 
-// CloudflareEndpoint is the WebSocket URL of one room.
-func (c Config) CloudflareEndpoint(key string, role Role) (string, error) {
+// CloudflareEndpoint is the WebSocket URL of one room. The room parameter is
+// the hashed address, not the key the user shared.
+func (c Config) CloudflareEndpoint(address string, role Role) (string, error) {
 	if c.CloudflareURL == "" {
 		return "", ErrNotConfigured
 	}
@@ -168,7 +169,7 @@ func (c Config) CloudflareEndpoint(key string, role Role) (string, error) {
 	}
 	parsed.Path = strings.TrimRight(parsed.Path, "/") + "/room"
 	query := parsed.Query()
-	query.Set("key", key)
+	query.Set("room", address)
 	query.Set("role", string(role))
 	parsed.RawQuery = query.Encode()
 	return parsed.String(), nil

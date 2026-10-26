@@ -134,6 +134,9 @@ const (
 	UpdateHostClosed
 	// UpdateControl is a guest playback command the host should apply.
 	UpdateControl
+	// UpdateCard reports a new room header: the host locked, unlocked or
+	// rotated the secret, or a guest found a secret that opens the room.
+	UpdateCard
 	// UpdateError reports a relay problem that the UI may want to show.
 	UpdateError
 	// UpdateClosed reports that the room was closed locally.

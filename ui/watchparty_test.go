@@ -62,7 +62,7 @@ func TestJoinFailureClearsTheKeyAndStartsRedFeedback(t *testing.T) {
 	screen := newWatchPartyWindow(nil, nil, &partyManager{provider: watchparty.Cloudflare})
 	screen.mode = wpJoin
 	screen.busy = true
-	screen.editor.SetText("YOCBQOPGZ")
+	screen.editor.SetText("YOC4K7Q2M")
 
 	screen.handleResult(partyResult{kind: partyJoined, err: errors.New("комната не найдена — проверьте ключ")})
 
@@ -86,14 +86,14 @@ func TestJoinFailureClearsTheKeyAndStartsRedFeedback(t *testing.T) {
 func TestCreateFailureKeepsItsOwnFeedback(t *testing.T) {
 	screen := newWatchPartyWindow(nil, nil, &partyManager{provider: watchparty.Cloudflare})
 	screen.busy = true
-	screen.editor.SetText("YOCBQOPGZ")
+	screen.editor.SetText("YOC4K7Q2M")
 
 	screen.handleResult(partyResult{kind: partyCreated, err: errors.New("реле не настроено")})
 
 	if screen.busy {
 		t.Fatal("a failed create must stop the button spinner")
 	}
-	if got := screen.editor.Text(); got != "YOCBQOPGZ" {
+	if got := screen.editor.Text(); got != "YOC4K7Q2M" {
 		t.Fatalf("key editor = %q, create errors must not clear the join field", got)
 	}
 	if screen.joinFeedback {
@@ -112,14 +112,14 @@ func TestWatchPartyOpensOnChoiceWithoutRoom(t *testing.T) {
 func TestWatchPartyReopensCreatedFormForHost(t *testing.T) {
 	party := &partyManager{
 		provider: watchparty.Cloudflare,
-		session:  &watchparty.Session{Key: "YOCBQOPGZ", Provider: watchparty.Cloudflare, Role: watchparty.Host},
+		session:  &watchparty.Session{Key: "YOC4K7Q2M", Provider: watchparty.Cloudflare, Role: watchparty.Host},
 	}
 	screen := newWatchPartyWindow(nil, nil, party)
 	if screen.mode != wpCreated {
 		t.Fatalf("mode = %v, want wpCreated for a host", screen.mode)
 	}
 	snapshot := party.Snapshot()
-	if snapshot.Key != "YOCBQOPGZ" || !snapshot.Active {
+	if snapshot.Key != "YOC4K7Q2M" || !snapshot.Active {
 		t.Fatalf("snapshot = %+v, want the retained key", snapshot)
 	}
 }
@@ -127,7 +127,7 @@ func TestWatchPartyReopensCreatedFormForHost(t *testing.T) {
 func TestWatchPartyReopensWaitingScreenWithAHat(t *testing.T) {
 	party := &partyManager{
 		provider: watchparty.Cloudflare,
-		session:  &watchparty.Session{Key: "YOCBQOPGZ", Provider: watchparty.Cloudflare, Role: watchparty.Guest},
+		session:  &watchparty.Session{Key: "YOC4K7Q2M", Provider: watchparty.Cloudflare, Role: watchparty.Guest},
 	}
 	screen := newWatchPartyWindow(nil, nil, party)
 	if screen.mode != wpWaiting {
@@ -181,19 +181,34 @@ func TestWatchPartyCardFitsText(t *testing.T) {
 	}
 
 	advance := int(float64(gtx.Sp(wpDescSize))*1.25) + 1
-	for _, description := range []string{wpDescChoice, wpDescCreated, wpDescJoin} {
-		lines := wrapFirstRunText(gtx, typo, description, normal, wpDescSize, width)
+	descriptions := []struct {
+		text  string
+		limit int
+	}{
+		// The locked host card puts the secret chip under the description, so
+		// its text has to stop above the chip instead of above the field.
+		{wpDescChoice, wpActionTop},
+		{wpDescCreated, wpActionTop},
+		{wpDescLocked, wpSecretTop},
+		{wpDescJoin, wpActionTop},
+		{wpDescSecret, wpActionTop},
+	}
+	for _, description := range descriptions {
+		lines := wrapFirstRunText(gtx, typo, description.text, normal, wpDescSize, width)
 		for _, line := range lines {
 			if _, ink := typo.measure(gtx, line, normal, wpDescSize); ink.Dx() > width {
 				t.Errorf("description line %q is %dpx wide, card allows %dpx", line, ink.Dx(), width)
 			}
 		}
 		bottom := wpDescTop + len(lines)*advance
-		if bottom > wpActionTop {
-			t.Errorf("description %q ends at %dpx, actions start at %dpx", description, bottom, wpActionTop)
+		if bottom > description.limit {
+			t.Errorf("description %q ends at %dpx, content starts at %dpx", description.text, bottom, description.limit)
 		}
 	}
 
+	if wpSecretTop+wpSecretHeight+8 > wpActionTop {
+		t.Fatalf("secret chip at %dpx overlaps the key field at %dpx", wpSecretTop, wpActionTop)
+	}
 	if wpActionTop+wpFieldHeight+14+16 > wpCardHeight {
 		t.Fatalf("key field and delete link do not fit the %dpx card", wpCardHeight)
 	}
@@ -230,7 +245,7 @@ func TestRoomClosedShowsJoinFormWithReason(t *testing.T) {
 	screen := newWatchPartyWindow(nil, nil, &partyManager{provider: watchparty.Cloudflare})
 	screen.mode = wpWaiting
 	screen.busy = true
-	screen.editor.SetText("YOCBQOPGZ")
+	screen.editor.SetText("YOC4K7Q2M")
 
 	screen.roomClosed(hostClosedNotice)
 
@@ -327,5 +342,90 @@ func TestGuestControlUsesTheHostDecision(t *testing.T) {
 	}
 	if guestControlAllowed(watchparty.State{}, false) {
 		t.Fatal("the local setting must still be able to refuse control")
+	}
+}
+
+func TestAcceptedSecretOpensTheWaitingScreen(t *testing.T) {
+	screen := newWatchPartyWindow(nil, nil, &partyManager{provider: watchparty.Cloudflare})
+	screen.mode = wpSecret
+	screen.busy = true
+	screen.secretEditor.SetText("4K7Q2M9XBT")
+
+	screen.handleResult(partyResult{kind: partySecret})
+
+	if screen.busy {
+		t.Fatal("a finished check must clear the busy state")
+	}
+	if screen.mode != wpWaiting {
+		t.Fatalf("mode = %d, want the waiting screen", screen.mode)
+	}
+	if got := screen.secretEditor.Text(); got != "" {
+		t.Fatalf("secret editor = %q, want it cleared", got)
+	}
+	if screen.waitSince.IsZero() {
+		t.Fatal("the waiting screen needs a fresh start time")
+	}
+}
+
+func TestWrongSecretShakesAndClearsTheField(t *testing.T) {
+	screen := newWatchPartyWindow(nil, nil, &partyManager{provider: watchparty.Cloudflare})
+	screen.mode = wpSecret
+	screen.busy = true
+	screen.secretEditor.SetText("4K7Q2M9XBT")
+
+	screen.handleResult(partyResult{kind: partySecret, err: watchparty.ErrWrongSecret})
+
+	if screen.busy {
+		t.Fatal("a failed check must clear the busy state")
+	}
+	if screen.mode != wpSecret {
+		t.Fatalf("mode = %d, want the secret form", screen.mode)
+	}
+	if screen.errorText != watchparty.ErrWrongSecret.Error() {
+		t.Fatalf("error = %q, want the wrong-secret reason", screen.errorText)
+	}
+	if !screen.joinFeedback {
+		t.Fatal("a wrong secret must use the self-clearing error style")
+	}
+	if screen.errorAt.IsZero() {
+		t.Fatal("a wrong secret must start the shake clock")
+	}
+	if !screen.focusSecret {
+		t.Fatal("the secret field must take focus again")
+	}
+	if got := screen.secretEditor.Text(); got != "" {
+		t.Fatalf("secret editor = %q, want it cleared for a retry", got)
+	}
+}
+
+func TestSecretNoticeIsConsumedOnce(t *testing.T) {
+	party := &partyManager{provider: watchparty.Cloudflare, secretNotice: true}
+
+	if !party.takeSecretNotice() {
+		t.Fatal("the first call must report the pending secret prompt")
+	}
+	if party.takeSecretNotice() {
+		t.Fatal("the notice must not reopen the screen twice")
+	}
+}
+
+func TestPartyNameIsGeneratedAndNormalized(t *testing.T) {
+	name := loadPartyName(nil)
+	if _, err := watchparty.NormalizeName(name); err != nil {
+		t.Fatalf("generated name %q is invalid: %v", name, err)
+	}
+
+	party := &partyManager{provider: watchparty.Cloudflare}
+	if err := party.SetName("  quiet-tanuki  "); err != nil {
+		t.Fatalf("SetName: %v", err)
+	}
+	if got := party.Name(); got != "quiet-tanuki" {
+		t.Fatalf("name = %q, want the trimmed value", got)
+	}
+	if err := party.SetName(""); err == nil {
+		t.Fatal("an empty nickname must be refused")
+	}
+	if got := party.Name(); got != "quiet-tanuki" {
+		t.Fatalf("rejected name replaced the accepted one: %q", got)
 	}
 }

@@ -5,56 +5,6 @@ import (
 	"time"
 )
 
-func TestClockTakesTheTightestSample(t *testing.T) {
-	var clock Clock
-	base := time.UnixMilli(1_700_000_000_000)
-	// The host clock is 3 seconds ahead of the local clock; the first packet
-	// is delayed by 400 ms, the second arrives after the minimum 60 ms.
-	local := base.Add(-3 * time.Second)
-	clock.Add(base.UnixMilli(), local.Add(400*time.Millisecond).UnixMilli())
-	clock.Add(base.UnixMilli()+1000, local.Add(1000*time.Millisecond+60*time.Millisecond).UnixMilli())
-
-	offset, ok := clock.Offset()
-	if !ok {
-		t.Fatal("Offset() is not ready after two samples")
-	}
-	want := 3*time.Second - 60*time.Millisecond
-	if offset != want {
-		t.Fatalf("Offset() = %v, want %v", offset, want)
-	}
-}
-
-func TestClockIgnoresMissingSamples(t *testing.T) {
-	var clock Clock
-	clock.Add(0, 1000)
-	clock.Add(1000, 0)
-	if _, ok := clock.Offset(); ok {
-		t.Fatal("Offset() is ready without a usable sample")
-	}
-}
-
-func TestClockHostNow(t *testing.T) {
-	var clock Clock
-	host := time.UnixMilli(1_700_000_000_000)
-	local := host.Add(-2 * time.Second)
-	clock.Add(host.UnixMilli(), local.UnixMilli())
-
-	got := clock.HostNow(local)
-	if !got.Equal(host) {
-		t.Fatalf("HostNow() = %v, want %v", got, host)
-	}
-}
-
-func TestClockWindowIsBounded(t *testing.T) {
-	var clock Clock
-	for i := 0; i < clockSamples+20; i++ {
-		clock.Add(1000, int64(2000+i))
-	}
-	if len(clock.deltas) != clockSamples {
-		t.Fatalf("kept %d samples, want %d", len(clock.deltas), clockSamples)
-	}
-}
-
 func TestStatePositionAt(t *testing.T) {
 	anchor := time.UnixMilli(1_700_000_000_000)
 	state := State{Position: 120, Anchor: anchor.UnixMilli(), Playing: true}
@@ -103,33 +53,14 @@ func TestStateGuestsControl(t *testing.T) {
 
 func TestNormalizeDisplay(t *testing.T) {
 	cases := map[string]string{
-		"yocbqopgz":   "YOCBQOPGZ",
-		"  YOCBQOPGZ": "YOCBQOPGZ",
+		"yoc4k7q2m":   "YOC4K7Q2M",
+		"  YOC4K7Q2M": "YOC4K7Q2M",
 		"":            "",
 		"yoc":         "YOC",
 	}
 	for input, want := range cases {
 		if got := NormalizeDisplay(input); got != want {
 			t.Fatalf("NormalizeDisplay(%q) = %q, want %q", input, got, want)
-		}
-	}
-}
-
-func TestSanitizeKeyInput(t *testing.T) {
-	cases := map[string]string{
-		"yocbqopgz":   "YOCBQOPGZ",
-		" yocbqopgz ": "YOCBQOPGZ",
-		// A key copied from a message may carry separators.
-		"YO-CBQ-OPGZ": "YOCBQOPGZ",
-		"yocbqopgzzz": "YOCBQOPGZ",
-		// Cyrillic letters are not part of the alphabet.
-		"УОCBQOPGZ": "CBQOPGZ",
-		"12345":     "",
-		"":          "",
-	}
-	for input, want := range cases {
-		if got := SanitizeKeyInput(input); got != want {
-			t.Fatalf("SanitizeKeyInput(%q) = %q, want %q", input, got, want)
 		}
 	}
 }
@@ -170,11 +101,12 @@ func TestConfigNormalizesEndpoints(t *testing.T) {
 		t.Fatalf("supabase key = %q", cfg.SupabaseKey)
 	}
 
-	endpoint, err := cfg.CloudflareEndpoint("YOCBQOPGZ", Guest)
+	address := "0123456789abcdef0123456789abcdef"
+	endpoint, err := cfg.CloudflareEndpoint(address, Guest)
 	if err != nil {
 		t.Fatalf("CloudflareEndpoint: %v", err)
 	}
-	want := "wss://party.example.workers.dev/room?key=YOCBQOPGZ&role=guest"
+	want := "wss://party.example.workers.dev/room?role=guest&room=" + address
 	if endpoint != want {
 		t.Fatalf("endpoint = %q, want %q", endpoint, want)
 	}
