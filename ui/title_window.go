@@ -143,14 +143,15 @@ type titleWindow struct {
 	selectedVoice   int
 	selectedEpisode int
 	selectedQuality int
+	focusCleared    bool
 	// progressEpisode is the saved episode whose playback position fills the
 	// header progress bar. Selecting another episode clears the fill until that
 	// episode is watched.
 	progressEpisode int
 
-	back        footerButton
-	saveButton  footerButton
-	watchButton footerButton
+	back        footerNamedButton
+	saveButton  footerNamedButton
+	watchButton footerNamedButton
 
 	userStatusClick widget.Clickable
 
@@ -254,7 +255,7 @@ func newTitleWindow(typo *typography, item historyTitle, preferredQuality int) *
 		progressEpisode: progressEpisode,
 		tooltipIndex:    -1,
 		back:            newBackFooterButton(),
-		saveButton: footerButton{
+		saveButton: footerNamedButton{
 			label: "Сохранить",
 			style: footerSecondaryStyle,
 			size:  titlePageButtonSize,
@@ -467,6 +468,13 @@ func (w *titleWindow) stepVoice(gtx layout.Context, delta int) {
 }
 
 func (w *titleWindow) layout(gtx layout.Context) {
+	// The URL editor from the main screen can still own keyboard focus when
+	// the title page opens. Clear it once so arrow keys reach the episode
+	// navigation below instead of being consumed by the hidden editor.
+	if !w.focusCleared {
+		w.focusCleared = true
+		gtx.Execute(key.FocusCmd{Tag: nil})
+	}
 	w.handleKeys(gtx)
 	size := gtx.Constraints.Max
 	if size.X <= 0 || size.Y <= 0 {

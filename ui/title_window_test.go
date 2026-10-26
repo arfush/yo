@@ -1,6 +1,12 @@
 package ui
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	"gioui.org/layout"
+	"gioui.org/op"
+)
 
 func TestSavedTitleButtonUsesMutedGreen(t *testing.T) {
 	fill, border, text := footerSavedStyle.palette(0)
@@ -20,5 +26,20 @@ func TestSavedTitleButtonUsesMutedGreen(t *testing.T) {
 	fill, border, text = footerSecondaryStyle.palette(0)
 	if fill.G > fill.R || border.G > border.R || text.G > text.R {
 		t.Fatal("the ordinary footer button gained the saved green tone")
+	}
+}
+
+func TestStepEpisodeMovesLeftAndRight(t *testing.T) {
+	gtx := layout.Context{Ops: new(op.Ops), Now: time.Unix(700, 0)}
+	w := &titleWindow{item: historyTitle{episodes: []string{"1", "2", "3", "4", "5"}}}
+
+	w.stepEpisode(gtx, 1)
+	if w.selectedEpisode != 1 {
+		t.Fatalf("right arrow selected episode %d, want 1", w.selectedEpisode)
+	}
+	w.selectedEpisode = 4
+	w.stepEpisode(gtx, -1)
+	if w.selectedEpisode != 3 {
+		t.Fatalf("left arrow selected episode %d, want 3", w.selectedEpisode)
 	}
 }
