@@ -5,7 +5,7 @@ name = "yonime-watchparty"
 main = "src/worker.js"
 compatibility_date = "2025-04-01"
 
-# Rooms are addressed by the room key, so every key gets its own object.
+# Rooms are addressed by a hash of the room key, so every key gets its own object.
 [[durable_objects.bindings]]
 name = "ROOMS"
 class_name = "Room"
