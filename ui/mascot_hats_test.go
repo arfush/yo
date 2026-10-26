@@ -24,29 +24,33 @@ func TestNextMascotHatStaysInRange(t *testing.T) {
 	}
 }
 
-func TestSeasonalMascotHatBoundaries(t *testing.T) {
+func TestSeasonalMascotHatHolidayWindows(t *testing.T) {
 	tests := []struct {
 		name string
 		date time.Time
 		want int
 	}{
-		{"halloween eve", time.Date(2026, time.October, 23, 12, 0, 0, 0, time.Local), mascotHatBeanie},
-		{"halloween week starts", time.Date(2026, time.October, 24, 0, 0, 0, 0, time.Local), mascotHatWitch},
-		{"halloween", time.Date(2026, time.October, 31, 12, 0, 0, 0, time.Local), mascotHatWitch},
-		{"halloween week ends", time.Date(2026, time.November, 7, 23, 59, 0, 0, time.Local), mascotHatWitch},
-		{"after halloween", time.Date(2026, time.November, 8, 0, 0, 0, 0, time.Local), mascotHatBeanie},
-		{"late autumn", time.Date(2026, time.December, 17, 12, 0, 0, 0, time.Local), mascotHatBeanie},
+		{"christmas eve", time.Date(2026, time.December, 17, 12, 0, 0, 0, time.Local), mascotHatNone},
 		{"holidays start", time.Date(2026, time.December, 18, 0, 0, 0, 0, time.Local), mascotHatSanta},
 		{"christmas", time.Date(2026, time.December, 25, 12, 0, 0, 0, time.Local), mascotHatSanta},
 		{"new year", time.Date(2027, time.January, 1, 12, 0, 0, 0, time.Local), mascotHatSanta},
 		{"holidays end", time.Date(2027, time.January, 8, 23, 59, 0, 0, time.Local), mascotHatSanta},
-		{"winter starts", time.Date(2027, time.January, 9, 0, 0, 0, 0, time.Local), mascotHatUshanka},
-		{"leap day", time.Date(2024, time.February, 29, 12, 0, 0, 0, time.Local), mascotHatUshanka},
-		{"spring starts", time.Date(2026, time.March, 1, 0, 0, 0, 0, time.Local), mascotHatFlowers},
-		{"spring ends", time.Date(2026, time.May, 31, 23, 59, 0, 0, time.Local), mascotHatFlowers},
-		{"summer starts", time.Date(2026, time.June, 1, 0, 0, 0, 0, time.Local), mascotHatCap},
-		{"summer ends", time.Date(2026, time.August, 31, 23, 59, 0, 0, time.Local), mascotHatCap},
-		{"autumn starts", time.Date(2026, time.September, 1, 0, 0, 0, 0, time.Local), mascotHatBeanie},
+		{"after holidays", time.Date(2027, time.January, 9, 0, 0, 0, 0, time.Local), mascotHatNone},
+		{"leap day", time.Date(2024, time.February, 29, 12, 0, 0, 0, time.Local), mascotHatNone},
+		{"women's day week starts", time.Date(2026, time.March, 1, 0, 0, 0, 0, time.Local), mascotHatFlowers},
+		{"women's day", time.Date(2026, time.March, 8, 12, 0, 0, 0, time.Local), mascotHatFlowers},
+		{"women's day week ends", time.Date(2026, time.March, 15, 23, 59, 0, 0, time.Local), mascotHatFlowers},
+		{"after women's day", time.Date(2026, time.March, 16, 0, 0, 0, 0, time.Local), mascotHatNone},
+		{"before knowledge day", time.Date(2026, time.August, 24, 23, 59, 0, 0, time.Local), mascotHatNone},
+		{"knowledge day week starts", time.Date(2026, time.August, 25, 0, 0, 0, 0, time.Local), mascotHatGraduation},
+		{"knowledge day", time.Date(2026, time.September, 1, 12, 0, 0, 0, time.Local), mascotHatGraduation},
+		{"knowledge day week ends", time.Date(2026, time.September, 8, 23, 59, 0, 0, time.Local), mascotHatGraduation},
+		{"after knowledge day", time.Date(2026, time.September, 9, 0, 0, 0, 0, time.Local), mascotHatNone},
+		{"halloween eve", time.Date(2026, time.October, 23, 12, 0, 0, 0, time.Local), mascotHatNone},
+		{"halloween week starts", time.Date(2026, time.October, 24, 0, 0, 0, 0, time.Local), mascotHatWitch},
+		{"halloween", time.Date(2026, time.October, 31, 12, 0, 0, 0, time.Local), mascotHatWitch},
+		{"halloween week ends", time.Date(2026, time.November, 7, 23, 59, 0, 0, time.Local), mascotHatWitch},
+		{"after halloween", time.Date(2026, time.November, 8, 0, 0, 0, 0, time.Local), mascotHatNone},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -57,15 +61,24 @@ func TestSeasonalMascotHatBoundaries(t *testing.T) {
 	}
 }
 
-// TestSeasonalMascotHatCoversEveryDay keeps a future edit from leaving a gap
-// where the mascot unexpectedly loses her hat.
-func TestSeasonalMascotHatCoversEveryDay(t *testing.T) {
-	day := time.Date(2024, time.January, 1, 12, 0, 0, 0, time.Local)
-	end := time.Date(2028, time.January, 1, 12, 0, 0, 0, time.Local)
-	for ; day.Before(end); day = day.AddDate(0, 0, 1) {
-		hat := seasonalMascotHat(day)
-		if hat < 0 || hat >= mascotHatCount {
-			t.Fatalf("seasonalMascotHat(%s) = %d, want a seasonal hat", day.Format("2006-01-02"), hat)
+// TestSeasonalMascotHatBareOutsideHolidays locks in that the mascot no longer
+// wears a hat all year round.
+func TestSeasonalMascotHatBareOutsideHolidays(t *testing.T) {
+	dates := []time.Time{
+		time.Date(2026, time.January, 20, 12, 0, 0, 0, time.Local),
+		time.Date(2026, time.February, 14, 12, 0, 0, 0, time.Local),
+		time.Date(2026, time.April, 1, 12, 0, 0, 0, time.Local),
+		time.Date(2026, time.June, 1, 12, 0, 0, 0, time.Local),
+		time.Date(2026, time.July, 15, 12, 0, 0, 0, time.Local),
+		time.Date(2026, time.August, 20, 12, 0, 0, 0, time.Local),
+		time.Date(2026, time.September, 15, 12, 0, 0, 0, time.Local),
+		time.Date(2026, time.October, 1, 12, 0, 0, 0, time.Local),
+		time.Date(2026, time.November, 20, 12, 0, 0, 0, time.Local),
+		time.Date(2026, time.December, 10, 12, 0, 0, 0, time.Local),
+	}
+	for _, date := range dates {
+		if got := seasonalMascotHat(date); got != mascotHatNone {
+			t.Fatalf("seasonalMascotHat(%s) = %d, want no hat", date.Format("2006-01-02"), got)
 		}
 	}
 }

@@ -26,7 +26,7 @@ const (
 
 	// mascotHatCount is the number of outfits the waiting screen can pick from.
 	mascotHatCount
-	// mascotHatNone keeps a mascot bare outside the seasonal ranges.
+	// mascotHatNone keeps a mascot bare outside the holiday windows.
 	mascotHatNone = -1
 )
 
@@ -51,34 +51,25 @@ func nextMascotHat() int {
 	return rand.IntN(mascotHatCount)
 }
 
-// seasonalMascotHat picks the outfit for the URL-field mascot. Every calendar
-// day belongs to at most one range, and the ranges cover the whole year:
+// seasonalMascotHat picks the outfit for the URL-field mascot. Each window is
+// the holiday plus a week before and after it; outside these windows the
+// mascot stays bare:
 //
-//	Dec 18 - Jan 8   Santa hat
-//	Jan 9  - Feb 29  ushanka (winter)
-//	Mar 1  - May 31  flower crown (spring)
-//	Jun 1  - Aug 31  baseball cap (summer)
-//	Sep 1  - Oct 23  beanie (autumn)
+//	Dec 18 - Jan 8   Santa hat (Christmas and New Year)
+//	Mar 1  - Mar 15  flower crown (8 March)
+//	Aug 25 - Sep 8   graduation cap (1 September)
 //	Oct 24 - Nov 7   witch hat (Halloween)
-//	Nov 8  - Dec 17  beanie (late autumn)
 func seasonalMascotHat(now time.Time) int {
 	month, day := now.Month(), now.Day()
 	switch {
 	case month == time.December && day >= 18, month == time.January && day <= 8:
 		return mascotHatSanta
+	case month == time.March && day <= 15:
+		return mascotHatFlowers
+	case month == time.August && day >= 25, month == time.September && day <= 8:
+		return mascotHatGraduation
 	case month == time.October && day >= 24, month == time.November && day <= 7:
 		return mascotHatWitch
-	case month == time.January && day >= 9, month == time.February:
-		return mascotHatUshanka
-	case month == time.March, month == time.April, month == time.May:
-		return mascotHatFlowers
-	case month == time.June, month == time.July, month == time.August:
-		return mascotHatCap
-	case month == time.September,
-		month == time.October && day <= 23,
-		month == time.November && day >= 8,
-		month == time.December && day <= 17:
-		return mascotHatBeanie
 	default:
 		return mascotHatNone
 	}
