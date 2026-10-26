@@ -1,18 +1,13 @@
 package ui
 
 import (
-	"image"
 	"image/color"
-	"math"
 	"math/rand"
 	"sort"
 	"time"
 
-	"gioui.org/f32"
 	"gioui.org/layout"
 	"gioui.org/op"
-	"gioui.org/op/clip"
-	"gioui.org/op/paint"
 
 	"github.com/arfush/yonime/log"
 )
@@ -356,48 +351,4 @@ func (m *mainWindow) updateUndoDelete(gtx layout.Context) {
 		return
 	}
 	gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(100 * time.Millisecond)})
-}
-
-// drawUndoArrow paints a return arrow: an arc over the top with a short tail on
-// the right and the head pointing down at the left end.
-func drawUndoArrow(gtx layout.Context, center image.Point, size int, col color.NRGBA) {
-	if size <= 0 {
-		return
-	}
-	radius := float32(size) * 0.3
-	width := float32(max(1, size/9))
-	cx, cy := float32(center.X), float32(center.Y)
-
-	const steps = 24
-	var path clip.Path
-	path.Begin(gtx.Ops)
-	// Start at the bottom of the tail on the right, rise to the arc, then sweep
-	// over the top to the left end where the arrowhead sits.
-	path.MoveTo(f32.Pt(cx+radius, cy+radius*0.9))
-	path.LineTo(f32.Pt(cx+radius, cy))
-	for step := 0; step <= steps; step++ {
-		angle := -math.Pi * float64(step) / steps
-		path.LineTo(f32.Pt(
-			cx+radius*float32(math.Cos(angle)),
-			cy+radius*float32(math.Sin(angle)),
-		))
-	}
-	stack := clip.Stroke{Path: path.End(), Width: width}.Op().Push(gtx.Ops)
-	paint.Fill(gtx.Ops, col)
-	stack.Pop()
-
-	// Arrowhead at the left end of the arc, pointing downwards.
-	left := cx - radius
-	tip := f32.Pt(left, cy+radius*0.55)
-	a := f32.Pt(left-radius*0.26, cy+radius*0.02)
-	b := f32.Pt(left+radius*0.26, cy+radius*0.02)
-	var head clip.Path
-	head.Begin(gtx.Ops)
-	head.MoveTo(tip)
-	head.LineTo(a)
-	head.LineTo(b)
-	head.Close()
-	headStack := clip.Outline{Path: head.End()}.Op().Push(gtx.Ops)
-	paint.Fill(gtx.Ops, col)
-	headStack.Pop()
 }

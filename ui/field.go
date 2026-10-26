@@ -306,12 +306,12 @@ func (f copyField) layout(gtx layout.Context, rect image.Rectangle) bool {
 	hovered := f.click.Hovered()
 	center := centerOf(round)
 	style := iconButtonStyle{
-		shape:       iconButtonCircle,
-		fill:        mainAccentColor1,
-		fillHover:   lighten(mainAccentColor1, 0x08),
-		border:      mainAccentColor2,
-		borderHover: lighten(mainAccentColor2, 0x08),
-		gradient:    true,
+		Shape:       iconButtonCircle,
+		Fill:        mainAccentColor1,
+		FillHover:   lighten(mainAccentColor1, 0x08),
+		Border:      mainAccentColor2,
+		BorderHover: lighten(mainAccentColor2, 0x08),
+		Gradient:    true,
 	}
 	progress := float32(0)
 	if hovered {

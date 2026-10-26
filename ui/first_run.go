@@ -14,13 +14,10 @@ import (
 	"time"
 
 	"gioui.org/app"
-	"gioui.org/f32"
 	"gioui.org/font"
 	"gioui.org/io/pointer"
 	"gioui.org/layout"
 	"gioui.org/op"
-	"gioui.org/op/clip"
-	"gioui.org/op/paint"
 	"gioui.org/unit"
 	"gioui.org/widget"
 )
@@ -420,41 +417,6 @@ func (fr *firstRun) drawProgress(gtx layout.Context, size image.Point, progress 
 // button. Callers pass only the shape that should glow.
 func drawFirstRunGlow(gtx layout.Context, rect image.Rectangle, radius int) {
 	drawGlow(gtx, rect, radius, firstRunGlowColor)
-}
-
-// drawGlow draws a soft edge using several low-alpha layers.
-func drawGlow(gtx layout.Context, rect image.Rectangle, radius int, col color.NRGBA) {
-	// Several low-alpha layers approximate a soft glow. A single translucent
-	// ring reads as a border rather than a glow at this size.
-	// 2.5x tighter than the original 9/7/5/3 px rings.
-	for _, inset := range []int{4, 3, 2, 1} {
-		fillRounded(gtx, col, rect.Inset(-inset), radius+inset)
-	}
-}
-
-func fillRoundedGradient(gtx layout.Context, clipRect, gradientRect image.Rectangle, radius int, c1, c2 color.NRGBA) {
-	if clipRect.Empty() {
-		return
-	}
-	stack := clip.UniformRRect(clipRect, radius).Push(gtx.Ops)
-	paint.LinearGradientOp{
-		Stop1:  f32.Pt(float32(gradientRect.Min.X), float32(gradientRect.Min.Y)),
-		Color1: c1,
-		Stop2:  f32.Pt(float32(gradientRect.Max.X), float32(gradientRect.Max.Y)),
-		Color2: c2,
-	}.Add(gtx.Ops)
-	paint.PaintOp{}.Add(gtx.Ops)
-	stack.Pop()
-}
-
-func lighten(c color.NRGBA, amount uint8) color.NRGBA {
-	add := func(v uint8) uint8 {
-		if int(v)+int(amount) > 255 {
-			return 255
-		}
-		return v + amount
-	}
-	return color.NRGBA{R: add(c.R), G: add(c.G), B: add(c.B), A: c.A}
 }
 
 func (fr *firstRun) snapshot() (firstRunState, float64, bool) {

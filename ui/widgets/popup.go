@@ -1,17 +1,20 @@
-package ui
+package widgets
 
 import (
 	"image"
+	"image/color"
 
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/unit"
 	"gioui.org/widget"
+
+	"github.com/arfush/yonime/ui/draw"
 )
 
-// placePopupMenu centers a popup on its anchor and flips it above when the
+// PlacePopupMenu centers a popup on its anchor and flips it above when the
 // footer or window edge would clip it. It is used by status pills.
-func placePopupMenu(anchor image.Rectangle, width, height, drop, margin int, bounds image.Rectangle) image.Rectangle {
+func PlacePopupMenu(anchor image.Rectangle, width, height, drop, margin int, bounds image.Rectangle) image.Rectangle {
 	x := anchor.Min.X + (anchor.Dx()-width)/2
 	y := anchor.Max.Y + drop
 	if x+width > bounds.Max.X-margin {
@@ -29,9 +32,9 @@ func placePopupMenu(anchor image.Rectangle, width, height, drop, margin int, bou
 	return image.Rect(x, y, x+width, y+height)
 }
 
-// placePopupList aligns a select list with the left edge of its trigger and
+// PlacePopupList aligns a select list with the left edge of its trigger and
 // prefers the space below it.
-func placePopupList(anchor image.Rectangle, height, gap int, bounds image.Rectangle) image.Rectangle {
+func PlacePopupList(anchor image.Rectangle, height, gap int, bounds image.Rectangle) image.Rectangle {
 	below := image.Rect(anchor.Min.X, anchor.Max.Y+gap, anchor.Max.X, anchor.Max.Y+gap+height)
 	if below.Max.Y <= bounds.Max.Y {
 		return below
@@ -43,20 +46,20 @@ func placePopupList(anchor image.Rectangle, height, gap int, bounds image.Rectan
 	return below
 }
 
-// drawPopupMenu paints the shared popup surface. Options are laid out by the
+// DrawPopupMenu paints the shared popup surface. Options are laid out by the
 // caller so a status menu and a provider select keep their own content.
-func drawPopupMenu(gtx layout.Context, rect image.Rectangle) {
+func DrawPopupMenu(gtx layout.Context, rect image.Rectangle, border, fill color.NRGBA) {
 	if rect.Empty() {
 		return
 	}
 	radius := gtx.Dp(unit.Dp(8))
-	fillRounded(gtx, titlePanelBorder, rect, radius)
-	fillRounded(gtx, settingsMenuFill, rect.Inset(gtx.Dp(unit.Dp(1))), max(0, radius-gtx.Dp(unit.Dp(1))))
+	draw.FillRounded(gtx, border, rect, radius)
+	draw.FillRounded(gtx, fill, rect.Inset(gtx.Dp(unit.Dp(1))), max(0, radius-gtx.Dp(unit.Dp(1))))
 }
 
-// layoutOverlayScrim registers an invisible full-window click target. It is
+// LayoutOverlayScrim registers an invisible full-window click target. It is
 // laid out before the menu options, which therefore sit above it.
-func layoutOverlayScrim(gtx layout.Context, rect image.Rectangle, click *widget.Clickable) bool {
+func LayoutOverlayScrim(gtx layout.Context, rect image.Rectangle, click *widget.Clickable) bool {
 	if rect.Empty() {
 		return false
 	}

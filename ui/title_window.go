@@ -5,7 +5,6 @@ import (
 	"image/color"
 	"time"
 
-	"gioui.org/f32"
 	"gioui.org/font"
 	"gioui.org/io/key"
 	"gioui.org/io/pointer"
@@ -870,23 +869,4 @@ func (w *titleWindow) layoutClickableDraw(gtx layout.Context, rect image.Rectang
 		}
 		return layout.Dimensions{Size: rect.Size()}
 	})
-}
-
-func drawChevronLeft(gtx layout.Context, center image.Point, size, width int, col color.NRGBA) {
-	if size <= 0 {
-		return
-	}
-	half := float32(size) / 2
-	strokeLine(gtx,
-		f32.Pt(float32(center.X)+half*0.35, float32(center.Y)-half*0.8),
-		f32.Pt(float32(center.X)-half*0.55, float32(center.Y)),
-		float32(width),
-		col,
-	)
-	strokeLine(gtx,
-		f32.Pt(float32(center.X)-half*0.55, float32(center.Y)),
-		f32.Pt(float32(center.X)+half*0.35, float32(center.Y)+half*0.8),
-		float32(width),
-		col,
-	)
 }

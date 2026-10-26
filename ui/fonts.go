@@ -1,16 +1,14 @@
 package ui
 
 import (
-	"embed"
 	"fmt"
 
 	"gioui.org/font"
 	"gioui.org/font/opentype"
 	"gioui.org/text"
-)
 
-//go:embed assets/Inter-Regular.ttf assets/Inter-Medium.ttf assets/Inter-SemiBold.ttf assets/Inter-Bold.ttf
-var fontAssets embed.FS
+	"github.com/arfush/yonime/ui/assets"
+)
 
 type typography struct {
 	*textRenderer
@@ -21,17 +19,17 @@ func newTypography() (*typography, error) {
 		name   string
 		weight font.Weight
 	}{
-		{"assets/Inter-Regular.ttf", font.Normal},
-		{"assets/Inter-Medium.ttf", font.Medium},
-		{"assets/Inter-SemiBold.ttf", font.SemiBold},
-		{"assets/Inter-Bold.ttf", font.Bold},
+		{"Inter-Regular.ttf", font.Normal},
+		{"Inter-Medium.ttf", font.Medium},
+		{"Inter-SemiBold.ttf", font.SemiBold},
+		{"Inter-Bold.ttf", font.Bold},
 	}
 
 	var collection []font.FontFace
 	for _, spec := range specs {
-		data, err := fontAssets.ReadFile(spec.name)
+		data, err := assets.ReadFont(spec.name)
 		if err != nil {
-			return nil, fmt.Errorf("read %s: %w", spec.name, err)
+			return nil, err
 		}
 		faces, err := opentype.ParseCollection(data)
 		if err != nil {

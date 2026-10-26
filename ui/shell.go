@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"gioui.org/app"
-	"gioui.org/f32"
 	"gioui.org/font"
 	"gioui.org/io/event"
 	"gioui.org/io/pointer"
@@ -14,7 +13,6 @@ import (
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
-	"gioui.org/op/paint"
 	"gioui.org/widget"
 
 	"github.com/arfush/yonime/internal/version"
@@ -473,7 +471,7 @@ func (s *shell) layoutFooterControl(gtx layout.Context, g geometry, rect image.R
 		hovered = false
 	}
 	progress := hover.update(gtx, hovered)
-	if hoverPollingSupported() && hover.target > 0 && s.animationsRun() {
+	if hoverPollingSupported() && hover.Target > 0 && s.animationsRun() {
 		gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(hoverPollInterval)})
 	}
 
@@ -486,96 +484,27 @@ func (s *shell) layoutFooterControl(gtx layout.Context, g geometry, rect image.R
 		pointer.CursorPointer.Add(gtx.Ops)
 		local := image.Rect(0, 0, rect.Dx(), rect.Dy())
 		style := iconButtonStyle{
-			shape:       iconButtonRounded,
-			fill:        footerControlFillColor,
-			fillHover:   footerControlHoverFill,
-			border:      footerControlBorderColor,
-			borderHover: footerControlHoverBorder,
-			radius:      mainControlRadius,
+			Shape:       iconButtonRounded,
+			Fill:        footerControlFillColor,
+			FillHover:   footerControlHoverFill,
+			Border:      footerControlBorderColor,
+			BorderHover: footerControlHoverBorder,
+			Radius:      mainControlRadius,
 		}
 		if active {
-			style.fill = footerPartyActiveFill
-			style.border = footerPartyActiveBorder
+			style.Fill = footerPartyActiveFill
+			style.Border = footerPartyActiveBorder
 		}
 		if alert {
-			style.fill = footerLogAlertFill
-			style.border = footerLogAlertBorder
+			style.Fill = footerLogAlertFill
+			style.Border = footerLogAlertBorder
 		}
 		drawIconButtonSurface(gtx, local, style, progress)
 		if draw != nil {
-			fill, _ := style.palette(progress)
+			fill, _ := style.Palette(progress)
 			draw(gtx, local, progress, fill)
 		}
 		return layout.Dimensions{Size: rect.Size()}
 	})
 	return clicked
-}
-
-func fill(gtx layout.Context, col color.NRGBA, r image.Rectangle) {
-	if r.Empty() {
-		return
-	}
-	paint.FillShape(gtx.Ops, col, clip.Rect(r).Op())
-}
-
-func fillRounded(gtx layout.Context, col color.NRGBA, r image.Rectangle, radius int) {
-	if r.Empty() {
-		return
-	}
-	paint.FillShape(gtx.Ops, col, clip.UniformRRect(r, radius).Op(gtx.Ops))
-}
-
-func drawImage(gtx layout.Context, src image.Image, r image.Rectangle) {
-	if src == nil || r.Empty() {
-		return
-	}
-	bounds := src.Bounds()
-	if bounds.Empty() {
-		return
-	}
-
-	scale := f32.Pt(
-		float32(r.Dx())/float32(bounds.Dx()),
-		float32(r.Dy())/float32(bounds.Dy()),
-	)
-
-	defer clip.Rect(r).Push(gtx.Ops).Pop()
-	defer op.Offset(r.Min).Push(gtx.Ops).Pop()
-	defer op.Affine(f32.Affine2D{}.Scale(f32.Pt(0, 0), scale)).Push(gtx.Ops).Pop()
-
-	imageOp := paint.NewImageOp(src)
-	imageOp.Filter = paint.FilterLinear
-	imageOp.Add(gtx.Ops)
-	paint.PaintOp{}.Add(gtx.Ops)
-}
-
-// drawImageCoverRounded fills a rounded rectangle with an image, cropping the
-// overflow instead of stretching the artwork.
-func drawImageCoverRounded(gtx layout.Context, src image.Image, r image.Rectangle, radius int) {
-	if src == nil || r.Empty() {
-		return
-	}
-	bounds := src.Bounds()
-	if bounds.Empty() {
-		return
-	}
-	scale := max(
-		float32(r.Dx())/float32(bounds.Dx()),
-		float32(r.Dy())/float32(bounds.Dy()),
-	)
-	scaledWidth := float32(bounds.Dx()) * scale
-	scaledHeight := float32(bounds.Dy()) * scale
-	offset := image.Pt(
-		r.Min.X+int((float32(r.Dx())-scaledWidth)/2),
-		r.Min.Y+int((float32(r.Dy())-scaledHeight)/2),
-	)
-
-	defer clip.UniformRRect(r, radius).Push(gtx.Ops).Pop()
-	defer op.Offset(offset).Push(gtx.Ops).Pop()
-	defer op.Affine(f32.Affine2D{}.Scale(f32.Pt(0, 0), f32.Pt(scale, scale))).Push(gtx.Ops).Pop()
-
-	imageOp := paint.NewImageOp(src)
-	imageOp.Filter = paint.FilterLinear
-	imageOp.Add(gtx.Ops)
-	paint.PaintOp{}.Add(gtx.Ops)
 }

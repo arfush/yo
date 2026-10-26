@@ -10,15 +10,12 @@ import (
 	"time"
 	"unicode"
 
-	"gioui.org/f32"
 	"gioui.org/font"
 	"gioui.org/io/event"
 	"gioui.org/io/key"
 	"gioui.org/io/pointer"
 	"gioui.org/layout"
 	"gioui.org/op"
-	"gioui.org/op/clip"
-	"gioui.org/op/paint"
 	"gioui.org/unit"
 	"gioui.org/widget"
 
@@ -666,7 +663,7 @@ func deleteEditorWord(editor *widget.Editor, backward bool) {
 }
 
 func (m *mainWindow) focusInput(gtx layout.Context) {
-	if m.hintAnim.progress > 0.02 {
+	if m.hintAnim.Progress > 0.02 {
 		m.hintPulse = gtx.Now
 	}
 	m.hintForcedHide = true
@@ -1131,7 +1128,7 @@ func (m *mainWindow) drawInputPlaceholder(gtx layout.Context, rect image.Rectang
 }
 
 func (m *mainWindow) drawHint(gtx layout.Context, rect image.Rectangle) {
-	progress := m.hintAnim.progress
+	progress := m.hintAnim.Progress
 	if progress <= 0.002 {
 		return
 	}
@@ -1521,104 +1518,4 @@ func drawGeneratedPoster(gtx layout.Context, typo *typography, rect image.Rectan
 		color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x66},
 		image.Pt(rect.Min.X+rect.Dx()/2, rect.Min.Y+rect.Dy()/2),
 	)
-}
-
-func drawPlay(gtx layout.Context, center image.Point, size int, col color.NRGBA) {
-	if size <= 0 {
-		return
-	}
-	half := size / 2
-	var path clip.Path
-	path.Begin(gtx.Ops)
-	path.MoveTo(f32.Pt(float32(center.X-half/2), float32(center.Y-half)))
-	path.LineTo(f32.Pt(float32(center.X+half), float32(center.Y)))
-	path.LineTo(f32.Pt(float32(center.X-half/2), float32(center.Y+half)))
-	path.Close()
-	stack := clip.Outline{Path: path.End()}.Op().Push(gtx.Ops)
-	paint.Fill(gtx.Ops, col)
-	stack.Pop()
-}
-
-func drawTrash(gtx layout.Context, center image.Point, size int, col color.NRGBA) {
-	if size <= 0 {
-		return
-	}
-	half := float32(size) / 2
-	width := float32(max(1, size/9))
-	// Lid and handle.
-	strokeLine(gtx, f32.Pt(float32(center.X)-half*0.8, float32(center.Y)-half*0.45), f32.Pt(float32(center.X)+half*0.8, float32(center.Y)-half*0.45), width, col)
-	strokeLine(gtx, f32.Pt(float32(center.X)-half*0.28, float32(center.Y)-half*0.72), f32.Pt(float32(center.X)+half*0.28, float32(center.Y)-half*0.72), width, col)
-	// Slightly tapered can.
-	var path clip.Path
-	path.Begin(gtx.Ops)
-	path.MoveTo(f32.Pt(float32(center.X)-half*0.62, float32(center.Y)-half*0.25))
-	path.LineTo(f32.Pt(float32(center.X)-half*0.47, float32(center.Y)+half*0.72))
-	path.LineTo(f32.Pt(float32(center.X)+half*0.47, float32(center.Y)+half*0.72))
-	path.LineTo(f32.Pt(float32(center.X)+half*0.62, float32(center.Y)-half*0.25))
-	stack := clip.Stroke{Path: path.End(), Width: width}.Op().Push(gtx.Ops)
-	paint.Fill(gtx.Ops, col)
-	stack.Pop()
-	// Two slits.
-	for _, dx := range []float32{-0.2, 0.2} {
-		strokeLine(gtx,
-			f32.Pt(float32(center.X)+half*dx, float32(center.Y)-half*0.02),
-			f32.Pt(float32(center.X)+half*dx, float32(center.Y)+half*0.5),
-			width,
-			col,
-		)
-	}
-}
-
-func drawChevronRight(gtx layout.Context, center image.Point, size, width int, col color.NRGBA) {
-	if size <= 0 {
-		return
-	}
-	half := float32(size) / 2
-	strokeLine(gtx,
-		f32.Pt(float32(center.X)-half*0.35, float32(center.Y)-half*0.8),
-		f32.Pt(float32(center.X)+half*0.55, float32(center.Y)),
-		float32(width),
-		col,
-	)
-	strokeLine(gtx,
-		f32.Pt(float32(center.X)+half*0.55, float32(center.Y)),
-		f32.Pt(float32(center.X)-half*0.35, float32(center.Y)+half*0.8),
-		float32(width),
-		col,
-	)
-}
-
-func fillCircle(gtx layout.Context, center image.Point, radius int, col color.NRGBA) {
-	if radius <= 0 {
-		return
-	}
-	fillRounded(gtx, col, image.Rect(center.X-radius, center.Y-radius, center.X+radius, center.Y+radius), radius)
-}
-
-func centerOf(rect image.Rectangle) image.Point {
-	return image.Pt(rect.Min.X+rect.Dx()/2, rect.Min.Y+rect.Dy()/2)
-}
-
-func colorMaterial(gtx layout.Context, col color.NRGBA) op.CallOp {
-	macro := op.Record(gtx.Ops)
-	paint.ColorOp{Color: col}.Add(gtx.Ops)
-	return macro.Stop()
-}
-
-func withAlpha(c color.NRGBA, a uint8) color.NRGBA {
-	c.A = a
-	return c
-}
-
-func mixColor(a, b color.NRGBA, t float32) color.NRGBA {
-	if t <= 0 {
-		return a
-	}
-	if t >= 1 {
-		return b
-	}
-	lerp := func(x, y uint8) uint8 {
-		return uint8(float32(x) + (float32(y)-float32(x))*t)
-	}
-	return color.NRGBA{R: lerp(a.R, b.R), G: lerp(a.G, b.G), B: lerp(a.B, b.B), A: lerp(a.A, b.A)}
 }

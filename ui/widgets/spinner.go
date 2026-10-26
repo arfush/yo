@@ -1,4 +1,4 @@
-package ui
+package widgets
 
 import (
 	"image"
@@ -7,9 +7,12 @@ import (
 	"time"
 
 	"gioui.org/layout"
+
+	"github.com/arfush/yonime/ui/draw"
 )
 
-func drawSpinner(gtx layout.Context, center image.Point, radius, dotRadius int, phase float64, col color.NRGBA) {
+// DrawSpinner paints eight fading dots around center.
+func DrawSpinner(gtx layout.Context, center image.Point, radius, dotRadius int, phase float64, col color.NRGBA) {
 	if radius <= 0 || dotRadius <= 0 {
 		return
 	}
@@ -22,6 +25,6 @@ func drawSpinner(gtx layout.Context, center image.Point, radius, dotRadius int, 
 		)
 		c := col
 		c.A = uint8(35 + int(float64(190)*float64(i)/7))
-		fillCircle(gtx, p, dotRadius, c)
+		draw.FillCircle(gtx, p, dotRadius, c)
 	}
 }

@@ -6,7 +6,6 @@ import (
 	"image/color"
 	"math"
 
-	"gioui.org/f32"
 	"gioui.org/font"
 	"gioui.org/io/event"
 	"gioui.org/io/key"
@@ -635,37 +634,6 @@ func (w *settingsWindow) saveName() {
 	w.nameDirty = false
 	w.errorText = ""
 }
-
-// layoutProviderTrigger paints the closed select: the current provider and a
-// chevron pointing at the menu, which opens on click.
-func drawChevronDown(gtx layout.Context, center image.Point, size, width int, col color.NRGBA) {
-	drawChevronVertical(gtx, center, size, width, col, 1)
-}
-
-func drawChevronUp(gtx layout.Context, center image.Point, size, width int, col color.NRGBA) {
-	drawChevronVertical(gtx, center, size, width, col, -1)
-}
-
-func drawChevronVertical(gtx layout.Context, center image.Point, size, width int, col color.NRGBA, direction float32) {
-	if size <= 0 {
-		return
-	}
-	half := float32(size) / 2
-	tip := f32.Pt(float32(center.X), float32(center.Y)+half*0.55*direction)
-	strokeLine(gtx,
-		f32.Pt(float32(center.X)-half*0.8, float32(center.Y)-half*0.35*direction),
-		tip,
-		float32(width),
-		col,
-	)
-	strokeLine(gtx,
-		tip,
-		f32.Pt(float32(center.X)+half*0.8, float32(center.Y)-half*0.35*direction),
-		float32(width),
-		col,
-	)
-}
-
 func (w *settingsWindow) setToggle(enabled bool) {
 	if w.onToggle != nil {
 		if err := w.onToggle(enabled); err != nil {

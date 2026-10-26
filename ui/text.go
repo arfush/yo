@@ -19,6 +19,25 @@ type textRenderer struct {
 	shaper *text.Shaper
 }
 
+// The exported methods form the small text interface used by ui/widgets. The
+// screen package keeps the shorter lowercase names because it reads them in
+// dozens of layout functions.
+func (r *textRenderer) Measure(gtx layout.Context, txt string, face font.Font, size unit.Sp) ([]text.Glyph, image.Rectangle) {
+	return r.measure(gtx, txt, face, size)
+}
+
+func (r *textRenderer) Draw(gtx layout.Context, txt string, face font.Font, size unit.Sp, col color.NRGBA, at image.Point) image.Rectangle {
+	return r.draw(gtx, txt, face, size, col, at)
+}
+
+func (r *textRenderer) DrawCentered(gtx layout.Context, txt string, face font.Font, size unit.Sp, col color.NRGBA, center image.Point) image.Rectangle {
+	return r.drawCentered(gtx, txt, face, size, col, center)
+}
+
+func (r *textRenderer) PaintCenteredOnBaseline(gtx layout.Context, txt string, face font.Font, size unit.Sp, col color.NRGBA, center f32.Point, capHeight int) {
+	r.paintCenteredOnBaseline(gtx, txt, face, size, col, center, capHeight)
+}
+
 // measure shapes txt and reports the glyphs and their visual (ink) bounds.
 func (r *textRenderer) measure(gtx layout.Context, txt string, face font.Font, size unit.Sp) ([]text.Glyph, image.Rectangle) {
 	r.shaper.LayoutString(text.Parameters{

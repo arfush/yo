@@ -93,16 +93,16 @@ func (w *partyWindow) layoutRoomField(gtx layout.Context, rect image.Rectangle, 
 	clicked := click.Clicked(gtx)
 	hovered := click.Hovered()
 	style := iconButtonStyle{
-		shape:       iconButtonCircle,
-		fill:        mainAccentColor1,
-		fillHover:   lighten(mainAccentColor1, 0x08),
-		border:      mainAccentColor2,
-		borderHover: lighten(mainAccentColor2, 0x08),
-		gradient:    true,
+		Shape:       iconButtonCircle,
+		Fill:        mainAccentColor1,
+		FillHover:   lighten(mainAccentColor1, 0x08),
+		Border:      mainAccentColor2,
+		BorderHover: lighten(mainAccentColor2, 0x08),
+		Gradient:    true,
 	}
 	if errored {
-		style.fill, style.fillHover = tokenErrorColor1, tokenErrorColor1
-		style.border, style.borderHover = tokenErrorColor2, tokenErrorColor2
+		style.Fill, style.FillHover = tokenErrorColor1, tokenErrorColor1
+		style.Border, style.BorderHover = tokenErrorColor2, tokenErrorColor2
 	}
 	progress := float32(0)
 	if hovered {

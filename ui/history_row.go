@@ -217,7 +217,7 @@ func (m *mainWindow) drawHistoryRowCard(gtx layout.Context, rect image.Rectangle
 	drawUserStatusPill(gtx, m.typo, geom.status, item.userStatus, true)
 
 	if vis.itemLoading {
-		drawIconButtonSurface(gtx, geom.play, iconButtonStyle{fill: mainControlFill, border: mainAccentColor1, radius: mainControlRadius}, 0)
+		drawIconButtonSurface(gtx, geom.play, iconButtonStyle{Fill: mainControlFill, Border: mainAccentColor1, Radius: mainControlRadius}, 0)
 		drawSpinner(gtx, centerOf(geom.play), gtx.Dp(unit.Dp(8)), gtx.Dp(unit.Dp(1.5)), 0, mainAccentColor1)
 	} else {
 		buttonTextColor := mainControlColor
@@ -226,13 +226,13 @@ func (m *mainWindow) drawHistoryRowCard(gtx layout.Context, rect image.Rectangle
 		}
 		fill := mixColor(mainControlFill, mainPlayButtonFill, vis.playHover)
 		stroke := mixColor(mainControlBorder, mainPlayButtonBorder, vis.playHover)
-		drawIconButtonSurface(gtx, geom.play, iconButtonStyle{fill: fill, border: stroke, radius: mainControlRadius}, 0)
+		drawIconButtonSurface(gtx, geom.play, iconButtonStyle{Fill: fill, Border: stroke, Radius: mainControlRadius}, 0)
 		drawPlay(gtx, centerOf(geom.play), gtx.Dp(unit.Dp(11)), buttonTextColor)
 	}
 
 	trashFill := mixColor(mainControlFill, mainTrashButtonFill, vis.trashHover)
 	trashBorder := mixColor(mainControlBorder, mainTrashButtonBorder, vis.trashHover)
-	drawIconButtonSurface(gtx, geom.trash, iconButtonStyle{fill: trashFill, border: trashBorder, radius: mainControlRadius}, 0)
+	drawIconButtonSurface(gtx, geom.trash, iconButtonStyle{Fill: trashFill, Border: trashBorder, Radius: mainControlRadius}, 0)
 	drawTrash(gtx, centerOf(geom.trash), gtx.Dp(unit.Dp(14)), mainControlColor)
 }
 

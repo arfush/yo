@@ -2,7 +2,6 @@ package ui
 
 import (
 	"image"
-	"image/color"
 	"math"
 
 	"gioui.org/layout"
@@ -36,44 +35,6 @@ const (
 const (
 	badgeHeight   = 20
 	badgePaddingX = 7
-)
-
-const fontFamily = "Inter"
-
-var (
-	contentColor = color.NRGBA{R: 0x0d, G: 0x0e, B: 0x14, A: 0xff}
-	chromeColor  = color.NRGBA{R: 0x11, G: 0x12, B: 0x19, A: 0xff}
-	borderColor  = color.NRGBA{R: 0x20, G: 0x21, B: 0x27, A: 0xff}
-	dividerColor = color.NRGBA{R: 0x1b, G: 0x1c, B: 0x23, A: 0xff}
-
-	iconColor = color.NRGBA{R: 0x96, G: 0x83, B: 0xe7, A: 0xff}
-
-	titleColor = color.NRGBA{R: 0xf4, G: 0xf2, B: 0xfa, A: 0xff}
-
-	badgeFillColor   = color.NRGBA{R: 0x29, G: 0x22, B: 0x3e, A: 0xff}
-	badgeBorderColor = color.NRGBA{R: 0x39, G: 0x30, B: 0x4f, A: 0xff}
-	badgeTextColor   = color.NRGBA{R: 0x96, G: 0x83, B: 0xe7, A: 0xff}
-
-	controlHoverColor = color.NRGBA{R: 0x9a, G: 0x9a, B: 0x9f, A: 0xff}
-	closeHoverColor   = color.NRGBA{R: 0xff, G: 0x64, B: 0x73, A: 0xff}
-
-	footerControlFillColor      = color.NRGBA{R: 0x1b, G: 0x19, B: 0x24, A: 0xff}
-	footerControlBorderColor    = color.NRGBA{R: 0x2b, G: 0x27, B: 0x38, A: 0xff}
-	footerControlHoverFill      = color.NRGBA{R: 0x22, G: 0x1c, B: 0x34, A: 0xff}
-	footerControlHoverBorder    = color.NRGBA{R: 0x4a, G: 0x3c, B: 0x69, A: 0xff}
-	footerControlIconColor      = color.NRGBA{R: 0xa9, G: 0xa2, B: 0xb9, A: 0xff}
-	footerControlHoverIconColor = color.NRGBA{R: 0xd7, G: 0xc9, B: 0xff, A: 0xff}
-
-	// A room that is still open keeps the watch-party control dim green, so the
-	// main screen shows that a session exists.
-	footerPartyActiveFill   = color.NRGBA{R: 0x16, G: 0x27, B: 0x1e, A: 0xff}
-	footerPartyActiveBorder = color.NRGBA{R: 0x2c, G: 0x5a, B: 0x40, A: 0xff}
-	footerPartyActiveIcon   = color.NRGBA{R: 0x6c, G: 0xc8, B: 0x95, A: 0xff}
-
-	// A fresh error tints the log button dull red for five seconds.
-	footerLogAlertFill   = color.NRGBA{R: 0x2a, G: 0x17, B: 0x1b, A: 0xff}
-	footerLogAlertBorder = color.NRGBA{R: 0x5a, G: 0x2a, B: 0x31, A: 0xff}
-	footerLogAlertIcon   = color.NRGBA{R: 0xd7, G: 0x7a, B: 0x80, A: 0xff}
 )
 
 // geometry holds every chrome measurement converted from device-independent

@@ -7,10 +7,11 @@ import (
 	"gioui.org/font"
 	"gioui.org/layout"
 	"gioui.org/unit"
+
+	"github.com/arfush/yonime/ui/widgets"
 )
 
-// panelStyle describes the rounded surface used by settings groups, title
-// panels, the log card and the shortcuts card. The zero value is transparent.
+// panelStyle is the screen-facing shape of the shared rounded surface.
 type panelStyle struct {
 	fill   color.NRGBA
 	border color.NRGBA
@@ -18,20 +19,11 @@ type panelStyle struct {
 }
 
 func (s panelStyle) layout(gtx layout.Context, rect image.Rectangle) image.Rectangle {
-	if rect.Empty() {
-		return image.Rectangle{}
-	}
-	radius := gtx.Dp(s.radius)
-	if radius < 0 {
-		radius = 0
-	}
-	fillRounded(gtx, s.border, rect, radius)
-	inner := rect.Inset(gtx.Dp(unit.Dp(1)))
-	if inner.Empty() {
-		return image.Rectangle{}
-	}
-	fillRounded(gtx, s.fill, inner, max(0, radius-gtx.Dp(unit.Dp(1))))
-	return inner
+	return widgets.PanelStyle{
+		Fill:   s.fill,
+		Border: s.border,
+		Radius: s.radius,
+	}.LayoutPanel(gtx, rect)
 }
 
 // screenCardHeader is the accent-strip heading shared by the log and shortcuts
