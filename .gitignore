@@ -25,4 +25,4 @@ Thumbs.db
 .env.*
 
 # Wrangler keeps its local build state here
-deploy/cloudflare/.wrangler/
+party/deploy/cloudflare/.wrangler/

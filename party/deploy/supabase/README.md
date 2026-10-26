@@ -38,14 +38,14 @@ curl "https://abcdefghijkl.supabase.co/realtime/v1/websocket?apikey=<PUBLISHABLE
 адрес Cloudflare, а Supabase в ней — резерв. Если вы всё же хотите поставлять
 своё реле, его настройки вшиваются один раз, как и у Cloudflare:
 
-1. Задайте `WATCHPARTY_SUPABASE_URL` и `WATCHPARTY_SUPABASE_KEY`: в окружении
+1. Задайте `YONIME_PARTY_SUPABASE_URL` и `YONIME_PARTY_SUPABASE_KEY`: в окружении
    при локальной сборке или в GitHub **Settings → Secrets and variables →
-   Actions → Variables** для релиза. Альтернатива — `watchplay.json` в корне
+   Actions → Variables** для релиза. Альтернатива — `party.json` в корне
    репозитория.
 2. Собрать релиз: `build.ps1` передаст их в
    `-ldflags -X party.SupabaseURL` и `party.SupabaseKey`.
 
-Переменные окружения важнее файла; `watchplay.json` сборка не перезаписывает.
+Переменные окружения важнее файла; `party.json` сборка не перезаписывает.
 
 Внимание на квоту: проект **общий для всех пользователей сборки**, поэтому 2
 млн сообщений в месяц делятся на всех — это примерно 37 часов просмотра в

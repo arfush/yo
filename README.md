@@ -45,7 +45,7 @@
 - Два бесплатных реле на выбор — Cloudflare и Supabase; в официальной сборке они уже настроены, пользователю ничего вводить не нужно.
 - Подробности, настройки и протокол — в [docs/party.md](docs/party.md).
 
-Если собираешь Yonime сам, включи ежедневный пинг Supabase, чтобы бесплатный проект не уходил в паузу: добавь `WATCHPARTY_SUPABASE_URL` и `WATCHPARTY_SUPABASE_KEY` в **Settings → Secrets and variables → Actions → Variables**. Workflow `Supabase keep-alive` запускается раз в сутки сам, а проверить его можно кнопкой **Run workflow**.
+Если собираешь Yonime сам, включи ежедневный пинг Supabase, чтобы бесплатный проект не уходил в паузу: добавь `YONIME_PARTY_SUPABASE_URL` и `YONIME_PARTY_SUPABASE_KEY` в **Settings → Secrets and variables → Actions → Variables**. Workflow `Supabase keep-alive` запускается раз в сутки сам, а проверить его можно кнопкой **Run workflow**.
 
 ### Удобство
 

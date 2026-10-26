@@ -15,7 +15,7 @@
 ## Деплой
 
 ```bash
-cd deploy/cloudflare
+cd party/deploy/cloudflare
 npm install -g wrangler     # если wrangler ещё не установлен
 wrangler login
 wrangler deploy
@@ -35,7 +35,7 @@ curl https://yonime-party.<ваш-аккаунт>.workers.dev/health
 ```
 
 Если вместо `ok` приходит `Hello World!`, значит на этом адресе всё ещё
-стандартный шаблон Worker: выполните `wrangler deploy` из `deploy/cloudflare`
+стандартный шаблон Worker: выполните `wrangler deploy` из `party/deploy/cloudflare`
 и проверьте снова. Приложение в таком случае показывает ошибку «по адресу реле
 работает не комната (ответ 200)».
 
@@ -48,21 +48,21 @@ curl https://yonime-party.<ваш-аккаунт>.workers.dev/health
 1. `wrangler deploy` — получить адрес.
 2. Проверить `/health`.
 3. Записать адрес в один из двух источников:
-   - переменная `WATCHPARTY_CLOUDFLARE_URL` (локально — в окружении, в CI —
+   - переменная `YONIME_PARTY_CLOUDFLARE_URL` (локально — в окружении, в CI —
      GitHub **Settings → Secrets and variables → Actions → Variables**);
-   - или `cloudflare_url` в `watchplay.json` в корне репозитория.
+   - или `cloudflare_url` в `party.json` в корне репозитория.
 4. Собрать релиз (`release: vX.Y`). `build.ps1` передаёт значение в
    `-ldflags -X party.CloudflareURL`, поэтому все три архитектуры выйдут с
    уже подключённым реле.
 
-Переменная окружения важнее файла: если она задана, `watchplay.json` не
+Переменная окружения важнее файла: если она задана, `party.json` не
 используется и не меняется. Образцы (`example.workers.dev`) сборка пропускает и
 предупреждает об этом — так релиз не уедет с нерабочим реле.
 
 Локальная сборка:
 
 ```powershell
-$env:WATCHPARTY_CLOUDFLARE_URL = "https://yonime-party.<ваш-аккаунт>.workers.dev"
+$env:YONIME_PARTY_CLOUDFLARE_URL = "https://yonime-party.<ваш-аккаунт>.workers.dev"
 .\build.ps1 -Version 1.0 -Arch amd64
 ```
 
@@ -132,7 +132,7 @@ Durable Object:
 ## Обновление кода реле
 
 ```bash
-cd deploy/cloudflare
+cd party/deploy/cloudflare
 wrangler deploy
 ```
 

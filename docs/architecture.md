@@ -31,7 +31,6 @@
 ```text
 cmd/
   yonime/            single instance, установка обновления, запуск ui
-  watchplay/         консольный клиент комнаты для проверки протокола
 app/                 композиционный корень: сервисы, экраны, команды
 catalog/             чистые типы: Title, Episode, Voice, UserStatus
 animelib/            API AnimeLIB, rate limit, прямые ссылки на серии
@@ -42,6 +41,8 @@ metadata/            Shikimori/MAL, AniList, IMDb, introdb
 mpv/                 поиск и установка mpv
 playback/            сессия mpv, очередь, прогресс, главы, автопропуск
 party/               протокол совместного просмотра, часы, конфигурация реле
+  deploy/            Cloudflare Worker и Supabase-реле
+  party.example.json образец пользовательского party.json
 store/               SQLite: схема, история, настройки, кэши
 token/               файл токена AnimeLIB и проверка срока
 updates/             GitHub Releases, версия, SHA-256
@@ -65,7 +66,6 @@ ui/
   icons/             iconvg-ассеты и их embed
   assets/            шрифты, маскот
 docs/
-deploy/
 installer/
 third_party/
 tools/
@@ -142,9 +142,12 @@ DPAPI, плюс запасной разбор простой строки. Ст�
 `watchparty.json` переносится при первом запуске. Сознательно оставлены без
 изменений только контракты, которые нельзя мигрировать автоматически:
 
-- переменные `WATCHPARTY_CLOUDFLARE_URL`, `WATCHPARTY_SUPABASE_URL`,
-  `WATCHPARTY_SUPABASE_KEY` и одноимённые repository variables;
 - настройки `party_provider` и `party_name` в SQLite (они уже были `party_*`).
+
+Переменные сборки переименованы в `YONIME_PARTY_CLOUDFLARE_URL`,
+`YONIME_PARTY_SUPABASE_URL` и `YONIME_PARTY_SUPABASE_KEY`; одноимённые
+repository variables нужно обновить. Вшитые значения по умолчанию лежат в
+корневом `party.json`.
 
 Остальные имена переведены в пространство `party`: адрес комнаты
 `sha256("yonime/party/room\x00" + ключ)`, метка карточки `yonime/party/card` и

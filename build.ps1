@@ -53,21 +53,21 @@ if ($env:YONIME_DISCORD_APP_ID) {
 
 # Party relays are deployed once and baked into the official build so the
 # shipped exe needs no party.json. Environment variables win; the rest comes
-# from watchplay.json in the repository root. That file is never written here.
-$partyFile = Join-Path $PSScriptRoot "watchplay.json"
+# from party.json in the repository root. That file is never written here.
+$partyFile = Join-Path $PSScriptRoot "party.json"
 $partyDefaults = $null
 if (Test-Path $partyFile) {
     try {
         $partyDefaults = Get-Content -Raw -Path $partyFile | ConvertFrom-Json
     } catch {
-        Write-Warning "watchplay.json: $($_.Exception.Message)"
+        Write-Warning "party.json: $($_.Exception.Message)"
     }
 }
 
 $partyFlags = @(
-    @{ Env = "WATCHPARTY_CLOUDFLARE_URL"; Field = "cloudflare_url"; Symbol = "CloudflareURL" },
-    @{ Env = "WATCHPARTY_SUPABASE_URL"; Field = "supabase_url"; Symbol = "SupabaseURL" },
-    @{ Env = "WATCHPARTY_SUPABASE_KEY"; Field = "supabase_key"; Symbol = "SupabaseKey" }
+    @{ Env = "YONIME_PARTY_CLOUDFLARE_URL"; Field = "cloudflare_url"; Symbol = "CloudflareURL" },
+    @{ Env = "YONIME_PARTY_SUPABASE_URL"; Field = "supabase_url"; Symbol = "SupabaseURL" },
+    @{ Env = "YONIME_PARTY_SUPABASE_KEY"; Field = "supabase_key"; Symbol = "SupabaseKey" }
 )
 $partyBaked = @()
 foreach ($flag in $partyFlags) {
@@ -75,7 +75,7 @@ foreach ($flag in $partyFlags) {
     $source = $flag.Env
     if (-not $value -and $partyDefaults) {
         $value = $partyDefaults.$($flag.Field)
-        $source = "watchplay.json"
+        $source = "party.json"
     }
     if (-not $value) {
         continue
@@ -87,7 +87,7 @@ foreach ($flag in $partyFlags) {
     # The repository file ships placeholders; baking one would give users a dead
     # relay that reports "room not found" instead of "not configured".
     if ($value -match 'example\.|abcdefghijkl|\.\.\.$') {
-        Write-Warning "party: $($flag.Field) is still the watchplay.json example, skip it"
+        Write-Warning "party: $($flag.Field) is still the party.json example, skip it"
         continue
     }
     $ldflags += " -X github.com/arfush/yonime/party.$($flag.Symbol)=$value"

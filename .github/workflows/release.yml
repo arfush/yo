@@ -102,11 +102,11 @@ jobs:
       SIGN_PFX_BASE64: ${{ secrets.YONIME_SIGN_PFX_BASE64 }}
       SIGN_PFX_PASSWORD: ${{ secrets.YONIME_SIGN_PFX_PASSWORD }}
       # Repository variables win; otherwise build.ps1 falls back to the checked-in
-      # watchplay.json, so a relay deployed once reaches every user without any
+      # party.json, so a relay deployed once reaches every user without any
       # configuration file on their side.
-      WATCHPARTY_CLOUDFLARE_URL: ${{ vars.WATCHPARTY_CLOUDFLARE_URL }}
-      WATCHPARTY_SUPABASE_URL: ${{ vars.WATCHPARTY_SUPABASE_URL }}
-      WATCHPARTY_SUPABASE_KEY: ${{ vars.WATCHPARTY_SUPABASE_KEY }}
+      YONIME_PARTY_CLOUDFLARE_URL: ${{ vars.YONIME_PARTY_CLOUDFLARE_URL }}
+      YONIME_PARTY_SUPABASE_URL: ${{ vars.YONIME_PARTY_SUPABASE_URL }}
+      YONIME_PARTY_SUPABASE_KEY: ${{ vars.YONIME_PARTY_SUPABASE_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

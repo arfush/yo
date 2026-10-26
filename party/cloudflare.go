@@ -10,7 +10,7 @@ import (
 	"github.com/coder/websocket"
 )
 
-// dialCloudflare opens a room on the Worker deployed from deploy/cloudflare.
+// dialCloudflare opens a room on the Worker deployed from party/deploy/cloudflare.
 // The Worker answers with a welcome message that tells the caller whether a
 // host is already present. It only learns the hashed room address.
 func dialCloudflare(ctx context.Context, cfg Config, address string, role Role) (transport, error) {
