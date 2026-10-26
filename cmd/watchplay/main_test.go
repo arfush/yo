@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/arfush/yonime/internal/watchparty"
+	"github.com/arfush/yonime/party"
 )
 
 func TestParseCommand(t *testing.T) {
@@ -97,7 +97,7 @@ func TestParseSeek(t *testing.T) {
 // TestCleanConfigDropsRepositoryPlaceholders keeps a source build from dialling
 // the example relay that ships in watchplay.json.
 func TestCleanConfigDropsRepositoryPlaceholders(t *testing.T) {
-	example := watchparty.Config{
+	example := party.Config{
 		CloudflareURL: "wss://yonime-watchparty.example.workers.dev",
 		SupabaseURL:   "wss://abcdefghijkl.supabase.co",
 		SupabaseKey:   "sb_publishable_...",
@@ -106,7 +106,7 @@ func TestCleanConfigDropsRepositoryPlaceholders(t *testing.T) {
 		t.Fatal("placeholders must not count as a configured relay")
 	}
 
-	real := watchparty.Config{
+	real := party.Config{
 		CloudflareURL: "wss://yonime-watchparty.me.workers.dev",
 	}
 	cleaned := cleanConfig(real)
@@ -119,7 +119,7 @@ func TestCleanConfigDropsRepositoryPlaceholders(t *testing.T) {
 }
 
 func TestChooseProvider(t *testing.T) {
-	onlySupabase := watchparty.Config{
+	onlySupabase := party.Config{
 		SupabaseURL: "wss://project.supabase.co",
 		SupabaseKey: "sb_publishable_example",
 	}
@@ -127,7 +127,7 @@ func TestChooseProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("chooseProvider: %v", err)
 	}
-	if provider != watchparty.Supabase {
+	if provider != party.Supabase {
 		t.Fatalf("provider = %q, want supabase", provider)
 	}
 	if _, err := chooseProvider(onlySupabase, "cloudflare"); err == nil {

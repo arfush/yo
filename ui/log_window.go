@@ -18,7 +18,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yonime/internal/logging"
+	"github.com/arfush/yonime/log"
 )
 
 const (
@@ -140,7 +140,7 @@ func (w *logWindow) layout(gtx layout.Context) {
 	dividerY := subtitleY + subtitleInk.Dy() + gtx.Dp(unit.Dp(14))
 	fill(gtx, titlePanelBorder, image.Rect(left, dividerY, right, dividerY+max(1, gtx.Dp(unit.Dp(1)))))
 
-	lines := logging.Snapshot()
+	lines := log.Snapshot()
 	listTop := dividerY + gtx.Dp(unit.Dp(8))
 	listRect := image.Rect(left, listTop, right, card.Max.Y-innerPad)
 	if listRect.Empty() {
@@ -396,7 +396,7 @@ func (w *logWindow) layoutFooter(gtx layout.Context) {
 		}
 	}
 	if w.layoutButton(gtx, copyRect, &w.copyClick, &w.copyHover, true, label) {
-		text := logging.LastErrorContext()
+		text := log.LastErrorContext()
 		gtx.Execute(clipboard.WriteCmd{
 			Type: "application/text",
 			Data: io.NopCloser(strings.NewReader(text)),

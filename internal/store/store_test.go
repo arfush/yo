@@ -587,19 +587,19 @@ func TestSharedControlDefaultsOnAndProviderPersists(t *testing.T) {
 	if !db.SharedControlEnabled() {
 		t.Fatal("shared control must be enabled by default")
 	}
-	if got := db.WatchPartyProvider(); got != "" {
+	if got := db.PartyProvider(); got != "" {
 		t.Fatalf("provider default = %q, want an empty auto choice", got)
 	}
-	if got := db.WatchPartyName(); got != "" {
+	if got := db.PartyName(); got != "" {
 		t.Fatalf("name default = %q, want an empty auto choice", got)
 	}
 	if err := db.SetSharedControlEnabled(false); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SetWatchPartyProvider("supabase"); err != nil {
+	if err := db.SetPartyProvider("supabase"); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SetWatchPartyName("quiet-tanuki"); err != nil {
+	if err := db.SetPartyName("quiet-tanuki"); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {
@@ -614,10 +614,10 @@ func TestSharedControlDefaultsOnAndProviderPersists(t *testing.T) {
 	if db.SharedControlEnabled() {
 		t.Fatal("disabled shared control did not survive reopen")
 	}
-	if got := db.WatchPartyProvider(); got != "supabase" {
+	if got := db.PartyProvider(); got != "supabase" {
 		t.Fatalf("stored provider = %q, want supabase", got)
 	}
-	if got := db.WatchPartyName(); got != "quiet-tanuki" {
+	if got := db.PartyName(); got != "quiet-tanuki" {
 		t.Fatalf("stored name = %q, want quiet-tanuki", got)
 	}
 }

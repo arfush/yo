@@ -22,16 +22,18 @@ const dirName = "Yonime"
 const legacyDirName = "yonime"
 
 const (
-	databaseName   = "yonime.sqlite"
-	tokenName      = "animelib_token.txt"
-	profileName    = "browser"
-	coversName     = "covers"
-	mpvName        = "mpv"
-	updatesName    = "updates.json"
-	updateDirName  = "update"
-	updateLogName  = "update.log"
-	logName        = "yonime.log"
-	watchPartyName = "watchparty.json"
+	databaseName  = "yonime.sqlite"
+	tokenName     = "animelib_token.txt"
+	profileName   = "browser"
+	coversName    = "covers"
+	mpvName       = "mpv"
+	updatesName   = "updates.json"
+	updateDirName = "update"
+	updateLogName = "update.log"
+	logName       = "yonime.log"
+	// partyName keeps the historical file name: existing installs must keep
+	// reading their relay configuration after the package rename.
+	partyName = "watchparty.json"
 )
 
 // Dir returns the per-user data directory and creates it when necessary.
@@ -160,10 +162,10 @@ func TokenPath() (string, error) {
 	return path(tokenName)
 }
 
-// WatchPartyConfigPath returns the relay configuration the user edits after
+// PartyConfigPath returns the relay configuration the user edits after
 // deploying the Worker or the Supabase project.
-func WatchPartyConfigPath() (string, error) {
-	return path(watchPartyName)
+func PartyConfigPath() (string, error) {
+	return path(partyName)
 }
 
 // BrowserProfileDir returns the persistent Chromium profile path. The profile

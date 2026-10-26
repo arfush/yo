@@ -19,7 +19,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yonime/internal/watchparty"
+	"github.com/arfush/yonime/party"
 )
 
 const (
@@ -77,10 +77,10 @@ var (
 	wpLinkHoverColor = color.NRGBA{R: 0xb5, G: 0xae, B: 0xc6, A: 0xff}
 )
 
-type watchPartyMode int
+type partyMode int
 
 const (
-	wpChoice watchPartyMode = iota
+	wpChoice partyMode = iota
 	wpCreated
 	wpJoin
 	wpWaiting
@@ -100,15 +100,15 @@ type partyResult struct {
 	err  error
 }
 
-// watchPartyWindow is the whole watch-party flow: the create/join choice, the
+// partyWindow is the whole watch-party flow: the create/join choice, the
 // shared-key card, the join form and the waiting screen a guest sees before the
 // host starts a title.
-type watchPartyWindow struct {
+type partyWindow struct {
 	typo   *typography
 	window *app.Window
 	party  *partyManager
 
-	mode watchPartyMode
+	mode partyMode
 
 	createButton widget.Clickable
 	joinButton   widget.Clickable
@@ -150,11 +150,11 @@ type watchPartyWindow struct {
 	onError func(error)
 }
 
-func newWatchPartyWindow(typo *typography, w *app.Window, party *partyManager) *watchPartyWindow {
-	screen := &watchPartyWindow{
+func newPartyWindow(typo *typography, w *app.Window, manager *partyManager) *partyWindow {
+	screen := &partyWindow{
 		typo:    typo,
 		window:  w,
-		party:   party,
+		party:   manager,
 		waitHat: mascotHatNone,
 		results: make(chan partyResult, 4),
 	}
@@ -166,11 +166,11 @@ func newWatchPartyWindow(typo *typography, w *app.Window, party *partyManager) *
 	screen.secretEditor.SingleLine = true
 	screen.secretEditor.Submit = true
 	screen.secretEditor.InputHint = key.HintText
-	snapshot := party.Snapshot()
+	snapshot := manager.Snapshot()
 	switch {
 	case !snapshot.Active:
 		screen.mode = wpChoice
-	case snapshot.Role == watchparty.Host:
+	case snapshot.Role == party.Host:
 		screen.mode = wpCreated
 	case snapshot.NeedsSecret:
 		screen.mode = wpSecret
@@ -180,7 +180,7 @@ func newWatchPartyWindow(typo *typography, w *app.Window, party *partyManager) *
 	}
 	// The guest may have been on the main screen when the host left; the
 	// reason waits in the manager until the card is opened again.
-	if text := party.takeClosedNotice(); text != "" {
+	if text := manager.takeClosedNotice(); text != "" {
 		screen.roomClosed(text)
 	}
 	return screen
@@ -188,16 +188,16 @@ func newWatchPartyWindow(typo *typography, w *app.Window, party *partyManager) *
 
 // Close only detaches the screen; the room stays open so the main-page control
 // can reopen the card with the same key.
-func (w *watchPartyWindow) Close() {}
+func (w *partyWindow) Close() {}
 
-func (w *watchPartyWindow) reportText(message string) {
+func (w *partyWindow) reportText(message string) {
 	w.errorText = message
 	if w.onError != nil {
 		w.onError(userMessage(message))
 	}
 }
 
-func (w *watchPartyWindow) reportError(err error) {
+func (w *partyWindow) reportError(err error) {
 	if err == nil {
 		return
 	}
@@ -207,11 +207,11 @@ func (w *watchPartyWindow) reportError(err error) {
 	}
 }
 
-func (w *watchPartyWindow) animationsRun() bool {
+func (w *partyWindow) animationsRun() bool {
 	return w.hidden == nil || !w.hidden()
 }
 
-func (w *watchPartyWindow) layout(gtx layout.Context) {
+func (w *partyWindow) layout(gtx layout.Context) {
 	w.drain()
 	if text := w.party.takeClosedNotice(); text != "" {
 		w.roomClosed(text)
@@ -220,7 +220,7 @@ func (w *watchPartyWindow) layout(gtx layout.Context) {
 	w.expireFeedback(gtx)
 
 	snapshot := w.party.Snapshot()
-	if snapshot.Active && snapshot.Role == watchparty.Guest {
+	if snapshot.Active && snapshot.Role == party.Guest {
 		switch {
 		case snapshot.NeedsSecret && w.mode != wpSecret:
 			w.openSecret()
@@ -234,7 +234,7 @@ func (w *watchPartyWindow) layout(gtx layout.Context) {
 		w.mode = wpJoin
 		w.waitSince = time.Time{}
 	}
-	if w.mode == wpWaiting && snapshot.Active && snapshot.Role == watchparty.Guest && !snapshot.NeedsSecret {
+	if w.mode == wpWaiting && snapshot.Active && snapshot.Role == party.Guest && !snapshot.NeedsSecret {
 		w.layoutWaiting(gtx, snapshot)
 		return
 	}
@@ -285,7 +285,7 @@ func (w *watchPartyWindow) layout(gtx layout.Context) {
 }
 
 // layoutCardText draws the shared title and description block.
-func (w *watchPartyWindow) layoutCardText(gtx layout.Context, cardWidth int, px func(float32) int, title, description string) {
+func (w *partyWindow) layoutCardText(gtx layout.Context, cardWidth int, px func(float32) int, title, description string) {
 	w.typo.draw(gtx, title, font.Font{Typeface: fontFamily, Weight: font.Bold}, wpTitleSize, titleColor, image.Pt(px(wpCardPadding), px(wpTitleTop)))
 
 	face := font.Font{Typeface: fontFamily, Weight: font.Normal}
@@ -300,7 +300,7 @@ func (w *watchPartyWindow) layoutCardText(gtx layout.Context, cardWidth int, px 
 	}
 }
 
-func (w *watchPartyWindow) layoutChoice(gtx layout.Context, cardWidth int, px func(float32) int) {
+func (w *partyWindow) layoutChoice(gtx layout.Context, cardWidth int, px func(float32) int) {
 	w.layoutCardText(gtx, cardWidth, px, wpTitleChoice, wpDescChoice)
 
 	gap := px(wpButtonGap)
@@ -333,7 +333,7 @@ func (w *watchPartyWindow) layoutChoice(gtx layout.Context, cardWidth int, px fu
 	}
 }
 
-func (w *watchPartyWindow) layoutCreated(gtx layout.Context, cardWidth int, px func(float32) int, snapshot partySnapshot) {
+func (w *partyWindow) layoutCreated(gtx layout.Context, cardWidth int, px func(float32) int, snapshot partySnapshot) {
 	description := wpDescCreated
 	if snapshot.Locked {
 		description = wpDescLocked
@@ -361,11 +361,11 @@ func (w *watchPartyWindow) layoutCreated(gtx layout.Context, cardWidth int, px f
 
 // layoutSecretChip shows the host secret in a read-only chip. Clicking it
 // copies the formatted value, which is what people paste into a chat.
-func (w *watchPartyWindow) layoutSecretChip(gtx layout.Context, cardWidth int, px func(float32) int, secret string) {
+func (w *partyWindow) layoutSecretChip(gtx layout.Context, cardWidth int, px func(float32) int, secret string) {
 	if secret == "" {
 		return
 	}
-	label := watchparty.FormatSecret(secret)
+	label := party.FormatSecret(secret)
 	face := font.Font{Typeface: fontFamily, Weight: font.SemiBold}
 	_, ink := w.typo.measure(gtx, label, face, wpKeySize)
 	padX := px(14)
@@ -417,7 +417,7 @@ type wpLinkAction struct {
 }
 
 // layoutLinkRow centers a row of small links under the card content.
-func (w *watchPartyWindow) layoutLinkRow(gtx layout.Context, cardWidth int, px func(float32) int, actions []wpLinkAction) {
+func (w *partyWindow) layoutLinkRow(gtx layout.Context, cardWidth int, px func(float32) int, actions []wpLinkAction) {
 	if len(actions) == 0 {
 		return
 	}
@@ -469,7 +469,7 @@ func (w *watchPartyWindow) layoutLinkRow(gtx layout.Context, cardWidth int, px f
 	}
 }
 
-func (w *watchPartyWindow) deleteRoom() {
+func (w *partyWindow) deleteRoom() {
 	w.party.Delete()
 	w.mode = wpChoice
 	w.errorText = ""
@@ -479,7 +479,7 @@ func (w *watchPartyWindow) deleteRoom() {
 	}
 }
 
-func (w *watchPartyWindow) layoutSecret(gtx layout.Context, cardWidth int, px func(float32) int) {
+func (w *partyWindow) layoutSecret(gtx layout.Context, cardWidth int, px func(float32) int) {
 	w.layoutCardText(gtx, cardWidth, px, wpTitleSecret, wpDescSecret)
 
 	if w.focusSecret {
@@ -503,7 +503,7 @@ func (w *watchPartyWindow) layoutSecret(gtx layout.Context, cardWidth int, px fu
 	})
 }
 
-func (w *watchPartyWindow) lockRoom() {
+func (w *partyWindow) lockRoom() {
 	if w.busy {
 		return
 	}
@@ -519,7 +519,7 @@ func (w *watchPartyWindow) lockRoom() {
 	}()
 }
 
-func (w *watchPartyWindow) unlockRoom() {
+func (w *partyWindow) unlockRoom() {
 	if w.busy {
 		return
 	}
@@ -535,7 +535,7 @@ func (w *watchPartyWindow) unlockRoom() {
 	}()
 }
 
-func (w *watchPartyWindow) submitSecret() {
+func (w *partyWindow) submitSecret() {
 	if w.busy {
 		return
 	}
@@ -544,7 +544,7 @@ func (w *watchPartyWindow) submitSecret() {
 		w.failSecret("Введите секрет комнаты")
 		return
 	}
-	secret, err := watchparty.NormalizeSecret(raw)
+	secret, err := party.NormalizeSecret(raw)
 	if err != nil || secret == "" {
 		w.failSecret("Секрет — 10 символов из букв и цифр")
 		return
@@ -560,7 +560,7 @@ func (w *watchPartyWindow) submitSecret() {
 	}()
 }
 
-func (w *watchPartyWindow) failSecret(text string) {
+func (w *partyWindow) failSecret(text string) {
 	w.reportText(text)
 	w.errorAt = time.Now()
 	w.joinFeedback = true
@@ -573,7 +573,7 @@ func (w *watchPartyWindow) failSecret(text string) {
 
 // openSecret switches to the secret form after the host locked the room under
 // an already joined guest.
-func (w *watchPartyWindow) openSecret() {
+func (w *partyWindow) openSecret() {
 	w.mode = wpSecret
 	w.waitSince = time.Time{}
 	w.focusSecret = true
@@ -583,7 +583,7 @@ func (w *watchPartyWindow) openSecret() {
 	w.joinFeedback = true
 }
 
-func (w *watchPartyWindow) layoutJoin(gtx layout.Context, cardWidth int, px func(float32) int) {
+func (w *partyWindow) layoutJoin(gtx layout.Context, cardWidth int, px func(float32) int) {
 	w.layoutCardText(gtx, cardWidth, px, wpTitleJoin, wpDescJoin)
 
 	if w.focusField {
@@ -607,7 +607,7 @@ func (w *watchPartyWindow) layoutJoin(gtx layout.Context, cardWidth int, px func
 
 // shakeRunning keeps animation frames coming for the whole shake, including
 // its very first frame when the sine offset is still zero.
-func (w *watchPartyWindow) shakeRunning(now time.Time) bool {
+func (w *partyWindow) shakeRunning(now time.Time) bool {
 	if w.errorAt.IsZero() {
 		return false
 	}
@@ -617,12 +617,12 @@ func (w *watchPartyWindow) shakeRunning(now time.Time) bool {
 
 // layoutKeyField draws the room-key field. The value is editable on the join
 // form and read-only on the created card.
-func (w *watchPartyWindow) layoutKeyField(gtx layout.Context, rect image.Rectangle, value string, editable, errored bool, shake float32) bool {
+func (w *partyWindow) layoutKeyField(gtx layout.Context, rect image.Rectangle, value string, editable, errored bool, shake float32) bool {
 	return w.layoutRoomField(gtx, rect, &w.editor, value, editable, errored, shake, w.busy && w.mode == wpJoin)
 }
 
 // layoutSecretField draws the secret field on the locked-room screen.
-func (w *watchPartyWindow) layoutSecretField(gtx layout.Context, rect image.Rectangle, errored bool, shake float32) bool {
+func (w *partyWindow) layoutSecretField(gtx layout.Context, rect image.Rectangle, errored bool, shake float32) bool {
 	return w.layoutRoomField(gtx, rect, &w.secretEditor, w.secretEditor.Text(), true, errored, shake, w.busy && w.mode == wpSecret)
 }
 
@@ -630,7 +630,7 @@ func (w *watchPartyWindow) layoutSecretField(gtx layout.Context, rect image.Rect
 // on its right. editor hosts the editable text; view is the text shown and
 // copied in the read-only case. spinner replaces the submit chevron while a
 // background check runs.
-func (w *watchPartyWindow) layoutRoomField(gtx layout.Context, rect image.Rectangle, editor *widget.Editor, view string, editable, errored bool, shake float32, spinner bool) bool {
+func (w *partyWindow) layoutRoomField(gtx layout.Context, rect image.Rectangle, editor *widget.Editor, view string, editable, errored bool, shake float32, spinner bool) bool {
 	radius := gtx.Dp(mainInputRadius)
 	border := mainInputBorder
 	if editable && gtx.Focused(editor) {
@@ -665,7 +665,7 @@ func (w *watchPartyWindow) layoutRoomField(gtx layout.Context, rect image.Rectan
 		if editable {
 			submitted = w.layoutRoomEditor(gtx, textRect, editor)
 		} else {
-			w.layoutKeyViewer(gtx, textRect, watchparty.NormalizeDisplay(view))
+			w.layoutKeyViewer(gtx, textRect, party.NormalizeDisplay(view))
 		}
 	}
 
@@ -720,7 +720,7 @@ func (w *watchPartyWindow) layoutRoomField(gtx layout.Context, rect image.Rectan
 	if !clicked {
 		return false
 	}
-	key := watchparty.NormalizeDisplay(view)
+	key := party.NormalizeDisplay(view)
 	if key == "" {
 		return false
 	}
@@ -734,7 +734,7 @@ func (w *watchPartyWindow) layoutRoomField(gtx layout.Context, rect image.Rectan
 // layoutRoomEditor draws an editable field and reports whether Enter was
 // pressed. Editor.Layout drains its events internally, so SubmitEvent has to be
 // collected with a separate Update pass before the layout.
-func (w *watchPartyWindow) layoutRoomEditor(gtx layout.Context, rect image.Rectangle, editor *widget.Editor) bool {
+func (w *partyWindow) layoutRoomEditor(gtx layout.Context, rect image.Rectangle, editor *widget.Editor) bool {
 	w.syncEditor(editor)
 	submitted := false
 	for {
@@ -765,11 +765,11 @@ func (w *watchPartyWindow) layoutRoomEditor(gtx layout.Context, rect image.Recta
 // syncEditor keeps an input field in its canonical form: the join field holds a
 // room key, the secret field a ten-symbol secret. The caret is restored so
 // typing feels normal.
-func (w *watchPartyWindow) syncEditor(editor *widget.Editor) {
+func (w *partyWindow) syncEditor(editor *widget.Editor) {
 	text := editor.Text()
-	cleaned := watchparty.SanitizeKeyInput(text)
+	cleaned := party.SanitizeKeyInput(text)
 	if editor == &w.secretEditor {
-		cleaned = watchparty.SanitizeSecretInput(text)
+		cleaned = party.SanitizeSecretInput(text)
 	}
 	if cleaned == text {
 		return
@@ -793,7 +793,7 @@ func (w *watchPartyWindow) syncEditor(editor *widget.Editor) {
 // layoutKeyViewer shows the created room key in a read-only editor. The key is
 // selected as soon as the card opens and the editor keeps keyboard focus, so
 // Ctrl+C copies it immediately; clicking the field also works for mouse users.
-func (w *watchPartyWindow) layoutKeyViewer(gtx layout.Context, rect image.Rectangle, roomKey string) {
+func (w *partyWindow) layoutKeyViewer(gtx layout.Context, rect image.Rectangle, roomKey string) {
 	if roomKey == "" {
 		return
 	}
@@ -820,7 +820,7 @@ func (w *watchPartyWindow) layoutKeyViewer(gtx layout.Context, rect image.Rectan
 	stack.Pop()
 }
 
-func (w *watchPartyWindow) drawRoundButton(gtx layout.Context, size image.Point, hovered, errored bool, draw func(layout.Context, image.Point)) {
+func (w *partyWindow) drawRoundButton(gtx layout.Context, size image.Point, hovered, errored bool, draw func(layout.Context, image.Point)) {
 	rect := image.Rectangle{Max: size}
 	if rect.Empty() {
 		return
@@ -840,7 +840,7 @@ func (w *watchPartyWindow) drawRoundButton(gtx layout.Context, size image.Point,
 	}
 }
 
-func (w *watchPartyWindow) layoutActionButton(gtx layout.Context, rect image.Rectangle, click *widget.Clickable, label string, errored bool, shake float32) bool {
+func (w *partyWindow) layoutActionButton(gtx layout.Context, rect image.Rectangle, click *widget.Clickable, label string, errored bool, shake float32) bool {
 	if rect.Empty() {
 		return false
 	}
@@ -860,7 +860,7 @@ func (w *watchPartyWindow) layoutActionButton(gtx layout.Context, rect image.Rec
 	return clicked
 }
 
-func (w *watchPartyWindow) drawActionButton(gtx layout.Context, size image.Point, hovered bool, label string, errored bool, shake float32) {
+func (w *partyWindow) drawActionButton(gtx layout.Context, size image.Point, hovered bool, label string, errored bool, shake float32) {
 	rect := image.Rectangle{Max: size}
 	radius := size.Y / 2
 	face := font.Font{Typeface: fontFamily, Weight: font.SemiBold}
@@ -896,7 +896,7 @@ func waitingTimedOut(now, since time.Time, snapshot partySnapshot) bool {
 	return now.Sub(since) > wpWaitTimeout
 }
 
-func (w *watchPartyWindow) layoutWaiting(gtx layout.Context, snapshot partySnapshot) {
+func (w *partyWindow) layoutWaiting(gtx layout.Context, snapshot partySnapshot) {
 	if w.waitSince.IsZero() {
 		w.waitSince = gtx.Now
 	}
@@ -907,7 +907,7 @@ func (w *watchPartyWindow) layoutWaiting(gtx layout.Context, snapshot partySnaps
 		w.party.Delete()
 		w.mode = wpJoin
 		w.waitSince = time.Time{}
-		w.failJoin(watchparty.ErrRoomNotFound.Error())
+		w.failJoin(party.ErrRoomNotFound.Error())
 		return
 	}
 
@@ -950,7 +950,7 @@ func (w *watchPartyWindow) layoutWaiting(gtx layout.Context, snapshot partySnaps
 // layoutLeaveLink paints a small link under the waiting text. It closes the
 // guest's room instead of merely hiding the card, which is what "Вернуться"
 // does, so a host that never starts a title cannot keep the guest trapped.
-func (w *watchPartyWindow) layoutLeaveLink(gtx layout.Context, centerX, bottom int, notice bool, face font.Font) {
+func (w *partyWindow) layoutLeaveLink(gtx layout.Context, centerX, bottom int, notice bool, face font.Font) {
 	const label = "Выйти"
 	_, ink := w.typo.measure(gtx, label, face, wpWaitHintSize)
 	linkWidth := ink.Dx() + gtx.Dp(unit.Dp(20))
@@ -1000,7 +1000,7 @@ func (w *watchPartyWindow) layoutLeaveLink(gtx layout.Context, centerX, bottom i
 	w.window.Invalidate()
 }
 
-func (w *watchPartyWindow) layoutFooter(gtx layout.Context) {
+func (w *partyWindow) layoutFooter(gtx layout.Context) {
 	size := gtx.Constraints.Max
 	if size.X <= 0 || size.Y <= 0 {
 		return
@@ -1062,7 +1062,7 @@ func (w *watchPartyWindow) layoutFooter(gtx layout.Context) {
 	}
 }
 
-func (w *watchPartyWindow) handleEscape(gtx layout.Context) {
+func (w *partyWindow) handleEscape(gtx layout.Context) {
 	for {
 		ev, ok := gtx.Event(key.Filter{Name: key.NameEscape})
 		if !ok {
@@ -1079,7 +1079,7 @@ func (w *watchPartyWindow) handleEscape(gtx layout.Context) {
 	}
 }
 
-func (w *watchPartyWindow) expireFeedback(gtx layout.Context) {
+func (w *partyWindow) expireFeedback(gtx layout.Context) {
 	if w.errorAt.IsZero() {
 		return
 	}
@@ -1093,7 +1093,7 @@ func (w *watchPartyWindow) expireFeedback(gtx layout.Context) {
 	}
 }
 
-func (w *watchPartyWindow) drain() {
+func (w *partyWindow) drain() {
 	for {
 		select {
 		case result := <-w.results:
@@ -1107,7 +1107,7 @@ func (w *watchPartyWindow) drain() {
 	}
 }
 
-func (w *watchPartyWindow) handleResult(result partyResult) {
+func (w *partyWindow) handleResult(result partyResult) {
 	w.busy = false
 	if result.err != nil {
 		switch result.kind {
@@ -1138,7 +1138,7 @@ func (w *watchPartyWindow) handleResult(result partyResult) {
 	}
 }
 
-func (w *watchPartyWindow) create() {
+func (w *partyWindow) create() {
 	if w.busy {
 		return
 	}
@@ -1159,13 +1159,13 @@ func (w *watchPartyWindow) create() {
 
 // enterWaiting starts a fresh wait, either after a join or when the card is
 // reopened for a room that is still active. Every opening gets a random hat.
-func (w *watchPartyWindow) enterWaiting() {
+func (w *partyWindow) enterWaiting() {
 	w.mode = wpWaiting
 	w.waitSince = time.Now()
 	w.waitHat = nextMascotHat()
 }
 
-func (w *watchPartyWindow) openJoin() {
+func (w *partyWindow) openJoin() {
 	w.mode = wpJoin
 	w.waitSince = time.Time{}
 	w.errorText = ""
@@ -1177,7 +1177,7 @@ func (w *watchPartyWindow) openJoin() {
 	w.window.Invalidate()
 }
 
-func (w *watchPartyWindow) join() {
+func (w *partyWindow) join() {
 	if w.busy {
 		return
 	}
@@ -1186,7 +1186,7 @@ func (w *watchPartyWindow) join() {
 		w.failJoin("Введите ключ комнаты")
 		return
 	}
-	key, err := watchparty.NormalizeKey(raw)
+	key, err := party.NormalizeKey(raw)
 	if err != nil {
 		w.failJoin("Ключ — 9 символов из букв и цифр, начинается с YO")
 		return
@@ -1202,7 +1202,7 @@ func (w *watchPartyWindow) join() {
 	}()
 }
 
-func (w *watchPartyWindow) failJoin(text string) {
+func (w *partyWindow) failJoin(text string) {
 	w.reportText(text)
 	w.errorAt = time.Now()
 	w.joinFeedback = true
@@ -1216,7 +1216,7 @@ func (w *watchPartyWindow) failJoin(text string) {
 // roomClosed returns the screen to the join form with an explanation. The room
 // is already gone by the time this runs, so the waiting layout would otherwise
 // fall through to a silent join form.
-func (w *watchPartyWindow) roomClosed(text string) {
+func (w *partyWindow) roomClosed(text string) {
 	w.mode = wpJoin
 	w.waitSince = time.Time{}
 	w.busy = false

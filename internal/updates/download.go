@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arfush/yonime/internal/logging"
+	"github.com/arfush/yonime/log"
 )
 
 const downloadBufferSize = 64 << 10
@@ -41,7 +41,7 @@ func Download(ctx context.Context, client *http.Client, release Release, destina
 	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 		return "", fmt.Errorf("create update directory: %w", err)
 	}
-	logging.Info("downloading update", "version", release.Version, "size", release.Size)
+	log.Info("downloading update", "version", release.Version, "size", release.Size)
 
 	temporary := destination + ".part"
 	_ = os.Remove(temporary)
@@ -149,7 +149,7 @@ func Download(ctx context.Context, client *http.Client, release Release, destina
 		return "", fmt.Errorf("finish update download: %w", err)
 	}
 	committed = true
-	logging.Info("update downloaded and verified", "version", release.Version, "path", destination)
+	log.Info("update downloaded and verified", "version", release.Version, "path", destination)
 	if report != nil {
 		report(release.Size, release.Size)
 	}

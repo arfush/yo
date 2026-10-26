@@ -12,7 +12,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/arfush/yonime/internal/logging"
+	"github.com/arfush/yonime/log"
 )
 
 // defaultUserStatus is the schema default ("В планах"). Removing a title from
@@ -143,44 +143,44 @@ type Store struct {
 // Open creates the database (and its directory) if needed.
 func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		logging.Error("cannot create database directory", "path", filepath.Dir(path), "error", err)
+		log.Error("cannot create database directory", "path", filepath.Dir(path), "error", err)
 		return nil, err
 	}
 	dsn := path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
-		logging.Error("cannot open database", "path", path, "error", err)
+		log.Error("cannot open database", "path", path, "error", err)
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
 	if err := db.Ping(); err != nil {
 		db.Close()
-		logging.Error("database ping failed", "path", path, "error", err)
+		log.Error("database ping failed", "path", path, "error", err)
 		return nil, err
 	}
 	if _, err := db.Exec(schemaSQL); err != nil {
 		db.Close()
-		logging.Error("cannot create database schema", "path", path, "error", err)
+		log.Error("cannot create database schema", "path", path, "error", err)
 		return nil, err
 	}
 	// The first build stored no episode totals. Adding the column in place
 	// keeps an existing database usable without a migration framework.
 	if err := ensureTitleColumns(db); err != nil {
 		db.Close()
-		logging.Error("cannot migrate database schema", "path", path, "error", err)
+		log.Error("cannot migrate database schema", "path", path, "error", err)
 		return nil, err
 	}
 	if err := ensureHistoryColumns(db); err != nil {
 		db.Close()
-		logging.Error("cannot migrate history schema", "path", path, "error", err)
+		log.Error("cannot migrate history schema", "path", path, "error", err)
 		return nil, err
 	}
 	if err := normalizeOrphanUserStatuses(db); err != nil {
 		db.Close()
-		logging.Error("cannot clear orphan user statuses", "path", path, "error", err)
+		log.Error("cannot clear orphan user statuses", "path", path, "error", err)
 		return nil, err
 	}
-	logging.Info("database opened", "path", path)
+	log.Info("database opened", "path", path)
 	return &Store{db: db}, nil
 }
 
@@ -196,7 +196,7 @@ func normalizeOrphanUserStatuses(db *sql.DB) error {
 		return err
 	}
 	if changed, err := result.RowsAffected(); err == nil && changed > 0 {
-		logging.Info("cleared orphan user statuses", "count", changed)
+		log.Info("cleared orphan user statuses", "count", changed)
 	}
 	return nil
 }
@@ -228,13 +228,13 @@ func ensureTitleColumns(db *sql.DB) error {
 		return err
 	}
 	if !columns["episodes_total"] {
-		logging.Info("migrating database: adding episodes_total")
+		log.Info("migrating database: adding episodes_total")
 		if _, err := db.Exec("ALTER TABLE titles ADD COLUMN episodes_total INTEGER NOT NULL DEFAULT 0"); err != nil {
 			return err
 		}
 	}
 	if !columns["is_movie"] {
-		logging.Info("migrating database: adding is_movie")
+		log.Info("migrating database: adding is_movie")
 		if _, err := db.Exec("ALTER TABLE titles ADD COLUMN is_movie INTEGER NOT NULL DEFAULT 0"); err != nil {
 			return err
 		}
@@ -242,7 +242,7 @@ func ensureTitleColumns(db *sql.DB) error {
 	if !columns["user_status"] {
 		// Existing libraries start in "В планах"; the user can change it from
 		// the history row or the title page.
-		logging.Info("migrating database: adding user_status")
+		log.Info("migrating database: adding user_status")
 		if _, err := db.Exec("ALTER TABLE titles ADD COLUMN user_status INTEGER NOT NULL DEFAULT 2"); err != nil {
 			return err
 		}
@@ -279,7 +279,7 @@ func ensureHistoryColumns(db *sql.DB) error {
 		return err
 	}
 	if !columns["status_order"] {
-		logging.Info("migrating database: adding status_order")
+		log.Info("migrating database: adding status_order")
 		if _, err := db.Exec("ALTER TABLE history ADD COLUMN status_order INTEGER NOT NULL DEFAULT 0"); err != nil {
 			return err
 		}
@@ -653,11 +653,11 @@ func (s *Store) UpdateTitleStatus(tid int64, status int) error {
 func (s *Store) SetUserStatus(tid int64, status int) error {
 	changed, err := s.setUserStatus(tid, status, 0, false)
 	if err != nil {
-		logging.Error("cannot save user status", "title", tid, "status", status, "error", err)
+		log.Error("cannot save user status", "title", tid, "status", status, "error", err)
 		return err
 	}
 	if changed {
-		logging.Info("user status saved", "title", tid, "status", status)
+		log.Info("user status saved", "title", tid, "status", status)
 	}
 	return nil
 }
@@ -866,9 +866,9 @@ func (s *Store) SetAutoSkipSegment(segment string, enabled bool) error {
 	return s.setBoolSetting("autoskip_"+segment, enabled)
 }
 
-// WatchPartyProvider returns the relay the user picked for new rooms. An empty
+// PartyProvider returns the relay the user picked for new rooms. An empty
 // string means the user never picked one and the first configured relay wins.
-func (s *Store) WatchPartyProvider() string {
+func (s *Store) PartyProvider() string {
 	var value string
 	if err := s.db.QueryRow("SELECT value FROM settings WHERE key = 'party_provider'").Scan(&value); err != nil {
 		return ""
@@ -876,8 +876,8 @@ func (s *Store) WatchPartyProvider() string {
 	return value
 }
 
-// SetWatchPartyProvider remembers the relay chosen in the settings.
-func (s *Store) SetWatchPartyProvider(provider string) error {
+// SetPartyProvider remembers the relay chosen in the settings.
+func (s *Store) SetPartyProvider(provider string) error {
 	_, err := s.db.Exec(`
         INSERT INTO settings (key, value) VALUES ('party_provider', ?)
         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
@@ -885,9 +885,9 @@ func (s *Store) SetWatchPartyProvider(provider string) error {
 	return err
 }
 
-// WatchPartyName returns the nickname shown in watch-party rooms. An empty
+// PartyName returns the nickname shown in watch-party rooms. An empty
 // string means the user never picked one and the UI generates a default.
-func (s *Store) WatchPartyName() string {
+func (s *Store) PartyName() string {
 	var value string
 	if err := s.db.QueryRow("SELECT value FROM settings WHERE key = 'party_name'").Scan(&value); err != nil {
 		return ""
@@ -895,8 +895,8 @@ func (s *Store) WatchPartyName() string {
 	return value
 }
 
-// SetWatchPartyName remembers the nickname used in watch-party rooms.
-func (s *Store) SetWatchPartyName(name string) error {
+// SetPartyName remembers the nickname used in watch-party rooms.
+func (s *Store) SetPartyName(name string) error {
 	_, err := s.db.Exec(`
         INSERT INTO settings (key, value) VALUES ('party_name', ?)
         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,

@@ -1,7 +1,7 @@
-// Package watchparty keeps a room of Yonime clients on the same playback
+// Package party keeps a room of Yonime clients on the same playback
 // position. A room lives on a relay the user deploys themselves; this package
 // only speaks the wire protocol and the drift correction math.
-package watchparty
+package party
 
 import (
 	"crypto/rand"

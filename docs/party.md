@@ -317,9 +317,9 @@ Supabase удобен как резерв или собственный прое
 
 | Переменная | Символ в ldflags |
 | ---------- | ---------------- |
-| `WATCHPARTY_CLOUDFLARE_URL` | `watchparty.CloudflareURL` |
-| `WATCHPARTY_SUPABASE_URL` | `watchparty.SupabaseURL` |
-| `WATCHPARTY_SUPABASE_KEY` | `watchparty.SupabaseKey` |
+| `WATCHPARTY_CLOUDFLARE_URL` | `party.CloudflareURL` |
+| `WATCHPARTY_SUPABASE_URL` | `party.SupabaseURL` |
+| `WATCHPARTY_SUPABASE_KEY` | `party.SupabaseKey` |
 
 `build.ps1` подставляет всё, что нашёл в окружении, а релизный workflow —
 значения одноимённых repository variables. Если переменных нет, значения

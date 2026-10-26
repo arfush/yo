@@ -63,7 +63,7 @@ func friendlyError(err error) string {
 	case strings.Contains(message, "kodik"):
 		return "Не удалось получить видео с Kodik. Попробуйте другую озвучку."
 	case strings.Contains(message, "комнат"), strings.Contains(message, "реле"),
-		strings.Contains(message, "watchparty"), strings.Contains(message, "websocket"):
+		strings.Contains(message, "party"), strings.Contains(message, "websocket"):
 		return "Не удалось подключиться к комнате совместного просмотра."
 	case strings.Contains(message, "обновлен"), strings.Contains(message, "release"),
 		strings.Contains(message, "update"):

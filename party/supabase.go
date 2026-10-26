@@ -1,4 +1,4 @@
-package watchparty
+package party
 
 import (
 	"context"

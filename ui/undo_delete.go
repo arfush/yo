@@ -15,7 +15,7 @@ import (
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
 
-	"github.com/arfush/yonime/internal/logging"
+	"github.com/arfush/yonime/log"
 )
 
 // undoDeleteDuration is how long a removed title can be brought back before it
@@ -148,7 +148,7 @@ func (m *mainWindow) queueHistoryDelete(index int, now time.Time) bool {
 	m.ensureAllHistory()
 
 	item := m.history[index]
-	logging.Info("history row queued for deletion", "title", item.id, "name", item.title)
+	log.Info("history row queued for deletion", "title", item.id, "name", item.title)
 	pending := pendingHistoryDelete{item: item}
 	if allIndex := historyIndexByID(m.allHistory, item.id); allIndex >= 0 {
 		if allIndex > 0 {
@@ -187,7 +187,7 @@ func (m *mainWindow) queueClearHistory(now time.Time) bool {
 		return false
 	}
 
-	logging.Info("clearing history", "count", len(m.allHistory))
+	log.Info("clearing history", "count", len(m.allHistory))
 	pending := make([]pendingHistoryDelete, 0, len(m.allHistory))
 	for index := range m.allHistory {
 		item := pendingHistoryDelete{item: m.allHistory[index]}
@@ -244,7 +244,7 @@ func (m *mainWindow) undoHistoryDelete() {
 		at := m.restoreIndex(item)
 		m.allHistory = insertHistoryTitle(m.allHistory, at, item.item)
 	}
-	logging.Info("history deletion undone", "count", len(pending))
+	log.Info("history deletion undone", "count", len(pending))
 	m.applyFilter()
 	m.loadError = ""
 	m.persistHistoryOrder()

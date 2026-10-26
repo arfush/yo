@@ -25,7 +25,7 @@ import (
 
 	playwright "github.com/mxschmitt/playwright-go"
 
-	"github.com/arfush/yonime/internal/logging"
+	"github.com/arfush/yonime/log"
 )
 
 // removeChromiumOnExit is a development aid: it makes every application start
@@ -118,7 +118,7 @@ func (m *Manager) Download(ctx context.Context, onProgress func(Progress)) error
 	if onProgress == nil {
 		onProgress = func(Progress) {}
 	}
-	logging.Info("Chromium installation started")
+	log.Info("Chromium installation started")
 
 	ctx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
@@ -157,7 +157,7 @@ func (m *Manager) Download(ctx context.Context, onProgress func(Progress)) error
 		return err
 	}
 	if m.Installed() {
-		logging.Info("Chromium is already installed")
+		log.Info("Chromium is already installed")
 		onProgress(Progress{Percent: 100})
 		return nil
 	}
@@ -228,10 +228,10 @@ func (m *Manager) Download(ctx context.Context, onProgress func(Progress)) error
 
 	if waitErr != nil {
 		if ctx.Err() != nil {
-			logging.Info("Chromium installation cancelled")
+			log.Info("Chromium installation cancelled")
 			return ctx.Err()
 		}
-		logging.Error("Chromium installation failed", "error", waitErr)
+		log.Error("Chromium installation failed", "error", waitErr)
 		detail := stripANSI(strings.TrimSpace(stderr.String()))
 		if useful := usefulOutput(stdout.String()); useful != "" {
 			if detail != "" {
@@ -249,7 +249,7 @@ func (m *Manager) Download(ctx context.Context, onProgress func(Progress)) error
 	}
 
 	tracker.finish()
-	logging.Info("Chromium installation finished")
+	log.Info("Chromium installation finished")
 	return nil
 }
 

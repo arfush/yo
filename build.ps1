@@ -54,27 +54,27 @@ if ($env:YONIME_DISCORD_APP_ID) {
 # Watch-party relays are deployed once and baked into the official build so the
 # shipped exe needs no watchparty.json. Environment variables win; the rest comes
 # from watchplay.json in the repository root. That file is never written here.
-$watchPartyFile = Join-Path $PSScriptRoot "watchplay.json"
-$watchPartyDefaults = $null
-if (Test-Path $watchPartyFile) {
+$partyFile = Join-Path $PSScriptRoot "watchplay.json"
+$partyDefaults = $null
+if (Test-Path $partyFile) {
     try {
-        $watchPartyDefaults = Get-Content -Raw -Path $watchPartyFile | ConvertFrom-Json
+        $partyDefaults = Get-Content -Raw -Path $partyFile | ConvertFrom-Json
     } catch {
         Write-Warning "watchplay.json: $($_.Exception.Message)"
     }
 }
 
-$watchPartyFlags = @(
+$partyFlags = @(
     @{ Env = "WATCHPARTY_CLOUDFLARE_URL"; Field = "cloudflare_url"; Symbol = "CloudflareURL" },
     @{ Env = "WATCHPARTY_SUPABASE_URL"; Field = "supabase_url"; Symbol = "SupabaseURL" },
     @{ Env = "WATCHPARTY_SUPABASE_KEY"; Field = "supabase_key"; Symbol = "SupabaseKey" }
 )
-$watchPartyBaked = @()
-foreach ($flag in $watchPartyFlags) {
+$partyBaked = @()
+foreach ($flag in $partyFlags) {
     $value = [Environment]::GetEnvironmentVariable($flag.Env)
     $source = $flag.Env
-    if (-not $value -and $watchPartyDefaults) {
-        $value = $watchPartyDefaults.$($flag.Field)
+    if (-not $value -and $partyDefaults) {
+        $value = $partyDefaults.$($flag.Field)
         $source = "watchplay.json"
     }
     if (-not $value) {
@@ -87,14 +87,14 @@ foreach ($flag in $watchPartyFlags) {
     # The repository file ships placeholders; baking one would give users a dead
     # relay that reports "room not found" instead of "not configured".
     if ($value -match 'example\.|abcdefghijkl|\.\.\.$') {
-        Write-Warning "watchparty: $($flag.Field) is still the watchplay.json example, skip it"
+        Write-Warning "party: $($flag.Field) is still the watchplay.json example, skip it"
         continue
     }
-    $ldflags += " -X github.com/arfush/yonime/internal/watchparty.$($flag.Symbol)=$value"
-    $watchPartyBaked += "$($flag.Field) ($source)"
+    $ldflags += " -X github.com/arfush/yonime/party.$($flag.Symbol)=$value"
+    $partyBaked += "$($flag.Field) ($source)"
 }
-if ($watchPartyBaked.Count -gt 0) {
-    Write-Host ("Watchparty relay: " + ($watchPartyBaked -join ", "))
+if ($partyBaked.Count -gt 0) {
+    Write-Host ("Party relay: " + ($partyBaked -join ", "))
 }
 
 $env:CGO_ENABLED = "0"

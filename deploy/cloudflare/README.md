@@ -52,7 +52,7 @@ curl https://yonime-watchparty.<ваш-аккаунт>.workers.dev/health
      GitHub **Settings → Secrets and variables → Actions → Variables**);
    - или `cloudflare_url` в `watchplay.json` в корне репозитория.
 4. Собрать релиз (`release: vX.Y`). `build.ps1` передаёт значение в
-   `-ldflags -X watchparty.CloudflareURL`, поэтому все три архитектуры выйдут с
+   `-ldflags -X party.CloudflareURL`, поэтому все три архитектуры выйдут с
    уже подключённым реле.
 
 Переменная окружения важнее файла: если она задана, `watchplay.json` не
@@ -89,7 +89,7 @@ Cloudflare Endpoint**. То же самое можно сделать файло
 Вшить адрес вручную тоже можно:
 
 ```bash
-go build -ldflags "-X github.com/arfush/yonime/internal/watchparty.CloudflareURL=https://yonime-watchparty.example.workers.dev" ./cmd/yonime
+go build -ldflags "-X github.com/arfush/yonime/party.CloudflareURL=https://yonime-watchparty.example.workers.dev" ./cmd/yonime
 ```
 
 ## Что внутри

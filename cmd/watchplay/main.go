@@ -25,7 +25,7 @@ import (
 	"github.com/arfush/yonime/internal/browser"
 	"github.com/arfush/yonime/internal/library"
 	"github.com/arfush/yonime/internal/playback"
-	"github.com/arfush/yonime/internal/watchparty"
+	"github.com/arfush/yonime/party"
 )
 
 const (
@@ -89,12 +89,12 @@ func usage() {
 	flag.PrintDefaults()
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Реле берётся из watchplay.json рядом с программой, из")
-	fmt.Fprintf(out, "%s\n", watchpartyConfigHint())
+	fmt.Fprintf(out, "%s\n", partyConfigHint())
 	fmt.Fprintln(out, "или из адресов, вшитых при сборке.")
 }
 
-func watchpartyConfigHint() string {
-	if path, err := appdata.WatchPartyConfigPath(); err == nil {
+func partyConfigHint() string {
+	if path, err := appdata.PartyConfigPath(); err == nil {
 		return path
 	}
 	return "%APPDATA%\\Yonime\\watchparty.json"
@@ -140,12 +140,12 @@ func run(ctx context.Context, providerFlag string, args []string) error {
 	if err != nil {
 		return err
 	}
-	var provider watchparty.Provider
+	var provider party.Provider
 	if cmd.name == "create" {
 		provider, err = chooseProvider(cfg, providerFlag)
 	} else {
 		// The host's key names the relay; --provider is a create-only flag.
-		provider, err = watchparty.ProviderFromKey(cmd.args[0])
+		provider, err = party.ProviderFromKey(cmd.args[0])
 	}
 	if err != nil {
 		return err
@@ -185,9 +185,9 @@ func run(ctx context.Context, providerFlag string, args []string) error {
 
 // loadConfig reads the relay settings the same way the UI does, with one extra
 // fallback: a watchplay.json next to the binary or in the working directory.
-func loadConfig() (watchparty.Config, string, error) {
-	if path, err := appdata.WatchPartyConfigPath(); err == nil {
-		cfg := cleanConfig(watchparty.LoadConfig(path))
+func loadConfig() (party.Config, string, error) {
+	if path, err := appdata.PartyConfigPath(); err == nil {
+		cfg := cleanConfig(party.LoadConfig(path))
 		if usable(cfg) {
 			return cfg, path, nil
 		}
@@ -196,7 +196,7 @@ func loadConfig() (watchparty.Config, string, error) {
 		if _, err := os.Stat(path); err != nil {
 			continue
 		}
-		cfg := cleanConfig(watchparty.LoadConfig(path))
+		cfg := cleanConfig(party.LoadConfig(path))
 		if usable(cfg) {
 			if absolute, err := filepath.Abs(path); err == nil {
 				return cfg, absolute, nil
@@ -204,7 +204,7 @@ func loadConfig() (watchparty.Config, string, error) {
 			return cfg, path, nil
 		}
 	}
-	return watchparty.Config{}, "", errors.New("реле не настроено: заполните watchplay.json своим адресом")
+	return party.Config{}, "", errors.New("реле не настроено: заполните watchplay.json своим адресом")
 }
 
 func configCandidates() []string {
@@ -215,14 +215,14 @@ func configCandidates() []string {
 	return paths
 }
 
-func usable(cfg watchparty.Config) bool {
-	return cfg.Configured(watchparty.Cloudflare) || cfg.Configured(watchparty.Supabase)
+func usable(cfg party.Config) bool {
+	return cfg.Configured(party.Cloudflare) || cfg.Configured(party.Supabase)
 }
 
 // cleanConfig drops the placeholders shipped in the repository file. Without
 // this a plain source build would pretend to have a relay and fail at connect
 // time with a confusing message.
-func cleanConfig(cfg watchparty.Config) watchparty.Config {
+func cleanConfig(cfg party.Config) party.Config {
 	if isPlaceholder(cfg.CloudflareURL) {
 		cfg.CloudflareURL = ""
 	}
@@ -242,26 +242,26 @@ func isPlaceholder(value string) bool {
 		strings.HasSuffix(value, "...")
 }
 
-func chooseProvider(cfg watchparty.Config, wanted string) (watchparty.Provider, error) {
+func chooseProvider(cfg party.Config, wanted string) (party.Provider, error) {
 	switch strings.ToLower(strings.TrimSpace(wanted)) {
 	case "":
-		if cfg.Configured(watchparty.Cloudflare) {
-			return watchparty.Cloudflare, nil
+		if cfg.Configured(party.Cloudflare) {
+			return party.Cloudflare, nil
 		}
-		if cfg.Configured(watchparty.Supabase) {
-			return watchparty.Supabase, nil
+		if cfg.Configured(party.Supabase) {
+			return party.Supabase, nil
 		}
 		return "", errors.New("реле не настроено")
 	case "cloudflare":
-		if !cfg.Configured(watchparty.Cloudflare) {
+		if !cfg.Configured(party.Cloudflare) {
 			return "", errors.New("Cloudflare не настроен")
 		}
-		return watchparty.Cloudflare, nil
+		return party.Cloudflare, nil
 	case "supabase":
-		if !cfg.Configured(watchparty.Supabase) {
+		if !cfg.Configured(party.Supabase) {
 			return "", errors.New("Supabase не настроен")
 		}
-		return watchparty.Supabase, nil
+		return party.Supabase, nil
 	}
 	return "", fmt.Errorf("неизвестное реле %q: используйте cloudflare или supabase", wanted)
 }
@@ -283,7 +283,7 @@ type app struct {
 	session  *playback.Session
 	meta     mediaMeta
 	starting bool
-	done     watchparty.State
+	done     party.State
 	doneAt   time.Time
 
 	// epoch identifies the newest local player. A finish callback from a
@@ -310,12 +310,12 @@ type app struct {
 	leave func()
 }
 
-func (a *app) host(ctx context.Context, cfg watchparty.Config, provider watchparty.Provider, args []string) error {
+func (a *app) host(ctx context.Context, cfg party.Config, provider party.Provider, args []string) error {
 	slug, voice, episode := args[0], args[1], args[2]
 	a.role = "создатель"
 
 	roomCtx, roomCancel := context.WithTimeout(ctx, roomTimeout)
-	room, err := watchparty.Create(roomCtx, cfg, provider, "watchplay-host")
+	room, err := party.Create(roomCtx, cfg, provider, "watchplay-host")
 	roomCancel()
 	if err != nil {
 		return err
@@ -352,9 +352,9 @@ func (a *app) host(ctx context.Context, cfg watchparty.Config, provider watchpar
 	return a.commands(ctx, room, true)
 }
 
-func (a *app) guest(ctx context.Context, cfg watchparty.Config, key string, extra []string) error {
+func (a *app) guest(ctx context.Context, cfg party.Config, key string, extra []string) error {
 	roomCtx, cancel := context.WithTimeout(ctx, roomTimeout)
-	room, err := watchparty.Join(roomCtx, cfg, key, "watchplay-guest")
+	room, err := party.Join(roomCtx, cfg, key, "watchplay-guest")
 	cancel()
 	if err != nil {
 		return err
@@ -383,7 +383,7 @@ func (a *app) guest(ctx context.Context, cfg watchparty.Config, key string, extr
 		if err := room.SubmitSecret(extra[0]); err != nil {
 			return err
 		}
-		fmt.Printf("Секрет принят: %s\n", watchparty.FormatSecret(room.Secret()))
+		fmt.Printf("Секрет принят: %s\n", party.FormatSecret(room.Secret()))
 	}
 	// Closing mpv ends the session: the command loop stops and the room is
 	// closed by the deferred Close above.
@@ -472,20 +472,20 @@ func (a *app) current() *playback.Session {
 }
 
 // hostState snapshots the running mpv session into a room anchor.
-func (a *app) hostState() (watchparty.State, bool) {
+func (a *app) hostState() (party.State, bool) {
 	a.mu.Lock()
 	session := a.session
 	meta := a.meta
 	a.mu.Unlock()
 	if session == nil || meta.slug == "" {
-		return watchparty.State{}, false
+		return party.State{}, false
 	}
 	number, index := session.Episode()
 	if number == "" {
 		number = meta.episode
 	}
 	control := a.lib.SharedControlEnabled()
-	return watchparty.State{
+	return party.State{
 		TitleSlug:      meta.slug,
 		TitleName:      meta.name,
 		Voice:          meta.voice,
@@ -499,7 +499,7 @@ func (a *app) hostState() (watchparty.State, bool) {
 
 // hostLoop publishes anchors while the host is watching. The interval shrinks
 // to four seconds during playback and grows to ten on pause.
-func (a *app) hostLoop(ctx context.Context, room *watchparty.Session) {
+func (a *app) hostLoop(ctx context.Context, room *party.Session) {
 	ticker := time.NewTicker(syncTick)
 	defer ticker.Stop()
 
@@ -523,7 +523,7 @@ func (a *app) hostLoop(ctx context.Context, room *watchparty.Session) {
 			// mpv is gone: clear the room so guests stop instead of
 			// extrapolating a finished episode forever.
 			room.SetSource(nil)
-			_ = room.Publish(watchparty.State{})
+			_ = room.Publish(party.State{})
 			return
 		}
 
@@ -554,7 +554,7 @@ func (a *app) hostLoop(ctx context.Context, room *watchparty.Session) {
 	}
 }
 
-func (a *app) guestLoop(ctx context.Context, room *watchparty.Session) {
+func (a *app) guestLoop(ctx context.Context, room *party.Session) {
 	ticker := time.NewTicker(syncTick)
 	defer ticker.Stop()
 	hostSeen := false
@@ -600,7 +600,7 @@ func (a *app) guestLoop(ctx context.Context, room *watchparty.Session) {
 	}
 }
 
-func (a *app) guestTick(ctx context.Context, room *watchparty.Session, state watchparty.State) {
+func (a *app) guestTick(ctx context.Context, room *party.Session, state party.State) {
 	a.mu.Lock()
 	starting := a.starting
 	current := a.session
@@ -629,7 +629,7 @@ func (a *app) guestTick(ctx context.Context, room *watchparty.Session, state wat
 
 // restartGuest opens the media the host is watching and seeks to the
 // extrapolated position. Resolving takes seconds, so it runs off the tick.
-func (a *app) restartGuest(ctx context.Context, room *watchparty.Session, state watchparty.State) {
+func (a *app) restartGuest(ctx context.Context, room *party.Session, state party.State) {
 	a.mu.Lock()
 	if a.starting {
 		a.mu.Unlock()
@@ -690,7 +690,7 @@ func (a *app) restartGuest(ctx context.Context, room *watchparty.Session, state 
 
 // guestControlAllowed mirrors the desktop UI: the host's anchor decides, and
 // only a room from an older build falls back to the local setting.
-func (a *app) guestControlAllowed(state watchparty.State) bool {
+func (a *app) guestControlAllowed(state party.State) bool {
 	if allowed, ok := state.GuestsControl(); ok {
 		return allowed
 	}
@@ -699,7 +699,7 @@ func (a *app) guestControlAllowed(state watchparty.State) bool {
 
 // drift keeps the local mpv close to the extrapolated host position. It also
 // forwards input the person makes in the guest's mpv when shared control is on.
-func (a *app) drift(room *watchparty.Session, state watchparty.State, current *playback.Session) {
+func (a *app) drift(room *party.Session, state party.State, current *playback.Session) {
 	allowed := a.guestControlAllowed(state)
 	_ = current.SetInputLocked(!allowed)
 	number, _ := current.Episode()
@@ -718,9 +718,9 @@ func (a *app) drift(room *watchparty.Session, state watchparty.State, current *p
 		// acts below and records its own corrections in the baseline.
 		switch {
 		case paused != a.lastPaused:
-			action := watchparty.ControlPlay
+			action := party.ControlPlay
 			if paused {
-				action = watchparty.ControlPause
+				action = party.ControlPause
 			}
 			_ = room.SendControl(action, 0)
 			a.holdUntil = now.Add(controlHold)
@@ -729,7 +729,7 @@ func (a *app) drift(room *watchparty.Session, state watchparty.State, current *p
 			// A frozen position means a network stall, not a seek: do not drag
 			// the host back to a stalled guest.
 			if position != a.lastPos && math.Abs(position-expected) > userSeekThreshold {
-				_ = room.SendControl(watchparty.ControlSeek, position)
+				_ = room.SendControl(party.ControlSeek, position)
 				a.holdUntil = now.Add(controlHold)
 			}
 		}
@@ -799,13 +799,13 @@ func (a *app) drift(room *watchparty.Session, state watchparty.State, current *p
 
 // controlLoop applies guest commands on the host. Shared control is the host's
 // decision, so a command is ignored when the setting is off.
-func (a *app) controlLoop(ctx context.Context, room *watchparty.Session) {
+func (a *app) controlLoop(ctx context.Context, room *party.Session) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case update := <-room.Updates():
-			if update.Kind != watchparty.UpdateControl || !a.lib.SharedControlEnabled() {
+			if update.Kind != party.UpdateControl || !a.lib.SharedControlEnabled() {
 				continue
 			}
 			current := a.current()
@@ -813,11 +813,11 @@ func (a *app) controlLoop(ctx context.Context, room *watchparty.Session) {
 				continue
 			}
 			switch update.Control.Action {
-			case watchparty.ControlPause:
+			case party.ControlPause:
 				_ = current.SetPaused(true)
-			case watchparty.ControlPlay:
+			case party.ControlPlay:
 				_ = current.SetPaused(false)
-			case watchparty.ControlSeek:
+			case party.ControlSeek:
 				_ = current.SeekTo(update.Control.Position)
 			default:
 				continue
@@ -840,7 +840,7 @@ func (a *app) stopGuest() bool {
 	return true
 }
 
-func (a *app) guestFailed(state watchparty.State, err error) {
+func (a *app) guestFailed(state party.State, err error) {
 	a.mu.Lock()
 	a.done = state
 	a.doneAt = time.Now()
@@ -848,7 +848,7 @@ func (a *app) guestFailed(state watchparty.State, err error) {
 	fmt.Printf("\nНе удалось включить серию: %v\n", err)
 }
 
-func (a *app) guestFinished(state watchparty.State, err error) {
+func (a *app) guestFinished(state party.State, err error) {
 	if err == nil {
 		// Closing the player is how a guest leaves the room. Waiting for the
 		// host here kept a room alive that nobody was watching any more.
@@ -888,7 +888,7 @@ func (a *app) printCommands(host bool) {
 	fmt.Println()
 }
 
-func (a *app) commands(ctx context.Context, room *watchparty.Session, host bool) error {
+func (a *app) commands(ctx context.Context, room *party.Session, host bool) error {
 	lines := make(chan string)
 	go func() {
 		scanner := bufio.NewScanner(os.Stdin)
@@ -922,7 +922,7 @@ func (a *app) commands(ctx context.Context, room *watchparty.Session, host bool)
 }
 
 // runCommand executes one typed command and reports whether to keep going.
-func (a *app) runCommand(ctx context.Context, line string, room *watchparty.Session, host bool) bool {
+func (a *app) runCommand(ctx context.Context, line string, room *party.Session, host bool) bool {
 	fields := strings.Fields(strings.TrimSpace(line))
 	if len(fields) == 0 {
 		return true
@@ -945,7 +945,7 @@ func (a *app) runCommand(ctx context.Context, line string, room *watchparty.Sess
 			fmt.Println("Комната открыта: гостю достаточно ключа.")
 			return true
 		}
-		secret, err := watchparty.NewSecret()
+		secret, err := party.NewSecret()
 		if err != nil {
 			fmt.Println("секрет:", err)
 			return true
@@ -954,7 +954,7 @@ func (a *app) runCommand(ctx context.Context, line string, room *watchparty.Sess
 			fmt.Println("комната:", err)
 			return true
 		}
-		fmt.Printf("Комната закрыта. Секрет: %s\n", watchparty.FormatSecret(secret))
+		fmt.Printf("Комната закрыта. Секрет: %s\n", party.FormatSecret(secret))
 		fmt.Printf("Гость: watchplay open %s %s\n", room.Key, secret)
 	case "secret":
 		if host {
@@ -987,7 +987,7 @@ func (a *app) runCommand(ctx context.Context, line string, room *watchparty.Sess
 		// Forget the finish so the guest loop starts this media again instead
 		// of treating the closed player as a deliberate exit.
 		a.mu.Lock()
-		a.done = watchparty.State{}
+		a.done = party.State{}
 		a.doneAt = time.Time{}
 		a.mu.Unlock()
 		fmt.Println("Открываю плеер заново…")
@@ -999,9 +999,9 @@ func (a *app) runCommand(ctx context.Context, line string, room *watchparty.Sess
 				fmt.Println("Совместное управление выключено — команду отправить нельзя.")
 				return true
 			}
-			action := watchparty.ControlPlay
+			action := party.ControlPlay
 			if pause {
-				action = watchparty.ControlPause
+				action = party.ControlPause
 			}
 			if err := room.SendControl(action, 0); err != nil {
 				fmt.Println("комната:", err)
@@ -1043,7 +1043,7 @@ func (a *app) runCommand(ctx context.Context, line string, room *watchparty.Sess
 			return true
 		}
 		if !host {
-			if err := room.SendControl(watchparty.ControlSeek, target); err != nil {
+			if err := room.SendControl(party.ControlSeek, target); err != nil {
 				fmt.Println("комната:", err)
 				return true
 			}
@@ -1088,13 +1088,13 @@ func parseSeek(arg string, current float64) (float64, error) {
 	return next, nil
 }
 
-func (a *app) publish(room *watchparty.Session) {
+func (a *app) publish(room *party.Session) {
 	if state, ok := a.hostState(); ok {
 		_ = room.Publish(state)
 	}
 }
 
-func (a *app) printStatus(room *watchparty.Session, host bool) {
+func (a *app) printStatus(room *party.Session, host bool) {
 	role := "гость"
 	if host {
 		role = "создатель"

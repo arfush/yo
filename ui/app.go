@@ -27,7 +27,6 @@ import (
 	"github.com/arfush/yonime/internal/browser"
 	"github.com/arfush/yonime/internal/discord"
 	"github.com/arfush/yonime/internal/library"
-	"github.com/arfush/yonime/internal/logging"
 	"github.com/arfush/yonime/internal/metadata"
 	"github.com/arfush/yonime/internal/mpv"
 	"github.com/arfush/yonime/internal/playback"
@@ -35,7 +34,8 @@ import (
 	"github.com/arfush/yonime/internal/updater"
 	"github.com/arfush/yonime/internal/updates"
 	"github.com/arfush/yonime/internal/version"
-	"github.com/arfush/yonime/internal/watchparty"
+	"github.com/arfush/yonime/log"
+	"github.com/arfush/yonime/party"
 )
 
 const (
@@ -83,19 +83,19 @@ func Run() {
 
 		a, err := newApp()
 		if err != nil {
-			logging.Error("application startup failed", "error", err)
+			log.Error("application startup failed", "error", err)
 			fmt.Fprintln(os.Stderr, "yonime:", err)
 			os.Exit(1)
 		}
-		logging.Info("window attached")
+		log.Info("window attached")
 		a.attachWindow(w)
 		if err := a.run(w); err != nil {
-			logging.Error("application stopped with an error", "error", err)
+			log.Error("application stopped with an error", "error", err)
 			a.close()
 			fmt.Fprintln(os.Stderr, "yonime:", err)
 			os.Exit(1)
 		}
-		logging.Info("application closed")
+		log.Info("application closed")
 		a.close()
 		os.Exit(0)
 	}()
@@ -319,7 +319,7 @@ func (a *application) attachWindow(w *app.Window) {
 	a.main.onClearError = a.clearError
 	a.shell.onUpdate = a.openUpdate
 	a.shell.onSettings = a.openSettings
-	a.shell.onParty = a.openWatchParty
+	a.shell.onParty = a.openParty
 	a.shell.onLog = a.openLog
 	a.startTray()
 	a.prepare(w)
@@ -645,13 +645,13 @@ func (a *application) openSettings() {
 	settings.onAutoSkip = func(segment metadata.Segment, enabled bool) error {
 		return a.library.SetAutoSkipSegment(segment, enabled)
 	}
-	settings.onProvider = func(provider watchparty.Provider) error {
+	settings.onProvider = func(provider party.Provider) error {
 		// SetProvider stores the choice, so the next room and the party card
 		// agree with the settings.
 		a.party.SetProvider(provider)
 		return nil
 	}
-	settings.onRelay = func(cfg watchparty.Config) error {
+	settings.onRelay = func(cfg party.Config) error {
 		return a.party.SetRelayConfig(cfg)
 	}
 	settings.onName = func(name string) error {
@@ -660,16 +660,16 @@ func (a *application) openSettings() {
 	a.showWindow(a.window, settings)
 }
 
-// openWatchParty shows the room card. When a room is still open the screen
+// openParty shows the room card. When a room is still open the screen
 // reopens on the created (host) or waiting (guest) form with the same key.
-func (a *application) openWatchParty() {
+func (a *application) openParty() {
 	if a.window == nil {
 		return
 	}
 	if a.party == nil {
 		a.party = newPartyManager(a)
 	}
-	screen := newWatchPartyWindow(a.shell.typo, a.window, a.party)
+	screen := newPartyWindow(a.shell.typo, a.window, a.party)
 	screen.hidden = a.windowHidden
 	screen.onError = a.reportError
 	screen.onBack = func() {
@@ -685,7 +685,7 @@ func (a *application) openWatchParty() {
 // startPartyPlayback opens the title the host is watching and starts mpv close
 // to the extrapolated host position. The guest drift loop then corrects the
 // remaining difference.
-func (a *application) startPartyPlayback(state watchparty.State) error {
+func (a *application) startPartyPlayback(state party.State) error {
 	if a.library == nil || a.playback == nil {
 		return fmt.Errorf("воспроизведение недоступно")
 	}
@@ -926,14 +926,14 @@ func (a *application) processPartyState() {
 	}
 	if a.active == a.main {
 		if a.party.takeSecretNotice() {
-			a.openWatchParty()
+			a.openParty()
 		}
 		return
 	}
 	// The party screen reads NeedsSecret directly. Drop the notice so it does
 	// not reopen the card after the user leaves a room that was already
 	// handled.
-	if _, ok := a.active.(*watchPartyWindow); ok {
+	if _, ok := a.active.(*partyWindow); ok {
 		a.party.takeSecretNotice()
 	}
 }
@@ -1017,8 +1017,8 @@ func (a *application) wakeAutoUpdate() {
 
 func (a *application) autoUpdateIdle() bool {
 	playing := a.playbackStarting.Load() || (a.playback != nil && a.playback.Active())
-	party := a.party != nil && a.party.HasRoom()
-	return autoUpdateSafe(playing, party, a.hidden.Load(), a.quitting.Load())
+	inParty := a.party != nil && a.party.HasRoom()
+	return autoUpdateSafe(playing, inParty, a.hidden.Load(), a.quitting.Load())
 }
 
 // autoUpdateSafe keeps the policy free of UI state so it can be tested. The
@@ -1211,7 +1211,7 @@ func (a *application) openTitle(item historyTitle) {
 	if a.window == nil {
 		return
 	}
-	logging.Info("title page opened", "title", item.title, "id", item.id, "slug", item.slug)
+	log.Info("title page opened", "title", item.title, "id", item.id, "slug", item.slug)
 	preferredQuality := 1080
 	if a.library != nil {
 		preferredQuality = a.library.PreferredQuality()
@@ -1854,7 +1854,7 @@ func (a *application) reportError(err error) {
 	if err == nil || errors.Is(err, context.Canceled) {
 		return
 	}
-	logging.Error("ui error", "error", err)
+	log.Error("ui error", "error", err)
 	message := friendlyError(err)
 	if message == "" {
 		return
@@ -1872,7 +1872,7 @@ func (a *application) clearError() {
 // setUserStatus persists a status chosen from a pill menu and updates every
 // screen that may be showing the same title.
 func (a *application) setUserStatus(item historyTitle, status library.UserStatus) error {
-	logging.Info("user status changed", "title", item.id, "status", status)
+	log.Info("user status changed", "title", item.id, "status", status)
 	if item.id != 0 && a.library != nil {
 		if err := a.library.SetUserStatus(item.id, status); err != nil {
 			a.reportError(err)

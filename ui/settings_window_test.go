@@ -12,7 +12,7 @@ import (
 	"gioui.org/op"
 	"gioui.org/unit"
 
-	"github.com/arfush/yonime/internal/watchparty"
+	"github.com/arfush/yonime/party"
 )
 
 func TestSettingsWindowLayoutDoesNotOverflow(t *testing.T) {
@@ -21,12 +21,12 @@ func TestSettingsWindowLayoutDoesNotOverflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, values := range []settingsValues{
-		{Notifications: true, SharedControl: true, Provider: watchparty.Cloudflare},
-		{Notifications: false, SharedControl: false, Provider: watchparty.Supabase},
+		{Notifications: true, SharedControl: true, Provider: party.Cloudflare},
+		{Notifications: false, SharedControl: false, Provider: party.Supabase},
 		{
 			Notifications: true,
 			SharedControl: true,
-			Provider:      watchparty.Supabase,
+			Provider:      party.Supabase,
 			CloudflareURL: "wss://yonime-watchparty.example.workers.dev",
 			SupabaseURL:   "wss://abcdefghijkl.supabase.co",
 			SupabaseKey:   "sb_publishable_example",
@@ -58,7 +58,7 @@ func TestSettingsWindowProviderMenuOpensInsideTheContentArea(t *testing.T) {
 	settings := newSettingsWindow(typo, settingsValues{
 		Notifications: true,
 		SharedControl: true,
-		Provider:      watchparty.Cloudflare,
+		Provider:      party.Cloudflare,
 	})
 	settings.providerOpen = true
 
@@ -81,7 +81,7 @@ func TestSettingsWindowProviderMenuOpensInsideTheContentArea(t *testing.T) {
 	bounds := image.Rectangle{Max: image.Pt(833, 442)}
 	menu := placeProviderMenu(
 		settings.providerAnchor.Sub(image.Pt(0, settings.scroll)),
-		providerMenuHeight(gtx, len(watchparty.Providers())),
+		providerMenuHeight(gtx, len(party.Providers())),
 		gtx.Dp(settingsProviderMenuGap),
 		bounds,
 	)
@@ -124,7 +124,7 @@ func TestSettingsWindowContentScrollsAtTheDefaultSize(t *testing.T) {
 	settings := newSettingsWindow(typo, settingsValues{
 		Notifications: true,
 		SharedControl: true,
-		Provider:      watchparty.Supabase,
+		Provider:      party.Supabase,
 	})
 	gtx := layout.Context{
 		Ops:         new(op.Ops),
@@ -195,7 +195,7 @@ func TestSettingsWindowScrollsWithTheWheel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	settings := newSettingsWindow(typo, settingsValues{Provider: watchparty.Supabase})
+	settings := newSettingsWindow(typo, settingsValues{Provider: party.Supabase})
 	var router input.Router
 	gtx := layout.Context{
 		Ops:         new(op.Ops),
@@ -226,7 +226,7 @@ func TestSettingsWindowSavesUpdateToggles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	settings := newSettingsWindow(typo, settingsValues{Provider: watchparty.Cloudflare})
+	settings := newSettingsWindow(typo, settingsValues{Provider: party.Cloudflare})
 	var auto, beta bool
 	settings.onAutoUpdate = func(enabled bool) error {
 		auto = enabled
@@ -261,14 +261,14 @@ func TestSettingsWindowSavesTheRelayBlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	settings := newSettingsWindow(typo, settingsValues{Provider: watchparty.Supabase})
+	settings := newSettingsWindow(typo, settingsValues{Provider: party.Supabase})
 	settings.cloudflareEditor.SetText("https://party.example.workers.dev")
 	settings.supabaseURLEditor.SetText("https://abcd.supabase.co")
 	settings.supabaseKeyEditor.SetText("sb_publishable_example")
 	settings.relayDirty = true
 
-	var saved watchparty.Config
-	settings.onRelay = func(cfg watchparty.Config) error {
+	var saved party.Config
+	settings.onRelay = func(cfg party.Config) error {
 		saved = cfg
 		return nil
 	}
@@ -286,7 +286,7 @@ func TestSettingsWindowSavesTheRelayBlock(t *testing.T) {
 		t.Fatalf("error = %q, want none", settings.errorText)
 	}
 
-	settings.onRelay = func(watchparty.Config) error {
+	settings.onRelay = func(party.Config) error {
 		return errors.New("адрес Cloudflare указан неверно")
 	}
 	settings.relayDirty = true

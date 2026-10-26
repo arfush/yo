@@ -10,7 +10,7 @@ import (
 	"gioui.org/op"
 	"gioui.org/unit"
 
-	"github.com/arfush/yonime/internal/watchparty"
+	"github.com/arfush/yonime/party"
 )
 
 func TestButtonErrorFeedbackWindow(t *testing.T) {
@@ -49,7 +49,7 @@ func TestLabelShakeStartsAndEndsCalm(t *testing.T) {
 	if _, shake := buttonErrorFeedback(start.Add(wpShakeDuration/2), start, false); shake != 0 {
 		t.Fatal("a caller that only needs the red state must not receive a shake")
 	}
-	screen := &watchPartyWindow{errorAt: start}
+	screen := &partyWindow{errorAt: start}
 	if !screen.shakeRunning(start) {
 		t.Fatal("the first shake frame must still request the next one")
 	}
@@ -59,7 +59,7 @@ func TestLabelShakeStartsAndEndsCalm(t *testing.T) {
 }
 
 func TestJoinFailureClearsTheKeyAndStartsRedFeedback(t *testing.T) {
-	screen := newWatchPartyWindow(nil, nil, &partyManager{provider: watchparty.Cloudflare})
+	screen := newPartyWindow(nil, nil, &partyManager{provider: party.Cloudflare})
 	screen.mode = wpJoin
 	screen.busy = true
 	screen.editor.SetText("YOC4K7Q2M")
@@ -84,7 +84,7 @@ func TestJoinFailureClearsTheKeyAndStartsRedFeedback(t *testing.T) {
 }
 
 func TestCreateFailureKeepsItsOwnFeedback(t *testing.T) {
-	screen := newWatchPartyWindow(nil, nil, &partyManager{provider: watchparty.Cloudflare})
+	screen := newPartyWindow(nil, nil, &partyManager{provider: party.Cloudflare})
 	screen.busy = true
 	screen.editor.SetText("YOC4K7Q2M")
 
@@ -101,42 +101,42 @@ func TestCreateFailureKeepsItsOwnFeedback(t *testing.T) {
 	}
 }
 
-func TestWatchPartyOpensOnChoiceWithoutRoom(t *testing.T) {
-	party := &partyManager{provider: watchparty.Cloudflare}
-	screen := newWatchPartyWindow(nil, nil, party)
+func TestPartyOpensOnChoiceWithoutRoom(t *testing.T) {
+	manager := &partyManager{provider: party.Cloudflare}
+	screen := newPartyWindow(nil, nil, manager)
 	if screen.mode != wpChoice {
 		t.Fatalf("mode = %v, want wpChoice without a room", screen.mode)
 	}
 }
 
-func TestWatchPartyReopensCreatedFormForHost(t *testing.T) {
-	party := &partyManager{
-		provider: watchparty.Cloudflare,
-		session:  &watchparty.Session{Key: "YOC4K7Q2M", Provider: watchparty.Cloudflare, Role: watchparty.Host},
+func TestPartyReopensCreatedFormForHost(t *testing.T) {
+	manager := &partyManager{
+		provider: party.Cloudflare,
+		session:  &party.Session{Key: "YOC4K7Q2M", Provider: party.Cloudflare, Role: party.Host},
 	}
-	screen := newWatchPartyWindow(nil, nil, party)
+	screen := newPartyWindow(nil, nil, manager)
 	if screen.mode != wpCreated {
 		t.Fatalf("mode = %v, want wpCreated for a host", screen.mode)
 	}
-	snapshot := party.Snapshot()
+	snapshot := manager.Snapshot()
 	if snapshot.Key != "YOC4K7Q2M" || !snapshot.Active {
 		t.Fatalf("snapshot = %+v, want the retained key", snapshot)
 	}
 }
 
-func TestWatchPartyReopensWaitingScreenWithAHat(t *testing.T) {
-	party := &partyManager{
-		provider: watchparty.Cloudflare,
-		session:  &watchparty.Session{Key: "YOC4K7Q2M", Provider: watchparty.Cloudflare, Role: watchparty.Guest},
+func TestPartyReopensWaitingScreenWithAHat(t *testing.T) {
+	manager := &partyManager{
+		provider: party.Cloudflare,
+		session:  &party.Session{Key: "YOC4K7Q2M", Provider: party.Cloudflare, Role: party.Guest},
 	}
-	screen := newWatchPartyWindow(nil, nil, party)
+	screen := newPartyWindow(nil, nil, manager)
 	if screen.mode != wpWaiting {
 		t.Fatalf("mode = %v, want wpWaiting for a guest", screen.mode)
 	}
 	if screen.waitHat < 0 || screen.waitHat >= mascotHatCount {
 		t.Fatalf("first wait hat = %d, want a hat in [0, %d)", screen.waitHat, mascotHatCount)
 	}
-	reopened := newWatchPartyWindow(nil, nil, party)
+	reopened := newPartyWindow(nil, nil, manager)
 	if reopened.mode != wpWaiting {
 		t.Fatalf("reopened mode = %v, want wpWaiting for a guest", reopened.mode)
 	}
@@ -146,23 +146,23 @@ func TestWatchPartyReopensWaitingScreenWithAHat(t *testing.T) {
 }
 
 func TestPartySnapshotFallsBackToSelectedProvider(t *testing.T) {
-	party := &partyManager{provider: watchparty.Supabase}
-	snapshot := party.Snapshot()
-	if snapshot.Provider != watchparty.Supabase {
+	manager := &partyManager{provider: party.Supabase}
+	snapshot := manager.Snapshot()
+	if snapshot.Provider != party.Supabase {
 		t.Fatalf("provider = %q, want supabase", snapshot.Provider)
 	}
 	if snapshot.Active {
 		t.Fatal("a manager without a session must not report an active room")
 	}
-	if party.HasRoom() {
+	if manager.HasRoom() {
 		t.Fatal("a manager without a session must not report a room")
 	}
 }
 
-// TestWatchPartyCardFitsText keeps the manually placed card from overflowing:
+// TestPartyCardFitsText keeps the manually placed card from overflowing:
 // the title has to fit the card and every description has to stay above the
 // action row.
-func TestWatchPartyCardFitsText(t *testing.T) {
+func TestPartyCardFitsText(t *testing.T) {
 	typo, err := newTypography()
 	if err != nil {
 		t.Fatalf("newTypography: %v", err)
@@ -242,7 +242,7 @@ func TestWaitingTimeoutOnlyAppliesToUnknownHost(t *testing.T) {
 }
 
 func TestRoomClosedShowsJoinFormWithReason(t *testing.T) {
-	screen := newWatchPartyWindow(nil, nil, &partyManager{provider: watchparty.Cloudflare})
+	screen := newPartyWindow(nil, nil, &partyManager{provider: party.Cloudflare})
 	screen.mode = wpWaiting
 	screen.busy = true
 	screen.editor.SetText("YOC4K7Q2M")
@@ -267,56 +267,56 @@ func TestRoomClosedShowsJoinFormWithReason(t *testing.T) {
 }
 
 func TestHostGoneLeavesANotice(t *testing.T) {
-	party := &partyManager{provider: watchparty.Cloudflare}
-	party.hostGone(hostLostNotice)
+	manager := &partyManager{provider: party.Cloudflare}
+	manager.hostGone(hostLostNotice)
 
-	if got := party.takeClosedNotice(); got != hostLostNotice {
+	if got := manager.takeClosedNotice(); got != hostLostNotice {
 		t.Fatalf("notice = %q, want the host-lost reason", got)
 	}
-	if got := party.takeClosedNotice(); got != "" {
+	if got := manager.takeClosedNotice(); got != "" {
 		t.Fatalf("notice repeated: %q", got)
 	}
 }
 
 func TestPartyWindowStartsWithTheHostLeftReason(t *testing.T) {
-	party := &partyManager{provider: watchparty.Cloudflare}
-	party.closedNotice = hostClosedNotice
+	manager := &partyManager{provider: party.Cloudflare}
+	manager.closedNotice = hostClosedNotice
 
-	screen := newWatchPartyWindow(nil, nil, party)
+	screen := newPartyWindow(nil, nil, manager)
 	if screen.mode != wpJoin {
 		t.Fatalf("mode = %d, want the join form", screen.mode)
 	}
 	if screen.errorText != hostClosedNotice {
 		t.Fatalf("error = %q, want the host-left reason", screen.errorText)
 	}
-	if got := party.takeClosedNotice(); got != "" {
+	if got := manager.takeClosedNotice(); got != "" {
 		t.Fatalf("the notice was not consumed: %q", got)
 	}
 }
 
 func TestPreferredProviderFollowsTheSetting(t *testing.T) {
-	both := watchparty.Config{
+	both := party.Config{
 		CloudflareURL: "wss://relay.example",
 		SupabaseURL:   "wss://supabase.example",
 		SupabaseKey:   "sb_publishable_x",
 	}
-	onlySupabase := watchparty.Config{
+	onlySupabase := party.Config{
 		SupabaseURL: "wss://supabase.example",
 		SupabaseKey: "sb_publishable_x",
 	}
 
 	cases := []struct {
 		name  string
-		cfg   watchparty.Config
+		cfg   party.Config
 		saved string
-		want  watchparty.Provider
+		want  party.Provider
 	}{
-		{"saved supabase", both, string(watchparty.Supabase), watchparty.Supabase},
-		{"saved cloudflare", both, string(watchparty.Cloudflare), watchparty.Cloudflare},
-		{"auto without a choice", both, "", watchparty.Cloudflare},
-		{"unknown value", both, "bogus", watchparty.Cloudflare},
-		{"saved provider missing from the build", onlySupabase, string(watchparty.Cloudflare), watchparty.Supabase},
-		{"single relay build", onlySupabase, "", watchparty.Supabase},
+		{"saved supabase", both, string(party.Supabase), party.Supabase},
+		{"saved cloudflare", both, string(party.Cloudflare), party.Cloudflare},
+		{"auto without a choice", both, "", party.Cloudflare},
+		{"unknown value", both, "bogus", party.Cloudflare},
+		{"saved provider missing from the build", onlySupabase, string(party.Cloudflare), party.Supabase},
+		{"single relay build", onlySupabase, "", party.Supabase},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -331,22 +331,22 @@ func TestGuestControlUsesTheHostDecision(t *testing.T) {
 	off := false
 	on := true
 
-	if guestControlAllowed(watchparty.State{ControlEnabled: &off}, true) {
+	if guestControlAllowed(party.State{ControlEnabled: &off}, true) {
 		t.Fatal("the guest's local setting must not override the host's refusal")
 	}
-	if !guestControlAllowed(watchparty.State{ControlEnabled: &on}, false) {
+	if !guestControlAllowed(party.State{ControlEnabled: &on}, false) {
 		t.Fatal("the host's permission must work even when the guest's local setting is off")
 	}
-	if !guestControlAllowed(watchparty.State{}, true) {
+	if !guestControlAllowed(party.State{}, true) {
 		t.Fatal("an older host without the field must fall back to the local setting")
 	}
-	if guestControlAllowed(watchparty.State{}, false) {
+	if guestControlAllowed(party.State{}, false) {
 		t.Fatal("the local setting must still be able to refuse control")
 	}
 }
 
 func TestAcceptedSecretOpensTheWaitingScreen(t *testing.T) {
-	screen := newWatchPartyWindow(nil, nil, &partyManager{provider: watchparty.Cloudflare})
+	screen := newPartyWindow(nil, nil, &partyManager{provider: party.Cloudflare})
 	screen.mode = wpSecret
 	screen.busy = true
 	screen.secretEditor.SetText("4K7Q2M9XBT")
@@ -368,12 +368,12 @@ func TestAcceptedSecretOpensTheWaitingScreen(t *testing.T) {
 }
 
 func TestWrongSecretShakesAndClearsTheField(t *testing.T) {
-	screen := newWatchPartyWindow(nil, nil, &partyManager{provider: watchparty.Cloudflare})
+	screen := newPartyWindow(nil, nil, &partyManager{provider: party.Cloudflare})
 	screen.mode = wpSecret
 	screen.busy = true
 	screen.secretEditor.SetText("4K7Q2M9XBT")
 
-	screen.handleResult(partyResult{kind: partySecret, err: watchparty.ErrWrongSecret})
+	screen.handleResult(partyResult{kind: partySecret, err: party.ErrWrongSecret})
 
 	if screen.busy {
 		t.Fatal("a failed check must clear the busy state")
@@ -381,7 +381,7 @@ func TestWrongSecretShakesAndClearsTheField(t *testing.T) {
 	if screen.mode != wpSecret {
 		t.Fatalf("mode = %d, want the secret form", screen.mode)
 	}
-	if screen.errorText != watchparty.ErrWrongSecret.Error() {
+	if screen.errorText != party.ErrWrongSecret.Error() {
 		t.Fatalf("error = %q, want the wrong-secret reason", screen.errorText)
 	}
 	if !screen.joinFeedback {
@@ -399,33 +399,33 @@ func TestWrongSecretShakesAndClearsTheField(t *testing.T) {
 }
 
 func TestSecretNoticeIsConsumedOnce(t *testing.T) {
-	party := &partyManager{provider: watchparty.Cloudflare, secretNotice: true}
+	manager := &partyManager{provider: party.Cloudflare, secretNotice: true}
 
-	if !party.takeSecretNotice() {
+	if !manager.takeSecretNotice() {
 		t.Fatal("the first call must report the pending secret prompt")
 	}
-	if party.takeSecretNotice() {
+	if manager.takeSecretNotice() {
 		t.Fatal("the notice must not reopen the screen twice")
 	}
 }
 
 func TestPartyNameIsGeneratedAndNormalized(t *testing.T) {
 	name := loadPartyName(nil)
-	if _, err := watchparty.NormalizeName(name); err != nil {
+	if _, err := party.NormalizeName(name); err != nil {
 		t.Fatalf("generated name %q is invalid: %v", name, err)
 	}
 
-	party := &partyManager{provider: watchparty.Cloudflare}
-	if err := party.SetName("  quiet-tanuki  "); err != nil {
+	manager := &partyManager{provider: party.Cloudflare}
+	if err := manager.SetName("  quiet-tanuki  "); err != nil {
 		t.Fatalf("SetName: %v", err)
 	}
-	if got := party.Name(); got != "quiet-tanuki" {
+	if got := manager.Name(); got != "quiet-tanuki" {
 		t.Fatalf("name = %q, want the trimmed value", got)
 	}
-	if err := party.SetName(""); err == nil {
+	if err := manager.SetName(""); err == nil {
 		t.Fatal("an empty nickname must be refused")
 	}
-	if got := party.Name(); got != "quiet-tanuki" {
+	if got := manager.Name(); got != "quiet-tanuki" {
 		t.Fatalf("rejected name replaced the accepted one: %q", got)
 	}
 }

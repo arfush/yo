@@ -11,7 +11,7 @@ import (
 	"github.com/arfush/yonime/internal/appdata"
 	"github.com/arfush/yonime/internal/library"
 	"github.com/arfush/yonime/internal/playback"
-	"github.com/arfush/yonime/internal/watchparty"
+	"github.com/arfush/yonime/party"
 )
 
 const (
@@ -49,16 +49,16 @@ const (
 
 // partySnapshot is a consistent copy of the room state for the UI.
 type partySnapshot struct {
-	Provider watchparty.Provider
+	Provider party.Provider
 	Key      string
-	Role     watchparty.Role
+	Role     party.Role
 	Active   bool
 	Started  bool
 	HostSeen bool
 	// HostEverSeen stays true across a reconnect grace window, so the waiting
 	// screen does not mistake a dropped host for a wrong room key.
 	HostEverSeen bool
-	State        watchparty.State
+	State        party.State
 	Notice       string
 	// Locked and NeedsSecret describe the secret gate. The host shows Secret on
 	// its card; a guest that already proved one keeps it here too.
@@ -79,14 +79,14 @@ type hostMeta struct {
 // place that knows how a host publishes and how a guest follows.
 type partyManager struct {
 	app *application
-	cfg watchparty.Config
+	cfg party.Config
 
 	mu       sync.Mutex
-	provider watchparty.Provider
+	provider party.Provider
 	control  bool
 	name     string
-	session  *watchparty.Session
-	state    watchparty.State
+	session  *party.Session
+	state    party.State
 	hasState bool
 	started  bool
 	hostSeen bool
@@ -108,9 +108,9 @@ type partyManager struct {
 	hostMeta    hostMeta
 	hostStop    chan struct{}
 
-	guestRunning  watchparty.State
+	guestRunning  party.State
 	guestStarting bool
-	guestDone     watchparty.State
+	guestDone     party.State
 	guestDoneAt   time.Time
 	guestStop     chan struct{}
 	consumeStop   chan struct{}
@@ -119,16 +119,16 @@ type partyManager struct {
 func newPartyManager(app *application) *partyManager {
 	manager := &partyManager{
 		app:      app,
-		provider: watchparty.Cloudflare,
+		provider: party.Cloudflare,
 		control:  true,
 	}
-	if path, err := appdata.WatchPartyConfigPath(); err == nil {
-		manager.cfg = watchparty.LoadConfig(path)
+	if path, err := appdata.PartyConfigPath(); err == nil {
+		manager.cfg = party.LoadConfig(path)
 	}
 	saved := ""
 	if app != nil && app.library != nil {
 		manager.control = app.library.SharedControlEnabled()
-		saved = app.library.WatchPartyProvider()
+		saved = app.library.PartyProvider()
 	}
 	manager.provider = preferredProvider(manager.cfg, saved)
 	manager.name = loadPartyName(app)
@@ -139,18 +139,18 @@ func newPartyManager(app *application) *partyManager {
 // a GitHub-style default on the first run.
 func loadPartyName(app *application) string {
 	if app != nil && app.library != nil {
-		if saved := app.library.WatchPartyName(); saved != "" {
-			if normalized, err := watchparty.NormalizeName(saved); err == nil {
+		if saved := app.library.PartyName(); saved != "" {
+			if normalized, err := party.NormalizeName(saved); err == nil {
 				return normalized
 			}
 		}
 	}
-	name, err := watchparty.NewName()
+	name, err := party.NewName()
 	if err != nil {
 		return "yonime"
 	}
 	if app != nil && app.library != nil {
-		_ = app.library.SetWatchPartyName(name)
+		_ = app.library.SetPartyName(name)
 	}
 	return name
 }
@@ -158,20 +158,20 @@ func loadPartyName(app *application) string {
 // preferredProvider is the relay a new room starts with: the one picked in the
 // settings when this build has it, otherwise the only configured relay, and
 // Cloudflare as the historical default.
-func preferredProvider(cfg watchparty.Config, saved string) watchparty.Provider {
-	if preferred := watchparty.Provider(saved); preferred.Valid() && cfg.Configured(preferred) {
+func preferredProvider(cfg party.Config, saved string) party.Provider {
+	if preferred := party.Provider(saved); preferred.Valid() && cfg.Configured(preferred) {
 		return preferred
 	}
-	if !cfg.Configured(watchparty.Cloudflare) && cfg.Configured(watchparty.Supabase) {
-		return watchparty.Supabase
+	if !cfg.Configured(party.Cloudflare) && cfg.Configured(party.Supabase) {
+		return party.Supabase
 	}
-	return watchparty.Cloudflare
+	return party.Cloudflare
 }
 
 // Provider returns the relay a new room is created on.
-func (m *partyManager) Provider() watchparty.Provider {
+func (m *partyManager) Provider() party.Provider {
 	if m == nil {
-		return watchparty.Cloudflare
+		return party.Cloudflare
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -179,9 +179,9 @@ func (m *partyManager) Provider() watchparty.Provider {
 }
 
 // Config returns a copy of the relay settings currently in use.
-func (m *partyManager) Config() watchparty.Config {
+func (m *partyManager) Config() party.Config {
 	if m == nil {
-		return watchparty.Config{}
+		return party.Config{}
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -190,7 +190,7 @@ func (m *partyManager) Config() watchparty.Config {
 
 // SetRelayConfig stores the endpoints entered in the settings and applies them
 // to the next room. An already open room keeps the config it dialled with.
-func (m *partyManager) SetRelayConfig(cfg watchparty.Config) error {
+func (m *partyManager) SetRelayConfig(cfg party.Config) error {
 	if m == nil {
 		return errors.New("совместный просмотр недоступен")
 	}
@@ -198,11 +198,11 @@ func (m *partyManager) SetRelayConfig(cfg watchparty.Config) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	path, err := appdata.WatchPartyConfigPath()
+	path, err := appdata.PartyConfigPath()
 	if err != nil {
 		return err
 	}
-	if err := watchparty.SaveConfig(path, cfg); err != nil {
+	if err := party.SaveConfig(path, cfg); err != nil {
 		return err
 	}
 	m.mu.Lock()
@@ -213,7 +213,7 @@ func (m *partyManager) SetRelayConfig(cfg watchparty.Config) error {
 
 // SetProvider remembers the relay chosen in the settings, so the next room
 // starts with the same backend.
-func (m *partyManager) SetProvider(provider watchparty.Provider) {
+func (m *partyManager) SetProvider(provider party.Provider) {
 	if m == nil {
 		return
 	}
@@ -221,7 +221,7 @@ func (m *partyManager) SetProvider(provider watchparty.Provider) {
 	m.provider = provider
 	m.mu.Unlock()
 	if m.app != nil && m.app.library != nil {
-		_ = m.app.library.SetWatchPartyProvider(string(provider))
+		_ = m.app.library.SetPartyProvider(string(provider))
 	}
 }
 
@@ -235,7 +235,7 @@ func (m *partyManager) SetSharedControl(enabled bool) {
 	m.control = enabled
 	room := m.session
 	m.mu.Unlock()
-	if room == nil || room.Role != watchparty.Host {
+	if room == nil || room.Role != party.Host {
 		return
 	}
 	// Publish the new decision immediately instead of waiting for the next
@@ -277,7 +277,7 @@ func (m *partyManager) GuestControlAllowed() bool {
 	return local
 }
 
-func guestControlAllowed(state watchparty.State, local bool) bool {
+func guestControlAllowed(state party.State, local bool) bool {
 	if allowed, ok := state.GuestsControl(); ok {
 		return allowed
 	}
@@ -300,12 +300,12 @@ func (m *partyManager) SetName(name string) error {
 	if m == nil {
 		return errors.New("совместный просмотр недоступен")
 	}
-	normalized, err := watchparty.NormalizeName(name)
+	normalized, err := party.NormalizeName(name)
 	if err != nil {
 		return err
 	}
 	if m.app != nil && m.app.library != nil {
-		if err := m.app.library.SetWatchPartyName(normalized); err != nil {
+		if err := m.app.library.SetPartyName(normalized); err != nil {
 			return err
 		}
 	}
@@ -320,7 +320,7 @@ func (m *partyManager) SetName(name string) error {
 }
 
 // Create opens a fresh room and returns its key.
-func (m *partyManager) Create(provider watchparty.Provider) (string, error) {
+func (m *partyManager) Create(provider party.Provider) (string, error) {
 	if m == nil {
 		return "", errors.New("совместный просмотр недоступен")
 	}
@@ -337,7 +337,7 @@ func (m *partyManager) Create(provider watchparty.Provider) (string, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), partyCreateTimeout)
 	defer cancel()
-	session, err := watchparty.Create(ctx, cfg, provider, m.Name())
+	session, err := party.Create(ctx, cfg, provider, m.Name())
 	if err != nil {
 		return "", err
 	}
@@ -352,11 +352,11 @@ func (m *partyManager) Join(key string) error {
 	if m == nil {
 		return errors.New("совместный просмотр недоступен")
 	}
-	normalized, err := watchparty.NormalizeKey(key)
+	normalized, err := party.NormalizeKey(key)
 	if err != nil {
 		return err
 	}
-	provider, err := watchparty.ProviderFromKey(normalized)
+	provider, err := party.ProviderFromKey(normalized)
 	if err != nil {
 		return err
 	}
@@ -373,7 +373,7 @@ func (m *partyManager) Join(key string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), partyJoinTimeout)
 	defer cancel()
-	session, err := watchparty.Join(ctx, cfg, normalized, m.Name())
+	session, err := party.Join(ctx, cfg, normalized, m.Name())
 	if err != nil {
 		return err
 	}
@@ -406,7 +406,7 @@ func (m *partyManager) LockRoom() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	secret, err := watchparty.NewSecret()
+	secret, err := party.NewSecret()
 	if err != nil {
 		return "", err
 	}
@@ -442,7 +442,7 @@ func (m *partyManager) SubmitSecret(secret string) error {
 	m.mu.Lock()
 	room := m.session
 	m.mu.Unlock()
-	if room == nil || room.Role != watchparty.Guest {
+	if room == nil || room.Role != party.Guest {
 		return errors.New("секрет вводит только гость комнаты")
 	}
 	if err := room.SubmitSecret(secret); err != nil {
@@ -456,15 +456,15 @@ func (m *partyManager) SubmitSecret(secret string) error {
 }
 
 // hostRoom returns the open room if this client is its creator.
-func (m *partyManager) hostRoom() (*watchparty.Session, error) {
+func (m *partyManager) hostRoom() (*party.Session, error) {
 	if m == nil {
 		return nil, errors.New("комната не создана")
 	}
 	m.mu.Lock()
 	room := m.session
 	m.mu.Unlock()
-	if room == nil || room.Role != watchparty.Host {
-		return nil, watchparty.ErrHostOnly
+	if room == nil || room.Role != party.Host {
+		return nil, party.ErrHostOnly
 	}
 	return room, nil
 }
@@ -490,7 +490,7 @@ func (m *partyManager) Delete() {
 	m.mu.Lock()
 	session := m.session
 	m.session = nil
-	m.state = watchparty.State{}
+	m.state = party.State{}
 	m.hasState = false
 	m.started = false
 	m.hostSeen = false
@@ -500,8 +500,8 @@ func (m *partyManager) Delete() {
 	m.secretNotice = false
 	// hostSession/hostMeta describe the running mpv session, not the room:
 	// keep them so a room created later can publish the current episode.
-	m.guestRunning = watchparty.State{}
-	m.guestDone = watchparty.State{}
+	m.guestRunning = party.State{}
+	m.guestDone = party.State{}
 	hostStop := m.hostStop
 	m.hostStop = nil
 	guestStop := m.guestStop
@@ -532,7 +532,7 @@ func (m *partyManager) HasRoom() bool {
 // Snapshot copies the room state for the current frame.
 func (m *partyManager) Snapshot() partySnapshot {
 	if m == nil {
-		return partySnapshot{Provider: watchparty.Cloudflare}
+		return partySnapshot{Provider: party.Cloudflare}
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -583,7 +583,7 @@ func (m *partyManager) Close() {
 	m.Delete()
 }
 
-func (m *partyManager) adopt(session *watchparty.Session) {
+func (m *partyManager) adopt(session *party.Session) {
 	m.mu.Lock()
 	previous := m.session
 	hostStop := m.hostStop
@@ -591,7 +591,7 @@ func (m *partyManager) adopt(session *watchparty.Session) {
 	consumeStop := m.consumeStop
 	m.session = session
 	m.provider = session.Provider
-	m.state = watchparty.State{}
+	m.state = party.State{}
 	m.hasState = false
 	m.started = false
 	m.hostSeen = false
@@ -601,8 +601,8 @@ func (m *partyManager) adopt(session *watchparty.Session) {
 	m.secretNotice = false
 	// hostSession/hostMeta describe the running mpv session, not the room: a
 	// room created in the middle of an episode publishes it right away.
-	m.guestRunning = watchparty.State{}
-	m.guestDone = watchparty.State{}
+	m.guestRunning = party.State{}
+	m.guestDone = party.State{}
 	m.guestStarting = false
 	stop := make(chan struct{})
 	m.guestStop = stop
@@ -627,7 +627,7 @@ func (m *partyManager) adopt(session *watchparty.Session) {
 	}
 
 	go m.consume(session, stopUpdates)
-	if session.Role == watchparty.Guest {
+	if session.Role == party.Guest {
 		go m.guestLoop(session, stop)
 	} else {
 		// A host room starts its heartbeat even without a running title: the
@@ -637,9 +637,9 @@ func (m *partyManager) adopt(session *watchparty.Session) {
 	m.invalidate()
 }
 
-func (m *partyManager) consume(session *watchparty.Session, stop chan struct{}) {
+func (m *partyManager) consume(session *party.Session, stop chan struct{}) {
 	for {
-		var update watchparty.Update
+		var update party.Update
 		select {
 		case <-stop:
 			return
@@ -648,11 +648,11 @@ func (m *partyManager) consume(session *watchparty.Session, stop chan struct{}) 
 		if !m.owns(session) {
 			return
 		}
-		var control watchparty.Control
+		var control party.Control
 		goneNotice := ""
 		m.mu.Lock()
 		switch update.Kind {
-		case watchparty.UpdateState:
+		case party.UpdateState:
 			m.state = update.State
 			m.hasState = true
 			m.started = update.State.Started()
@@ -662,8 +662,8 @@ func (m *partyManager) consume(session *watchparty.Session, stop chan struct{}) 
 			// A readable anchor proves the key generation in effect, so the
 			// next rotation has to prompt again.
 			m.secretAsked = false
-		case watchparty.UpdateCard:
-			if session.Role == watchparty.Guest {
+		case party.UpdateCard:
+			if session.Role == party.Guest {
 				if session.NeedsSecret() {
 					if !m.secretAsked {
 						m.secretAsked = true
@@ -672,37 +672,37 @@ func (m *partyManager) consume(session *watchparty.Session, stop chan struct{}) 
 					// The anchor belongs to the previous key generation:
 					// stop following it while the secret is unknown instead
 					// of drifting away from the host.
-					m.state = watchparty.State{}
+					m.state = party.State{}
 					m.hasState = false
 					m.started = false
 				} else {
 					m.secretAsked = false
 				}
 			}
-		case watchparty.UpdateHostSeen:
+		case party.UpdateHostSeen:
 			m.hostSeen = true
 			m.hostEverSeen = true
-		case watchparty.UpdateHostLeft:
+		case party.UpdateHostLeft:
 			// The grace window expired: the host had its chance to reconnect,
 			// so the room is over and the guest returns to the join form.
 			m.hostSeen = false
 			m.notice = hostLostNotice
-			if session.Role == watchparty.Guest {
+			if session.Role == party.Guest {
 				goneNotice = hostLostNotice
 			}
-		case watchparty.UpdateHostClosed:
+		case party.UpdateHostClosed:
 			m.hostSeen = false
 			m.notice = hostClosedNotice
-			if session.Role == watchparty.Guest {
+			if session.Role == party.Guest {
 				goneNotice = hostClosedNotice
 			}
-		case watchparty.UpdateControl:
+		case party.UpdateControl:
 			control = update.Control
-		case watchparty.UpdateError:
+		case party.UpdateError:
 			if update.Err != nil {
-				if errors.Is(update.Err, watchparty.ErrVersionMismatch) {
+				if errors.Is(update.Err, party.ErrVersionMismatch) {
 					m.notice = versionMismatchNotice
-					if session.Role == watchparty.Guest {
+					if session.Role == party.Guest {
 						goneNotice = versionMismatchNotice
 					}
 				} else {
@@ -718,13 +718,13 @@ func (m *partyManager) consume(session *watchparty.Session, stop chan struct{}) 
 			m.hostGone(goneNotice)
 			return
 		}
-		if update.Kind == watchparty.UpdateControl {
+		if update.Kind == party.UpdateControl {
 			m.applyControl(session, control)
 			continue
 		}
 
 		m.invalidate()
-		if session.Role != watchparty.Guest {
+		if session.Role != party.Guest {
 			continue
 		}
 		if started {
@@ -773,24 +773,24 @@ func (m *partyManager) takeClosedNotice() string {
 // applyControl carries out a guest command when shared control is enabled. The
 // host publishes a fresh anchor immediately, so every guest reacts within a
 // frame instead of waiting for the next heartbeat tick.
-func (m *partyManager) applyControl(session *watchparty.Session, control watchparty.Control) {
+func (m *partyManager) applyControl(session *party.Session, control party.Control) {
 	if m.app == nil || m.app.playback == nil || !m.SharedControl() {
 		return
 	}
 	m.mu.Lock()
 	running := m.hostSession
-	owned := m.session == session && session.Role == watchparty.Host
+	owned := m.session == session && session.Role == party.Host
 	m.mu.Unlock()
 	if !owned || running == nil || m.app.playback.Current() != running {
 		return
 	}
 	var err error
 	switch control.Action {
-	case watchparty.ControlPause:
+	case party.ControlPause:
 		err = running.SetPaused(true)
-	case watchparty.ControlPlay:
+	case party.ControlPlay:
 		err = running.SetPaused(false)
-	case watchparty.ControlSeek:
+	case party.ControlSeek:
 		err = running.SeekTo(control.Position)
 	default:
 		return
@@ -807,7 +807,7 @@ func (m *partyManager) applyControl(session *watchparty.Session, control watchpa
 func (m *partyManager) stopGuest() {
 	m.mu.Lock()
 	running := m.guestRunning.Started()
-	m.guestRunning = watchparty.State{}
+	m.guestRunning = party.State{}
 	m.guestStarting = false
 	m.mu.Unlock()
 	if !running || m.app == nil || m.app.playback == nil {
@@ -821,7 +821,7 @@ func (m *partyManager) stopGuest() {
 	m.app.restorePlayerWindow()
 }
 
-func (m *partyManager) owns(session *watchparty.Session) bool {
+func (m *partyManager) owns(session *party.Session) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.session == session
@@ -829,7 +829,7 @@ func (m *partyManager) owns(session *watchparty.Session) bool {
 
 // startGuest launches mpv for a guest when the host opens another title or
 // episode. Duplicate calls for the same media are ignored.
-func (m *partyManager) startGuest(state watchparty.State) {
+func (m *partyManager) startGuest(state party.State) {
 	if m.app == nil || m.app.playback == nil || !state.Started() {
 		return
 	}
@@ -847,7 +847,7 @@ func (m *partyManager) startGuest(state watchparty.State) {
 	}
 	m.mu.Lock()
 	if m.app.playback.Current() == nil && !m.guestStarting {
-		m.guestRunning = watchparty.State{}
+		m.guestRunning = party.State{}
 	}
 	if m.guestStarting {
 		m.mu.Unlock()
@@ -875,7 +875,7 @@ func (m *partyManager) startGuest(state watchparty.State) {
 		m.mu.Lock()
 		m.guestStarting = false
 		if err != nil {
-			m.guestRunning = watchparty.State{}
+			m.guestRunning = party.State{}
 			m.notice = err.Error()
 		}
 		m.mu.Unlock()
@@ -893,7 +893,7 @@ func (m *partyManager) guestFailed(err error) {
 		m.guestDone = m.guestRunning
 		m.guestDoneAt = time.Now()
 	}
-	m.guestRunning = watchparty.State{}
+	m.guestRunning = party.State{}
 	m.guestStarting = false
 	if err != nil {
 		m.notice = err.Error()
@@ -923,7 +923,7 @@ func (m *partyManager) guestFinished(err error) {
 		m.guestDone = m.guestRunning
 		m.guestDoneAt = time.Now()
 	}
-	m.guestRunning = watchparty.State{}
+	m.guestRunning = party.State{}
 	m.guestStarting = false
 	m.notice = "Плеер закрылся, пробую снова"
 	m.mu.Unlock()
@@ -933,7 +933,7 @@ func (m *partyManager) guestFinished(err error) {
 // guestLoop keeps the local mpv close to the extrapolated host position. It
 // also watches for input the person makes in mpv (pause, seek) and forwards it
 // to the host when shared control is on.
-func (m *partyManager) guestLoop(session *watchparty.Session, stop chan struct{}) {
+func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 	ticker := time.NewTicker(partyGuestTick)
 	defer ticker.Stop()
 	rate := 1.0
@@ -984,9 +984,9 @@ func (m *partyManager) guestLoop(session *watchparty.Session, stop chan struct{}
 			// loop acts below and records its own corrections in the baseline.
 			switch {
 			case paused != lastPaused:
-				action := watchparty.ControlPlay
+				action := party.ControlPlay
 				if paused {
-					action = watchparty.ControlPause
+					action = party.ControlPause
 				}
 				_ = session.SendControl(action, 0)
 				holdUntil = now.Add(partyControlHold)
@@ -996,7 +996,7 @@ func (m *partyManager) guestLoop(session *watchparty.Session, stop chan struct{}
 				// it, so only a real jump counts as a seek; otherwise a slow
 				// connection would drag the host back to the guest.
 				if position != lastPosition && math.Abs(position-expected) > partyUserSeekThreshold {
-					_ = session.SendControl(watchparty.ControlSeek, position)
+					_ = session.SendControl(party.ControlSeek, position)
 					holdUntil = now.Add(partyControlHold)
 				}
 			}
@@ -1083,7 +1083,7 @@ func (m *partyManager) hostStarted(session *playback.Session, title library.Titl
 	}
 	room := m.session
 	m.mu.Unlock()
-	if room == nil || room.Role != watchparty.Host {
+	if room == nil || room.Role != party.Host {
 		return
 	}
 	m.startHostLoop(room, session)
@@ -1093,7 +1093,7 @@ func (m *partyManager) hostStarted(session *playback.Session, title library.Titl
 // means the room is open but no title is playing: the host still sends empty
 // presence anchors, otherwise a guest would count the host as gone and leave
 // while it is simply waiting on the create screen.
-func (m *partyManager) startHostLoop(room *watchparty.Session, session *playback.Session) {
+func (m *partyManager) startHostLoop(room *party.Session, session *playback.Session) {
 	m.mu.Lock()
 	oldStop := m.hostStop
 	stop := make(chan struct{})
@@ -1101,32 +1101,32 @@ func (m *partyManager) startHostLoop(room *watchparty.Session, session *playback
 	m.mu.Unlock()
 
 	closeStop(oldStop)
-	room.SetSource(func() (watchparty.State, bool) { return m.hostState() })
+	room.SetSource(func() (party.State, bool) { return m.hostState() })
 	go m.hostLoop(room, stop, session)
 	// Publish once immediately so a guest does not wait for the first tick.
 	if state, ok := m.hostState(); ok {
 		_ = room.Publish(state)
 	} else {
-		_ = room.Publish(watchparty.State{})
+		_ = room.Publish(party.State{})
 	}
 	m.invalidate()
 }
 
 // hostState snapshots the running mpv session into a room anchor.
-func (m *partyManager) hostState() (watchparty.State, bool) {
+func (m *partyManager) hostState() (party.State, bool) {
 	m.mu.Lock()
 	session := m.hostSession
 	meta := m.hostMeta
 	m.mu.Unlock()
 	if session == nil || meta.Slug == "" {
-		return watchparty.State{}, false
+		return party.State{}, false
 	}
 	number, index := session.Episode()
 	if number == "" {
 		number = meta.Episode
 	}
 	control := m.SharedControl()
-	return watchparty.State{
+	return party.State{
 		TitleSlug:      meta.Slug,
 		TitleName:      meta.Name,
 		Voice:          meta.Voice,
@@ -1138,7 +1138,7 @@ func (m *partyManager) hostState() (watchparty.State, bool) {
 	}, true
 }
 
-func (m *partyManager) hostLoop(room *watchparty.Session, stop chan struct{}, session *playback.Session) {
+func (m *partyManager) hostLoop(room *party.Session, stop chan struct{}, session *playback.Session) {
 	ticker := time.NewTicker(partyHostTick)
 	defer ticker.Stop()
 
@@ -1184,7 +1184,7 @@ func (m *partyManager) hostLoop(room *watchparty.Session, stop chan struct{}, se
 					// A newer playback already took over the room.
 					return
 				}
-				_ = room.Publish(watchparty.State{})
+				_ = room.Publish(party.State{})
 				lastPublish = now
 				first = false
 				session = nil
@@ -1202,7 +1202,7 @@ func (m *partyManager) hostLoop(room *watchparty.Session, stop chan struct{}, se
 				continue
 			}
 			if first || now.Sub(lastPublish) >= partyHeartbeatIdle {
-				if err := room.Publish(watchparty.State{}); err == nil {
+				if err := room.Publish(party.State{}); err == nil {
 					lastPublish = now
 				}
 				first = false

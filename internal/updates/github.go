@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arfush/yonime/internal/logging"
+	"github.com/arfush/yonime/log"
 )
 
 type githubRelease struct {
@@ -53,22 +53,22 @@ func FetchReleaseChannel(ctx context.Context, client *http.Client, channel Chann
 		client = &http.Client{Timeout: 25 * time.Second}
 	}
 
-	logging.Debug("checking GitHub releases", "repository", repository, "channel", channel)
+	log.Debug("checking GitHub releases", "repository", repository, "channel", channel)
 	latest, err := fetchBestRelease(ctx, client, repository, channel)
 	if err != nil {
-		logging.Warn("GitHub release check failed", "repository", repository, "error", err)
+		log.Warn("GitHub release check failed", "repository", repository, "error", err)
 		return nil, err
 	}
 	if latest == nil {
-		logging.Info("no matching GitHub release", "repository", repository, "channel", channel)
+		log.Info("no matching GitHub release", "repository", repository, "channel", channel)
 		return nil, ErrNoRelease
 	}
 	release, err := releaseFromGitHub(ctx, client, repository, latest)
 	if err != nil {
-		logging.Warn("cannot read GitHub release", "repository", repository, "tag", latest.TagName, "error", err)
+		log.Warn("cannot read GitHub release", "repository", repository, "tag", latest.TagName, "error", err)
 		return nil, err
 	}
-	logging.Info("GitHub release found", "version", release.Version, "channel", channel)
+	log.Info("GitHub release found", "version", release.Version, "channel", channel)
 	return release, nil
 }
 

@@ -43,7 +43,7 @@ curl "https://abcdefghijkl.supabase.co/realtime/v1/websocket?apikey=<PUBLISHABLE
    Actions → Variables** для релиза. Альтернатива — `watchplay.json` в корне
    репозитория.
 2. Собрать релиз: `build.ps1` передаст их в
-   `-ldflags -X watchparty.SupabaseURL` и `watchparty.SupabaseKey`.
+   `-ldflags -X party.SupabaseURL` и `party.SupabaseKey`.
 
 Переменные окружения важнее файла; `watchplay.json` сборка не перезаписывает.
 
@@ -72,8 +72,8 @@ URL и ключ можно ввести в настройках Yonime: **Сов
 
 ```bash
 go build -ldflags "\
- -X github.com/arfush/yonime/internal/watchparty.SupabaseURL=https://abcdefghijkl.supabase.co \
- -X github.com/arfush/yonime/internal/watchparty.SupabaseKey=sb_publishable_..." ./cmd/yonime
+ -X github.com/arfush/yonime/party.SupabaseURL=https://abcdefghijkl.supabase.co \
+ -X github.com/arfush/yonime/party.SupabaseKey=sb_publishable_..." ./cmd/yonime
 ```
 
 Publishable-ключ публичный: он и должен лежать в клиенте. Не вшивайте

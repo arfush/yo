@@ -18,7 +18,7 @@ import (
 	"gioui.org/widget"
 
 	"github.com/arfush/yonime/internal/metadata"
-	"github.com/arfush/yonime/internal/watchparty"
+	"github.com/arfush/yonime/party"
 )
 
 const (
@@ -75,7 +75,7 @@ type settingsValues struct {
 	Discord       bool
 	AutoSkip      map[metadata.Segment]bool
 	Name          string
-	Provider      watchparty.Provider
+	Provider      party.Provider
 	CloudflareURL string
 	SupabaseURL   string
 	SupabaseKey   string
@@ -89,7 +89,7 @@ type settingsWindow struct {
 	beta       bool
 	control    bool
 	discord    bool
-	provider   watchparty.Provider
+	provider   party.Provider
 
 	cloudflareEditor   widget.Editor
 	supabaseURLEditor  widget.Editor
@@ -150,8 +150,8 @@ type settingsWindow struct {
 	onControl    func(bool) error
 	onDiscord    func(bool) error
 	onAutoSkip   func(metadata.Segment, bool) error
-	onProvider   func(watchparty.Provider) error
-	onRelay      func(watchparty.Config) error
+	onProvider   func(party.Provider) error
+	onRelay      func(party.Config) error
 	onName       func(string) error
 }
 
@@ -360,7 +360,7 @@ func (w *settingsWindow) contentHeight(gtx layout.Context) int {
 	}
 	panel := gtx.Dp(settingsPanelHeight)
 	relays := 1
-	if w.provider == watchparty.Supabase {
+	if w.provider == party.Supabase {
 		relays = 2
 	}
 	height := gtx.Dp(settingsPadTop)
@@ -651,7 +651,7 @@ func (w *settingsWindow) layoutRelayPanels(gtx layout.Context, left, right, top 
 	submitted := false
 	focusLost := false
 
-	if w.provider == watchparty.Supabase {
+	if w.provider == party.Supabase {
 		w.cloudflareFocused = false
 		var panel image.Rectangle
 		var ok, lost bool
@@ -826,7 +826,7 @@ func (w *settingsWindow) saveRelays() {
 	if !w.relayDirty {
 		return
 	}
-	cfg := watchparty.Config{
+	cfg := party.Config{
 		CloudflareURL: w.cloudflareEditor.Text(),
 		SupabaseURL:   w.supabaseURLEditor.Text(),
 		SupabaseKey:   w.supabaseKeyEditor.Text(),
@@ -848,7 +848,7 @@ func (w *settingsWindow) saveName() {
 	if !w.nameDirty {
 		return
 	}
-	normalized, err := watchparty.NormalizeName(w.nameEditor.Text())
+	normalized, err := party.NormalizeName(w.nameEditor.Text())
 	if err != nil {
 		w.reportError(errors.New("никнейм — до 24 символов, без служебных знаков и не похож на ключ комнаты"))
 		return
@@ -906,7 +906,7 @@ func (w *settingsWindow) layoutProviderMenu(gtx layout.Context, size image.Point
 	if anchor.Empty() {
 		return
 	}
-	providers := watchparty.Providers()
+	providers := party.Providers()
 	pad := gtx.Dp(settingsProviderMenuPad)
 	itemHeight := gtx.Dp(settingsProviderItemHeight)
 	itemGap := gtx.Dp(settingsProviderItemGap)
@@ -958,7 +958,7 @@ func providerMenuHeight(gtx layout.Context, count int) int {
 	return height
 }
 
-func (w *settingsWindow) layoutProviderItem(gtx layout.Context, rect image.Rectangle, provider watchparty.Provider, click *widget.Clickable) bool {
+func (w *settingsWindow) layoutProviderItem(gtx layout.Context, rect image.Rectangle, provider party.Provider, click *widget.Clickable) bool {
 	if rect.Empty() {
 		return false
 	}
@@ -1115,7 +1115,7 @@ func (w *settingsWindow) setAutoSkip(segment metadata.Segment, enabled bool) {
 	w.errorText = ""
 }
 
-func (w *settingsWindow) setProvider(provider watchparty.Provider) {
+func (w *settingsWindow) setProvider(provider party.Provider) {
 	if provider == w.provider {
 		return
 	}

@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arfush/yonime/internal/logging"
+	"github.com/arfush/yonime/log"
 )
 
 const (
@@ -247,13 +247,13 @@ func unescapePathSegment(segment string) string {
 func (c *Client) Fetch(ctx context.Context, input string) (*TitleData, error) {
 	slug, err := ParseInput(input)
 	if err != nil {
-		logging.Warn("cannot parse AnimeLIB input", "input", input, "error", err)
+		log.Warn("cannot parse AnimeLIB input", "input", input, "error", err)
 		return nil, err
 	}
-	logging.Debug("resolving AnimeLIB title", "slug", slug)
+	log.Debug("resolving AnimeLIB title", "slug", slug)
 	title, err := c.resolve(ctx, slug)
 	if err != nil {
-		logging.Error("cannot resolve AnimeLIB title", "slug", slug, "error", err)
+		log.Error("cannot resolve AnimeLIB title", "slug", slug, "error", err)
 		return nil, err
 	}
 	if announced(title) {
@@ -295,7 +295,7 @@ func (c *Client) Fetch(ctx context.Context, input string) (*TitleData, error) {
 		Episodes:   episodes,
 		Voiceovers: buildVoiceovers(episodes, groups, complete, kodik),
 	}
-	logging.Info("AnimeLIB title resolved", "title", title.RusName, "slug", title.Slug, "episodes", len(episodes), "voices", len(data.Voiceovers))
+	log.Info("AnimeLIB title resolved", "title", title.RusName, "slug", title.Slug, "episodes", len(episodes), "voices", len(data.Voiceovers))
 	return data, nil
 }
 
@@ -652,11 +652,11 @@ func (c *Client) get(ctx context.Context, endpoint string, siteID int) ([]byte, 
 
 		sentAt := time.Now()
 		noteRequestSent(sentAt)
-		logging.Debug("AnimeLIB request", "endpoint", endpoint, "site", siteID)
+		log.Debug("AnimeLIB request", "endpoint", endpoint, "site", siteID)
 		body, status, retryAfter, err := c.do(ctx, endpoint, siteID)
 		<-c.sem
 		if err != nil {
-			logging.Warn("AnimeLIB request failed", "endpoint", endpoint, "site", siteID, "error", err)
+			log.Warn("AnimeLIB request failed", "endpoint", endpoint, "site", siteID, "error", err)
 			return nil, err
 		}
 		switch {
@@ -664,7 +664,7 @@ func (c *Client) get(ctx context.Context, endpoint string, siteID int) ([]byte, 
 			// A request that hit the limit is never dropped: pause and send it
 			// again. Every queued request is therefore retried with a delay
 			// until AnimeLIB answers without a rate limit.
-			logging.Warn("AnimeLIB rate limit reached", "endpoint", endpoint, "retry_after", retryAfter)
+			log.Warn("AnimeLIB rate limit reached", "endpoint", endpoint, "retry_after", retryAfter)
 			noteRateLimit(sentAt, parseRetryAfter(retryAfter))
 			continue
 		case status >= http.StatusOK && status < http.StatusMultipleChoices:
@@ -675,7 +675,7 @@ func (c *Client) get(ctx context.Context, endpoint string, siteID int) ([]byte, 
 			if len(snippet) > 240 {
 				snippet = snippet[:240] + "…"
 			}
-			logging.Warn("AnimeLIB returned an error", "endpoint", endpoint, "status", status)
+			log.Warn("AnimeLIB returned an error", "endpoint", endpoint, "status", status)
 			return nil, fmt.Errorf("HTTP %d: %s", status, snippet)
 		}
 	}

@@ -10,8 +10,8 @@ import (
 
 	playwright "github.com/mxschmitt/playwright-go"
 
-	"github.com/arfush/yonime/internal/logging"
 	"github.com/arfush/yonime/internal/token"
+	"github.com/arfush/yonime/log"
 )
 
 // DefaultDomain is the AnimeLIB domain shown in the token prompt. The browser
@@ -154,7 +154,7 @@ func (m *Manager) Authorize(ctx context.Context, siteURL, profileDir string, bou
 	if strings.TrimSpace(profileDir) == "" {
 		return token.Token{}, errors.New("не указан профиль Chromium")
 	}
-	logging.Info("AnimeLIB authorization started", "site", siteURL)
+	log.Info("AnimeLIB authorization started", "site", siteURL)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -182,7 +182,7 @@ func (m *Manager) Authorize(ctx context.Context, siteURL, profileDir string, bou
 
 	pw, err := playwright.Run(m.opts)
 	if err != nil {
-		logging.Error("cannot start Playwright", "error", err)
+		log.Error("cannot start Playwright", "error", err)
 		return token.Token{}, fmt.Errorf("запустить Playwright: %w", err)
 	}
 	defer pw.Stop()
@@ -205,10 +205,10 @@ func (m *Manager) Authorize(ctx context.Context, siteURL, profileDir string, bou
 	})
 	if err != nil {
 		if ctx.Err() != nil {
-			logging.Info("AnimeLIB authorization cancelled")
+			log.Info("AnimeLIB authorization cancelled")
 			return token.Token{}, ctx.Err()
 		}
-		logging.Error("cannot start Chromium", "error", err)
+		log.Error("cannot start Chromium", "error", err)
 		return token.Token{}, fmt.Errorf("запустить Chromium: %w", err)
 	}
 	defer browserContext.Close()
@@ -320,7 +320,7 @@ func (m *Manager) Authorize(ctx context.Context, siteURL, profileDir string, bou
 			if err != nil || parsed.AccessToken == "" || parsed.Expired(time.Now()) {
 				continue
 			}
-			logging.Info("AnimeLIB token captured")
+			log.Info("AnimeLIB token captured")
 			return parsed, nil
 		}
 
@@ -337,7 +337,7 @@ func (m *Manager) Authorize(ctx context.Context, siteURL, profileDir string, bou
 		// expiration. A captured Bearer token is used only if the site changed
 		// its storage layout and no structured value appeared.
 		if fallback.AccessToken != "" && time.Since(fallbackAt) > 2*time.Second {
-			logging.Info("AnimeLIB token captured from a request")
+			log.Info("AnimeLIB token captured from a request")
 			return fallback, nil
 		}
 	}

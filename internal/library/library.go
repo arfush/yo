@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/arfush/yonime/internal/animelib"
-	"github.com/arfush/yonime/internal/logging"
 	"github.com/arfush/yonime/internal/metadata"
 	"github.com/arfush/yonime/internal/store"
 	"github.com/arfush/yonime/internal/token"
+	"github.com/arfush/yonime/log"
 )
 
 // Status is the display status of a title.
@@ -129,10 +129,10 @@ func (l *Library) Close() error {
 func (l *Library) History() ([]Title, error) {
 	entries, err := l.store.ListHistory()
 	if err != nil {
-		logging.Error("cannot load history", "error", err)
+		log.Error("cannot load history", "error", err)
 		return nil, err
 	}
-	logging.Debug("history loaded", "count", len(entries))
+	log.Debug("history loaded", "count", len(entries))
 	out := make([]Title, 0, len(entries))
 	for _, entry := range entries {
 		title := titleFromStore(entry.Title)
@@ -151,10 +151,10 @@ func (l *Library) History() ([]Title, error) {
 // Nothing about the episodes, voiceovers or the cover URL is reused between
 // loads: only the local metadata, saved selection and cover file are kept.
 func (l *Library) Load(ctx context.Context, input string) (Title, error) {
-	logging.Info("loading title", "input", input)
+	log.Info("loading title", "input", input)
 	token, err := l.readToken()
 	if err != nil {
-		logging.Error("cannot read AnimeLIB token", "error", err)
+		log.Error("cannot read AnimeLIB token", "error", err)
 		return Title{}, err
 	}
 
@@ -162,10 +162,10 @@ func (l *Library) Load(ctx context.Context, input string) (Title, error) {
 	data, err := client.Fetch(ctx, input)
 	if err != nil {
 		if ctx.Err() != nil {
-			logging.Info("title load cancelled", "input", input)
+			log.Info("title load cancelled", "input", input)
 			return Title{}, ctx.Err()
 		}
-		logging.Error("title load failed", "input", input, "error", err)
+		log.Error("title load failed", "input", input, "error", err)
 		return Title{}, err
 	}
 
@@ -179,7 +179,7 @@ func (l *Library) Load(ctx context.Context, input string) (Title, error) {
 		return Title{}, err
 	}
 	l.ensureCover(ctx, &title)
-	logging.Info("title loaded", "title", title.Russian, "slug", title.Slug, "episodes", len(title.Episodes), "voices", len(title.Voiceovers))
+	log.Info("title loaded", "title", title.Russian, "slug", title.Slug, "episodes", len(title.Episodes), "voices", len(title.Voiceovers))
 	return title, nil
 }
 
@@ -208,10 +208,10 @@ func (l *Library) upsertLoadedTitle(stored store.Title) (store.Title, error) {
 // the user presses Save in the title window, so merely opening a link must not
 // add it to history.
 func (l *Library) Fetch(ctx context.Context, input string) (Title, error) {
-	logging.Info("fetching title", "input", input)
+	log.Info("fetching title", "input", input)
 	token, err := l.readToken()
 	if err != nil {
-		logging.Error("cannot read AnimeLIB token", "error", err)
+		log.Error("cannot read AnimeLIB token", "error", err)
 		return Title{}, err
 	}
 
@@ -219,10 +219,10 @@ func (l *Library) Fetch(ctx context.Context, input string) (Title, error) {
 	data, err := client.Fetch(ctx, input)
 	if err != nil {
 		if ctx.Err() != nil {
-			logging.Info("title fetch cancelled", "input", input)
+			log.Info("title fetch cancelled", "input", input)
 			return Title{}, ctx.Err()
 		}
-		logging.Error("title fetch failed", "input", input, "error", err)
+		log.Error("title fetch failed", "input", input, "error", err)
 		return Title{}, err
 	}
 
@@ -254,18 +254,18 @@ func (l *Library) Fetch(ctx context.Context, input string) (Title, error) {
 	title.SelectedVoice = voice
 	title.SelectedEpisode = episode
 	l.ensureCover(ctx, &title)
-	logging.Info("title fetched", "title", title.Russian, "slug", title.Slug, "episodes", len(title.Episodes), "voices", len(title.Voiceovers))
+	log.Info("title fetched", "title", title.Russian, "slug", title.Slug, "episodes", len(title.Episodes), "voices", len(title.Voiceovers))
 	return title, nil
 }
 
 // Save writes a URL-opened title to the local history and stores the voiceover
 // and episode chosen in the title window.
 func (l *Library) Save(title Title, voice, episode string) (Title, error) {
-	logging.Info("saving title", "title", title.Russian, "slug", title.Slug, "user_status", title.UserStatus)
+	log.Info("saving title", "title", title.Russian, "slug", title.Slug, "user_status", title.UserStatus)
 	stored := storedTitleFromLibrary(title)
 	id, err := l.store.UpsertTitle(stored)
 	if err != nil {
-		logging.Error("cannot save title", "slug", title.Slug, "error", err)
+		log.Error("cannot save title", "slug", title.Slug, "error", err)
 		return Title{}, fmt.Errorf("не удалось сохранить тайтл: %w", err)
 	}
 	stored.ID = id
@@ -292,7 +292,7 @@ func (l *Library) Save(title Title, voice, episode string) (Title, error) {
 	// not overwrite a manual choice. Save is explicit, so write the status from
 	// the title window even when the title already existed without history.
 	if err := l.store.SetUserStatus(id, int(stored.UserStatus)); err != nil {
-		logging.Error("cannot save user status", "title", id, "error", err)
+		log.Error("cannot save user status", "title", id, "error", err)
 		return Title{}, err
 	}
 	saved.UserStatus = UserStatus(stored.UserStatus)
@@ -303,7 +303,7 @@ func (l *Library) Save(title Title, voice, episode string) (Title, error) {
 			saved.CoverNeedsRetry = false
 		}
 	}
-	logging.Info("title saved", "title", saved.ID, "slug", saved.Slug)
+	log.Info("title saved", "title", saved.ID, "slug", saved.Slug)
 	return saved, nil
 }
 
@@ -323,11 +323,11 @@ func (l *Library) TrackViewing(title Title, voice, episode string) (int64, error
 		return 0, fmt.Errorf("не удалось сохранить тайтл: %w", err)
 	}
 	if err := l.store.TrackViewing(id, episode, voice); err != nil {
-		logging.Error("cannot track viewing", "title", id, "episode", episode, "error", err)
+		log.Error("cannot track viewing", "title", id, "episode", episode, "error", err)
 		return id, err
 	}
 	l.promoteWatching(id)
-	logging.Info("viewing tracked", "title", id, "episode", episode, "voice", voice)
+	log.Info("viewing tracked", "title", id, "episode", episode, "voice", voice)
 	return id, nil
 }
 
@@ -362,7 +362,7 @@ func (l *Library) promoteWatching(tid int64) {
 		return
 	}
 	if err := l.store.SetUserStatusFrom(tid, int(UserStatusPlanned), int(UserStatusWatching)); err != nil {
-		logging.Warn("cannot promote user status", "title", tid, "error", err)
+		log.Warn("cannot promote user status", "title", tid, "error", err)
 		return
 	}
 }
@@ -376,7 +376,7 @@ func (l *Library) UserStatus(tid int64) UserStatus {
 	}
 	title, err := l.store.GetTitleByID(tid)
 	if err != nil {
-		logging.Warn("cannot read user status", "title", tid, "error", err)
+		log.Warn("cannot read user status", "title", tid, "error", err)
 		return UserStatusPlanned
 	}
 	if title == nil {
@@ -393,10 +393,10 @@ func (l *Library) MarkCompleted(tid int64) error {
 		return nil
 	}
 	if err := l.store.SetUserStatus(tid, int(UserStatusCompleted)); err != nil {
-		logging.Error("cannot mark title completed", "title", tid, "error", err)
+		log.Error("cannot mark title completed", "title", tid, "error", err)
 		return err
 	}
-	logging.Info("title completed", "title", tid)
+	log.Info("title completed", "title", tid)
 	return nil
 }
 
@@ -510,32 +510,32 @@ func (l *Library) SetDiscordPresenceEnabled(enabled bool) error {
 	return l.store.SetDiscordPresenceEnabled(enabled)
 }
 
-// WatchPartyProvider returns the relay picked for new rooms, or "" when the
+// PartyProvider returns the relay picked for new rooms, or "" when the
 // user never picked one.
-func (l *Library) WatchPartyProvider() string {
+func (l *Library) PartyProvider() string {
 	if l == nil || l.store == nil {
 		return ""
 	}
-	return l.store.WatchPartyProvider()
+	return l.store.PartyProvider()
 }
 
-// SetWatchPartyProvider remembers the relay picked for new rooms.
-func (l *Library) SetWatchPartyProvider(provider string) error {
-	return l.store.SetWatchPartyProvider(provider)
+// SetPartyProvider remembers the relay picked for new rooms.
+func (l *Library) SetPartyProvider(provider string) error {
+	return l.store.SetPartyProvider(provider)
 }
 
-// WatchPartyName returns the stored room nickname, or "" when the user never
+// PartyName returns the stored room nickname, or "" when the user never
 // picked one.
-func (l *Library) WatchPartyName() string {
+func (l *Library) PartyName() string {
 	if l == nil || l.store == nil {
 		return ""
 	}
-	return l.store.WatchPartyName()
+	return l.store.PartyName()
 }
 
-// SetWatchPartyName stores the room nickname.
-func (l *Library) SetWatchPartyName(name string) error {
-	return l.store.SetWatchPartyName(name)
+// SetPartyName stores the room nickname.
+func (l *Library) SetPartyName(name string) error {
+	return l.store.SetPartyName(name)
 }
 
 // IntrodbCache returns cached chapters or a no-data marker. The third result
@@ -554,21 +554,21 @@ func (l *Library) SaveIntrodbCache(tid int64, episode string, chapters []byte, n
 // otherwise stay on disk forever after the history row is gone.
 func (l *Library) DeleteHistory(tid int64) error {
 	if err := l.store.DeleteHistory(tid); err != nil {
-		logging.Error("cannot delete history", "title", tid, "error", err)
+		log.Error("cannot delete history", "title", tid, "error", err)
 		return err
 	}
 	l.removeCover(tid)
-	logging.Info("history deleted", "title", tid)
+	log.Info("history deleted", "title", tid)
 	return nil
 }
 
 // ClearHistory removes every title from the visible history.
 func (l *Library) ClearHistory() error {
 	if err := l.store.ClearHistory(); err != nil {
-		logging.Error("cannot clear history", "error", err)
+		log.Error("cannot clear history", "error", err)
 		return err
 	}
-	logging.Info("history cleared")
+	log.Info("history cleared")
 	return nil
 }
 

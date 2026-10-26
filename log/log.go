@@ -1,10 +1,10 @@
-// Package logging writes the application log and keeps the recent entries in
+// Package log writes the application log and keeps the recent entries in
 // memory for the log window.
 //
 // The log is intentionally independent from the UI: background workers,
 // network clients and the store can all call it without importing the UI. The
 // file lives next to the database, in %APPDATA%\Yonime\yonime.log.
-package logging
+package log
 
 import (
 	"fmt"

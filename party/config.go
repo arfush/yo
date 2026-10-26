@@ -1,4 +1,4 @@
-package watchparty
+package party
 
 import (
 	"encoding/json"
@@ -26,7 +26,7 @@ type Config struct {
 	SupabaseKey   string `json:"supabase_key"`
 }
 
-// LoadConfig reads the watch-party configuration. A missing file is not an
+// LoadConfig reads the party configuration. A missing file is not an
 // error: the build-time defaults (if any) are used instead. When the file
 // exists, it fully describes the relays, including empty fields: that is how
 // the settings screen turns a built-in relay off.
@@ -59,30 +59,30 @@ func SaveConfig(path string, cfg Config) error {
 	}
 	raw, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
-		return fmt.Errorf("encode watch-party config: %w", err)
+		return fmt.Errorf("encode party config: %w", err)
 	}
 	raw = append(raw, '\n')
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("create watch-party config directory: %w", err)
+		return fmt.Errorf("create party config directory: %w", err)
 	}
 	tmp, err := os.CreateTemp(dir, ".watchparty-*.json")
 	if err != nil {
-		return fmt.Errorf("create watch-party config: %w", err)
+		return fmt.Errorf("create party config: %w", err)
 	}
 	name := tmp.Name()
 	if _, err := tmp.Write(raw); err != nil {
 		_ = tmp.Close()
 		_ = os.Remove(name)
-		return fmt.Errorf("write watch-party config: %w", err)
+		return fmt.Errorf("write party config: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(name)
-		return fmt.Errorf("close watch-party config: %w", err)
+		return fmt.Errorf("close party config: %w", err)
 	}
 	if err := os.Rename(name, path); err != nil {
 		_ = os.Remove(name)
-		return fmt.Errorf("replace watch-party config: %w", err)
+		return fmt.Errorf("replace party config: %w", err)
 	}
 	return nil
 }
