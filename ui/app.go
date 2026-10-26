@@ -1758,9 +1758,9 @@ func (a *application) toggleShortcuts() {
 	a.hidePopups()
 	a.shortcuts = newShortcutsWindow(a.shell.typo, shortcutInfoFor(a.active))
 	a.shortcuts.onBack = a.closeShortcuts
-	// An empty footer widget suppresses the default footer controls; setting
-	// the field to nil would draw them instead.
+	shortcuts := a.shortcuts
 	a.shell.footer = func(gtx layout.Context) layout.Dimensions {
+		shortcuts.layoutFooter(gtx)
 		return layout.Dimensions{Size: gtx.Constraints.Max}
 	}
 	a.shell.overlay = nil

@@ -104,13 +104,8 @@ func (w *shortcutsWindow) layout(gtx layout.Context) {
 	dividerY := pageY + pageInk.Dy() + gtx.Dp(unit.Dp(14))
 	fill(gtx, titlePanelBorder, image.Rect(left, dividerY, right, dividerY+max(1, gtx.Dp(unit.Dp(1)))))
 
-	buttonHeight := gtx.Dp(unit.Dp(34))
-	buttonWidth := gtx.Dp(unit.Dp(120))
-	footerY := card.Max.Y - innerPad - buttonHeight
-	button := image.Rect(left, footerY, left+buttonWidth, footerY+buttonHeight)
-
 	rowsTop := dividerY + gtx.Dp(unit.Dp(8))
-	rowsBottom := button.Min.Y - gtx.Dp(unit.Dp(10))
+	rowsBottom := card.Max.Y - innerPad
 	rowCount := len(w.info.items)
 	if rowCount > 0 && rowsBottom > rowsTop {
 		rowHeight := (rowsBottom - rowsTop) / rowCount
@@ -146,7 +141,19 @@ func (w *shortcutsWindow) layout(gtx layout.Context) {
 			w.typo.draw(gtx, item.label, textFace, shortcutTextSize, mainTextColor, image.Pt(left+keyColumn+keyGap, labelY))
 		}
 	}
+}
 
+// layoutFooter draws the summary's only action into the shared application
+// footer. Keeping it outside the card matches the title and log screens.
+func (w *shortcutsWindow) layoutFooter(gtx layout.Context) {
+	size := gtx.Constraints.Max
+	if size.X <= 0 || size.Y <= 0 {
+		return
+	}
+	padX := gtx.Dp(unit.Dp(28))
+	height := gtx.Dp(titlePageButtonHeight)
+	top := (size.Y - height) / 2
+	button := image.Rect(padX, top, padX+gtx.Dp(unit.Dp(120)), top+height)
 	if w.layoutBack(gtx, button) && w.onBack != nil {
 		w.onBack()
 	}

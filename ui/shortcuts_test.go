@@ -1,12 +1,16 @@
 package ui
 
 import (
+	"image"
 	"testing"
 
+	"gioui.org/f32"
 	"gioui.org/io/input"
 	"gioui.org/io/key"
+	"gioui.org/io/pointer"
 	"gioui.org/layout"
 	"gioui.org/op"
+	"gioui.org/unit"
 )
 
 func TestLetterShortcutsMatchRussianLayout(t *testing.T) {
@@ -296,6 +300,58 @@ func TestShortcutInfoIsPageSpecific(t *testing.T) {
 	}).shortcutInfo()
 	if hasShortcut(announcedInfo, "Enter") {
 		t.Fatal("announced title advertised playback")
+	}
+}
+
+func TestShortcutsBackButtonLivesInTheLeftFooter(t *testing.T) {
+	typo, err := newTypography()
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := newShortcutsWindow(typo, (&mainWindow{}).shortcutInfo())
+	backs := 0
+	w.onBack = func() { backs++ }
+
+	var router input.Router
+	ops := new(op.Ops)
+	gtx := layout.Context{
+		Ops:         ops,
+		Source:      router.Source(),
+		Metric:      unit.Metric{PxPerDp: 1, PxPerSp: 1},
+		Constraints: layout.Exact(image.Pt(833, 49)),
+	}
+	frame := func() {
+		ops.Reset()
+		w.layoutFooter(gtx)
+		router.Frame(ops)
+	}
+	frame()
+
+	click := func(at image.Point) {
+		router.Queue(
+			pointer.Event{
+				Source:   pointer.Mouse,
+				Buttons:  pointer.ButtonPrimary,
+				Kind:     pointer.Press,
+				Position: f32.Pt(float32(at.X), float32(at.Y)),
+			},
+			pointer.Event{
+				Source:   pointer.Mouse,
+				Buttons:  pointer.ButtonPrimary,
+				Kind:     pointer.Release,
+				Position: f32.Pt(float32(at.X), float32(at.Y)),
+			},
+		)
+		frame()
+	}
+
+	click(image.Pt(700, 24))
+	if backs != 0 {
+		t.Fatal("the right side of the footer still triggers the back action")
+	}
+	click(image.Pt(88, 24))
+	if backs != 1 {
+		t.Fatalf("left footer button triggered %d time(s), want 1", backs)
 	}
 }
 
