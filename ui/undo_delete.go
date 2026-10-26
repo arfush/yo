@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"math"
 	"math/rand"
+	"sort"
 	"time"
 
 	"gioui.org/f32"
@@ -98,7 +99,8 @@ func (u *undoDeleteState) pendingIDs() map[int64]bool {
 
 // visibleHistory removes hidden rows from a history snapshot loaded from the
 // library while an undo countdown is still running, then applies the selected
-// status filter.
+// status filter. A status view uses its own order; the unfiltered view keeps
+// the all-titles order.
 func (m *mainWindow) visibleHistory(items []historyTitle) []historyTitle {
 	hidden := m.undo.pendingIDs()
 	visible := make([]historyTitle, 0, len(items))
@@ -110,6 +112,11 @@ func (m *mainWindow) visibleHistory(items []historyTitle) []historyTitle {
 			continue
 		}
 		visible = append(visible, item)
+	}
+	if m.filter != filterAll {
+		sort.SliceStable(visible, func(i, j int) bool {
+			return visible[i].statusOrder < visible[j].statusOrder
+		})
 	}
 	return visible
 }

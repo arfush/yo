@@ -1040,7 +1040,14 @@ func (m *mainWindow) persistHistoryOrder() {
 	if m.library == nil {
 		return
 	}
-	if err := m.library.ReorderHistory(displayTitles(m.allHistory)); err != nil {
+	m.syncVisibleStatusOrder()
+	var err error
+	if m.filter == filterAll {
+		err = m.library.ReorderHistory(displayTitles(m.allHistory))
+	} else if status, ok := m.filter.userStatus(); ok {
+		err = m.library.ReorderStatusHistory(status, displayTitles(m.history))
+	}
+	if err != nil {
 		m.loadError = err.Error()
 		m.reportError(err)
 	}
@@ -1625,9 +1632,6 @@ func (m *mainWindow) drawHistoryRowCard(gtx layout.Context, rect image.Rectangle
 	if vis.selected || vis.dragging {
 		handleColor = mainDragDotActive
 	}
-	if m.filter != filterAll {
-		handleColor = withAlpha(handleColor, 0x55)
-	}
 	drawDragHandle(gtx, geom.handle, handleColor)
 
 	m.drawPoster(gtx, geom.poster, item)
@@ -1875,27 +1879,57 @@ func (m *mainWindow) dismissPopup() {
 	m.statusMenu.close()
 }
 
-// setUserStatus updates a title in both the complete and visible history. When
-// a filter is active the row may no longer belong in the visible list, so the
+// setUserStatus updates a title in both the complete and visible history. A
+// changed status also moves the title to the top of its new status list. When a
+// filter is active the row may no longer belong in the visible list, so the
 // filtered view is rebuilt instead of patched in place.
 func (m *mainWindow) setUserStatus(id int64, status library.UserStatus) {
 	if id == 0 {
 		return
 	}
-	changed := false
+	m.ensureAllHistory()
+	target := library.NormalizeUserStatus(status)
+	previous, found := library.UserStatus(0), false
 	for index := range m.allHistory {
 		if m.allHistory[index].id == id {
-			m.allHistory[index].userStatus = library.NormalizeUserStatus(status)
-			changed = true
+			previous = library.NormalizeUserStatus(m.allHistory[index].userStatus)
+			found = true
+			break
 		}
+	}
+	if !found || previous == target {
+		return
+	}
+
+	statusOrder := int64(0)
+	hasOrder := false
+	for index := range m.allHistory {
+		item := &m.allHistory[index]
+		if item.id == id || library.NormalizeUserStatus(item.userStatus) != target {
+			continue
+		}
+		if !hasOrder || item.statusOrder < statusOrder {
+			statusOrder = item.statusOrder
+			hasOrder = true
+		}
+	}
+	if hasOrder {
+		statusOrder -= 1000
+	}
+
+	for index := range m.allHistory {
+		if m.allHistory[index].id != id {
+			continue
+		}
+		m.allHistory[index].userStatus = target
+		m.allHistory[index].statusOrder = statusOrder
 	}
 	for index := range m.history {
-		if m.history[index].id == id {
-			m.history[index].userStatus = library.NormalizeUserStatus(status)
+		if m.history[index].id != id {
+			continue
 		}
-	}
-	if !changed {
-		return
+		m.history[index].userStatus = target
+		m.history[index].statusOrder = statusOrder
 	}
 	if m.filter != filterAll {
 		m.applyFilter()

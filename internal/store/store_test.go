@@ -728,3 +728,154 @@ func TestOpenAddsEpisodesTotalToLegacyDatabase(t *testing.T) {
 		t.Fatalf("episode total = %#v, want 13", updated)
 	}
 }
+
+func TestHistoryTracksPerStatusOrderAndPromotion(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "yonime.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	specs := []struct {
+		slug   string
+		status int
+	}{
+		{"planned-a", 2},
+		{"planned-b", 2},
+		{"watching-a", 1},
+		{"watching-b", 1},
+	}
+	ids := make([]int64, len(specs))
+	for index, spec := range specs {
+		id, err := db.UpsertTitle(Title{Slug: spec.slug, UserStatus: spec.status})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids[index] = id
+		if _, err := db.EnsureHistory(id, "1", "voice"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	orders := func(t *testing.T) map[int64]int64 {
+		t.Helper()
+		history, err := db.ListHistory()
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := make(map[int64]int64, len(history))
+		for _, entry := range history {
+			out[entry.ID] = entry.StatusOrder
+		}
+		return out
+	}
+
+	got := orders(t)
+	want := map[int64]int64{
+		ids[0]: 0,
+		ids[1]: -1000,
+		ids[2]: 0,
+		ids[3]: -1000,
+	}
+	for id, order := range want {
+		if got[id] != order {
+			t.Fatalf("initial status order for %d = %d, want %d", id, got[id], order)
+		}
+	}
+
+	if err := db.ReorderStatusHistory(1, []int64{ids[2], ids[3]}); err != nil {
+		t.Fatal(err)
+	}
+	got = orders(t)
+	if got[ids[2]] != 0 || got[ids[3]] != 1 {
+		t.Fatalf("watching order after reorder = %d/%d, want 0/1", got[ids[2]], got[ids[3]])
+	}
+	if got[ids[0]] != 0 || got[ids[1]] != -1000 {
+		t.Fatalf("planned order changed with another status: %d/%d", got[ids[0]], got[ids[1]])
+	}
+
+	if err := db.SetUserStatus(ids[0], 1); err != nil {
+		t.Fatal(err)
+	}
+	got = orders(t)
+	if got[ids[0]] != -1000 {
+		t.Fatalf("promoted title status order = %d, want -1000", got[ids[0]])
+	}
+
+	// Re-selecting the same status must not move a title that the user already
+	// placed inside the status list.
+	if err := db.ReorderStatusHistory(1, []int64{ids[0], ids[3], ids[2]}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetUserStatus(ids[0], 1); err != nil {
+		t.Fatal(err)
+	}
+	if got := orders(t)[ids[0]]; got != 0 {
+		t.Fatalf("same status moved title to %d, want 0", got)
+	}
+
+	if err := db.SetUserStatusFrom(ids[0], 1, 2); err != nil {
+		t.Fatal(err)
+	}
+	if got := orders(t)[ids[0]]; got != -2000 {
+		t.Fatalf("conditional promotion status order = %d, want -2000", got)
+	}
+	if err := db.SetUserStatusFrom(ids[0], 1, 4); err != nil {
+		t.Fatal(err)
+	}
+	if got := orders(t)[ids[0]]; got != -2000 {
+		t.Fatalf("stale conditional change moved title to %d", got)
+	}
+}
+
+func TestOpenAddsStatusOrderToLegacyHistory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy-history.sqlite")
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`CREATE TABLE titles (
+		id INTEGER PRIMARY KEY,
+		slug TEXT UNIQUE NOT NULL,
+		eng_name TEXT NOT NULL DEFAULT '',
+		rus_name TEXT NOT NULL DEFAULT '',
+		imdb_id TEXT NOT NULL DEFAULT '',
+		season INTEGER NOT NULL DEFAULT 0,
+		status INTEGER NOT NULL DEFAULT 0,
+		updated_at INTEGER NOT NULL DEFAULT 0
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`CREATE TABLE history (
+		tid INTEGER PRIMARY KEY REFERENCES titles(id) ON DELETE CASCADE,
+		episode TEXT NOT NULL DEFAULT '',
+		resume_at REAL NOT NULL DEFAULT 0,
+		duration REAL NOT NULL DEFAULT 0,
+		voiceover TEXT NOT NULL DEFAULT '',
+		sort_order INTEGER NOT NULL DEFAULT 0
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec("INSERT INTO titles (slug) VALUES ('legacy')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec("INSERT INTO history (tid, episode, sort_order) VALUES (1, '2', -500)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	history, err := db.ListHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 1 || history[0].StatusOrder != -500 {
+		t.Fatalf("legacy status order = %#v, want -500", history)
+	}
+}

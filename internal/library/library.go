@@ -85,6 +85,9 @@ type Title struct {
 	ResumeAt        float64
 	Duration        float64
 	UpdatedAt       int64
+	// StatusOrder is the title's position inside its user status. The all-title
+	// order is not stored in this struct because History already returns it.
+	StatusOrder int64
 }
 
 // Library owns the store and reads the token file on demand.
@@ -137,6 +140,7 @@ func (l *Library) History() ([]Title, error) {
 		title.SelectedEpisode = entry.Episode
 		title.ResumeAt = entry.ResumeAt
 		title.Duration = entry.Duration
+		title.StatusOrder = entry.StatusOrder
 		l.applyCover(&title)
 		out = append(out, title)
 	}
@@ -561,6 +565,15 @@ func (l *Library) ReorderHistory(titles []Title) error {
 		ids = append(ids, title.ID)
 	}
 	return l.store.ReorderHistory(ids)
+}
+
+// ReorderStatusHistory persists a reorder inside one user status.
+func (l *Library) ReorderStatusHistory(status UserStatus, titles []Title) error {
+	ids := make([]int64, 0, len(titles))
+	for _, title := range titles {
+		ids = append(ids, title.ID)
+	}
+	return l.store.ReorderStatusHistory(int(NormalizeUserStatus(status)), ids)
 }
 
 func (l *Library) readToken() (string, error) {

@@ -34,12 +34,13 @@ CREATE TABLE IF NOT EXISTS titles (
     updated_at     INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS history (
-    tid        INTEGER PRIMARY KEY REFERENCES titles(id) ON DELETE CASCADE,
-    episode    TEXT    NOT NULL DEFAULT '',
-    resume_at  REAL    NOT NULL DEFAULT 0,
-    duration   REAL    NOT NULL DEFAULT 0,
-    voiceover  TEXT    NOT NULL DEFAULT '',
-    sort_order INTEGER NOT NULL DEFAULT 0
+    tid          INTEGER PRIMARY KEY REFERENCES titles(id) ON DELETE CASCADE,
+    episode      TEXT    NOT NULL DEFAULT '',
+    resume_at    REAL    NOT NULL DEFAULT 0,
+    duration     REAL    NOT NULL DEFAULT 0,
+    voiceover    TEXT    NOT NULL DEFAULT '',
+    sort_order   INTEGER NOT NULL DEFAULT 0,
+    status_order INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_history_order ON history(sort_order);
 CREATE TABLE IF NOT EXISTS cover_cache (
@@ -102,6 +103,9 @@ type HistoryEntry struct {
 	Duration  float64
 	Voiceover string
 	SortOrder int64
+	// StatusOrder is the title's position inside its user status, independently
+	// of the all-titles order in SortOrder.
+	StatusOrder int64
 }
 
 // EpisodeWatch is a title from history together with the episode-tracking row
@@ -164,6 +168,11 @@ func Open(path string) (*Store, error) {
 	if err := ensureTitleColumns(db); err != nil {
 		db.Close()
 		logging.Error("cannot migrate database schema", "path", path, "error", err)
+		return nil, err
+	}
+	if err := ensureHistoryColumns(db); err != nil {
+		db.Close()
+		logging.Error("cannot migrate history schema", "path", path, "error", err)
 		return nil, err
 	}
 	if err := normalizeOrphanUserStatuses(db); err != nil {
@@ -237,6 +246,49 @@ func ensureTitleColumns(db *sql.DB) error {
 		if _, err := db.Exec("ALTER TABLE titles ADD COLUMN user_status INTEGER NOT NULL DEFAULT 2"); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// ensureHistoryColumns adds the per-status order introduced after the first
+// public schema. Existing rows inherit the global order, so the status lists
+// keep the order the user already saw until they drag a row.
+func ensureHistoryColumns(db *sql.DB) error {
+	rows, err := db.Query("PRAGMA table_info(history)")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	columns := make(map[string]bool)
+	for rows.Next() {
+		var (
+			cid        int
+			name       string
+			kind       string
+			notNull    int
+			defaultV   sql.NullString
+			primaryKey int
+		)
+		if err := rows.Scan(&cid, &name, &kind, &notNull, &defaultV, &primaryKey); err != nil {
+			return err
+		}
+		columns[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if !columns["status_order"] {
+		logging.Info("migrating database: adding status_order")
+		if _, err := db.Exec("ALTER TABLE history ADD COLUMN status_order INTEGER NOT NULL DEFAULT 0"); err != nil {
+			return err
+		}
+		if _, err := db.Exec("UPDATE history SET status_order = sort_order"); err != nil {
+			return err
+		}
+	}
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_history_status_order ON history(status_order)"); err != nil {
+		return err
 	}
 	return nil
 }
@@ -352,7 +404,7 @@ func (s *Store) SaveCoverFailure(tid int64) error {
 func (s *Store) ListHistory() ([]HistoryEntry, error) {
 	rows, err := s.db.Query(`
         SELECT t.id, t.slug, t.eng_name, t.rus_name, t.imdb_id, t.season, t.status, t.user_status, t.episodes_total, t.is_movie, t.updated_at,
-               h.episode, h.resume_at, h.duration, h.voiceover, h.sort_order
+               h.episode, h.resume_at, h.duration, h.voiceover, h.sort_order, h.status_order
         FROM history h
         JOIN titles t ON t.id = h.tid
         ORDER BY h.sort_order ASC`)
@@ -367,7 +419,7 @@ func (s *Store) ListHistory() ([]HistoryEntry, error) {
 		err := rows.Scan(
 			&entry.ID, &entry.Slug, &entry.EngName, &entry.RusName, &entry.IMDbID, &entry.Season,
 			&entry.Status, &entry.UserStatus, &entry.EpisodesTotal, &entry.IsMovie, &entry.UpdatedAt,
-			&entry.Episode, &entry.ResumeAt, &entry.Duration, &entry.Voiceover, &entry.SortOrder,
+			&entry.Episode, &entry.ResumeAt, &entry.Duration, &entry.Voiceover, &entry.SortOrder, &entry.StatusOrder,
 		)
 		if err != nil {
 			return nil, err
@@ -381,9 +433,9 @@ func (s *Store) ListHistory() ([]HistoryEntry, error) {
 func (s *Store) GetHistory(tid int64) (*HistoryEntry, error) {
 	var entry HistoryEntry
 	err := s.db.QueryRow(`
-        SELECT tid, episode, resume_at, duration, voiceover, sort_order
+        SELECT tid, episode, resume_at, duration, voiceover, sort_order, status_order
         FROM history WHERE tid = ?`, tid).
-		Scan(&entry.ID, &entry.Episode, &entry.ResumeAt, &entry.Duration, &entry.Voiceover, &entry.SortOrder)
+		Scan(&entry.ID, &entry.Episode, &entry.ResumeAt, &entry.Duration, &entry.Voiceover, &entry.SortOrder, &entry.StatusOrder)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -403,17 +455,37 @@ func (s *Store) EnsureHistory(tid int64, episode, voiceover string) (*HistoryEnt
 	if existing != nil {
 		return existing, nil
 	}
+	return s.insertHistoryRow(tid, episode, voiceover)
+}
+
+// insertHistoryRow adds a title to the history. New rows go to the top of both
+// the complete list and their user-status list.
+func (s *Store) insertHistoryRow(tid int64, episode, voiceover string) (*HistoryEntry, error) {
+	status, err := s.historyTitleStatus(tid)
+	if err != nil {
+		return nil, err
+	}
 	sortOrder, err := s.nextSortOrder()
 	if err != nil {
 		return nil, err
 	}
-	_, err = s.db.Exec(`
-        INSERT INTO history (tid, episode, resume_at, duration, voiceover, sort_order)
-        VALUES (?, ?, 0, 0, ?, ?)`, tid, episode, voiceover, sortOrder)
+	statusOrder, err := nextStatusSortOrder(s.db, status)
 	if err != nil {
 		return nil, err
 	}
-	return &HistoryEntry{Title: Title{ID: tid}, Episode: episode, Voiceover: voiceover, SortOrder: sortOrder}, nil
+	_, err = s.db.Exec(`
+        INSERT INTO history (tid, episode, resume_at, duration, voiceover, sort_order, status_order)
+        VALUES (?, ?, 0, 0, ?, ?, ?)`, tid, episode, voiceover, sortOrder, statusOrder)
+	if err != nil {
+		return nil, err
+	}
+	return &HistoryEntry{
+		Title:       Title{ID: tid},
+		Episode:     episode,
+		Voiceover:   voiceover,
+		SortOrder:   sortOrder,
+		StatusOrder: statusOrder,
+	}, nil
 }
 
 // SaveSelection updates the selected episode and voiceover for a title.
@@ -434,13 +506,7 @@ func (s *Store) SaveSelection(tid int64, episode, voiceover string) error {
 	if affected > 0 {
 		return nil
 	}
-	sortOrder, err := s.nextSortOrder()
-	if err != nil {
-		return err
-	}
-	_, err = s.db.Exec(`
-        INSERT INTO history (tid, episode, resume_at, duration, voiceover, sort_order)
-        VALUES (?, ?, 0, 0, ?, ?)`, tid, episode, voiceover, sortOrder)
+	_, err = s.insertHistoryRow(tid, episode, voiceover)
 	return err
 }
 
@@ -581,17 +647,18 @@ func (s *Store) UpdateTitleStatus(tid int64, status int) error {
 	return err
 }
 
-// SetUserStatus stores the local library status for a title.
+// SetUserStatus stores the local library status for a title. A changed status
+// also moves the title to the top of its new status list, while the all-titles
+// order stays as the user arranged it.
 func (s *Store) SetUserStatus(tid int64, status int) error {
-	if tid == 0 {
-		return nil
-	}
-	_, err := s.db.Exec("UPDATE titles SET user_status = ? WHERE id = ?", status, tid)
+	changed, err := s.setUserStatus(tid, status, 0, false)
 	if err != nil {
 		logging.Error("cannot save user status", "title", tid, "status", status, "error", err)
 		return err
 	}
-	logging.Info("user status saved", "title", tid, "status", status)
+	if changed {
+		logging.Info("user status saved", "title", tid, "status", status)
+	}
 	return nil
 }
 
@@ -599,11 +666,47 @@ func (s *Store) SetUserStatus(tid int64, status int) error {
 // value. It is used to promote a planned title to "Смотрю" when playback starts
 // without overwriting a choice the user made in the meantime.
 func (s *Store) SetUserStatusFrom(tid int64, from, to int) error {
-	if tid == 0 {
-		return nil
-	}
-	_, err := s.db.Exec("UPDATE titles SET user_status = ? WHERE id = ? AND user_status = ?", to, tid, from)
+	_, err := s.setUserStatus(tid, to, from, true)
 	return err
+}
+
+// setUserStatus applies a status change in one transaction. requireFrom makes
+// the write conditional on the status the caller last saw.
+func (s *Store) setUserStatus(tid int64, status, from int, requireFrom bool) (bool, error) {
+	if tid == 0 {
+		return false, nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+
+	var current int
+	err = tx.QueryRow("SELECT user_status FROM titles WHERE id = ?", tid).Scan(&current)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, tx.Commit()
+	}
+	if err != nil {
+		return false, err
+	}
+	if requireFrom && current != from {
+		return false, tx.Commit()
+	}
+	if current == status {
+		return false, tx.Commit()
+	}
+	statusOrder, err := nextStatusSortOrder(tx, status)
+	if err != nil {
+		return false, err
+	}
+	if _, err := tx.Exec("UPDATE titles SET user_status = ? WHERE id = ?", status, tid); err != nil {
+		return false, err
+	}
+	if _, err := tx.Exec("UPDATE history SET status_order = ? WHERE tid = ?", statusOrder, tid); err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
 }
 
 // UpdateNames refreshes the localized/English names discovered during
@@ -874,6 +977,27 @@ func (s *Store) ReorderHistory(ids []int64) error {
 	return tx.Commit()
 }
 
+// ReorderStatusHistory persists the order of titles inside one user status.
+// Titles from other statuses keep their own order.
+func (s *Store) ReorderStatusHistory(status int, ids []int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for index, tid := range ids {
+		if _, err := tx.Exec(`
+            UPDATE history SET status_order = ?
+            WHERE tid = ? AND EXISTS (
+                SELECT 1 FROM titles
+                WHERE titles.id = history.tid AND titles.user_status = ?
+            )`, index, tid, status); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func boolInt(value bool) int {
 	if value {
 		return 1
@@ -884,6 +1008,39 @@ func boolInt(value bool) int {
 func (s *Store) nextSortOrder() (int64, error) {
 	var minimum sql.NullInt64
 	if err := s.db.QueryRow("SELECT MIN(sort_order) FROM history").Scan(&minimum); err != nil {
+		return 0, err
+	}
+	if !minimum.Valid {
+		return 0, nil
+	}
+	return minimum.Int64 - 1000, nil
+}
+
+// historyTitleStatus returns the user status that decides which order list a
+// new history row belongs to.
+func (s *Store) historyTitleStatus(tid int64) (int, error) {
+	var status int
+	err := s.db.QueryRow("SELECT user_status FROM titles WHERE id = ?", tid).Scan(&status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return defaultUserStatus, nil
+	}
+	return status, err
+}
+
+type rowQuerier interface {
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+// nextStatusSortOrder places a newly added or promoted title above the current
+// first title of its status.
+func nextStatusSortOrder(q rowQuerier, status int) (int64, error) {
+	var minimum sql.NullInt64
+	err := q.QueryRow(`
+        SELECT MIN(h.status_order)
+        FROM history h
+        JOIN titles t ON t.id = h.tid
+        WHERE t.user_status = ?`, status).Scan(&minimum)
+	if err != nil {
 		return 0, err
 	}
 	if !minimum.Valid {

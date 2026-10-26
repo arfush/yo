@@ -120,6 +120,20 @@ func (f userStatusFilter) matches(status library.UserStatus) bool {
 	return true
 }
 
+// userStatus returns the library status represented by a filter. The "Все"
+// filter and unknown values have no status of their own.
+func (f userStatusFilter) userStatus() (library.UserStatus, bool) {
+	if f == filterAll {
+		return 0, false
+	}
+	for _, option := range userStatusFilterOptions {
+		if option.filter == f {
+			return option.status, true
+		}
+	}
+	return 0, false
+}
+
 // userStatusPillWidth is shared with the release-status pills, so the two tags
 // in a history row or on the title page always have exactly the same size.
 func userStatusPillWidth(gtx layout.Context, typo *typography) int {

@@ -38,12 +38,6 @@ type dragState struct {
 // column. Keeping it out of the rest of the row leaves titles and controls
 // fully clickable.
 func (m *mainWindow) addHistoryDragInput(gtx layout.Context, rect image.Rectangle) {
-	if m.filter != filterAll {
-		// Reordering a filtered subset would rewrite the full history order
-		// with a partial list, so the handle is inert until the filter is
-		// cleared.
-		return
-	}
 	left := gtx.Dp(mainRowPadding)
 	right := left + gtx.Dp(mainDragHandleWidth)
 	area := image.Rect(left, 0, right, rect.Dy())
@@ -367,8 +361,24 @@ func (m *mainWindow) moveHistoryItem(from, to int) {
 	m.selected = reorderIndex(m.selected, from, to)
 	m.loadingTarget = reorderIndex(m.loadingTarget, from, to)
 	if m.filter == filterAll {
-		// Dragging is allowed only in the unfiltered view. Keep the complete
+		// The unfiltered view owns the all-titles order. Keep the complete
 		// order in sync so the database write and later filters see the move.
 		m.allHistory = append(m.allHistory[:0], m.history...)
+		return
+	}
+	m.syncVisibleStatusOrder()
+}
+
+// syncVisibleStatusOrder copies the current filtered order into the per-status
+// order of the matching all-history rows.
+func (m *mainWindow) syncVisibleStatusOrder() {
+	if m.filter == filterAll {
+		return
+	}
+	for index := range m.history {
+		if allIndex := historyIndexByID(m.allHistory, m.history[index].id); allIndex >= 0 {
+			m.allHistory[allIndex].statusOrder = int64(index)
+		}
+		m.history[index].statusOrder = int64(index)
 	}
 }
