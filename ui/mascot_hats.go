@@ -5,15 +5,28 @@ import (
 	"image/color"
 	"math"
 	"math/rand/v2"
+	"time"
 
 	"gioui.org/f32"
 	"gioui.org/layout"
 )
 
 const (
+	mascotHatParty = iota
+	mascotHatWitch
+	mascotHatCrown
+	mascotHatTop
+	mascotHatBeanie
+	mascotHatCap
+	mascotHatSanta
+	mascotHatGraduation
+	mascotHatUshanka
+	mascotHatFlowers
+	mascotHatFedora
+
 	// mascotHatCount is the number of outfits the waiting screen can pick from.
-	mascotHatCount = 11
-	// mascotHatNone keeps the main-window mascot bare.
+	mascotHatCount
+	// mascotHatNone keeps a mascot bare outside the seasonal ranges.
 	mascotHatNone = -1
 )
 
@@ -36,6 +49,39 @@ var (
 // hat stays fixed for as long as the screen is open.
 func nextMascotHat() int {
 	return rand.IntN(mascotHatCount)
+}
+
+// seasonalMascotHat picks the outfit for the URL-field mascot. Every calendar
+// day belongs to at most one range, and the ranges cover the whole year:
+//
+//	Dec 18 - Jan 8   Santa hat
+//	Jan 9  - Feb 29  ushanka (winter)
+//	Mar 1  - May 31  flower crown (spring)
+//	Jun 1  - Aug 31  baseball cap (summer)
+//	Sep 1  - Oct 23  beanie (autumn)
+//	Oct 24 - Nov 7   witch hat (Halloween)
+//	Nov 8  - Dec 17  beanie (late autumn)
+func seasonalMascotHat(now time.Time) int {
+	month, day := now.Month(), now.Day()
+	switch {
+	case month == time.December && day >= 18, month == time.January && day <= 8:
+		return mascotHatSanta
+	case month == time.October && day >= 24, month == time.November && day <= 7:
+		return mascotHatWitch
+	case month == time.January && day >= 9, month == time.February:
+		return mascotHatUshanka
+	case month == time.March, month == time.April, month == time.May:
+		return mascotHatFlowers
+	case month == time.June, month == time.July, month == time.August:
+		return mascotHatCap
+	case month == time.September,
+		month == time.October && day <= 23,
+		month == time.November && day >= 8,
+		month == time.December && day <= 17:
+		return mascotHatBeanie
+	default:
+		return mascotHatNone
+	}
 }
 
 // drawMascotHat paints one of the waiting-screen outfits. Every shape uses the

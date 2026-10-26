@@ -1119,7 +1119,7 @@ func (m *mainWindow) layoutInput(gtx layout.Context, rect image.Rectangle, focus
 	// prompt instead of the text painting on top of her.
 	shake := errorShake(gtx.Now, m.errorAt)
 	offset := op.Offset(image.Pt(errorShakePixels(gtx, shake, mainMascotShakeOffset), 0)).Push(gtx.Ops)
-	drawCatgirl(gtx, mascot, gtx.Now, mascotHatNone, errorFeedbackActive(gtx.Now, m.errorAt))
+	drawCatgirl(gtx, mascot, gtx.Now, seasonalMascotHat(gtx.Now), errorFeedbackActive(gtx.Now, m.errorAt))
 	offset.Pop()
 
 	m.drawHint(gtx, hintRect)
