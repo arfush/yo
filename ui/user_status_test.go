@@ -109,7 +109,7 @@ func TestUserStatusMenuOptionsSkipCurrent(t *testing.T) {
 func TestPlaceUserStatusMenuFlipsAbove(t *testing.T) {
 	bounds := image.Rect(0, 0, 800, 600)
 	anchor := image.Rect(100, 520, 180, 543)
-	menu := placeUserStatusMenu(anchor, 120, 100, 7, 8, bounds)
+	menu := placePopupMenu(anchor, 120, 100, 7, 8, bounds)
 	if menu.Max.Y > bounds.Max.Y-8 {
 		t.Fatalf("menu = %v, want it inside the bottom margin", menu)
 	}
@@ -121,7 +121,7 @@ func TestPlaceUserStatusMenuFlipsAbove(t *testing.T) {
 func TestPlaceUserStatusMenuCentersOnAnchor(t *testing.T) {
 	bounds := image.Rect(0, 0, 800, 600)
 	anchor := image.Rect(100, 100, 180, 123)
-	menu := placeUserStatusMenu(anchor, 120, 100, 7, 8, bounds)
+	menu := placePopupMenu(anchor, 120, 100, 7, 8, bounds)
 	anchorCenter := anchor.Min.X + anchor.Dx()/2
 	menuCenter := menu.Min.X + menu.Dx()/2
 	if menuCenter != anchorCenter {
@@ -238,7 +238,7 @@ func TestUserStatusMenuSelectsOption(t *testing.T) {
 	}
 	frame()
 
-	menuRect := placeUserStatusMenu(
+	menuRect := placePopupMenu(
 		anchor,
 		70+2*gtx.Dp(userStatusMenuPad),
 		4*22+2*gtx.Dp(userStatusMenuPad)+3*gtx.Dp(userStatusMenuGap),

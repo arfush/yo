@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"math"
 	"strings"
 
 	"gioui.org/layout"
@@ -57,21 +56,10 @@ func drawEpisodeProgressBar(gtx layout.Context, rect image.Rectangle, progress f
 	if rect.Empty() {
 		return
 	}
-	radius := rect.Dy() / 2
-	fillRounded(gtx, episodeProgressTrack, rect, radius)
-	if progress <= 0 {
-		return
-	}
-	if progress > 1 {
-		progress = 1
-	}
-	width := int(math.Round(float64(rect.Dx()) * float64(progress)))
-	if width < rect.Dy() {
-		width = rect.Dy()
-	}
-	if width > rect.Dx() {
-		width = rect.Dx()
-	}
-	filled := image.Rect(rect.Min.X, rect.Min.Y, rect.Min.X+width, rect.Max.Y)
-	fillRoundedGradient(gtx, filled, rect, radius, mainAccentColor1, mainAccentColor2)
+	drawProgressBar(gtx, rect, progress, progressBarStyle{
+		track:   episodeProgressTrack,
+		fill1:   mainAccentColor1,
+		fill2:   mainAccentColor2,
+		minFill: rect.Dy(),
+	})
 }

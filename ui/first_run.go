@@ -193,7 +193,7 @@ func (fr *firstRun) layout(gtx layout.Context) {
 	stack := op.Offset(card.Min).Push(gtx.Ops)
 	defer stack.Pop()
 
-	drawFirstRunCard(gtx, card.Size(), px)
+	drawDownloadCard(gtx, card.Size(), px)
 	fr.typo.draw(gtx, fr.title, font.Font{Typeface: fontFamily, Weight: font.Bold}, firstRunTitleSize, titleColor, image.Pt(px(firstRunCardPadding), px(firstRunTitleTop)))
 
 	face := font.Font{Typeface: fontFamily, Weight: font.Normal}
@@ -289,21 +289,6 @@ func wrapFirstRunText(gtx layout.Context, typo *typography, text string, face fo
 		return []string{text}
 	}
 	return lines
-}
-
-func drawFirstRunCard(gtx layout.Context, size image.Point, px func(float32) int) {
-	card := image.Rectangle{Max: size}
-
-	// A few very transparent layers give the card a soft edge without needing
-	// an offscreen blur. The shadow is deliberately subtle against the dark
-	// content surface.
-	for i := 10; i >= 2; i -= 2 {
-		r := card.Inset(-px(float32(i))).Add(image.Pt(0, px(3)))
-		fillRounded(gtx, firstRunShadowColor, r, px(firstRunCardRadius+float32(i)))
-	}
-
-	fillRounded(gtx, firstRunCardBorder, card, px(firstRunCardRadius))
-	fillRounded(gtx, firstRunCardColor, card.Inset(px(1)), px(firstRunCardRadius-1))
 }
 
 func (fr *firstRun) layoutButton(gtx layout.Context, rect image.Rectangle, state firstRunState) bool {
@@ -406,35 +391,26 @@ func (fr *firstRun) layoutProgress(gtx layout.Context, rect image.Rectangle, pro
 
 func (fr *firstRun) drawProgress(gtx layout.Context, size image.Point, progress float64, preparing bool) {
 	rect := image.Rectangle{Max: size}
-	radius := size.Y / 2
-	border := max(1, int(math.Round(float64(size.Y)*0.02)))
-
-	fillRounded(gtx, firstRunProgressBorder, rect, radius)
-	inner := rect.Inset(border)
+	progress = math.Max(0, math.Min(100, progress))
+	value := float32(progress / 100)
+	if preparing {
+		value = 0
+	}
+	inner := drawProgressBar(gtx, rect, value, progressBarStyle{
+		track:  firstRunProgressTrack,
+		border: firstRunProgressBorder,
+		fill1:  firstRunButtonColor1,
+		fill2:  firstRunButtonColor2,
+		glow:   true,
+	})
 	if inner.Empty() {
 		return
-	}
-	innerRadius := inner.Dy() / 2
-	fillRounded(gtx, firstRunProgressTrack, inner, innerRadius)
-
-	progress = math.Max(0, math.Min(100, progress))
-	if progress > 0 && !preparing {
-		fillWidth := int(float64(inner.Dx()) * progress / 100)
-		if fillWidth > 0 {
-			fillRect := image.Rect(inner.Min.X, inner.Min.Y, inner.Min.X+fillWidth, inner.Max.Y)
-			fillRadius := innerRadius
-			if fillWidth < 2*fillRadius {
-				fillRadius = fillWidth / 2
-			}
-			drawFirstRunGlow(gtx, fillRect, fillRadius)
-			fillRoundedGradient(gtx, fillRect, inner, fillRadius, firstRunButtonColor1, firstRunButtonColor2)
-		}
 	}
 
 	label := fmt.Sprintf("%d%%", int(math.Round(progress)))
 	labelColor := color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}
 	if preparing {
-		label = "Подготовка..."
+		label = "??????????..."
 		labelColor = firstRunProgressText
 	}
 	fr.typo.drawCentered(gtx, label, font.Font{Typeface: fontFamily, Weight: font.Medium}, firstRunProgressSize, labelColor, image.Pt(inner.Min.X+inner.Dx()/2, inner.Min.Y+inner.Dy()/2))

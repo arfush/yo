@@ -3,14 +3,12 @@ package ui
 import (
 	"image"
 	"image/color"
-	"io"
 	"math"
 	"strings"
 	"time"
 
 	"gioui.org/app"
 	"gioui.org/font"
-	"gioui.org/io/clipboard"
 	"gioui.org/io/key"
 	"gioui.org/io/pointer"
 	"gioui.org/layout"
@@ -40,7 +38,7 @@ const (
 	wpRoundInset    = 10
 	wpFieldPadX     = 18
 	wpWaitTimeout   = 12 * time.Second
-	wpFeedbackDelay = 3 * time.Second
+	wpFeedbackDelay = 5 * time.Second
 	wpShakeDuration = 520 * time.Millisecond
 	wpShakeAmpDp    = 2.4
 )
@@ -269,7 +267,7 @@ func (w *partyWindow) layout(gtx layout.Context) {
 	stack := op.Offset(card.Min).Push(gtx.Ops)
 	defer stack.Pop()
 
-	drawFirstRunCard(gtx, card.Size(), px)
+	drawDownloadCard(gtx, card.Size(), px)
 
 	switch w.mode {
 	case wpChoice:
@@ -284,190 +282,6 @@ func (w *partyWindow) layout(gtx layout.Context) {
 }
 
 // layoutCardText draws the shared title and description block.
-func (w *partyWindow) layoutCardText(gtx layout.Context, cardWidth int, px func(float32) int, title, description string) {
-	w.typo.draw(gtx, title, font.Font{Typeface: fontFamily, Weight: font.Bold}, wpTitleSize, titleColor, image.Pt(px(wpCardPadding), px(wpTitleTop)))
-
-	face := font.Font{Typeface: fontFamily, Weight: font.Normal}
-	width := cardWidth - 2*px(wpCardPadding)
-	lines := wrapFirstRunText(gtx, w.typo, description, face, wpDescSize, width)
-	advance := int(math.Round(float64(gtx.Sp(wpDescSize)) * 1.25))
-	if advance < 1 {
-		advance = 1
-	}
-	for index, line := range lines {
-		w.typo.draw(gtx, line, face, wpDescSize, firstRunSubtitleColor, image.Pt(px(wpCardPadding), px(wpDescTop)+index*advance))
-	}
-}
-
-func (w *partyWindow) layoutChoice(gtx layout.Context, cardWidth int, px func(float32) int) {
-	w.layoutCardText(gtx, cardWidth, px, wpTitleChoice, wpDescChoice)
-
-	gap := px(wpButtonGap)
-	left := px(wpCardPadding)
-	right := cardWidth - px(wpCardPadding)
-	half := (right - left - gap) / 2
-	top := px(wpActionTop)
-	bottom := top + px(wpButtonHeight)
-	if half <= 0 {
-		return
-	}
-
-	create := image.Rect(left, top, left+half, bottom)
-	join := image.Rect(left+half+gap, top, right, bottom)
-
-	errored, shake := buttonErrorFeedback(gtx.Now, w.errorAt, !w.joinFeedback)
-	// Both actions open a room, so they share the primary accent instead of
-	// competing for attention.
-	if w.layoutActionButton(gtx, create, &w.createButton, wpCreateLabel, errored, shake) {
-		w.create()
-	}
-	if w.layoutActionButton(gtx, join, &w.joinButton, wpJoinLabel, false, 0) {
-		w.openJoin()
-	}
-
-	if shake != 0 {
-		// Only the shake needs continuous frames; the red tint can wait for the
-		// frame that clears it.
-		gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(16 * time.Millisecond)})
-	}
-}
-
-func (w *partyWindow) layoutCreated(gtx layout.Context, cardWidth int, px func(float32) int, snapshot partySnapshot) {
-	description := wpDescCreated
-	if snapshot.Locked {
-		description = wpDescLocked
-	}
-	w.layoutCardText(gtx, cardWidth, px, wpTitleCreated, description)
-
-	field := image.Rect(px(wpCardPadding), px(wpActionTop), cardWidth-px(wpCardPadding), px(wpActionTop)+px(wpFieldHeight))
-	if !field.Empty() {
-		w.layoutKeyField(gtx, field, snapshot.Key, false, false, 0)
-	}
-
-	actions := []wpLinkAction{
-		{label: "Закрыть комнату", click: &w.lockButton, onClick: w.lockRoom},
-	}
-	if snapshot.Locked {
-		w.layoutSecretChip(gtx, cardWidth, px, snapshot.Secret)
-		actions = []wpLinkAction{
-			{label: "Сменить секрет", click: &w.rotateButton, onClick: w.lockRoom},
-			{label: "Открыть комнату", click: &w.unlockButton, onClick: w.unlockRoom},
-		}
-	}
-	actions = append(actions, wpLinkAction{label: "Удалить комнату", click: &w.deleteButton, onClick: w.deleteRoom})
-	w.layoutLinkRow(gtx, cardWidth, px, actions)
-}
-
-// layoutSecretChip shows the host secret in a read-only chip. Clicking it
-// copies the formatted value, which is what people paste into a chat.
-func (w *partyWindow) layoutSecretChip(gtx layout.Context, cardWidth int, px func(float32) int, secret string) {
-	if secret == "" {
-		return
-	}
-	label := party.FormatSecret(secret)
-	face := font.Font{Typeface: fontFamily, Weight: font.SemiBold}
-	_, ink := w.typo.measure(gtx, label, face, wpKeySize)
-	padX := px(14)
-	icon := px(14)
-	gap := px(8)
-	width := ink.Dx() + 2*padX + icon + gap
-	height := px(wpSecretHeight)
-	if width > cardWidth-2*px(wpCardPadding) {
-		return
-	}
-	rect := image.Rect((cardWidth-width)/2, px(wpSecretTop), (cardWidth+width)/2, px(wpSecretTop)+height)
-	if rect.Empty() {
-		return
-	}
-	radius := px(8)
-	fillRounded(gtx, mainInputBorder, rect, radius)
-	fillRounded(gtx, mainInputColor, rect.Inset(px(1)), radius-px(1))
-
-	clicked := w.secretCopy.Clicked(gtx)
-	col := mainTextColor
-	if w.secretCopy.Hovered() {
-		col = wpLinkHoverColor
-	}
-	centerY := rect.Min.Y + rect.Dy()/2
-	w.typo.draw(gtx, label, face, wpKeySize, col, image.Pt(rect.Min.X+padX, centerY-ink.Dy()/2))
-	iconGeometry := makeGeometry(gtx, false, false, false, false)
-	drawCopyIcon(gtx, image.Pt(rect.Max.X-padX-icon/2, centerY), iconGeometry, col)
-
-	btnGtx := gtx
-	btnGtx.Constraints = layout.Exact(rect.Size())
-	stack := op.Offset(rect.Min).Push(gtx.Ops)
-	w.secretCopy.Layout(btnGtx, func(gtx layout.Context) layout.Dimensions {
-		pointer.CursorPointer.Add(gtx.Ops)
-		return layout.Dimensions{Size: rect.Size()}
-	})
-	stack.Pop()
-	if clicked {
-		gtx.Execute(clipboard.WriteCmd{
-			Type: "application/text",
-			Data: io.NopCloser(strings.NewReader(label)),
-		})
-	}
-}
-
-type wpLinkAction struct {
-	label   string
-	click   *widget.Clickable
-	onClick func()
-}
-
-// layoutLinkRow centers a row of small links under the card content.
-func (w *partyWindow) layoutLinkRow(gtx layout.Context, cardWidth int, px func(float32) int, actions []wpLinkAction) {
-	if len(actions) == 0 {
-		return
-	}
-	face := font.Font{Typeface: fontFamily, Weight: font.Normal}
-	padX := px(8)
-	padY := px(6)
-	gap := px(6)
-	widths := make([]int, len(actions))
-	total := 0
-	height := 0
-	for index, action := range actions {
-		_, ink := w.typo.measure(gtx, action.label, face, wpLinkSize)
-		widths[index] = ink.Dx() + 2*padX
-		if actionHeight := ink.Dy() + 2*padY; actionHeight > height {
-			height = actionHeight
-		}
-		total += widths[index]
-	}
-	if len(actions) > 1 {
-		total += gap * (len(actions) - 1)
-	}
-	if total <= 0 || height <= 0 {
-		return
-	}
-	top := px(wpLinkTop)
-	x := (cardWidth - total) / 2
-	for index, action := range actions {
-		rect := image.Rect(x, top, x+widths[index], top+height)
-		if !rect.Empty() {
-			clicked := action.click.Clicked(gtx)
-			col := wpLinkColor
-			if action.click.Hovered() {
-				col = wpLinkHoverColor
-			}
-			w.typo.drawCentered(gtx, action.label, face, wpLinkSize, col, centerOf(rect))
-			btnGtx := gtx
-			btnGtx.Constraints = layout.Exact(rect.Size())
-			stack := op.Offset(rect.Min).Push(gtx.Ops)
-			action.click.Layout(btnGtx, func(gtx layout.Context) layout.Dimensions {
-				pointer.CursorPointer.Add(gtx.Ops)
-				return layout.Dimensions{Size: rect.Size()}
-			})
-			stack.Pop()
-			if clicked && action.onClick != nil {
-				action.onClick()
-			}
-		}
-		x += widths[index] + gap
-	}
-}
-
 func (w *partyWindow) deleteRoom() {
 	w.party.Delete()
 	w.mode = wpChoice
@@ -476,30 +290,6 @@ func (w *partyWindow) deleteRoom() {
 	if w.window != nil {
 		w.window.Invalidate()
 	}
-}
-
-func (w *partyWindow) layoutSecret(gtx layout.Context, cardWidth int, px func(float32) int) {
-	w.layoutCardText(gtx, cardWidth, px, wpTitleSecret, wpDescSecret)
-
-	if w.focusSecret {
-		w.focusSecret = false
-		gtx.Execute(key.FocusCmd{Tag: &w.secretEditor})
-	}
-
-	field := image.Rect(px(wpCardPadding), px(wpActionTop), cardWidth-px(wpCardPadding), px(wpActionTop)+px(wpFieldHeight))
-	errored, shake := buttonErrorFeedback(gtx.Now, w.errorAt, true)
-	if !field.Empty() {
-		if w.layoutSecretField(gtx, field, errored, shake) {
-			w.submitSecret()
-		}
-	}
-
-	if w.animationsRun() && (w.busy || w.shakeRunning(gtx.Now)) {
-		gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(16 * time.Millisecond)})
-	}
-	w.layoutLinkRow(gtx, cardWidth, px, []wpLinkAction{
-		{label: "Выйти из комнаты", click: &w.leaveButton, onClick: w.deleteRoom},
-	})
 }
 
 func (w *partyWindow) lockRoom() {
@@ -582,30 +372,6 @@ func (w *partyWindow) openSecret() {
 	w.joinFeedback = true
 }
 
-func (w *partyWindow) layoutJoin(gtx layout.Context, cardWidth int, px func(float32) int) {
-	w.layoutCardText(gtx, cardWidth, px, wpTitleJoin, wpDescJoin)
-
-	if w.focusField {
-		w.focusField = false
-		gtx.Execute(key.FocusCmd{Tag: &w.editor})
-	}
-
-	field := image.Rect(px(wpCardPadding), px(wpActionTop), cardWidth-px(wpCardPadding), px(wpActionTop)+px(wpFieldHeight))
-	errored, shake := buttonErrorFeedback(gtx.Now, w.errorAt, true)
-	if !field.Empty() {
-		if w.layoutKeyField(gtx, field, w.editor.Text(), true, errored, shake) {
-			w.join()
-		}
-	}
-
-	if w.animationsRun() && (w.busy || w.shakeRunning(gtx.Now)) {
-		// The spinner and the shaking chevron both need continuous frames.
-		gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(16 * time.Millisecond)})
-	}
-}
-
-// shakeRunning keeps animation frames coming for the whole shake, including
-// its very first frame when the sine offset is still zero.
 func (w *partyWindow) shakeRunning(now time.Time) bool {
 	if w.errorAt.IsZero() {
 		return false
@@ -616,278 +382,6 @@ func (w *partyWindow) shakeRunning(now time.Time) bool {
 
 // layoutKeyField draws the room-key field. The value is editable on the join
 // form and read-only on the created card.
-func (w *partyWindow) layoutKeyField(gtx layout.Context, rect image.Rectangle, value string, editable, errored bool, shake float32) bool {
-	return w.layoutRoomField(gtx, rect, &w.editor, value, editable, errored, shake, w.busy && w.mode == wpJoin)
-}
-
-// layoutSecretField draws the secret field on the locked-room screen.
-func (w *partyWindow) layoutSecretField(gtx layout.Context, rect image.Rectangle, errored bool, shake float32) bool {
-	return w.layoutRoomField(gtx, rect, &w.secretEditor, w.secretEditor.Text(), true, errored, shake, w.busy && w.mode == wpSecret)
-}
-
-// layoutRoomField draws the rounded field with either a copy or a submit button
-// on its right. editor hosts the editable text; view is the text shown and
-// copied in the read-only case. spinner replaces the submit chevron while a
-// background check runs.
-func (w *partyWindow) layoutRoomField(gtx layout.Context, rect image.Rectangle, editor *widget.Editor, view string, editable, errored bool, shake float32, spinner bool) bool {
-	radius := gtx.Dp(mainInputRadius)
-	border := mainInputBorder
-	if editable && gtx.Focused(editor) {
-		border = mainInputFocusBorder
-	}
-	fillRounded(gtx, border, rect, radius)
-	inner := rect.Inset(gtx.Dp(unit.Dp(1)))
-	if inner.Empty() {
-		return false
-	}
-	fillRounded(gtx, mainInputColor, inner, max(1, radius-gtx.Dp(unit.Dp(1))))
-
-	roundSize := gtx.Dp(unit.Dp(wpRoundSize))
-	roundInset := gtx.Dp(unit.Dp(wpRoundInset))
-	round := image.Rect(
-		inner.Max.X-roundInset-roundSize,
-		inner.Min.Y+(inner.Dy()-roundSize)/2,
-		inner.Max.X-roundInset,
-		inner.Min.Y+(inner.Dy()-roundSize)/2+roundSize,
-	)
-
-	lineHeight := gtx.Dp(unit.Dp(22))
-	textRect := image.Rect(
-		inner.Min.X+gtx.Dp(unit.Dp(wpFieldPadX)),
-		inner.Min.Y+(inner.Dy()-lineHeight)/2,
-		round.Min.X-gtx.Dp(unit.Dp(10)),
-		inner.Min.Y+(inner.Dy()-lineHeight)/2+lineHeight,
-	)
-
-	submitted := false
-	if textRect.Dx() > 0 {
-		if editable {
-			submitted = w.layoutRoomEditor(gtx, textRect, editor)
-		} else {
-			w.layoutKeyViewer(gtx, textRect, party.NormalizeDisplay(view))
-		}
-	}
-
-	if round.Empty() {
-		return false
-	}
-	click := &w.copyButton
-	if editable {
-		click = &w.nextButton
-	}
-	clicked := click.Clicked(gtx)
-	hovered := click.Hovered()
-	stack := op.Offset(round.Min).Push(gtx.Ops)
-	w.drawRoundButton(gtx, round.Size(), hovered, errored, func(gtx layout.Context, center image.Point) {
-		if editable {
-			if spinner {
-				drawSpinner(gtx, center, gtx.Dp(unit.Dp(9)), gtx.Dp(unit.Dp(1.7)), 0, color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff})
-				return
-			}
-			if shake != 0 {
-				center.X += int(math.Round(float64(shake) * float64(gtx.Dp(unit.Dp(wpShakeAmpDp)))))
-			}
-			drawChevronRight(
-				gtx,
-				center,
-				roundSize/3,
-				gtx.Dp(unit.Dp(2)),
-				color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff},
-			)
-			return
-		}
-		// The key icon sits in a wide field, so it can be drawn larger than a
-		// footer glyph without touching the circle.
-		iconGeometry := makeGeometry(gtx, false, false, false, false)
-		iconGeometry.scale *= 1.5
-		drawCopyIcon(gtx, center, iconGeometry, color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff})
-	})
-	stack.Pop()
-
-	btnGtx := gtx
-	btnGtx.Constraints = layout.Exact(round.Size())
-	stack = op.Offset(round.Min).Push(gtx.Ops)
-	click.Layout(btnGtx, func(gtx layout.Context) layout.Dimensions {
-		pointer.CursorPointer.Add(gtx.Ops)
-		return layout.Dimensions{Size: round.Size()}
-	})
-	stack.Pop()
-
-	if editable {
-		return clicked || submitted
-	}
-	if !clicked {
-		return false
-	}
-	key := party.NormalizeDisplay(view)
-	if key == "" {
-		return false
-	}
-	gtx.Execute(clipboard.WriteCmd{
-		Type: "application/text",
-		Data: io.NopCloser(strings.NewReader(key)),
-	})
-	return false
-}
-
-// layoutRoomEditor draws an editable field and reports whether Enter was
-// pressed. Editor.Layout drains its events internally, so SubmitEvent has to be
-// collected with a separate Update pass before the layout.
-func (w *partyWindow) layoutRoomEditor(gtx layout.Context, rect image.Rectangle, editor *widget.Editor) bool {
-	w.syncEditor(editor)
-	submitted := false
-	for {
-		event, ok := editor.Update(gtx)
-		if !ok {
-			break
-		}
-		if _, ok := event.(widget.SubmitEvent); ok {
-			submitted = true
-		}
-	}
-	editorGtx := gtx
-	editorGtx.Constraints = layout.Exact(rect.Size())
-	stack := op.Offset(rect.Min).Push(gtx.Ops)
-	editor.Layout(
-		editorGtx,
-		w.typo.shaper,
-		font.Font{Typeface: fontFamily, Weight: font.Medium},
-		wpKeySize,
-		colorMaterial(gtx, mainTextColor),
-		colorMaterial(gtx, mainSelectionColor),
-	)
-	stack.Pop()
-	w.syncEditor(editor)
-	return submitted
-}
-
-// syncEditor keeps an input field in its canonical form: the join field holds a
-// room key, the secret field a ten-symbol secret. The caret is restored so
-// typing feels normal.
-func (w *partyWindow) syncEditor(editor *widget.Editor) {
-	text := editor.Text()
-	cleaned := party.SanitizeKeyInput(text)
-	if editor == &w.secretEditor {
-		cleaned = party.SanitizeSecretInput(text)
-	}
-	if cleaned == text {
-		return
-	}
-	start, end := editor.Selection()
-	editor.SetText(cleaned)
-	limit := len(cleaned)
-	if start > limit {
-		start = limit
-	}
-	if end < start {
-		end = start
-	}
-	if end > limit {
-		end = limit
-	}
-	editor.SetCaret(start, end)
-	w.window.Invalidate()
-}
-
-// layoutKeyViewer shows the created room key in a read-only editor. The key is
-// selected as soon as the card opens and the editor keeps keyboard focus, so
-// Ctrl+C copies it immediately; clicking the field also works for mouse users.
-func (w *partyWindow) layoutKeyViewer(gtx layout.Context, rect image.Rectangle, roomKey string) {
-	if roomKey == "" {
-		return
-	}
-	if w.keyEditor.Text() != roomKey {
-		w.keyEditor.SetText(roomKey)
-		w.keyEditor.SetCaret(0, len(roomKey))
-		w.keySelect = true
-	}
-	if w.keySelect {
-		w.keySelect = false
-		gtx.Execute(key.FocusCmd{Tag: &w.keyEditor})
-	}
-	editorGtx := gtx
-	editorGtx.Constraints = layout.Exact(rect.Size())
-	stack := op.Offset(rect.Min).Push(gtx.Ops)
-	w.keyEditor.Layout(
-		editorGtx,
-		w.typo.shaper,
-		font.Font{Typeface: fontFamily, Weight: font.Medium},
-		wpKeySize,
-		colorMaterial(gtx, mainTextColor),
-		colorMaterial(gtx, mainSelectionColor),
-	)
-	stack.Pop()
-}
-
-func (w *partyWindow) drawRoundButton(gtx layout.Context, size image.Point, hovered, errored bool, draw func(layout.Context, image.Point)) {
-	rect := image.Rectangle{Max: size}
-	if rect.Empty() {
-		return
-	}
-	if errored {
-		fillRoundedGradient(gtx, rect, rect, rect.Dy()/2, tokenErrorColor1, tokenErrorColor2)
-	} else {
-		c1, c2 := mainAccentColor1, mainAccentColor2
-		if hovered {
-			c1 = lighten(c1, 0x08)
-			c2 = lighten(c2, 0x08)
-		}
-		fillRoundedGradient(gtx, rect, rect, rect.Dy()/2, c1, c2)
-	}
-	if draw != nil {
-		draw(gtx, centerOf(rect))
-	}
-}
-
-func (w *partyWindow) layoutActionButton(gtx layout.Context, rect image.Rectangle, click *widget.Clickable, label string, errored bool, shake float32) bool {
-	if rect.Empty() {
-		return false
-	}
-	clicked := click.Clicked(gtx)
-	stack := op.Offset(rect.Min).Push(gtx.Ops)
-	w.drawActionButton(gtx, rect.Size(), click.Hovered(), label, errored, shake)
-	stack.Pop()
-
-	btnGtx := gtx
-	btnGtx.Constraints = layout.Exact(rect.Size())
-	stack = op.Offset(rect.Min).Push(gtx.Ops)
-	click.Layout(btnGtx, func(gtx layout.Context) layout.Dimensions {
-		pointer.CursorPointer.Add(gtx.Ops)
-		return layout.Dimensions{Size: rect.Size()}
-	})
-	stack.Pop()
-	return clicked
-}
-
-func (w *partyWindow) drawActionButton(gtx layout.Context, size image.Point, hovered bool, label string, errored bool, shake float32) {
-	rect := image.Rectangle{Max: size}
-	radius := size.Y / 2
-	face := font.Font{Typeface: fontFamily, Weight: font.SemiBold}
-	labelColor := color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}
-
-	if errored {
-		drawGlow(gtx, rect, radius, tokenErrorGlow)
-		fillRoundedGradient(gtx, rect, rect, radius, tokenErrorColor1, tokenErrorColor2)
-	} else {
-		drawFirstRunGlow(gtx, rect, radius)
-		c1, c2 := mainAccentColor1, mainAccentColor2
-		if hovered {
-			c1 = lighten(c1, 0x08)
-			c2 = lighten(c2, 0x08)
-		}
-		fillRoundedGradient(gtx, rect, rect, radius, c1, c2)
-	}
-
-	center := image.Pt(size.X/2, size.Y/2)
-	if shake != 0 {
-		center.X += int(math.Round(float64(shake) * float64(gtx.Dp(unit.Dp(wpShakeAmpDp)))))
-	}
-	w.typo.drawCentered(gtx, label, face, wpButtonSize, labelColor, center)
-}
-
-// waitingTimedOut reports whether the joined key never reached a host. A room
-// whose host was seen at least once is governed by the reconnect grace window
-// in the session, not by the join form's "room not found" timeout.
 func waitingTimedOut(now, since time.Time, snapshot partySnapshot) bool {
 	if snapshot.HostSeen || snapshot.HostEverSeen {
 		return false
@@ -895,60 +389,6 @@ func waitingTimedOut(now, since time.Time, snapshot partySnapshot) bool {
 	return now.Sub(since) > wpWaitTimeout
 }
 
-func (w *partyWindow) layoutWaiting(gtx layout.Context, snapshot partySnapshot) {
-	if w.waitSince.IsZero() {
-		w.waitSince = gtx.Now
-	}
-	if w.waitHat < 0 || w.waitHat >= mascotHatCount {
-		w.waitHat = nextMascotHat()
-	}
-	if waitingTimedOut(gtx.Now, w.waitSince, snapshot) {
-		w.party.Delete()
-		w.mode = wpJoin
-		w.waitSince = time.Time{}
-		w.failJoin(party.ErrRoomNotFound.Error())
-		return
-	}
-
-	size := gtx.Constraints.Max
-	if size.X <= 0 || size.Y <= 0 {
-		return
-	}
-
-	mascotSize := int(math.Min(float64(size.Y)*0.46, float64(size.X)*0.34))
-	centerX := size.X / 2
-	bottom := size.Y/2 + mascotSize/2 - gtx.Dp(unit.Dp(10))
-	mascot := image.Rect(
-		centerX-mascotSize/2,
-		bottom-mascotSize,
-		centerX+mascotSize/2,
-		bottom,
-	)
-	drawCatgirl(gtx, mascot, gtx.Now, w.waitHat, mascotNormal)
-
-	face := font.Font{Typeface: fontFamily, Weight: font.Normal}
-	waitText := wpWaitingText
-	if snapshot.HostName != "" {
-		waitText = "Создатель: " + snapshot.HostName
-	}
-	w.typo.drawCentered(gtx, waitText, face, wpWaitSize, firstRunSubtitleColor, image.Pt(centerX, bottom+gtx.Dp(unit.Dp(26))))
-
-	notice := snapshot.Notice != ""
-	if notice {
-		w.typo.drawCentered(gtx, upperFirst(snapshot.Notice), face, wpWaitHintSize, tokenErrorColor1, image.Pt(centerX, bottom+gtx.Dp(unit.Dp(48))))
-	}
-	w.layoutLeaveLink(gtx, centerX, bottom, notice, face)
-
-	if w.animationsRun() {
-		// The mascot animates at display rate on this screen; 30 fps made the
-		// bob look chopped compared to the main window.
-		gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(16 * time.Millisecond)})
-	}
-}
-
-// layoutLeaveLink paints a small link under the waiting text. It closes the
-// guest's room instead of merely hiding the card, which is what "Вернуться"
-// does, so a host that never starts a title cannot keep the guest trapped.
 func (w *partyWindow) layoutLeaveLink(gtx layout.Context, centerX, bottom int, notice bool, face font.Font) {
 	const label = "Выйти"
 	_, ink := w.typo.measure(gtx, label, face, wpWaitHintSize)
@@ -1188,7 +628,7 @@ func (w *partyWindow) roomClosed(text string) {
 	}
 }
 
-// buttonErrorFeedback reports the three-second red state and, when requested,
+// buttonErrorFeedback reports the five-second red state and, when requested,
 // the label shake that goes with it.
 func buttonErrorFeedback(now, errorAt time.Time, allowShake bool) (bool, float32) {
 	if errorAt.IsZero() {

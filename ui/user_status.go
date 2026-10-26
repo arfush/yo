@@ -4,12 +4,9 @@ import (
 	"image"
 	"image/color"
 
-	"gioui.org/f32"
 	"gioui.org/font"
 	"gioui.org/layout"
-	"gioui.org/op"
 	"gioui.org/unit"
-	"gioui.org/widget"
 
 	"github.com/arfush/yonime/internal/library"
 )
@@ -197,30 +194,6 @@ func drawUserStatusMenuItem(gtx layout.Context, typo *typography, rect image.Rec
 	drawPill(gtx, typo, rect, userStatusLabel(status), mainStatusSize, textColor, fillColor, borderColor)
 }
 
-func drawPill(gtx layout.Context, typo *typography, rect image.Rectangle, label string, size unit.Sp, textColor, fillColor, borderColor color.NRGBA) {
-	radius := gtx.Dp(unit.Dp(7))
-	fillRounded(gtx, borderColor, rect, radius)
-	fillRounded(gtx, fillColor, rect.Inset(gtx.Dp(unit.Dp(1))), radius-gtx.Dp(unit.Dp(1)))
-	face := font.Font{Typeface: fontFamily, Weight: font.Medium}
-	// Every pill is centered on the same cap-height band measured from one
-	// reference glyph. Measuring each label's own ink makes labels with a
-	// descender, an accent or a round overshoot sit half a pixel lower or
-	// higher than their neighbours even though they share the baseline.
-	capHeight := 0
-	if _, refInk := typo.measure(gtx, "Н", face, size); !refInk.Empty() {
-		capHeight = refInk.Dy()
-	}
-	typo.paintCenteredOnBaseline(
-		gtx,
-		label,
-		face,
-		size,
-		textColor,
-		f32.Pt(float32(rect.Min.X)+float32(rect.Dx())/2, float32(rect.Min.Y)+float32(rect.Dy())/2),
-		capHeight,
-	)
-}
-
 const (
 	userStatusMenuPad  = unit.Dp(4)
 	userStatusMenuGap  = unit.Dp(2)
@@ -238,151 +211,4 @@ func userStatusMenuOptionsFor(current library.UserStatus) []library.UserStatus {
 		}
 	}
 	return options
-}
-
-// userStatusMenu is a small popup anchored to a status pill. It is drawn by the
-// shell overlay so it can extend over rows and the footer without being clipped
-// by the content viewport.
-type userStatusMenu struct {
-	open    bool
-	anchor  image.Rectangle
-	current library.UserStatus
-	id      int64
-
-	// pillWidth and pillHeight come from the status block that opened the menu,
-	// so history and title-page menus match their own pills.
-	pillWidth  int
-	pillHeight int
-
-	clicks [5]widget.Clickable
-	hovers [5]hoverAnim
-	scrim  widget.Clickable
-}
-
-func (m *userStatusMenu) show(anchor image.Rectangle, current library.UserStatus, id int64, pillWidth, pillHeight int) {
-	m.open = true
-	m.anchor = anchor
-	m.current = library.NormalizeUserStatus(current)
-	m.id = id
-	m.pillWidth = max(pillWidth, 1)
-	m.pillHeight = max(pillHeight, 1)
-}
-
-func (m *userStatusMenu) close() {
-	m.open = false
-}
-
-func (m *userStatusMenu) layout(gtx layout.Context, typo *typography, origin image.Point, onSelect func(library.UserStatus)) {
-	if !m.open {
-		return
-	}
-	size := gtx.Constraints.Max
-	if size.X <= 0 || size.Y <= 0 {
-		m.close()
-		return
-	}
-	options := userStatusMenuOptionsFor(m.current)
-	if len(options) == 0 {
-		m.close()
-		return
-	}
-
-	pad := gtx.Dp(userStatusMenuPad)
-	gap := gtx.Dp(userStatusMenuGap)
-	itemWidth := m.pillWidth
-	itemHeight := m.pillHeight
-	menuWidth := itemWidth + 2*pad
-	menuHeight := len(options)*itemHeight + 2*pad
-	if len(options) > 1 {
-		menuHeight += (len(options) - 1) * gap
-	}
-	menu := placeUserStatusMenu(
-		m.anchor.Add(origin),
-		menuWidth,
-		menuHeight,
-		gtx.Dp(userStatusMenuDrop),
-		gtx.Dp(unit.Dp(8)),
-		image.Rectangle{Max: size},
-	)
-
-	// The scrim goes first so the options registered after it stay on top and
-	// receive their own clicks; anything else closes the menu.
-	if layoutOverlayScrim(gtx, image.Rectangle{Max: size}, &m.scrim) {
-		m.close()
-		gtx.Execute(op.InvalidateCmd{})
-		return
-	}
-
-	radius := gtx.Dp(unit.Dp(8))
-	fillRounded(gtx, titlePanelBorder, menu, radius)
-	fillRounded(gtx, settingsMenuFill, menu.Inset(gtx.Dp(unit.Dp(1))), radius-gtx.Dp(unit.Dp(1)))
-
-	for index, status := range options {
-		rect := image.Rect(
-			menu.Min.X+pad,
-			menu.Min.Y+pad+index*(itemHeight+gap),
-			menu.Min.X+pad+itemWidth,
-			menu.Min.Y+pad+index*(itemHeight+gap)+itemHeight,
-		)
-		click := &m.clicks[index]
-		hover := m.hovers[index].update(gtx, click.Hovered())
-		clicked := click.Clicked(gtx)
-
-		stack := op.Offset(rect.Min).Push(gtx.Ops)
-		cgtx := gtx
-		cgtx.Constraints = layout.Exact(rect.Size())
-		click.Layout(cgtx, func(gtx layout.Context) layout.Dimensions {
-			drawUserStatusMenuItem(gtx, typo, image.Rectangle{Max: rect.Size()}, status, hover)
-			return layout.Dimensions{Size: rect.Size()}
-		})
-		stack.Pop()
-		if clicked {
-			m.close()
-			if onSelect != nil {
-				onSelect(status)
-			}
-			gtx.Execute(op.InvalidateCmd{})
-			return
-		}
-	}
-}
-
-// placeUserStatusMenu prefers to open below the pill and flips above it when
-// the footer would clip the panel. Horizontally the panel is centered on the
-// pill rather than aligned to its left edge.
-func placeUserStatusMenu(anchor image.Rectangle, width, height, drop, margin int, bounds image.Rectangle) image.Rectangle {
-	x := anchor.Min.X + (anchor.Dx()-width)/2
-	y := anchor.Max.Y + drop
-	if x+width > bounds.Max.X-margin {
-		x = bounds.Max.X - margin - width
-	}
-	if x < bounds.Min.X+margin {
-		x = bounds.Min.X + margin
-	}
-	if y+height > bounds.Max.Y-margin {
-		y = anchor.Min.Y - drop - height
-	}
-	if y < bounds.Min.Y+margin {
-		y = bounds.Min.Y + margin
-	}
-	return image.Rect(x, y, x+width, y+height)
-}
-
-// layoutOverlayScrim registers an invisible full-window click target. It is
-// laid out before the menu options, which therefore sit above it.
-func layoutOverlayScrim(gtx layout.Context, rect image.Rectangle, click *widget.Clickable) bool {
-	if rect.Empty() {
-		return false
-	}
-	stack := op.Offset(rect.Min).Push(gtx.Ops)
-	defer stack.Pop()
-	// Clicked must run before Layout: Layout drains and discards the click
-	// events, so checking afterwards can never report a click.
-	clicked := click.Clicked(gtx)
-	cgtx := gtx
-	cgtx.Constraints = layout.Exact(rect.Size())
-	click.Layout(cgtx, func(gtx layout.Context) layout.Dimensions {
-		return layout.Dimensions{Size: rect.Size()}
-	})
-	return clicked
 }

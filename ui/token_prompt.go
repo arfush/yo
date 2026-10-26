@@ -187,7 +187,7 @@ func (tp *tokenPrompt) layout(gtx layout.Context) {
 	defer stack.Pop()
 
 	pad := px(tokenCardPadding)
-	drawFirstRunCard(gtx, card.Size(), px)
+	drawDownloadCard(gtx, card.Size(), px)
 
 	if tp.mode == tokenModeDomain {
 		tp.layoutDomainCard(gtx, cardWidth, pad, px)

@@ -265,11 +265,12 @@ func (f *actionField) layout(gtx layout.Context, rect image.Rectangle, focused b
 // copyField is a read-only value with a trailing copy button. It shares the
 // field box but not the submit-on-Enter behaviour of actionField.
 type copyField struct {
-	typo  *typography
-	value string
-	click *widget.Clickable
-	box   fieldBoxStyle
-	size  unit.Sp
+	typo   *typography
+	value  string
+	click  *widget.Clickable
+	box    fieldBoxStyle
+	size   unit.Sp
+	viewer func(layout.Context, image.Rectangle)
 }
 
 func (f copyField) layout(gtx layout.Context, rect image.Rectangle) bool {
@@ -295,7 +296,11 @@ func (f copyField) layout(gtx layout.Context, rect image.Rectangle) bool {
 		inner.Min.Y+(inner.Dy()-gtx.Dp(unit.Dp(22)))/2+gtx.Dp(unit.Dp(22)),
 	)
 	if textRect.Dx() > 0 {
-		drawReadOnlyValue(gtx, f.typo, textRect, f.value)
+		if f.viewer != nil {
+			f.viewer(gtx, textRect)
+		} else {
+			drawReadOnlyValue(gtx, f.typo, textRect, f.value)
+		}
 	}
 	clicked := f.click.Clicked(gtx)
 	hovered := f.click.Hovered()
@@ -303,19 +308,21 @@ func (f copyField) layout(gtx layout.Context, rect image.Rectangle) bool {
 	style := iconButtonStyle{
 		shape:       iconButtonCircle,
 		fill:        mainAccentColor1,
-		fillHover:   mainAccentColor1,
+		fillHover:   lighten(mainAccentColor1, 0x08),
 		border:      mainAccentColor2,
-		borderHover: mainAccentColor2,
+		borderHover: lighten(mainAccentColor2, 0x08),
 		gradient:    true,
 	}
 	progress := float32(0)
 	if hovered {
 		progress = 1
 	}
+	buttonStack := op.Offset(round.Min).Push(gtx.Ops)
 	drawIconButtonSurface(gtx, image.Rectangle{Max: round.Size()}, style, progress)
 	iconGeometry := makeGeometry(gtx, false, false, false, false)
 	iconGeometry.scale *= 1.5
 	drawCopyIcon(gtx, image.Pt(center.X-round.Min.X, center.Y-round.Min.Y), iconGeometry, color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff})
+	buttonStack.Pop()
 	btnGtx := gtx
 	btnGtx.Constraints = layout.Exact(round.Size())
 	stack := op.Offset(round.Min).Push(gtx.Ops)

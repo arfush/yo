@@ -79,7 +79,7 @@ func TestSettingsWindowProviderMenuOpensInsideTheContentArea(t *testing.T) {
 		t.Fatal("provider trigger was not laid out")
 	}
 	bounds := image.Rectangle{Max: image.Pt(833, 442)}
-	menu := placeProviderMenu(
+	menu := placePopupList(
 		settings.providerAnchor.Sub(image.Pt(0, settings.scroll)),
 		providerMenuHeight(gtx, len(party.Providers())),
 		gtx.Dp(settingsProviderMenuGap),
@@ -94,12 +94,12 @@ func TestPlaceProviderMenu(t *testing.T) {
 	bounds := image.Rect(0, 0, 800, 400)
 	const height, gap = 72, 6
 
-	below := placeProviderMenu(image.Rect(500, 100, 624, 130), height, gap, bounds)
+	below := placePopupList(image.Rect(500, 100, 624, 130), height, gap, bounds)
 	if want := image.Rect(500, 136, 624, 208); below != want {
 		t.Fatalf("menu below = %v, want %v", below, want)
 	}
 
-	above := placeProviderMenu(image.Rect(500, 350, 624, 380), height, gap, bounds)
+	above := placePopupList(image.Rect(500, 350, 624, 380), height, gap, bounds)
 	if want := image.Rect(500, 272, 624, 344); above != want {
 		t.Fatalf("menu above = %v, want %v", above, want)
 	}
