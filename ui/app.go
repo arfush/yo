@@ -564,7 +564,6 @@ func (a *application) openSettings() {
 	if a.window == nil || a.library == nil {
 		return
 	}
-	logging.Info("settings opened")
 	if a.party == nil {
 		a.party = newPartyManager(a)
 	}
@@ -663,7 +662,6 @@ func (a *application) openWatchParty() {
 	if a.window == nil {
 		return
 	}
-	logging.Info("watch-party screen opened")
 	if a.party == nil {
 		a.party = newPartyManager(a)
 	}
@@ -1873,7 +1871,6 @@ func (a *application) openLog() {
 	if a.window == nil {
 		return
 	}
-	logging.Info("log window opened")
 	screen := newLogWindow(a.shell.typo)
 	screen.hidden = a.windowHidden
 	screen.onBack = func() {

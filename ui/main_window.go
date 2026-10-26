@@ -24,7 +24,6 @@ import (
 
 	"github.com/arfush/yonime/internal/animelib"
 	"github.com/arfush/yonime/internal/library"
-	"github.com/arfush/yonime/internal/logging"
 )
 
 const (
@@ -1457,7 +1456,6 @@ func (m *mainWindow) setFilter(gtx layout.Context, next userStatusFilter) {
 		return
 	}
 	m.filter = next
-	logging.Info("history filter changed", "filter", m.filter)
 	m.applyFilter()
 	gtx.Execute(op.InvalidateCmd{})
 }
