@@ -506,7 +506,10 @@ func (s *shell) brandLayout(gtx layout.Context, g geometry) brandLayout {
 			titleWidth = ink.Dx()
 		}
 	}
-	titleX := g.logo.Max.X + gtx.Dp(unit.Dp(12))
+	// The menu item has 4 dp outer padding plus 12 dp icon inset, so its label
+	// starts at menu.Min + 4 + 24 + 10. The header uses the same 10 dp gap to
+	// keep the two icon/label groups on the same vertical axes.
+	titleX := g.logo.Max.X + gtx.Dp(unit.Dp(10))
 	chevronSize := gtx.Dp(unit.Dp(8))
 	chevronGap := gtx.Dp(unit.Dp(10))
 	chevronCenter := image.Pt(titleX+titleWidth+chevronGap+chevronSize/2, g.headerCenterY)
@@ -524,8 +527,11 @@ func (s *shell) layoutLogo(gtx layout.Context, g geometry, brand brandLayout) {
 	// The trigger covers the logo, the app name and the trailing chevron, so
 	// the whole brand block opens the menu. It deliberately paints no hover
 	// surface: only the dropdown below the header should appear when opened.
+	// Keep the menu anchored at its former left edge (13 dp). The visible logo
+	// moved right by 10 dp, so the trigger starts 16 dp before it instead of
+	// moving the whole dropdown with the logo.
 	trigger := image.Rect(
-		g.logo.Min.X-gtx.Dp(unit.Dp(6)),
+		g.logo.Min.X-gtx.Dp(unit.Dp(16)),
 		0,
 		brand.right+gtx.Dp(unit.Dp(4)),
 		g.headerClickEnd,

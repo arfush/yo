@@ -175,10 +175,13 @@ func makeGeometry(gtx layout.Context, maximized, settingsVisible, partyVisible, 
 
 	logoSize := g.px(24)
 	logoTop := g.headerCenterY - logoSize/2
+	// The section menu starts at the old trigger position, while the visible
+	// brand block is shifted right so the menu icon and label line up exactly
+	// under the active section icon and label.
 	g.logo = image.Rect(
-		g.px(19),
+		g.px(29),
 		logoTop,
-		g.px(19)+logoSize,
+		g.px(29)+logoSize,
 		logoTop+logoSize,
 	)
 
