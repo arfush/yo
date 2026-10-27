@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/arfush/yoanime/internal/animelib"
+	"github.com/arfush/yoanime/internal/kinopoisk"
 	"github.com/arfush/yoanime/internal/store"
 )
 
@@ -309,6 +310,11 @@ func (l *Library) RefreshMissingEpisodeTotals(ctx context.Context, onUpdate func
 // catalogue as new.
 func (l *Library) seedEpisodeTracking(title Title) error {
 	if title.ID == 0 {
+		return nil
+	}
+	// The episode checker polls AnimeLIB only; a Kinopoisk title must not seed
+	// a row it will never update.
+	if title.Source == kinopoisk.Source {
 		return nil
 	}
 	if title.Status == StatusCompleted {

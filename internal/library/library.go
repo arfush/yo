@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/arfush/yoanime/internal/animelib"
+	"github.com/arfush/yoanime/internal/kinopoisk"
 	"github.com/arfush/yoanime/internal/metadata"
 	"github.com/arfush/yoanime/internal/store"
 	"github.com/arfush/yoanime/internal/token"
@@ -62,9 +63,22 @@ type Voiceover struct {
 	HasKodik bool
 }
 
+// Season is one season of a series. AnimeLIB titles have no explicit seasons
+// (their episodes are a flat list), while a Kinopoisk series repeats episode
+// numbers across seasons, so the title window groups them.
+type Season struct {
+	Number   int
+	Episodes []string
+}
+
 // Title is everything the title window needs, plus the saved selection.
 type Title struct {
-	ID              int64
+	ID int64
+	// Source is "animelib" or "kinopoisk" and decides which resolver may open
+	// the title.
+	Source string
+	// ExternalID is the id inside Source (the Kinopoisk film id).
+	ExternalID      string
 	AnimeID         int64
 	Slug            string
 	Russian         string
@@ -77,6 +91,7 @@ type Title struct {
 	CoverNeedsRetry bool
 	Episodes        []string
 	EpisodesTotal   int
+	Seasons         []Season
 	Voiceovers      []Voiceover
 	SelectedVoice   string
 	SelectedEpisode string
@@ -90,11 +105,17 @@ type Title struct {
 	StatusOrder int64
 }
 
+// IsKinopoisk reports whether the title came from Kinopoisk.
+func (t Title) IsKinopoisk() bool { return t.Source == kinopoisk.Source }
+
 // Library owns the store and reads the token file on demand.
 type Library struct {
 	store     *store.Store
 	tokenPath string
 	covers    *coverManager
+	// kinopoisk talks to the mirror and the metadata API. It holds no browser:
+	// streams are resolved by the playback service.
+	kinopoisk *kinopoisk.Client
 	// episodeFetcher is nil in production. Tests replace it with a local
 	// function so the notification checker never touches AnimeLIB.
 	episodeFetcher episodeFetcher
@@ -114,6 +135,7 @@ func Open(databasePath, tokenPath string) (*Library, error) {
 		store:     db,
 		tokenPath: tokenPath,
 		covers:    newCoverManager(databasePath, db),
+		kinopoisk: kinopoisk.NewClient(),
 	}, nil
 }
 
@@ -151,6 +173,9 @@ func (l *Library) History() ([]Title, error) {
 // Nothing about the episodes, voiceovers or the cover URL is reused between
 // loads: only the local metadata, saved selection and cover file are kept.
 func (l *Library) Load(ctx context.Context, input string) (Title, error) {
+	if link, ok := kinopoisk.ParseInput(input); ok {
+		return l.loadKinopoisk(ctx, link, true)
+	}
 	log.Info("loading title", "input", input)
 	token, err := l.readToken()
 	if err != nil {
@@ -208,6 +233,9 @@ func (l *Library) upsertLoadedTitle(stored store.Title) (store.Title, error) {
 // the user presses Save in the title window, so merely opening a link must not
 // add it to history.
 func (l *Library) Fetch(ctx context.Context, input string) (Title, error) {
+	if link, ok := kinopoisk.ParseInput(input); ok {
+		return l.loadKinopoisk(ctx, link, false)
+	}
 	log.Info("fetching title", "input", input)
 	token, err := l.readToken()
 	if err != nil {
@@ -278,6 +306,7 @@ func (l *Library) Save(title Title, voice, episode string) (Title, error) {
 	saved.CoverPath = title.CoverPath
 	saved.Episodes = append([]string(nil), title.Episodes...)
 	saved.Voiceovers = append([]Voiceover(nil), title.Voiceovers...)
+	saved.Seasons = append([]Season(nil), title.Seasons...)
 	saved.SelectedVoice, saved.SelectedEpisode = chooseSelection(saved, voice, episode)
 	if _, err := l.store.EnsureHistory(id, saved.SelectedEpisode, saved.SelectedVoice); err != nil {
 		return Title{}, err
@@ -631,6 +660,8 @@ func storedTitleFromData(data *animelib.TitleData) store.Title {
 	}
 	return store.Title{
 		Slug:          data.SlugURL,
+		Source:        store.SourceAnimeLIB,
+		ExternalID:    data.SlugURL,
 		EngName:       english,
 		RusName:       russian,
 		Status:        int(statusFrom(data.StatusID, data.StatusLabel)),
@@ -644,8 +675,18 @@ func storedTitleFromLibrary(title Title) store.Title {
 	if title.Status == StatusAnnounced {
 		userStatus = UserStatusPlanned
 	}
+	source := title.Source
+	if source == "" {
+		source = store.SourceAnimeLIB
+	}
+	externalID := title.ExternalID
+	if externalID == "" && source == store.SourceAnimeLIB {
+		externalID = title.Slug
+	}
 	return store.Title{
 		Slug:          title.Slug,
+		Source:        source,
+		ExternalID:    externalID,
 		EngName:       title.Original,
 		RusName:       title.Russian,
 		IMDbID:        title.IMDbID,
@@ -710,8 +751,14 @@ func titleFromData(stored store.Title, data *animelib.TitleData) Title {
 }
 
 func titleFromStore(stored store.Title) Title {
+	source := stored.Source
+	if source == "" {
+		source = store.SourceAnimeLIB
+	}
 	title := Title{
 		ID:            stored.ID,
+		Source:        source,
+		ExternalID:    stored.ExternalID,
 		Slug:          stored.Slug,
 		Russian:       stored.RusName,
 		Original:      stored.EngName,
