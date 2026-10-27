@@ -109,19 +109,34 @@ func (t historyTitle) progressLabel() string {
 	return episodeProgressLabel(t.currentEpisodeLabel(), t.totalEpisodes())
 }
 
-// episodesSectionLabel names the episode block. A series with several seasons
-// is labelled by its season range ("СЕЗОНЫ (1-3)"); everything else keeps the
-// episode range it already had.
-func (t historyTitle) episodesSectionLabel() string {
-	if len(t.seasons) > 1 {
-		first := t.seasons[0].number
-		last := t.seasons[len(t.seasons)-1].number
-		if first == last {
-			return fmt.Sprintf("СЕЗОНЫ (%d)", first)
-		}
-		return fmt.Sprintf("СЕЗОНЫ (%d-%d)", first, last)
+// seasonsSectionLabel names the season block. It is empty for a title with a
+// single season: the season strip is only drawn when there is something to
+// choose between.
+func (t historyTitle) seasonsSectionLabel() string {
+	if len(t.seasons) <= 1 {
+		return ""
 	}
-	return episodeRangeLabel(t.episodes)
+	first := t.seasons[0].number
+	last := t.seasons[len(t.seasons)-1].number
+	if first == last {
+		return fmt.Sprintf("СЕЗОНЫ (%d)", first)
+	}
+	return fmt.Sprintf("СЕЗОНЫ (%d-%d)", first, last)
+}
+
+// episodesSectionLabel names the episode block for the season currently shown.
+// The grid only lists one season of a multi-season series, so its range comes
+// from that season instead of the flat episode list: season 1 of a 96-episode
+// title reads "СЕРИИ (1-11)", not "СЕРИИ (1-96)".
+func (t historyTitle) episodesSectionLabel(season int) string {
+	episodes := t.episodes
+	if len(t.seasons) > 1 {
+		if season < 0 || season >= len(t.seasons) {
+			season = 0
+		}
+		episodes = t.seasons[season].episodes
+	}
+	return episodeRangeLabel(episodes)
 }
 
 // seasonIndexForEpisode finds the season that contains the episode at index. It

@@ -11,6 +11,21 @@ import (
 	"gioui.org/unit"
 )
 
+// episodeGridColumns picks how many cells fit into width while keeping the
+// episode buttons at least minWidth wide. Seasons use the same shape so the two
+// blocks look like one control.
+func episodeGridColumns(width, gap, minWidth int) int {
+	columns := 7
+	for columns > 1 {
+		cell := (width - gap*(columns-1)) / columns
+		if cell >= minWidth {
+			break
+		}
+		columns--
+	}
+	return columns
+}
+
 func (w *titleWindow) layoutEpisodes(gtx layout.Context, rect image.Rectangle) {
 	if rect.Empty() || len(w.episodes) == 0 {
 		return
@@ -21,14 +36,7 @@ func (w *titleWindow) layoutEpisodes(gtx layout.Context, rect image.Rectangle) {
 	}
 	gap := gtx.Dp(titlePageEpisodeGap)
 	minWidth := gtx.Dp(titlePageEpisodeMinWidth)
-	columns := 7
-	for columns > 1 {
-		width := (rect.Dx() - gap*(columns-1)) / columns
-		if width >= minWidth {
-			break
-		}
-		columns--
-	}
+	columns := episodeGridColumns(rect.Dx(), gap, minWidth)
 	buttonWidth := (rect.Dx() - gap*(columns-1)) / columns
 	if buttonWidth <= 0 {
 		return
@@ -75,27 +83,35 @@ func (w *titleWindow) layoutEpisodes(gtx layout.Context, rect image.Rectangle) {
 	stack.Pop()
 }
 
-// layoutSeasons draws the season strip above the episode grid. Only a series
+// layoutSeasons draws the season grid above the episode grid. Only a series
 // with more than one season gets it; a single-season title shows its episodes
-// directly, exactly like an AnimeLIB title.
-func (w *titleWindow) layoutSeasons(gtx layout.Context, rect image.Rectangle) {
+// directly, exactly like an AnimeLIB title. It returns the height the grid used
+// so the caller can place the episode label below it.
+func (w *titleWindow) layoutSeasons(gtx layout.Context, rect image.Rectangle) int {
 	if rect.Empty() || len(w.item.seasons) <= 1 {
-		return
+		return 0
 	}
 	gap := gtx.Dp(titlePageEpisodeGap)
-	columns := len(w.item.seasons)
+	minWidth := gtx.Dp(titlePageEpisodeMinWidth)
+	columns := episodeGridColumns(rect.Dx(), gap, minWidth)
 	width := (rect.Dx() - gap*(columns-1)) / columns
 	if width <= 0 {
-		return
+		return 0
 	}
+	rowHeight := gtx.Dp(titlePageEpisodeHeight)
+	rows := (len(w.item.seasons) + columns - 1) / columns
 	for index := range w.item.seasons {
-		left := rect.Min.X + index*(width+gap)
-		cell := image.Rect(left, rect.Min.Y, left+width, rect.Max.Y)
-		w.layoutSeasonButton(gtx, index, cell, width)
+		row := index / columns
+		column := index % columns
+		left := rect.Min.X + column*(width+gap)
+		top := rect.Min.Y + row*(rowHeight+gap)
+		cell := image.Rect(left, top, left+width, top+rowHeight)
+		w.layoutSeasonButton(gtx, index, cell)
 	}
+	return rows*rowHeight + (rows-1)*gap
 }
 
-func (w *titleWindow) layoutSeasonButton(gtx layout.Context, index int, rect image.Rectangle, width int) {
+func (w *titleWindow) layoutSeasonButton(gtx layout.Context, index int, rect image.Rectangle) {
 	if rect.Empty() || index < 0 || index >= len(w.item.seasons) || index >= len(w.seasons) {
 		return
 	}
@@ -106,11 +122,11 @@ func (w *titleWindow) layoutSeasonButton(gtx layout.Context, index int, rect ima
 	}
 	hovered := click.Hovered()
 	w.layoutClickableDraw(gtx, rect, click, func(gtx layout.Context) {
-		w.drawSeasonFace(gtx, index, image.Rectangle{Max: rect.Size()}, hovered, width)
+		w.drawSeasonFace(gtx, index, image.Rectangle{Max: rect.Size()}, hovered)
 	})
 }
 
-func (w *titleWindow) drawSeasonFace(gtx layout.Context, index int, local image.Rectangle, hovered bool, width int) {
+func (w *titleWindow) drawSeasonFace(gtx layout.Context, index int, local image.Rectangle, hovered bool) {
 	if index < 0 || index >= len(w.item.seasons) || local.Empty() {
 		return
 	}
@@ -131,14 +147,9 @@ func (w *titleWindow) drawSeasonFace(gtx layout.Context, index int, local image.
 	if selected {
 		textColor = color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}
 	}
-	number := w.item.seasons[index].number
-	label := fmt.Sprintf("%d", number)
-	if width >= gtx.Dp(unit.Dp(72)) {
-		label = fmt.Sprintf("Сезон %d", number)
-	}
 	w.typo.drawCentered(
 		gtx,
-		label,
+		fmt.Sprintf("%d", w.item.seasons[index].number),
 		font.Font{Typeface: fontFamily, Weight: font.Medium},
 		titlePageEpisodeSize,
 		textColor,

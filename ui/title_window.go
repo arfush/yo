@@ -35,7 +35,6 @@ const (
 	titlePageEpisodeGap      = unit.Dp(6)
 	titlePageQualityHeight   = unit.Dp(34)
 	titlePageButtonHeight    = unit.Dp(34)
-	titlePageSeasonHeight    = unit.Dp(26)
 	titlePageFooterButtonGap = unit.Dp(12)
 )
 
@@ -866,18 +865,15 @@ func (w *titleWindow) layoutTitlePanel(gtx layout.Context, rect image.Rectangle)
 		w.layoutMoviePanel(gtx, rect, labelFace, labelInk, labelY, compact)
 		return
 	}
-	episodesLabel := w.item.episodesSectionLabel()
-	w.typo.draw(gtx, episodesLabel, labelFace, titlePageSectionSize, mainMutedColor, image.Pt(innerX, labelY))
-
-	episodeTop := labelY + labelInk.Dy() + gtx.Dp(unit.Dp(13))
-	if len(w.item.seasons) > 1 {
-		stripHeight := gtx.Dp(titlePageSeasonHeight)
-		strip := image.Rect(innerX, episodeTop, innerRight, episodeTop+stripHeight)
-		if strip.Max.Y < rect.Max.Y {
-			w.layoutSeasons(gtx, strip)
-			episodeTop = strip.Max.Y + gtx.Dp(unit.Dp(10))
-		}
+	seasonsLabel := w.item.seasonsSectionLabel()
+	episodesLabel := w.item.episodesSectionLabel(w.selectedSeason)
+	if seasonsLabel == "" {
+		w.typo.draw(gtx, episodesLabel, labelFace, titlePageSectionSize, mainMutedColor, image.Pt(innerX, labelY))
+	} else {
+		w.typo.draw(gtx, seasonsLabel, labelFace, titlePageSectionSize, mainMutedColor, image.Pt(innerX, labelY))
 	}
+	contentTop := labelY + labelInk.Dy() + gtx.Dp(unit.Dp(13))
+	episodeTop := contentTop
 	qualityLabel := w.qualitySectionLabel()
 	_, qualityLabelInk := w.typo.measure(gtx, qualityLabel, labelFace, titlePageSectionSize)
 	qualityHeight := gtx.Dp(titlePageQualityHeight)
@@ -901,6 +897,24 @@ func (w *titleWindow) layoutTitlePanel(gtx layout.Context, rect image.Rectangle)
 		qualityLabelTop = qualityTop - labelGap - qualityLabelInk.Dy()
 	}
 	gridBottom := qualityLabelTop - gridGap
+
+	if seasonsLabel != "" {
+		used := w.layoutSeasons(gtx, image.Rect(innerX, contentTop, innerRight, gridBottom))
+		if used > 0 {
+			episodeLabelY := contentTop + used + gtx.Dp(unit.Dp(14))
+			episodeTop = episodeLabelY + labelInk.Dy() + gtx.Dp(unit.Dp(10))
+			if episodeLabelY+labelInk.Dy() < qualityLabelTop {
+				w.typo.draw(
+					gtx,
+					episodesLabel,
+					labelFace,
+					titlePageSectionSize,
+					mainMutedColor,
+					image.Pt(innerX, episodeLabelY),
+				)
+			}
+		}
+	}
 	if gridBottom > episodeTop {
 		w.layoutEpisodes(gtx, image.Rect(innerX, episodeTop, innerRight, gridBottom))
 	}
