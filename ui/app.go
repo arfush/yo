@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -188,6 +190,16 @@ type application struct {
 	// the resolve inside the service. A silent update must not quit the app in
 	// that gap.
 	playbackStarting atomic.Bool
+
+	// mpvRect is where the user last parked the mpv window. Playback reuses it
+	// instead of inheriting the main window position, and the rect is refreshed
+	// from mpv every second while it plays.
+	mpvRect    windowRect
+	mpvRectOK  bool
+	mpvRectAt  time.Time
+	appRect    windowRect
+	appRectAt  time.Time
+	appRectCur windowRect
 }
 
 // qualityResult is one background quality probe. slug identifies the title page
@@ -298,7 +310,50 @@ func newApp() (*application, error) {
 	app.updatesAvailable.Store(state.Available)
 	app.autoUpdateStartup.Store(true)
 	app.party = newPartyManager(app)
+
+	// Restore window placements from the previous session: mpv reopens where
+	// the user parked it, and the main window itself comes back to its spot.
+	app.mpvRect, app.mpvRectOK = loadStoredRect(lib, "mpv_rect")
+	if rect, ok := loadStoredRect(lib, "window_rect"); ok {
+		app.appRectCur = rect
+		rememberAppWindowRect(rect)
+	}
 	return app, nil
+}
+
+// loadStoredRect reads a "x,y,w,h" settings row into a physical-pixel rect.
+func loadStoredRect(lib *library.Library, key string) (windowRect, bool) {
+	raw, ok := lib.Setting(key)
+	if !ok {
+		return windowRect{}, false
+	}
+	return decodeRect(raw)
+}
+
+// encodeRect writes a physical-pixel rect as "x,y,w,h".
+func encodeRect(rect windowRect) string {
+	return strconv.Itoa(rect.X) + "," + strconv.Itoa(rect.Y) + "," + strconv.Itoa(rect.Width) + "," + strconv.Itoa(rect.Height)
+}
+
+// decodeRect parses the "x,y,w,h" form. A malformed or degenerate value is
+// ignored so a broken settings row cannot park a window off-screen.
+func decodeRect(raw string) (windowRect, bool) {
+	parts := strings.Split(raw, ",")
+	if len(parts) != 4 {
+		return windowRect{}, false
+	}
+	values := make([]int, 4)
+	for index, part := range parts {
+		value, err := strconv.Atoi(strings.TrimSpace(part))
+		if err != nil {
+			return windowRect{}, false
+		}
+		values[index] = value
+	}
+	if values[2] <= 0 || values[3] <= 0 {
+		return windowRect{}, false
+	}
+	return windowRect{X: values[0], Y: values[1], Width: values[2], Height: values[3]}, true
 }
 
 // attachWindow checks the AnimeLIB token first, then makes sure Chromium is
@@ -1321,7 +1376,16 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 		return fmt.Errorf("окно приложения не готово")
 	}
 	window := playback.WindowRect{}
-	if rect, ok := appWindowRect(); ok {
+	// mpv reopens where the user parked it last time; only a fresh install or
+	// a missing record falls back to the application window rectangle.
+	if a.mpvRectOK && a.mpvRect.Width > 0 && a.mpvRect.Height > 0 {
+		window = playback.WindowRect{
+			X:      a.mpvRect.X,
+			Y:      a.mpvRect.Y,
+			Width:  a.mpvRect.Width,
+			Height: a.mpvRect.Height,
+		}
+	} else if rect, ok := appWindowRect(); ok {
 		window = playback.WindowRect{
 			X:      rect.X,
 			Y:      rect.Y,
@@ -1390,15 +1454,13 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 			AutoSkipSegments: autoSkip,
 			InputLocked:      inputLocked,
 			OnReady: func() {
-				a.hidden.Store(true)
-				hideAppWindow()
+				// The application window stays visible next to mpv: the title
+				// page mirrors the playing episode and its progress live.
 				if a.window != nil {
 					a.window.Invalidate()
 				}
 			},
 			OnFinish: func(err error) {
-				a.hidden.Store(false)
-				showAppWindow()
 				a.deliverWatch(watchResult{finished: true, err: err, historyItem: historyItem, titleID: trackedID, party: partyGuest})
 			},
 		})
@@ -1730,6 +1792,62 @@ func (a *application) restorePlayerWindow() {
 	}
 }
 
+// updatePlaybackNow mirrors the running mpv session into the open title page:
+// the playing episode stays highlighted and the header progress bar moves live.
+// The one-second invalidate keeps the frame loop alive while the player runs,
+// but a window parked in the tray never animates.
+func (a *application) updatePlaybackNow(gtx layout.Context) {
+	if a.playback == nil || a.window == nil || a.windowHidden() {
+		return
+	}
+	session := a.playback.Current()
+	if session == nil {
+		return
+	}
+	title, ok := a.active.(*titleWindow)
+	if !ok {
+		return
+	}
+	number, _ := session.Episode()
+	if number == "" {
+		return
+	}
+	if slug := session.Slug(); slug != "" && slug != title.item.slug {
+		return
+	}
+	title.applyProgress(number, session.LivePosition(), session.Duration())
+	gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(time.Second)})
+}
+
+// persistWindowRects remembers where the user keeps the application window and
+// the mpv window, at most once a second each and only on change, so the next
+// open lands on the same spot without writing the database every frame.
+func (a *application) persistWindowRects(now time.Time) {
+	if a.library == nil {
+		return
+	}
+	if !a.windowHidden() && now.Sub(a.appRectAt) >= time.Second {
+		if rect, ok := appWindowRect(); ok && rect != a.appRectCur {
+			a.appRectCur = rect
+			a.appRectAt = now
+			_ = a.library.SetSetting("window_rect", encodeRect(rect))
+		}
+	}
+	session := a.playback.Current()
+	if session == nil || now.Sub(a.mpvRectAt) < time.Second {
+		return
+	}
+	if rect, ok := session.MpvWindowRect(); ok {
+		converted := windowRect{X: rect.Min.X, Y: rect.Min.Y, Width: rect.Dx(), Height: rect.Dy()}
+		if !a.mpvRectOK || converted != a.mpvRect {
+			a.mpvRect = converted
+			a.mpvRectOK = true
+			a.mpvRectAt = now
+			_ = a.library.SetSetting("mpv_rect", encodeRect(converted))
+		}
+	}
+}
+
 func (a *application) showWindow(w *app.Window, screen windowScreen) {
 	if a.active != nil && a.active != screen {
 		a.active.Close()
@@ -1975,6 +2093,8 @@ func (a *application) run(w *app.Window) error {
 			a.processPartyState()
 			a.processWatchResults(gtx)
 			a.processQualityResults(gtx)
+			a.updatePlaybackNow(gtx)
+			a.persistWindowRects(gtx.Now)
 			a.syncFooterControls()
 			a.handleGlobalKeys(gtx)
 			a.shell.layout(gtx, w)

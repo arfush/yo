@@ -35,6 +35,8 @@ type windowRect struct {
 
 func appWindowRect() (windowRect, bool) { return windowRect{}, false }
 
+func rememberAppWindowRect(windowRect) {}
+
 func hideAppWindow() {}
 
 func showAppWindow() {}

@@ -38,12 +38,21 @@ var (
 	procShowWindow                   = user32.NewProc("ShowWindow")
 	procSetForegroundWindow          = user32.NewProc("SetForegroundWindow")
 	procIsIconic                     = user32.NewProc("IsIconic")
+	procSetWindowPos                 = user32.NewProc("SetWindowPos")
+)
+
+var (
+	pendingAppRect    windowRect
+	pendingAppRectSet bool
 )
 
 const (
 	swHide    = 0
 	swShow    = 5
 	swRestore = 9
+
+	swpNoZOrder   = 0x0004
+	swpNoActivate = 0x0010
 )
 
 const vkLeftButton = 0x01
@@ -116,6 +125,7 @@ func handleViewEvent(e event.Event) {
 
 	hwnd := windows.HWND(view.HWND)
 	windowHandle.Store(view.HWND)
+	applyRememberedWindowRect(hwnd)
 
 	dark := int32(1)
 	_ = windows.DwmSetWindowAttribute(
@@ -205,6 +215,40 @@ func hideAppWindow() {
 		return
 	}
 	_, _, _ = procShowWindow.Call(uintptr(hwnd), swHide)
+}
+
+// rememberAppWindowRect stores the rectangle the main window should come back
+// to. It is applied as soon as the window handle exists, on the first view
+// event of the session.
+func rememberAppWindowRect(rect windowRect) {
+	pendingAppRect = rect
+	pendingAppRectSet = true
+}
+
+// applyRememberedWindowRect moves the freshly created window to the spot the
+// user kept it in during the previous session. The frame is placed unchanged
+// and left inactive, so the first launch does not steal focus from itself.
+func applyRememberedWindowRect(hwnd windows.HWND) {
+	if !pendingAppRectSet {
+		return
+	}
+	pendingAppRectSet = false
+	rect := pendingAppRect
+	if rect.Width <= 0 || rect.Height <= 0 {
+		return
+	}
+	// GetSystemMetrics virtual screen bounds would need another DLL import;
+	// a basic guard keeps the window within the primary monitor instead of
+	// letting a stale row push it off-screen.
+	_, _, _ = procSetWindowPos.Call(
+		uintptr(hwnd),
+		0,
+		uintptr(int32(rect.X)),
+		uintptr(int32(rect.Y)),
+		uintptr(int32(rect.Width)),
+		uintptr(int32(rect.Height)),
+		swpNoZOrder|swpNoActivate,
+	)
 }
 
 func showAppWindow() {

@@ -63,3 +63,32 @@ func TestTitleQualitiesIgnoreUnknownTitle(t *testing.T) {
 		t.Fatalf("read with unknown id = %q, %v", got, err)
 	}
 }
+
+func TestGenericSettingsRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "yoanime.sqlite")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	if got, ok := db.Settings("window_rect"); ok || got != "" {
+		t.Fatalf("missing setting read = %q, %v", got, ok)
+	}
+	if err := db.SetSettings("window_rect", "120,40,960,540"); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := db.Settings("window_rect")
+	if !ok || got != "120,40,960,540" {
+		t.Fatalf("setting read = %q, %v", got, ok)
+	}
+	if err := db.SetSettings("window_rect", "200,100,800,600"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := db.Settings("window_rect"); got != "200,100,800,600" {
+		t.Fatalf("updated setting = %q", got)
+	}
+	if err := db.SetSettings("", "x"); err != nil {
+		t.Fatalf("empty key must be a no-op: %v", err)
+	}
+}

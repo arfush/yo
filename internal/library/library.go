@@ -483,6 +483,24 @@ func (l *Library) SharedControlEnabled() bool {
 	return l.store.SharedControlEnabled()
 }
 
+// Setting returns a raw settings row. It is used for UI geometry the app
+// remembers on disk (window and mpv placement); nil-safe so tests can call it
+// without opening a database.
+func (l *Library) Setting(key string) (string, bool) {
+	if l == nil || l.store == nil {
+		return "", false
+	}
+	return l.store.Settings(key)
+}
+
+// SetSetting stores a raw settings row.
+func (l *Library) SetSetting(key, value string) error {
+	if l == nil || l.store == nil {
+		return nil
+	}
+	return l.store.SetSettings(key, value)
+}
+
 // SetSharedControlEnabled stores the shared-control choice.
 func (l *Library) SetSharedControlEnabled(enabled bool) error {
 	return l.store.SetSharedControlEnabled(enabled)

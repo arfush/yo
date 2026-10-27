@@ -768,6 +768,28 @@ func (s *Store) UpdateMetadata(tid int64, imdbID string, season int) error {
 	return err
 }
 
+// Settings returns the raw value of a settings row. The boolean is false when
+// the key was never stored.
+func (s *Store) Settings(key string) (string, bool) {
+	var value string
+	if err := s.db.QueryRow("SELECT value FROM settings WHERE key = ?", key).Scan(&value); err != nil {
+		return "", false
+	}
+	return value, true
+}
+
+// SetSettings stores a raw settings row.
+func (s *Store) SetSettings(key, value string) error {
+	if key == "" {
+		return nil
+	}
+	_, err := s.db.Exec(`
+        INSERT INTO settings (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+		key, value)
+	return err
+}
+
 // boolSetting reads a boolean setting and falls back to defaultValue when the
 // row is missing or unreadable.
 func (s *Store) boolSetting(key string, defaultValue bool) bool {
