@@ -117,6 +117,30 @@ func (s *shape) strokeLine(a, b vec, width float64) {
 	s.strokeOpen([]vec{a, b}, width)
 }
 
+func (s *shape) strokeRoundLine(a, b vec, width float64) {
+	s.strokeLine(a, b, width)
+	s.circle(a, width/2)
+	s.circle(b, width/2)
+}
+
+// strokeRoundOpen strokes a polyline and rounds both ends. Drawing the two arms
+// of a corner as separate round-capped lines also produces a round join.
+func (s *shape) strokeRoundOpen(points []vec, width float64) {
+	s.strokeOpen(points, width)
+	if len(points) == 0 {
+		return
+	}
+	s.circle(points[0], width/2)
+	s.circle(points[len(points)-1], width/2)
+}
+
+func (s *shape) circle(center vec, radius float64) {
+	if radius <= 0 {
+		return
+	}
+	s.polygon(sampleCircle(center.x, center.y, radius, 32))
+}
+
 func (s *shape) strokeOpen(points []vec, width float64) {
 	if len(points) < 2 || width <= 0 {
 		return
@@ -177,8 +201,23 @@ func offsetPolyline(points []vec, half float64, closed bool) (left, right []vec)
 }
 
 func offsetNormal(prev, p, next vec) vec {
-	n1 := p.sub(prev).normal().unit()
-	n2 := next.sub(p).normal().unit()
+	d1 := p.sub(prev)
+	d2 := next.sub(p)
+	// sampleCubic includes its start point, so callers that append its result to
+	// an existing polyline end up with duplicate points. A zero-length direction
+	// would otherwise make the miter scale 1/max(0.25, 0) = 4 and paint a spike
+	// four times the half-width.
+	if d1.len() < 0.000001 {
+		if d2.len() < 0.000001 {
+			return vec{}
+		}
+		return d2.normal().unit()
+	}
+	if d2.len() < 0.000001 {
+		return d1.normal().unit()
+	}
+	n1 := d1.normal().unit()
+	n2 := d2.normal().unit()
 	sum := n1.add(n2)
 	if sum.len() < 0.0001 {
 		return n1
@@ -218,6 +257,14 @@ func sampleCubic(p0, c1, c2, p3 vec, steps int) []vec {
 		})
 	}
 	return out
+}
+
+// appendCubic appends a sampled cubic to an existing polyline. sampleCubic
+// returns the starting point as its first element, which is already the last
+// point in dst; dropping it keeps the polyline free of duplicate points.
+func appendCubic(dst []vec, p0, c1, c2, p3 vec, steps int) []vec {
+	points := sampleCubic(p0, c1, c2, p3, steps)
+	return append(dst, points[1:]...)
 }
 
 func sampleCircle(cx, cy, radius float64, steps int) []vec {
@@ -403,43 +450,43 @@ func buildLog() []shape {
 	return out
 }
 
-// buildUpdate paints two circular arrows. The geometry follows the reference
-// refresh glyph: a clockwise arc on top and a counter-clockwise arc below, each
-// ending in a square arrowhead.
+// buildUpdate follows the reference refresh glyph: two circular arrows with
+// open L-shaped heads and round caps. The coordinates below are copied from the
+// reference SVG, whose icon button is centred on (66, 20) and uses a 1.6 px
+// stroke. The 15.4-unit design box leaves a tiny margin around the painted
+// 15.1 px bounds so the antialiased edges are not clipped.
 func buildUpdate() []shape {
-	d := design{size: 24}
+	d := design{size: 15.4}
 	pt := func(x, y float64) vec {
-		return d.pt(x-12, y-12)
+		return d.pt(x-66, y-20)
 	}
-	// Scale the original 18-unit glyph to fill the 14 dp slot. The thin stroke
-	// and small arrowheads disappeared at that size; the reference reads as a
-	// full-box icon with heavy corners.
-	const radius = 10.35
-	width := d.length(2.8)
+	width := d.length(1.6)
+	const steps = 10
 	var out shape
 
-	// Top arc: left edge, over the top, down to the right shoulder.
-	top := []vec{pt(12-radius, 12)}
-	const steps = 32
-	for i := 1; i <= steps; i++ {
-		angle := math.Pi + (math.Pi-0.62)*float64(i)/steps
-		top = append(top, pt(12+radius*math.Cos(angle), 12+radius*math.Sin(angle)))
-	}
-	top = append(top, pt(22.35, 7.4))
-	out.strokeOpen(top, width)
+	// Top arc: from the left edge, over the top, down to the right shoulder.
+	top := []vec{pt(59.25, 20)}
+	top = appendCubic(top, pt(59.25, 20), pt(59.25, 18.2098), pt(59.9612, 16.4929), pt(61.227, 15.227), steps)
+	top = appendCubic(top, pt(61.227, 15.227), pt(62.4929, 13.9612), pt(64.2098, 13.25), pt(66, 13.25), steps)
+	top = appendCubic(top, pt(66, 13.25), pt(67.887, 13.2571), pt(69.6983, 13.9934), pt(71.055, 15.305), steps)
+	top = append(top, pt(72.75, 17))
+	out.strokeRoundOpen(top, width)
 
-	// Bottom arc: right edge, under the bottom, up to the left shoulder.
-	bottom := []vec{pt(12+radius, 12)}
-	for i := 1; i <= steps; i++ {
-		angle := (math.Pi + 0.62) * float64(i) / steps
-		bottom = append(bottom, pt(12+radius*math.Cos(angle), 12+radius*math.Sin(angle)))
-	}
-	bottom = append(bottom, pt(1.65, 16.6))
-	out.strokeOpen(bottom, width)
+	// Bottom arc mirrors the top one.
+	bottom := []vec{pt(72.75, 20)}
+	bottom = appendCubic(bottom, pt(72.75, 20), pt(72.75, 21.7902), pt(72.0388, 23.5071), pt(70.773, 24.773), steps)
+	bottom = appendCubic(bottom, pt(70.773, 24.773), pt(69.5071, 26.0388), pt(67.7902, 26.75), pt(66, 26.75), steps)
+	bottom = appendCubic(bottom, pt(66, 26.75), pt(64.113, 26.7429), pt(62.3017, 26.0066), pt(60.945, 24.695), steps)
+	bottom = append(bottom, pt(59.25, 23))
+	out.strokeRoundOpen(bottom, width)
 
-	// The reference's arrowheads read as solid triangular wedges at 14 dp.
-	out.polygon([]vec{pt(22.35, 1.65), pt(22.35, 7.4), pt(16.6, 7.4)})
-	out.polygon([]vec{pt(7.4, 16.6), pt(1.65, 16.6), pt(1.65, 22.35)})
+	// Open right-angle heads. Stroking each arm as its own round-capped line
+	// unions two round caps at the corner, which is the same shape as a round
+	// line join in the reference SVG.
+	out.strokeRoundLine(pt(69, 17), pt(72.75, 17), width)
+	out.strokeRoundLine(pt(72.75, 17), pt(72.75, 13.25), width)
+	out.strokeRoundLine(pt(59.25, 26.75), pt(59.25, 23), width)
+	out.strokeRoundLine(pt(59.25, 23), pt(63, 23), width)
 	return []shape{out}
 }
 
@@ -482,13 +529,15 @@ func buildPeople() []shape {
 		64,
 	), width)
 	body := []vec{pt(2, 21), pt(2, 19)}
-	body = append(body, sampleCubic(
+	body = appendCubic(
+		body,
 		pt(2, 19), pt(2, 16.79), pt(4.21, 15), pt(6, 15), 16,
-	)...)
+	)
 	body = append(body, pt(12, 15))
-	body = append(body, sampleCubic(
+	body = appendCubic(
+		body,
 		pt(12, 15), pt(13.79, 15), pt(16, 16.79), pt(16, 19), 16,
-	)...)
+	)
 	body = append(body, pt(16, 21))
 	front.strokeOpen(body, width)
 	out = append(out, front)
@@ -525,19 +574,40 @@ func buildCopy() []shape {
 	return out
 }
 
-// buildPlay is an outlined play triangle followed by a vertical stop bar, like
-// the reference glyph. The old filled triangle was also visually off-centre
-// because its paint bounds only covered the right half of the view box.
+// buildPlay follows the reference play glyph: a rounded outlined triangle and a
+// short vertical stop bar. The coordinates are copied from the reference SVG
+// (button centre 158, 20; 1.6 px stroke). The 15.4-unit design box keeps the
+// painted 15.1 x 13.6 px bounds just inside the view box.
 func buildPlay() []shape {
-	d := design{size: 1}
-	width := d.length(0.085)
+	d := design{size: 15.4}
+	pt := func(x, y float64) vec {
+		return d.pt(x-158, y-20)
+	}
+	width := d.length(1.6)
+	const steps = 8
+
+	start := pt(153.522, 14.2144)
+	triangle := []vec{start}
+	triangle = appendCubic(triangle, start, pt(153.294, 14.0778), pt(153.034, 14.0041), pt(152.769, 14.0007), steps)
+	triangle = appendCubic(triangle, pt(152.769, 14.0007), pt(152.503, 13.9974), pt(152.242, 14.0645), pt(152.011, 14.1953), steps)
+	triangle = appendCubic(triangle, pt(152.011, 14.1953), pt(151.78, 14.3261), pt(151.588, 14.5158), pt(151.454, 14.7451), steps)
+	triangle = appendCubic(triangle, pt(151.454, 14.7451), pt(151.32, 14.9744), pt(151.25, 15.2351), pt(151.25, 15.5005), steps)
+	triangle = append(triangle, pt(151.25, 24.4995))
+	triangle = appendCubic(triangle, pt(151.25, 24.4995), pt(151.25, 24.765), pt(151.32, 25.0256), pt(151.454, 25.2549), steps)
+	triangle = appendCubic(triangle, pt(151.454, 25.2549), pt(151.588, 25.4842), pt(151.78, 25.674), pt(152.011, 25.8047), steps)
+	triangle = appendCubic(triangle, pt(152.011, 25.8047), pt(152.242, 25.9355), pt(152.503, 26.0026), pt(152.769, 25.9993), steps)
+	triangle = appendCubic(triangle, pt(152.769, 25.9993), pt(153.034, 25.9959), pt(153.294, 25.9222), pt(153.522, 25.7857), steps)
+	triangle = append(triangle, pt(161.019, 21.2876))
+	triangle = appendCubic(triangle, pt(161.019, 21.2876), pt(161.242, 21.1547), pt(161.426, 20.9663), pt(161.554, 20.7408), steps)
+	triangle = appendCubic(triangle, pt(161.554, 20.7408), pt(161.682, 20.5154), pt(161.75, 20.2607), pt(161.75, 20.0014), steps)
+	triangle = appendCubic(triangle, pt(161.75, 20.0014), pt(161.75, 19.7421), pt(161.683, 19.4873), pt(161.556, 19.2616), steps)
+	triangle = appendCubic(triangle, pt(161.556, 19.2616), pt(161.428, 19.036), pt(161.244, 18.8473), pt(161.022, 18.7139), steps)
+
 	var out shape
-	out.strokeClosed([]vec{
-		d.pt(-0.42, -0.38),
-		d.pt(0.20, 0),
-		d.pt(-0.42, 0.38),
-	}, width)
-	out.strokeLine(d.pt(0.42, -0.38), d.pt(0.42, 0.38), width)
+	// The centreline is smooth where it closes, so the closed stroke only needs
+	// the offset outline; no miter artifacts form on the rounded corners.
+	out.strokeClosed(triangle, width)
+	out.strokeRoundLine(pt(164.75, 14.0006), pt(164.75, 25.9994), width)
 	return []shape{out}
 }
 

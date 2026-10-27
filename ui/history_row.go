@@ -227,7 +227,7 @@ func (m *mainWindow) drawHistoryRowCard(gtx layout.Context, rect image.Rectangle
 		fill := mixColor(mainControlFill, mainPlayButtonFill, vis.playHover)
 		stroke := mixColor(mainControlBorder, mainPlayButtonBorder, vis.playHover)
 		drawIconButtonSurface(gtx, geom.play, iconButtonStyle{Fill: fill, Border: stroke, Radius: mainControlRadius}, 0)
-		drawPlay(gtx, centerOf(geom.play), gtx.Dp(unit.Dp(11)), buttonTextColor)
+		drawPlay(gtx, centerOf(geom.play), gtx.Dp(unit.Dp(13)), buttonTextColor)
 	}
 
 	trashFill := mixColor(mainControlFill, mainTrashButtonFill, vis.trashHover)
