@@ -121,8 +121,8 @@ func boundaryViolation(from, to string) string {
 		return "ui must not import store: data comes through app"
 	}
 
-	if isLeaf(from) {
-		return "leaf packages must not import other project packages"
+	if isLeaf(from) && !under(to, modulePath+"/catalog") {
+		return "leaf packages may import only catalog"
 	}
 
 	if under(from, modulePath+"/platform") {
@@ -140,7 +140,9 @@ func boundaryViolation(from, to string) string {
 }
 
 // isLeaf lists packages that form the bottom of the graph. They may use the
-// standard library and third-party modules, but no other project package.
+// standard library, third-party modules and the shared catalog, but no other
+// project package. catalog itself is the absolute bottom and imports nothing
+// from the project.
 func isLeaf(path string) bool {
 	switch path {
 	case modulePath + "/catalog", modulePath + "/log", modulePath + "/token", modulePath + "/version":

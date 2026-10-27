@@ -15,7 +15,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yoanime/internal/library"
+	"github.com/arfush/yoanime/catalog"
 )
 
 const (
@@ -278,15 +278,15 @@ type titleWindow struct {
 	onSave       func(voice, episode string) error
 	onQuality    func(value int) error
 	onWatch      func(voice, episode string, quality int) error
-	onUserStatus func(historyTitle, library.UserStatus) error
+	onUserStatus func(historyTitle, catalog.UserStatus) error
 	onVoice      func(index int)
 	onError      func(error)
 }
 
 // setUserStatus updates the local pill without touching the database. The app
 // calls it after persistence or after the user changes an unsaved title.
-func (w *titleWindow) setUserStatus(status library.UserStatus) {
-	w.item.userStatus = library.NormalizeUserStatus(status)
+func (w *titleWindow) setUserStatus(status catalog.UserStatus) {
+	w.item.userStatus = catalog.NormalizeUserStatus(status)
 }
 
 // dismissPopup closes the status menu when the window loses focus.
@@ -318,7 +318,7 @@ func (w *titleWindow) layoutOverlay(gtx layout.Context, origin image.Point) {
 		return
 	}
 	id := w.item.id
-	w.statusMenu.layout(gtx, w.typo, origin, func(status library.UserStatus) {
+	w.statusMenu.layout(gtx, w.typo, origin, func(status catalog.UserStatus) {
 		if !w.canChangeUserStatus() {
 			return
 		}

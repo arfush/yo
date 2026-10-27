@@ -8,11 +8,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arfush/yoanime/internal/appdata"
-	"github.com/arfush/yoanime/internal/library"
-	"github.com/arfush/yoanime/internal/playback"
+	"github.com/arfush/yoanime/library"
 	"github.com/arfush/yoanime/log"
 	"github.com/arfush/yoanime/party"
+	"github.com/arfush/yoanime/platform/appdata"
+	"github.com/arfush/yoanime/playback"
 )
 
 const (

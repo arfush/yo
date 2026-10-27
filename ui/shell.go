@@ -14,7 +14,7 @@ import (
 	"gioui.org/op/clip"
 	"gioui.org/widget"
 
-	"github.com/arfush/yoanime/internal/version"
+	"github.com/arfush/yoanime/version"
 )
 
 type shell struct {

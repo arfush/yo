@@ -10,7 +10,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yoanime/internal/library"
+	"github.com/arfush/yoanime/catalog"
 )
 
 type historyRow struct {
@@ -154,7 +154,7 @@ func (m *mainWindow) drawHistoryRowCard(gtx layout.Context, rect image.Rectangle
 	// in the row — until it is marked watched: a finished film has nothing left
 	// to resume, so the bar would only be noise. Series without a known episode
 	// keep the old title-only layout.
-	showProgress := (item.movie && item.userStatus != library.UserStatusCompleted) || label != ""
+	showProgress := (item.movie && item.userStatus != catalog.UserStatusCompleted) || label != ""
 	if !showProgress {
 		m.drawTruncated(
 			gtx,

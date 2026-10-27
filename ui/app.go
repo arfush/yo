@@ -23,20 +23,21 @@ import (
 	"gioui.org/op"
 	"gioui.org/unit"
 
-	"github.com/arfush/yoanime/internal/animelib"
-	"github.com/arfush/yoanime/internal/appdata"
-	"github.com/arfush/yoanime/internal/browser"
-	"github.com/arfush/yoanime/internal/kinopoisk"
-	"github.com/arfush/yoanime/internal/library"
-	"github.com/arfush/yoanime/internal/metadata"
-	"github.com/arfush/yoanime/internal/mpv"
-	"github.com/arfush/yoanime/internal/playback"
-	"github.com/arfush/yoanime/internal/token"
-	"github.com/arfush/yoanime/internal/updater"
-	"github.com/arfush/yoanime/internal/updates"
-	"github.com/arfush/yoanime/internal/version"
+	"github.com/arfush/yoanime/animelib"
+	"github.com/arfush/yoanime/browser"
+	"github.com/arfush/yoanime/catalog"
+	"github.com/arfush/yoanime/kinopoisk"
+	"github.com/arfush/yoanime/library"
 	"github.com/arfush/yoanime/log"
+	"github.com/arfush/yoanime/metadata"
+	"github.com/arfush/yoanime/mpv"
 	"github.com/arfush/yoanime/party"
+	"github.com/arfush/yoanime/platform/appdata"
+	"github.com/arfush/yoanime/playback"
+	"github.com/arfush/yoanime/token"
+	"github.com/arfush/yoanime/updater"
+	"github.com/arfush/yoanime/updates"
+	"github.com/arfush/yoanime/version"
 )
 
 const (
@@ -508,7 +509,18 @@ func (a *application) requireToken(w *app.Window) {
 		return
 	}
 
-	prompt := newTokenPrompt(a.shell.typo, a.browserManager, w, a.tokenPath, a.browserProfileDir)
+	prompt := newTokenPrompt(a.shell.typo, tokenPromptConfig{
+		Authorize: func(ctx context.Context, site, profileDir string, bounds *catalog.Bounds) error {
+			value, err := a.browserManager.Authorize(ctx, site, profileDir, bounds)
+			if err != nil {
+				return err
+			}
+			return token.Save(a.tokenPath, value)
+		},
+		Window:          w,
+		DefaultDomain:   browser.DefaultDomain,
+		NormalizeDomain: browser.NormalizeDomain,
+	}, a.browserProfileDir)
 	prompt.onDone = func() {
 		a.requireMPV(w)
 	}

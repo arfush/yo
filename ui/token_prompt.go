@@ -18,8 +18,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yoanime/internal/browser"
-	"github.com/arfush/yoanime/internal/token"
+	"github.com/arfush/yoanime/catalog"
 	"github.com/arfush/yoanime/log"
 )
 
@@ -85,16 +84,28 @@ const (
 	tokenModeDomain
 )
 
+// tokenAuthorize opens the site, waits for the user to sign in and stores the
+// token. The composition root supplies the implementation so the screen does
+// not know about Playwright or the token file.
+type tokenAuthorize func(context.Context, string, string, *catalog.Bounds) error
+
+type tokenPromptConfig struct {
+	Authorize       tokenAuthorize
+	Window          *app.Window
+	DefaultDomain   string
+	NormalizeDomain func(string) (string, error)
+}
+
 // tokenPrompt asks the user to sign in on AnimeLIB and opens the project site
 // in the installed Chromium. It reuses the first-run card, button and progress
 // helpers so both preparation screens look alike.
 type tokenPrompt struct {
-	typo    *typography
-	browser *browser.Manager
-	window  *app.Window
-
-	tokenPath  string
+	typo       *typography
+	authorize  tokenAuthorize
+	window     *app.Window
 	profileDir string
+
+	normalizeDomain func(string) (string, error)
 
 	button       widget.Clickable
 	domainButton widget.Clickable
@@ -121,14 +132,14 @@ type tokenPrompt struct {
 	cancel        context.CancelFunc
 }
 
-func newTokenPrompt(typo *typography, manager *browser.Manager, w *app.Window, tokenPath, profileDir string) *tokenPrompt {
+func newTokenPrompt(typo *typography, cfg tokenPromptConfig, profileDir string) *tokenPrompt {
 	prompt := &tokenPrompt{
-		typo:       typo,
-		browser:    manager,
-		window:     w,
-		tokenPath:  tokenPath,
-		profileDir: profileDir,
-		domain:     browser.DefaultDomain,
+		typo:            typo,
+		authorize:       cfg.Authorize,
+		window:          cfg.Window,
+		profileDir:      profileDir,
+		normalizeDomain: cfg.NormalizeDomain,
+		domain:          cfg.DefaultDomain,
 	}
 	prompt.editor.SingleLine = true
 	prompt.editor.SetText(prompt.domain)
@@ -369,7 +380,7 @@ func (tp *tokenPrompt) handleKeys(gtx layout.Context) {
 // the main card. Invalid input keeps the editor open so it can be corrected
 // without any visible error message.
 func (tp *tokenPrompt) applyDomain() {
-	domain, err := browser.NormalizeDomain(strings.TrimSpace(tp.editor.Text()))
+	domain, err := tp.normalizeDomain(strings.TrimSpace(tp.editor.Text()))
 	if err != nil || domain == "" {
 		tp.domainErrorAt = time.Now()
 		tp.editor.SetCaret(0, len(tp.editor.Text()))
@@ -466,21 +477,18 @@ func (tp *tokenPrompt) startAuthorize() {
 	if scale <= 0 {
 		scale = 1
 	}
-	var bounds *browser.WindowBounds
+	var bounds *catalog.Bounds
 	if value, ok := appWindowBounds(scale); ok {
 		bounds = &value
 	}
 
 	site := tp.domain
 	tp.window.Invalidate()
-	go tp.authorize(ctx, site, bounds)
+	go tp.authorizeSite(ctx, site, bounds)
 }
 
-func (tp *tokenPrompt) authorize(ctx context.Context, site string, bounds *browser.WindowBounds) {
-	value, err := tp.browser.Authorize(ctx, site, tp.profileDir, bounds)
-	if err == nil {
-		err = token.Save(tp.tokenPath, value)
-	}
+func (tp *tokenPrompt) authorizeSite(ctx context.Context, site string, bounds *catalog.Bounds) {
+	err := tp.authorize(ctx, site, tp.profileDir, bounds)
 
 	tp.mu.Lock()
 	if tp.closed {

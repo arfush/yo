@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/arfush/yoanime/internal/appdata"
-	"github.com/arfush/yoanime/internal/install"
-	"github.com/arfush/yoanime/internal/singleinstance"
-	"github.com/arfush/yoanime/internal/version"
+	"github.com/arfush/yoanime/platform/appdata"
+	"github.com/arfush/yoanime/platform/install"
+	"github.com/arfush/yoanime/platform/singleinstance"
+	"github.com/arfush/yoanime/version"
 	"github.com/arfush/yoanime/log"
 	"github.com/arfush/yoanime/ui"
 )

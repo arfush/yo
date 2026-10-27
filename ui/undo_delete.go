@@ -302,7 +302,7 @@ func insertHistoryRow(list []historyRow, index int, row historyRow) []historyRow
 func (m *mainWindow) finalizeHistoryDeletes() {
 	pending := m.undo.pending
 	m.undo = undoDeleteState{}
-	if len(pending) == 0 || m.library == nil {
+	if len(pending) == 0 || m.titles == nil {
 		return
 	}
 
@@ -311,7 +311,7 @@ func (m *mainWindow) finalizeHistoryDeletes() {
 		if item.item.id == 0 {
 			continue
 		}
-		if err := m.library.DeleteHistory(item.item.id); err != nil {
+		if err := m.titles.DeleteHistory(item.item.id); err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}

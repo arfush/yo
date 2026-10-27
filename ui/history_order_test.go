@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/arfush/yoanime/internal/library"
-	"github.com/arfush/yoanime/internal/store"
+	"github.com/arfush/yoanime/library"
+	"github.com/arfush/yoanime/store"
 )
 
 func TestUserStatusFilterStatus(t *testing.T) {
@@ -175,7 +175,7 @@ func TestPersistHistoryOrderWritesOnlyTheActiveStatus(t *testing.T) {
 		all = append(all, titleFromLibrary(item))
 	}
 	m := &mainWindow{
-		library:    lib,
+		titles:     lib,
 		allHistory: all,
 		filter:     filterWatching,
 	}

@@ -11,7 +11,7 @@ import (
 	"gioui.org/op/clip"
 	"gioui.org/unit"
 
-	"github.com/arfush/yoanime/internal/library"
+	"github.com/arfush/yoanime/catalog"
 )
 
 // dragState tracks a history row being reordered by its six-dot handle.
@@ -312,7 +312,7 @@ func (m *mainWindow) historyIndexAt(y, rowHeight, gap int) int {
 func (m *mainWindow) layoutOverlay(gtx layout.Context, origin image.Point) {
 	if m.statusMenu.open {
 		itemID := m.statusMenu.id
-		m.statusMenu.layout(gtx, m.typo, origin, func(status library.UserStatus) {
+		m.statusMenu.layout(gtx, m.typo, origin, func(status catalog.UserStatus) {
 			if m.onUserStatus == nil {
 				return
 			}

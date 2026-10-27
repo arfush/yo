@@ -12,7 +12,7 @@ import (
 	"gioui.org/io/event"
 	"golang.org/x/sys/windows"
 
-	"github.com/arfush/yoanime/internal/browser"
+	"github.com/arfush/yoanime/catalog"
 )
 
 const (
@@ -165,22 +165,22 @@ func handleViewEvent(e event.Event) {
 // appWindowBounds returns the application window rectangle in device
 // independent pixels. Chromium's --window-size/--window-position switches use
 // DIPs, while GetWindowRect reports physical pixels.
-func appWindowBounds(scale float64) (browser.WindowBounds, bool) {
+func appWindowBounds(scale float64) (catalog.Bounds, bool) {
 	hwnd := windows.HWND(windowHandle.Load())
 	if hwnd == 0 {
-		return browser.WindowBounds{}, false
+		return catalog.Bounds{}, false
 	}
 	if scale <= 0 {
 		scale = 1
 	}
 	var rect winRect
 	if ok, _, _ := procGetWindowRect.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&rect))); ok == 0 {
-		return browser.WindowBounds{}, false
+		return catalog.Bounds{}, false
 	}
 	if rect.Right <= rect.Left || rect.Bottom <= rect.Top {
-		return browser.WindowBounds{}, false
+		return catalog.Bounds{}, false
 	}
-	return browser.WindowBounds{
+	return catalog.Bounds{
 		X:      int(math.Round(float64(rect.Left) / scale)),
 		Y:      int(math.Round(float64(rect.Top) / scale)),
 		Width:  int(math.Round(float64(rect.Right-rect.Left) / scale)),

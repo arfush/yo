@@ -38,10 +38,10 @@ if ($outDir) {
 
 $ldflags = "-s -w -H=windowsgui"
 if ($Version) {
-    $ldflags += " -X github.com/arfush/yoanime/internal/version.Version=$Version"
+    $ldflags += " -X github.com/arfush/yoanime/version.Version=$Version"
 }
 if ($Repo) {
-    $ldflags += " -X github.com/arfush/yoanime/internal/updates.Repository=$Repo"
+    $ldflags += " -X github.com/arfush/yoanime/updates.Repository=$Repo"
 }
 
 # Party relays are deployed once and baked into the official build so the

@@ -7,7 +7,7 @@ import (
 
 	"gioui.org/io/event"
 
-	"github.com/arfush/yoanime/internal/browser"
+	"github.com/arfush/yoanime/catalog"
 )
 
 func handleViewEvent(event.Event) {}
@@ -22,8 +22,8 @@ func cursorInRect(image.Rectangle) bool { return true }
 
 func cursorInWindow() bool { return true }
 
-func appWindowBounds(float64) (browser.WindowBounds, bool) {
-	return browser.WindowBounds{}, false
+func appWindowBounds(float64) (catalog.Bounds, bool) {
+	return catalog.Bounds{}, false
 }
 
 type windowRect struct {

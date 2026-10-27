@@ -5,7 +5,7 @@ import (
 
 	"gioui.org/widget"
 
-	"github.com/arfush/yoanime/internal/library"
+	"github.com/arfush/yoanime/library"
 )
 
 func TestVoiceMissingLabelCompressesRanges(t *testing.T) {

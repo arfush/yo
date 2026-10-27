@@ -9,8 +9,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/arfush/yoanime/internal/kinopoisk"
-	"github.com/arfush/yoanime/internal/library"
+	"github.com/arfush/yoanime/catalog"
 )
 
 type titleStatus int
@@ -52,7 +51,7 @@ type historyTitle struct {
 	title           string
 	original        string
 	status          titleStatus
-	userStatus      library.UserStatus
+	userStatus      catalog.UserStatus
 	statusOrder     int64
 	movie           bool // hides the episode grid: a film has no series to pick from.
 	poster1         color.NRGBA
@@ -158,7 +157,7 @@ func (t historyTitle) seasonIndexForEpisode(index int) int {
 
 // titleFromLibrary converts the API/storage model into the compact model used
 // by the existing widgets.
-func titleFromLibrary(item library.Title) historyTitle {
+func titleFromLibrary(item catalog.Title) historyTitle {
 	title := historyTitle{
 		id:              item.ID,
 		animeID:         item.AnimeID,
@@ -168,7 +167,7 @@ func titleFromLibrary(item library.Title) historyTitle {
 		title:           item.Russian,
 		original:        item.Original,
 		status:          titleStatus(item.Status),
-		userStatus:      library.NormalizeUserStatus(item.UserStatus),
+		userStatus:      catalog.NormalizeUserStatus(item.UserStatus),
 		statusOrder:     item.StatusOrder,
 		movie:           item.IsMovie,
 		coverURL:        item.CoverURL,
@@ -217,8 +216,8 @@ func titleFromLibrary(item library.Title) historyTitle {
 
 // libraryTitleFromHistory converts the compact UI model back into the library
 // model so the title window can persist it when Save is pressed.
-func libraryTitleFromHistory(item historyTitle) library.Title {
-	title := library.Title{
+func libraryTitleFromHistory(item historyTitle) catalog.Title {
+	title := catalog.Title{
 		ID:            item.id,
 		AnimeID:       item.animeID,
 		Source:        item.source,
@@ -226,8 +225,8 @@ func libraryTitleFromHistory(item historyTitle) library.Title {
 		Slug:          item.slug,
 		Russian:       item.title,
 		Original:      item.original,
-		Status:        library.Status(item.status),
-		UserStatus:    library.NormalizeUserStatus(item.userStatus),
+		Status:        catalog.Status(item.status),
+		UserStatus:    catalog.NormalizeUserStatus(item.userStatus),
 		StatusOrder:   item.statusOrder,
 		IsMovie:       item.movie,
 		CoverURL:      item.coverURL,
@@ -238,16 +237,16 @@ func libraryTitleFromHistory(item historyTitle) library.Title {
 		Season:        item.season,
 		ResumeAt:      item.resumeAt,
 		Duration:      item.duration,
-		Voiceovers:    make([]library.Voiceover, 0, len(item.voices)),
+		Voiceovers:    make([]catalog.Voiceover, 0, len(item.voices)),
 	}
 	for _, season := range item.seasons {
-		title.Seasons = append(title.Seasons, library.Season{
+		title.Seasons = append(title.Seasons, catalog.Season{
 			Number:   season.number,
 			Episodes: append([]string(nil), season.episodes...),
 		})
 	}
 	for _, voice := range item.voices {
-		title.Voiceovers = append(title.Voiceovers, library.Voiceover{
+		title.Voiceovers = append(title.Voiceovers, catalog.Voiceover{
 			Name:      voice.name,
 			Episodes:  append([]string(nil), voice.episodes...),
 			Missing:   append([]string(nil), voice.missing...),
@@ -350,7 +349,7 @@ func posterInitial(title string) string {
 // episodeDisplayLabel strips the season prefix from a Kinopoisk episode key, so
 // the grid shows the plain episode number inside its season.
 func episodeDisplayLabel(key string) string {
-	return kinopoisk.EpisodeLabel(key)
+	return catalog.EpisodeLabel(key)
 }
 
 func episodeRangeLabel(episodes []string) string {

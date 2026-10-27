@@ -8,7 +8,7 @@ import (
 	"gioui.org/layout"
 	"gioui.org/unit"
 
-	"github.com/arfush/yoanime/internal/library"
+	"github.com/arfush/yoanime/catalog"
 )
 
 // userStatusFilter is the history filter. The zero value shows every title.
@@ -25,7 +25,7 @@ const (
 
 type userStatusFilterOption struct {
 	filter userStatusFilter
-	status library.UserStatus
+	status catalog.UserStatus
 	label  string
 }
 
@@ -33,20 +33,20 @@ type userStatusFilterOption struct {
 // status and is drawn with the purple accent.
 var userStatusFilterOptions = []userStatusFilterOption{
 	{filter: filterAll, label: "Все"},
-	{filter: filterWatching, status: library.UserStatusWatching, label: "Смотрю"},
-	{filter: filterPlanned, status: library.UserStatusPlanned, label: "В планах"},
-	{filter: filterFavorite, status: library.UserStatusFavorite, label: "Обожаю"},
-	{filter: filterCompleted, status: library.UserStatusCompleted, label: "Досмотрел"},
-	{filter: filterDropped, status: library.UserStatusDropped, label: "Брошено"},
+	{filter: filterWatching, status: catalog.UserStatusWatching, label: "Смотрю"},
+	{filter: filterPlanned, status: catalog.UserStatusPlanned, label: "В планах"},
+	{filter: filterFavorite, status: catalog.UserStatusFavorite, label: "Обожаю"},
+	{filter: filterCompleted, status: catalog.UserStatusCompleted, label: "Досмотрел"},
+	{filter: filterDropped, status: catalog.UserStatusDropped, label: "Брошено"},
 }
 
 // userStatusMenuOptions is the order shown when a status pill is clicked.
-var userStatusMenuOptions = []library.UserStatus{
-	library.UserStatusWatching,
-	library.UserStatusPlanned,
-	library.UserStatusFavorite,
-	library.UserStatusCompleted,
-	library.UserStatusDropped,
+var userStatusMenuOptions = []catalog.UserStatus{
+	catalog.UserStatusWatching,
+	catalog.UserStatusPlanned,
+	catalog.UserStatusFavorite,
+	catalog.UserStatusCompleted,
+	catalog.UserStatusDropped,
 }
 
 var (
@@ -75,43 +75,43 @@ var (
 	userStatusMutedEdge = color.NRGBA{R: 0x2b, G: 0x27, B: 0x38, A: 0xff}
 )
 
-func userStatusLabel(status library.UserStatus) string {
-	switch library.NormalizeUserStatus(status) {
-	case library.UserStatusWatching:
+func userStatusLabel(status catalog.UserStatus) string {
+	switch catalog.NormalizeUserStatus(status) {
+	case catalog.UserStatusWatching:
 		return "Смотрю"
-	case library.UserStatusFavorite:
+	case catalog.UserStatusFavorite:
 		return "Обожаю"
-	case library.UserStatusCompleted:
+	case catalog.UserStatusCompleted:
 		return "Досмотрел"
-	case library.UserStatusDropped:
+	case catalog.UserStatusDropped:
 		return "Брошено"
 	default:
 		return "В планах"
 	}
 }
 
-func userStatusColors(status library.UserStatus) (text, fill, border color.NRGBA) {
-	switch library.NormalizeUserStatus(status) {
-	case library.UserStatusWatching:
+func userStatusColors(status catalog.UserStatus) (text, fill, border color.NRGBA) {
+	switch catalog.NormalizeUserStatus(status) {
+	case catalog.UserStatusWatching:
 		return userStatusWatchingText, userStatusWatchingFill, userStatusWatchingEdge
-	case library.UserStatusFavorite:
+	case catalog.UserStatusFavorite:
 		return userStatusFavoriteText, userStatusFavoriteFill, userStatusFavoriteEdge
-	case library.UserStatusCompleted:
+	case catalog.UserStatusCompleted:
 		return userStatusCompletedText, userStatusCompletedFill, userStatusCompletedEdge
-	case library.UserStatusDropped:
+	case catalog.UserStatusDropped:
 		return userStatusDroppedText, userStatusDroppedFill, userStatusDroppedEdge
 	default:
 		return userStatusPlannedText, userStatusPlannedFill, userStatusPlannedEdge
 	}
 }
 
-func (f userStatusFilter) matches(status library.UserStatus) bool {
+func (f userStatusFilter) matches(status catalog.UserStatus) bool {
 	if f == filterAll {
 		return true
 	}
 	for _, option := range userStatusFilterOptions {
 		if option.filter == f {
-			return library.NormalizeUserStatus(status) == option.status
+			return catalog.NormalizeUserStatus(status) == option.status
 		}
 	}
 	return true
@@ -119,7 +119,7 @@ func (f userStatusFilter) matches(status library.UserStatus) bool {
 
 // userStatus returns the library status represented by a filter. The "Все"
 // filter and unknown values have no status of their own.
-func (f userStatusFilter) userStatus() (library.UserStatus, bool) {
+func (f userStatusFilter) userStatus() (catalog.UserStatus, bool) {
 	if f == filterAll {
 		return 0, false
 	}
@@ -148,7 +148,7 @@ func filterPillWidth(gtx layout.Context, typo *typography, label string, size un
 
 // drawUserStatusPill paints the same shape as the release-status pills. When
 // colored is false the pill is the neutral gray used by an inactive filter.
-func drawUserStatusPill(gtx layout.Context, typo *typography, rect image.Rectangle, status library.UserStatus, colored bool) {
+func drawUserStatusPill(gtx layout.Context, typo *typography, rect image.Rectangle, status catalog.UserStatus, colored bool) {
 	if rect.Empty() {
 		return
 	}
@@ -183,7 +183,7 @@ func drawFilterPill(gtx layout.Context, typo *typography, rect image.Rectangle, 
 // drawUserStatusMenuItem keeps the menu quiet until the pointer reaches an
 // option: the neutral gray is tinted with the status color, but never as bright
 // as the already selected pill above the menu.
-func drawUserStatusMenuItem(gtx layout.Context, typo *typography, rect image.Rectangle, status library.UserStatus, hover float32) {
+func drawUserStatusMenuItem(gtx layout.Context, typo *typography, rect image.Rectangle, status catalog.UserStatus, hover float32) {
 	if rect.Empty() {
 		return
 	}
@@ -202,9 +202,9 @@ const (
 
 // userStatusMenuOptionsFor keeps the menu order but removes the status already
 // shown in the pill that opened it.
-func userStatusMenuOptionsFor(current library.UserStatus) []library.UserStatus {
-	current = library.NormalizeUserStatus(current)
-	options := make([]library.UserStatus, 0, len(userStatusMenuOptions)-1)
+func userStatusMenuOptionsFor(current catalog.UserStatus) []catalog.UserStatus {
+	current = catalog.NormalizeUserStatus(current)
+	options := make([]catalog.UserStatus, 0, len(userStatusMenuOptions)-1)
 	for _, status := range userStatusMenuOptions {
 		if status != current {
 			options = append(options, status)

@@ -6,8 +6,7 @@ import (
 	"net"
 	"strings"
 
-	"github.com/arfush/yoanime/internal/animelib"
-	"github.com/arfush/yoanime/internal/token"
+	"github.com/arfush/yoanime/catalog"
 )
 
 // userMessageError carries a message that is already written for the user.
@@ -35,10 +34,10 @@ func friendlyError(err error) string {
 	if errors.As(err, &friendly) {
 		return friendly.message
 	}
-	if errors.Is(err, animelib.ErrRateLimited) {
+	if errors.Is(err, catalog.ErrRateLimited) {
 		return "AnimeLIB просит подождать. Попробуйте через минуту."
 	}
-	if errors.Is(err, token.ErrNotFound) {
+	if errors.Is(err, catalog.ErrTokenMissing) {
 		return "Нужно войти в AnimeLIB."
 	}
 	var netErr net.Error

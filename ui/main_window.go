@@ -19,8 +19,8 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yoanime/internal/animelib"
-	"github.com/arfush/yoanime/internal/library"
+	"github.com/arfush/yoanime/animelib"
+	"github.com/arfush/yoanime/catalog"
 )
 
 const (
@@ -148,9 +148,21 @@ const (
 	historyPlayStarted
 )
 
+// titleSource is the part of the library the main screen uses. Keeping the
+// screen behind this interface means it can render and test without opening
+// the API client or the SQLite database.
+type titleSource interface {
+	Load(context.Context, string) (catalog.Title, error)
+	Fetch(context.Context, string) (catalog.Title, error)
+	History() ([]catalog.Title, error)
+	DeleteHistory(int64) error
+	ReorderHistory([]catalog.Title) error
+	ReorderStatusHistory(catalog.UserStatus, []catalog.Title) error
+}
+
 type mainWindow struct {
-	typo    *typography
-	library *library.Library
+	typo   *typography
+	titles titleSource
 
 	editor widget.Editor
 	next   widget.Clickable
@@ -202,7 +214,7 @@ type mainWindow struct {
 	hidden        func() bool
 	onOpenTitle   func(historyTitle)
 	onPlayHistory func(historyTitle) historyPlayResult
-	onUserStatus  func(historyTitle, library.UserStatus) error
+	onUserStatus  func(historyTitle, catalog.UserStatus) error
 	onError       func(error)
 	onClearError  func()
 
@@ -222,14 +234,14 @@ type mainWindow struct {
 	undo undoDeleteState
 }
 
-func newMainWindow(typo *typography, lib *library.Library, history []library.Title) *mainWindow {
+func newMainWindow(typo *typography, titles titleSource, history []catalog.Title) *mainWindow {
 	displayHistory := make([]historyTitle, 0, len(history))
 	for _, item := range history {
 		displayHistory = append(displayHistory, titleFromLibrary(item))
 	}
 	m := &mainWindow{
 		typo:            typo,
-		library:         lib,
+		titles:          titles,
 		allHistory:      displayHistory,
 		selected:        -1,
 		loadingTarget:   -1,
@@ -817,25 +829,25 @@ func (m *mainWindow) startLoading(gtx layout.Context, target int, animateRow boo
 
 	go func() {
 		defer cancel()
-		if m.library == nil {
+		if m.titles == nil {
 			m.deliverLoadResult(titleLoadResult{sequence: sequence, err: context.Canceled})
 			return
 		}
 		// A title typed into the URL field is only fetched; it enters the local
 		// history when the user presses Save in the title window. A title
 		// opened from history is already saved and is refreshed in place.
-		var item library.Title
+		var item catalog.Title
 		var err error
 		if target >= 0 {
-			item, err = m.library.Load(ctx, input)
+			item, err = m.titles.Load(ctx, input)
 		} else {
-			item, err = m.library.Fetch(ctx, input)
+			item, err = m.titles.Fetch(ctx, input)
 		}
 		result := titleLoadResult{sequence: sequence, err: err}
 		if err == nil {
 			result.title = titleFromLibrary(item)
 			if target >= 0 {
-				if history, historyErr := m.library.History(); historyErr == nil {
+				if history, historyErr := m.titles.History(); historyErr == nil {
 					result.history = make([]historyTitle, 0, len(history))
 					for _, entry := range history {
 						result.history = append(result.history, titleFromLibrary(entry))
@@ -948,10 +960,10 @@ func (m *mainWindow) updateHistoryRefresh() {
 // title window and highlights the saved entry. A zero id keeps the current
 // selection, which is what background refreshes use.
 func (m *mainWindow) refreshHistory(selectedID int64) {
-	if m.library == nil {
+	if m.titles == nil {
 		return
 	}
-	history, err := m.library.History()
+	history, err := m.titles.History()
 	if err != nil {
 		m.loadError = err.Error()
 		m.reportError(err)
@@ -1019,15 +1031,15 @@ func (m *mainWindow) deleteHistoryItem(gtx layout.Context, index int) {
 }
 
 func (m *mainWindow) persistHistoryOrder() {
-	if m.library == nil {
+	if m.titles == nil {
 		return
 	}
 	m.syncVisibleStatusOrder()
 	var err error
 	if m.filter == filterAll {
-		err = m.library.ReorderHistory(displayTitles(m.allHistory))
+		err = m.titles.ReorderHistory(displayTitles(m.allHistory))
 	} else if status, ok := m.filter.userStatus(); ok {
-		err = m.library.ReorderStatusHistory(status, displayTitles(m.history))
+		err = m.titles.ReorderStatusHistory(status, displayTitles(m.history))
 	}
 	if err != nil {
 		m.loadError = err.Error()
@@ -1035,10 +1047,10 @@ func (m *mainWindow) persistHistoryOrder() {
 	}
 }
 
-func displayTitles(items []historyTitle) []library.Title {
-	out := make([]library.Title, 0, len(items))
+func displayTitles(items []historyTitle) []catalog.Title {
+	out := make([]catalog.Title, 0, len(items))
 	for _, item := range items {
-		out = append(out, library.Title{ID: item.id})
+		out = append(out, catalog.Title{ID: item.id})
 	}
 	return out
 }
@@ -1316,16 +1328,16 @@ func (m *mainWindow) dismissPopup() {
 // changed status also moves the title to the top of its new status list. When a
 // filter is active the row may no longer belong in the visible list, so the
 // filtered view is rebuilt instead of patched in place.
-func (m *mainWindow) setUserStatus(id int64, status library.UserStatus) {
+func (m *mainWindow) setUserStatus(id int64, status catalog.UserStatus) {
 	if id == 0 {
 		return
 	}
 	m.ensureAllHistory()
-	target := library.NormalizeUserStatus(status)
-	previous, found := library.UserStatus(0), false
+	target := catalog.NormalizeUserStatus(status)
+	previous, found := catalog.UserStatus(0), false
 	for index := range m.allHistory {
 		if m.allHistory[index].id == id {
-			previous = library.NormalizeUserStatus(m.allHistory[index].userStatus)
+			previous = catalog.NormalizeUserStatus(m.allHistory[index].userStatus)
 			found = true
 			break
 		}
@@ -1338,7 +1350,7 @@ func (m *mainWindow) setUserStatus(id int64, status library.UserStatus) {
 	hasOrder := false
 	for index := range m.allHistory {
 		item := &m.allHistory[index]
-		if item.id == id || library.NormalizeUserStatus(item.userStatus) != target {
+		if item.id == id || catalog.NormalizeUserStatus(item.userStatus) != target {
 			continue
 		}
 		if !hasOrder || item.statusOrder < statusOrder {

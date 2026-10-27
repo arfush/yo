@@ -11,7 +11,7 @@ import (
 	"gioui.org/op"
 	"gioui.org/unit"
 
-	"github.com/arfush/yoanime/internal/animelib"
+	"github.com/arfush/yoanime/animelib"
 )
 
 // rateLimitTextSize and rateLimitTextColor style the temporary message that

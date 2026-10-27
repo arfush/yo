@@ -16,7 +16,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yoanime/internal/metadata"
+	"github.com/arfush/yoanime/catalog"
 	"github.com/arfush/yoanime/party"
 )
 
@@ -71,7 +71,7 @@ type settingsValues struct {
 	AutoUpdate    bool
 	Beta          bool
 	SharedControl bool
-	AutoSkip      map[metadata.Segment]bool
+	AutoSkip      map[catalog.Segment]bool
 	Name          string
 	Provider      party.Provider
 	CloudflareURL string
@@ -108,9 +108,9 @@ type settingsWindow struct {
 	controlClick    widget.Clickable
 	controlHover    hoverAnim
 
-	autoSkip      map[metadata.Segment]bool
-	autoSkipClick map[metadata.Segment]*widget.Clickable
-	autoSkipHover map[metadata.Segment]*hoverAnim
+	autoSkip      map[catalog.Segment]bool
+	autoSkipClick map[catalog.Segment]*widget.Clickable
+	autoSkipHover map[catalog.Segment]*hoverAnim
 
 	// providerClick is the select itself, providerItems are its options and
 	// providerScrim catches clicks outside the open menu.
@@ -142,7 +142,7 @@ type settingsWindow struct {
 	onAutoUpdate func(bool) error
 	onBeta       func(bool) error
 	onControl    func(bool) error
-	onAutoSkip   func(metadata.Segment, bool) error
+	onAutoSkip   func(catalog.Segment, bool) error
 	onProvider   func(party.Provider) error
 	onRelay      func(party.Config) error
 	onName       func(string) error
@@ -156,12 +156,12 @@ func newSettingsWindow(typo *typography, values settingsValues) *settingsWindow 
 		beta:          values.Beta,
 		control:       values.SharedControl,
 		provider:      values.Provider,
-		autoSkip:      make(map[metadata.Segment]bool),
-		autoSkipClick: make(map[metadata.Segment]*widget.Clickable),
-		autoSkipHover: make(map[metadata.Segment]*hoverAnim),
+		autoSkip:      make(map[catalog.Segment]bool),
+		autoSkipClick: make(map[catalog.Segment]*widget.Clickable),
+		autoSkipHover: make(map[catalog.Segment]*hoverAnim),
 		back:          newBackFooterButton(),
 	}
-	for _, segment := range metadata.Segments() {
+	for _, segment := range catalog.Segments() {
 		w.autoSkip[segment] = values.AutoSkip[segment]
 		w.autoSkipClick[segment] = &widget.Clickable{}
 		w.autoSkipHover[segment] = &hoverAnim{}
@@ -279,7 +279,7 @@ func (w *settingsWindow) layout(gtx layout.Context) {
 	y += gtx.Dp(settingsGroupGap)
 
 	y = w.layoutSectionTitle(gtx, left, y, "Автопропуск")
-	segments := metadata.Segments()
+	segments := catalog.Segments()
 	for index, segment := range segments {
 		y = w.layoutAutoSkipPanel(gtx, image.Rect(left, y, right, y+gtx.Dp(settingsPanelHeight)), segment)
 		if index < len(segments)-1 {
@@ -362,7 +362,7 @@ func (w *settingsWindow) contentHeight(gtx layout.Context) int {
 	height += (relays + 2) * gtx.Dp(settingsRowGap)
 	height += relays * panel
 	height += gtx.Dp(settingsGroupGap)
-	segments := len(metadata.Segments())
+	segments := len(catalog.Segments())
 	height += title("Автопропуск") + segments*panel
 	if segments > 1 {
 		height += (segments - 1) * gtx.Dp(settingsRowGap)
@@ -473,7 +473,7 @@ func (w *settingsWindow) layoutControlPanel(gtx layout.Context, rect image.Recta
 	return rect.Max.Y
 }
 
-func (w *settingsWindow) layoutAutoSkipPanel(gtx layout.Context, rect image.Rectangle, segment metadata.Segment) int {
+func (w *settingsWindow) layoutAutoSkipPanel(gtx layout.Context, rect image.Rectangle, segment catalog.Segment) int {
 	w.drawPanel(gtx, rect)
 	click := w.autoSkipClick[segment]
 	hover := w.autoSkipHover[segment]
@@ -490,19 +490,19 @@ func (w *settingsWindow) layoutAutoSkipPanel(gtx layout.Context, rect image.Rect
 }
 
 // autoSkipText is the settings wording for one introdb segment.
-func autoSkipText(segment metadata.Segment) (string, string) {
+func autoSkipText(segment catalog.Segment) (string, string) {
 	switch segment {
-	case metadata.SegmentRecap:
+	case catalog.SegmentRecap:
 		return "Рекап", "Повтор событий прошлых серий"
-	case metadata.SegmentIntro:
+	case catalog.SegmentIntro:
 		return "Опенинг", "Вступительная заставка"
-	case metadata.SegmentOutro:
+	case catalog.SegmentOutro:
 		return "Эндинг", "Завершающая заставка"
-	case metadata.SegmentPreview:
+	case catalog.SegmentPreview:
 		return "Превью", "Анонс следующей серии"
-	case metadata.SegmentCredits:
+	case catalog.SegmentCredits:
 		return "Титры", "Финальные титры серии"
-	case metadata.SegmentPostCredits:
+	case catalog.SegmentPostCredits:
 		return "Сцена после титров", "Фрагмент после финальных титров"
 	}
 	return string(segment), ""
@@ -646,7 +646,7 @@ func (w *settingsWindow) setControl(enabled bool) {
 	w.errorText = ""
 }
 
-func (w *settingsWindow) setAutoSkip(segment metadata.Segment, enabled bool) {
+func (w *settingsWindow) setAutoSkip(segment catalog.Segment, enabled bool) {
 	if w.onAutoSkip != nil {
 		if err := w.onAutoSkip(segment, enabled); err != nil {
 			w.reportError(err)

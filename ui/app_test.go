@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arfush/yoanime/internal/animelib"
-	"github.com/arfush/yoanime/internal/library"
-	"github.com/arfush/yoanime/internal/updates"
+	"github.com/arfush/yoanime/animelib"
+	"github.com/arfush/yoanime/library"
+	"github.com/arfush/yoanime/updates"
 )
 
 func TestStartFailureResultKeepsRateLimitOnMainWindow(t *testing.T) {

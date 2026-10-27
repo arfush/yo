@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode/utf16"
 
-	"github.com/arfush/yoanime/internal/library"
+	"github.com/arfush/yoanime/catalog"
 )
 
 // NOTIFYICONDATAW stores szInfoTitle as 64 UTF-16 units and szInfo as 256.
@@ -18,7 +18,7 @@ const (
 // formatEpisodeNotification turns a checker event into the two strings a
 // Windows toast shows. The title stays just the series name so long titles do
 // not crowd out the sentence that names the episode and voiceover.
-func formatEpisodeNotification(event library.EpisodeNotification) (string, string) {
+func formatEpisodeNotification(event catalog.EpisodeNotification) (string, string) {
 	title := event.Title
 	if strings.TrimSpace(title) == "" {
 		if event.TitleReleased {
@@ -62,7 +62,7 @@ func formatEpisodeNotification(event library.EpisodeNotification) (string, strin
 // notificationVoiceovers returns the comma-separated team names, their count
 // and whether Kodik is needed for any of them. Kodik is mentioned separately
 // instead of being glued to the name, so the voiceover list stays readable.
-func notificationVoiceovers(voices []library.EpisodeVoiceover) (string, int, bool) {
+func notificationVoiceovers(voices []catalog.EpisodeVoiceover) (string, int, bool) {
 	labels := make([]string, 0, len(voices))
 	kodik := false
 	for _, voice := range voices {

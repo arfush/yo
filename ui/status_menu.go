@@ -8,7 +8,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yoanime/internal/library"
+	"github.com/arfush/yoanime/catalog"
 )
 
 // userStatusMenu is a small popup anchored to a status pill. It is drawn by the
@@ -17,7 +17,7 @@ import (
 type userStatusMenu struct {
 	open    bool
 	anchor  image.Rectangle
-	current library.UserStatus
+	current catalog.UserStatus
 	id      int64
 
 	// pillWidth and pillHeight come from the status block that opened the menu,
@@ -30,10 +30,10 @@ type userStatusMenu struct {
 	scrim  widget.Clickable
 }
 
-func (m *userStatusMenu) show(anchor image.Rectangle, current library.UserStatus, id int64, pillWidth, pillHeight int) {
+func (m *userStatusMenu) show(anchor image.Rectangle, current catalog.UserStatus, id int64, pillWidth, pillHeight int) {
 	m.open = true
 	m.anchor = anchor
-	m.current = library.NormalizeUserStatus(current)
+	m.current = catalog.NormalizeUserStatus(current)
 	m.id = id
 	m.pillWidth = max(pillWidth, 1)
 	m.pillHeight = max(pillHeight, 1)
@@ -43,7 +43,7 @@ func (m *userStatusMenu) close() {
 	m.open = false
 }
 
-func (m *userStatusMenu) layout(gtx layout.Context, typo *typography, origin image.Point, onSelect func(library.UserStatus)) {
+func (m *userStatusMenu) layout(gtx layout.Context, typo *typography, origin image.Point, onSelect func(catalog.UserStatus)) {
 	if !m.open {
 		return
 	}

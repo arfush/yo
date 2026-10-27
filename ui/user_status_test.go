@@ -14,7 +14,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yoanime/internal/library"
+	"github.com/arfush/yoanime/library"
 )
 
 func TestUserStatusLabel(t *testing.T) {
