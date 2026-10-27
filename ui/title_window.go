@@ -3,6 +3,8 @@ package ui
 import (
 	"image"
 	"image/color"
+	"sort"
+	"strconv"
 	"time"
 
 	"gioui.org/font"
@@ -13,6 +15,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
+	"github.com/arfush/yoanime/internal/kinopoisk"
 	"github.com/arfush/yoanime/internal/library"
 )
 
@@ -98,26 +101,118 @@ var (
 	titleSavedText        = color.NRGBA{R: 0x7f, G: 0xcf, B: 0x9d, A: 0xff}
 )
 
-var titleQualityLabels = []string{"720 HD", "1080 FHD", "1440 2K", "2160 4K"}
-var titleQualityValues = []int{720, 1080, 1440, 2160}
+// titleStandardQualities are the presets the quality block has always offered.
+// A Kinopoisk title keeps them after its ladder is known so a missing step is
+// visible as a blocked button, not as a silently absent one.
+var titleStandardQualities = []int{720, 1080, 1440, 2160}
 
-func titleQualityIndex(value int) int {
-	if value <= 0 {
-		return 1
-	}
-	best := 1
-	bestDistance := int(^uint(0) >> 1)
-	for index, quality := range titleQualityValues {
-		distance := quality - value
-		if distance < 0 {
-			distance = -distance
+// qualityOption is one button of the quality block.
+type qualityOption struct {
+	value   int
+	label   string
+	enabled bool
+}
+
+// titleQualityOptions builds the buttons for one voice. A voice without a known
+// ladder (AnimeLIB, or a Kinopoisk title before the background probe returns)
+// keeps the standard four. A known ladder keeps the standard rows and disables
+// the missing ones; a voice that offers none of them (only 360/480) switches to
+// its real steps instead of showing four dead buttons.
+func titleQualityOptions(available []int, preferred int) ([]qualityOption, int) {
+	present := make(map[int]bool, len(available))
+	for _, value := range available {
+		if value > 0 {
+			present[value] = true
 		}
-		if distance < bestDistance {
-			best = index
-			bestDistance = distance
+	}
+	hasStandard := false
+	for _, value := range titleStandardQualities {
+		if present[value] {
+			hasStandard = true
+			break
 		}
 	}
-	return best
+
+	var options []qualityOption
+	switch {
+	case len(present) == 0:
+		for _, value := range titleStandardQualities {
+			options = append(options, qualityOption{value: value, label: titleQualityLabel(value), enabled: true})
+		}
+	case hasStandard:
+		for _, value := range titleStandardQualities {
+			options = append(options, qualityOption{value: value, label: titleQualityLabel(value), enabled: present[value]})
+		}
+	default:
+		values := make([]int, 0, len(present))
+		for value := range present {
+			values = append(values, value)
+		}
+		sort.Ints(values)
+		for _, value := range values {
+			options = append(options, qualityOption{value: value, label: titleQualityLabel(value), enabled: true})
+		}
+	}
+	return options, titleQualitySelection(options, preferred)
+}
+
+// titleQualitySelection picks the enabled button nearest to the preferred
+// quality, preferring the lower step exactly like playback does.
+func titleQualitySelection(options []qualityOption, preferred int) int {
+	if len(options) == 0 {
+		return 0
+	}
+	if preferred <= 0 {
+		preferred = 1080
+	}
+	lower := -1
+	for index, option := range options {
+		if !option.enabled {
+			continue
+		}
+		if option.value == preferred {
+			return index
+		}
+		if option.value < preferred {
+			lower = index
+		}
+	}
+	if lower >= 0 {
+		return lower
+	}
+	for index, option := range options {
+		if option.enabled {
+			return index
+		}
+	}
+	return 0
+}
+
+func titleQualityLabel(value int) string {
+	switch value {
+	case 360:
+		return "360 SD"
+	case 480:
+		return "480 SD"
+	case 720:
+		return "720 HD"
+	case 1080:
+		return "1080 FHD"
+	case 1440:
+		return "1440 2K"
+	case 2160:
+		return "2160 4K"
+	}
+	return strconv.Itoa(value)
+}
+
+// qualitySectionLabel names the block. A Kinopoisk film has no episode list to
+// choose a "preferred" quality for; the buttons pick the quality of that film.
+func (w *titleWindow) qualitySectionLabel() string {
+	if w.item.source == kinopoisk.Source && w.item.movie {
+		return "КАЧЕСТВО"
+	}
+	return "ПРЕДПОЧТИТЕЛЬНОЕ КАЧЕСТВО"
 }
 
 type titleVoiceRow struct {
@@ -140,6 +235,10 @@ type titleWindow struct {
 	episodes    []widget.Clickable
 	seasons     []widget.Clickable
 	qualities   []widget.Clickable
+
+	// qualityOptions is what the quality block draws; it follows the selected
+	// voice's ladder and the probe result.
+	qualityOptions []qualityOption
 
 	voicesPlaced   bool
 	episodesPlaced bool
@@ -182,9 +281,10 @@ type titleWindow struct {
 
 	onBack       func()
 	onSave       func(voice, episode string) error
-	onQuality    func(index int) error
+	onQuality    func(value int) error
 	onWatch      func(voice, episode string, quality int) error
 	onUserStatus func(historyTitle, library.UserStatus) error
+	onVoice      func(index int)
 	onError      func(error)
 }
 
@@ -261,7 +361,6 @@ func newTitleWindow(typo *typography, item historyTitle, preferredQuality int) *
 		selectedVoice:   selectedVoice,
 		selectedEpisode: selectedEpisode,
 		selectedSeason:  item.seasonIndexForEpisode(selectedEpisode),
-		selectedQuality: titleQualityIndex(preferredQuality),
 		progressEpisode: progressEpisode,
 		tooltipIndex:    -1,
 		back:            newBackFooterButton(),
@@ -283,8 +382,49 @@ func newTitleWindow(typo *typography, item historyTitle, preferredQuality int) *
 	if len(item.seasons) > 1 {
 		w.seasons = make([]widget.Clickable, len(item.seasons))
 	}
-	w.qualities = make([]widget.Clickable, len(titleQualityLabels))
+	w.qualityOptions, w.selectedQuality = titleQualityOptions(w.selectedVoiceQualities(), preferredQuality)
+	w.qualities = make([]widget.Clickable, len(w.qualityOptions))
 	return w
+}
+
+// selectedVoiceQualities returns the ladder of the current voice, or nil while
+// it is unknown (AnimeLIB, or a Kinopoisk title waiting for the probe).
+func (w *titleWindow) selectedVoiceQualities() []int {
+	if w.selectedVoice < 0 || w.selectedVoice >= len(w.item.voices) {
+		return nil
+	}
+	return w.item.voices[w.selectedVoice].qualities
+}
+
+func (w *titleWindow) selectedQualityValue() int {
+	if w.selectedQuality < 0 || w.selectedQuality >= len(w.qualityOptions) {
+		return 0
+	}
+	return w.qualityOptions[w.selectedQuality].value
+}
+
+// refreshQualityOptions rebuilds the buttons after a voice switch or a probe
+// result. The current quality is kept when the new ladder offers it; otherwise
+// the nearest lower enabled step wins, matching playback.
+func (w *titleWindow) refreshQualityOptions(preferred int) {
+	current := w.selectedQualityValue()
+	if current <= 0 {
+		current = preferred
+	}
+	w.qualityOptions, w.selectedQuality = titleQualityOptions(w.selectedVoiceQualities(), current)
+	w.qualities = make([]widget.Clickable, len(w.qualityOptions))
+}
+
+// applyQualities stores a probed ladder for one voice. The probe runs in the
+// background, so the result may belong to a voice the user has already left.
+func (w *titleWindow) applyQualities(voice int, values []int) {
+	if voice < 0 || voice >= len(w.item.voices) || len(values) == 0 {
+		return
+	}
+	w.item.voices[voice].qualities = append([]int(nil), values...)
+	if voice == w.selectedVoice {
+		w.refreshQualityOptions(0)
+	}
 }
 
 func (w *titleWindow) Close() {}
@@ -592,10 +732,17 @@ func (w *titleWindow) selectVoice(index int) {
 	if index < 0 || index >= len(w.item.voices) {
 		return
 	}
+	changed := index != w.selectedVoice
 	w.selectedVoice = index
 	if w.episodeMissing(w.selectedEpisodeLabel()) {
 		if next := nextAvailableEpisode(w.item, index, w.selectedEpisode); next >= 0 {
 			w.selectedEpisode = next
+		}
+	}
+	if changed {
+		w.refreshQualityOptions(0)
+		if w.onVoice != nil {
+			w.onVoice(index)
 		}
 	}
 }
@@ -735,13 +882,14 @@ func (w *titleWindow) layoutTitlePanel(gtx layout.Context, rect image.Rectangle)
 			episodeTop = strip.Max.Y + gtx.Dp(unit.Dp(10))
 		}
 	}
-	_, qualityLabelInk := w.typo.measure(gtx, "ПРЕДПОЧТИТЕЛЬНОЕ КАЧЕСТВО", labelFace, titlePageSectionSize)
+	qualityLabel := w.qualitySectionLabel()
+	_, qualityLabelInk := w.typo.measure(gtx, qualityLabel, labelFace, titlePageSectionSize)
 	qualityHeight := gtx.Dp(titlePageQualityHeight)
 
 	// Anchor the quality block to the panel's lower edge. The episode grid
 	// then gets all remaining height and clips its last visible row at the
 	// block boundary instead of leaving a painted strip above the footer.
-	var qualityLabelTop, qualityTop, noteTop, gridGap int
+	var qualityLabelTop, qualityTop, gridGap int
 	if compact {
 		qualityHeight = gtx.Dp(unit.Dp(30))
 		bottomPad := gtx.Dp(unit.Dp(8))
@@ -749,15 +897,11 @@ func (w *titleWindow) layoutTitlePanel(gtx layout.Context, rect image.Rectangle)
 		gridGap = gtx.Dp(unit.Dp(8))
 		qualityLabelTop = rect.Max.Y - bottomPad - qualityHeight - labelGap - qualityLabelInk.Dy()
 		qualityTop = qualityLabelTop + qualityLabelInk.Dy() + labelGap
-		noteTop = 0
 	} else {
-		noteHeight := gtx.Dp(unit.Dp(30))
-		noteGap := gtx.Dp(unit.Dp(14))
 		labelGap := gtx.Dp(unit.Dp(18))
 		gridGap = gtx.Dp(unit.Dp(18))
 		bottomPad := gtx.Dp(unit.Dp(14))
-		noteTop = rect.Max.Y - bottomPad - noteHeight
-		qualityTop = noteTop - noteGap - qualityHeight
+		qualityTop = rect.Max.Y - bottomPad - qualityHeight
 		qualityLabelTop = qualityTop - labelGap - qualityLabelInk.Dy()
 	}
 	gridBottom := qualityLabelTop - gridGap
@@ -769,7 +913,7 @@ func (w *titleWindow) layoutTitlePanel(gtx layout.Context, rect image.Rectangle)
 	}
 	w.typo.draw(
 		gtx,
-		"ПРЕДПОЧТИТЕЛЬНОЕ КАЧЕСТВО",
+		qualityLabel,
 		labelFace,
 		titlePageSectionSize,
 		mainMutedColor,
@@ -781,30 +925,10 @@ func (w *titleWindow) layoutTitlePanel(gtx layout.Context, rect image.Rectangle)
 	}
 	qualityRect := image.Rect(innerX, qualityTop, innerRight, qualityTop+qualityHeight)
 	w.layoutQualities(gtx, qualityRect)
-
-	if !compact {
-		noteFace := font.Font{Typeface: fontFamily, Weight: font.Normal}
-		w.typo.draw(
-			gtx,
-			"Если выбранное качество недоступно для серии,",
-			noteFace,
-			titlePageNoteSize,
-			mainFaintColor,
-			image.Pt(innerX, noteTop),
-		)
-		w.typo.draw(
-			gtx,
-			"будет автоматически включено ближайшее меньшее.",
-			noteFace,
-			titlePageNoteSize,
-			mainFaintColor,
-			image.Pt(innerX, noteTop+gtx.Dp(unit.Dp(14))),
-		)
-	}
 }
 
-// layoutMoviePanel leaves only the quality preference for a film. A movie has
-// no episode list to choose from, so the block sits at the top of the panel
+// layoutMoviePanel leaves only the quality choice for a film. A movie has no
+// episode list to choose from, so the block sits at the top of the panel
 // instead of being anchored to the bottom above the episode grid.
 func (w *titleWindow) layoutMoviePanel(gtx layout.Context, rect image.Rectangle, face font.Font, labelInk image.Rectangle, labelY int, compact bool) {
 	innerX := rect.Min.X + gtx.Dp(unit.Dp(16))
@@ -819,35 +943,13 @@ func (w *titleWindow) layoutMoviePanel(gtx layout.Context, rect image.Rectangle,
 	}
 	w.typo.draw(
 		gtx,
-		"ПРЕДПОЧТИТЕЛЬНОЕ КАЧЕСТВО",
+		w.qualitySectionLabel(),
 		face,
 		titlePageSectionSize,
 		mainMutedColor,
 		image.Pt(innerX, labelY),
 	)
 	w.layoutQualities(gtx, image.Rect(innerX, qualityTop, innerRight, qualityTop+qualityHeight))
-	if compact {
-		return
-	}
-
-	noteTop := qualityTop + qualityHeight + gtx.Dp(unit.Dp(14))
-	noteFace := font.Font{Typeface: fontFamily, Weight: font.Normal}
-	w.typo.draw(
-		gtx,
-		"Если выбранное качество недоступно,",
-		noteFace,
-		titlePageNoteSize,
-		mainFaintColor,
-		image.Pt(innerX, noteTop),
-	)
-	w.typo.draw(
-		gtx,
-		"будет автоматически включено ближайшее меньшее.",
-		noteFace,
-		titlePageNoteSize,
-		mainFaintColor,
-		image.Pt(innerX, noteTop+gtx.Dp(unit.Dp(14))),
-	)
 }
 
 func (w *titleWindow) layoutFooter(gtx layout.Context) {
@@ -931,7 +1033,7 @@ func (w *titleWindow) watch(gtx layout.Context) {
 		return
 	}
 	w.watchError = ""
-	if err := w.onWatch(w.selectedVoiceName(), w.selectedEpisodeLabel(), titleQualityValues[w.selectedQuality]); err != nil {
+	if err := w.onWatch(w.selectedVoiceName(), w.selectedEpisodeLabel(), w.selectedQualityValue()); err != nil {
 		w.watchError = err.Error()
 		if w.onError != nil {
 			w.onError(err)

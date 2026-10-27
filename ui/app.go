@@ -24,6 +24,7 @@ import (
 	"github.com/arfush/yoanime/internal/animelib"
 	"github.com/arfush/yoanime/internal/appdata"
 	"github.com/arfush/yoanime/internal/browser"
+	"github.com/arfush/yoanime/internal/kinopoisk"
 	"github.com/arfush/yoanime/internal/library"
 	"github.com/arfush/yoanime/internal/metadata"
 	"github.com/arfush/yoanime/internal/mpv"
@@ -62,6 +63,10 @@ const (
 	// footer shows the cached release even when the check failed, so a long
 	// interval would leave a visible update without a silent install.
 	updateRetryInterval = 5 * time.Minute
+	// qualitiesProbeTimeout bounds the background headless resolve that learns
+	// which qualities a Kinopoisk voice offers. A cold Chromium is slow, but a
+	// failed probe only leaves the standard buttons enabled.
+	qualitiesProbeTimeout = 90 * time.Second
 )
 
 // Run starts the yoanime desktop application.
@@ -121,6 +126,9 @@ type application struct {
 	quitting atomic.Bool
 
 	watchResults chan watchResult
+	// qualityResults carries the background Kinopoisk quality probe. It runs
+	// while the title page is open and updates the disabled buttons in place.
+	qualityResults chan qualityResult
 
 	// The new-episode checker is one background goroutine. Its context cancels
 	// an in-flight pass when the user disables notifications or closes the app;
@@ -180,6 +188,15 @@ type application struct {
 	// the resolve inside the service. A silent update must not quit the app in
 	// that gap.
 	playbackStarting atomic.Bool
+}
+
+// qualityResult is one background quality probe. slug identifies the title page
+// that asked for it, so a late result cannot repaint another title.
+type qualityResult struct {
+	slug   string
+	voice  string
+	values []int
+	err    error
 }
 
 type watchResult struct {
@@ -261,6 +278,7 @@ func newApp() (*application, error) {
 		main:              newMainWindow(typo, lib, history),
 		icon:              icon,
 		watchResults:      make(chan watchResult, 8),
+		qualityResults:    make(chan qualityResult, 8),
 		episodeCtx:        episodeCtx,
 		episodeCancel:     episodeCancel,
 		episodeWake:       make(chan struct{}, 1),
@@ -1230,14 +1248,19 @@ func (a *application) openTitle(item historyTitle) {
 		a.clearError()
 		return nil
 	}
-	title.onQuality = func(index int) error {
+	title.onQuality = func(value int) error {
 		if a.library == nil {
 			return nil
 		}
-		if index < 0 || index >= len(titleQualityValues) {
+		// A Kinopoisk film chooses the quality of that film, not an app-wide
+		// preference: the choice only travels to the watch button.
+		if title.item.source == kinopoisk.Source && title.item.movie {
 			return nil
 		}
-		return a.library.SetPreferredQuality(titleQualityValues[index])
+		return a.library.SetPreferredQuality(value)
+	}
+	title.onVoice = func(index int) {
+		a.probeQualities(title)
 	}
 	title.onWatch = func(voice, episode string, quality int) error {
 		if a.library == nil {
@@ -1246,6 +1269,7 @@ func (a *application) openTitle(item historyTitle) {
 		return a.startPlayback(libraryTitleFromHistory(title.item), voice, episode, quality, nil, false, 0)
 	}
 	a.showWindow(a.window, title)
+	a.probeQualities(title)
 }
 
 // playFromHistory starts mpv directly from the history Play button. Episodes
@@ -1444,6 +1468,88 @@ func (a *application) processWatchResults(gtx layout.Context) {
 			return
 		}
 	}
+}
+
+// processQualityResults applies the background Kinopoisk probes that arrived
+// since the last frame.
+func (a *application) processQualityResults(gtx layout.Context) {
+	for {
+		select {
+		case result := <-a.qualityResults:
+			a.applyQualityResult(result)
+			gtx.Execute(op.InvalidateCmd{})
+		default:
+			return
+		}
+	}
+}
+
+// applyQualityResult hands a probed ladder to the title page that asked for it.
+// A stale result (the user already navigated away) is dropped.
+func (a *application) applyQualityResult(result qualityResult) {
+	title, ok := a.active.(*titleWindow)
+	if !ok || title.item.slug != result.slug {
+		return
+	}
+	if result.err != nil {
+		// The probe is a nicety: the standard quality buttons stay enabled and
+		// playback still picks the nearest available step.
+		log.Warn("Kinopoisk quality probe failed", "title", result.slug, "voice", result.voice, "error", result.err)
+		return
+	}
+	index := -1
+	for voiceIndex, voice := range title.item.voices {
+		if voice.name == result.voice {
+			index = voiceIndex
+			break
+		}
+	}
+	if index < 0 {
+		return
+	}
+	title.applyQualities(index, result.values)
+}
+
+// probeQualities learns which stream qualities the selected Kinopoisk voice
+// offers and disables the buttons it cannot deliver. The probe runs in the
+// background with the shared headless Chromium and never opens a window; its
+// result is cached when the user saves the title to history.
+func (a *application) probeQualities(title *titleWindow) {
+	if a.library == nil || a.playback == nil || title == nil {
+		return
+	}
+	if title.item.source != kinopoisk.Source {
+		return
+	}
+	index := title.selectedVoice
+	if index < 0 || index >= len(title.item.voices) {
+		return
+	}
+	voice := title.item.voices[index]
+	if len(voice.qualities) > 0 || len(voice.episodes) == 0 {
+		return
+	}
+	item := title.item
+	libraryTitle := libraryTitleFromHistory(item)
+	voiceName := voice.name
+	episode := voice.episodes[0]
+	preferred := a.library.PreferredQuality()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), qualitiesProbeTimeout)
+		defer cancel()
+		plan, err := a.library.PlaybackPlan(ctx, libraryTitle, voiceName, episode)
+		var values []int
+		if err == nil {
+			values, err = a.playback.Qualities(ctx, plan, preferred)
+		}
+		select {
+		case a.qualityResults <- qualityResult{slug: item.slug, voice: voiceName, values: values, err: err}:
+		default:
+		}
+		if a.window != nil {
+			a.window.Invalidate()
+		}
+	}()
 }
 
 func (a *application) handleWatchResult(result watchResult) {
@@ -1868,6 +1974,7 @@ func (a *application) run(w *app.Window) error {
 			a.processUpdateCard()
 			a.processPartyState()
 			a.processWatchResults(gtx)
+			a.processQualityResults(gtx)
 			a.syncFooterControls()
 			a.handleGlobalKeys(gtx)
 			a.shell.layout(gtx, w)

@@ -26,6 +26,9 @@ type voiceover struct {
 	episodes []string
 	missing  []string
 	hasKodik bool
+	// qualities is the Kinopoisk stream ladder of this voice, empty for
+	// AnimeLIB and until the background probe returns.
+	qualities []int
 }
 
 func (v voiceover) complete() bool {
@@ -175,10 +178,11 @@ func titleFromLibrary(item library.Title) historyTitle {
 	}
 	for _, voice := range item.Voiceovers {
 		title.voices = append(title.voices, voiceover{
-			name:     voice.Name,
-			episodes: append([]string(nil), voice.Episodes...),
-			missing:  append([]string(nil), voice.Missing...),
-			hasKodik: voice.HasKodik,
+			name:      voice.Name,
+			episodes:  append([]string(nil), voice.Episodes...),
+			missing:   append([]string(nil), voice.Missing...),
+			hasKodik:  voice.HasKodik,
+			qualities: append([]int(nil), voice.Qualities...),
 		})
 	}
 	title.selectedVoice = voiceIndex(title, item.SelectedVoice)
@@ -229,10 +233,11 @@ func libraryTitleFromHistory(item historyTitle) library.Title {
 	}
 	for _, voice := range item.voices {
 		title.Voiceovers = append(title.Voiceovers, library.Voiceover{
-			Name:     voice.name,
-			Episodes: append([]string(nil), voice.episodes...),
-			Missing:  append([]string(nil), voice.missing...),
-			HasKodik: voice.hasKodik,
+			Name:      voice.name,
+			Episodes:  append([]string(nil), voice.episodes...),
+			Missing:   append([]string(nil), voice.missing...),
+			HasKodik:  voice.hasKodik,
+			Qualities: append([]int(nil), voice.qualities...),
 		})
 	}
 	return title
