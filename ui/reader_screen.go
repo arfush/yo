@@ -41,6 +41,9 @@ const (
 	// Webtoon pages are often 760x25000; uploading them as one texture makes
 	// Gio panic with CreateTexture2D 0x80070057 before anything is visible.
 	readerMaxTextureSide = 4096
+	// readerPageMaxWidth keeps manga pages in a readable column instead of
+	// stretching a 760px scan across a wide window.
+	readerPageMaxWidth = unit.Dp(920)
 	// readerChapterWindow is the number of chapters kept ready on each side of
 	// the current one. Moving one chapter forward/back does not wait for the
 	// network because the next window was already requested.
@@ -62,6 +65,25 @@ var (
 type readerTranslation struct {
 	name  string
 	count int
+	// missing is how many chapters of the title this team does not have.
+	missing int
+	// hasCurrent is false when the reader is on a chapter this team skipped.
+	// The translation menu disables such a row instead of loading a 404.
+	hasCurrent bool
+}
+
+// readerTreeRow is one row of the volume/chapter tree. A header row has an
+// empty chapter key and toggles its volume; a chapter row may be unavailable
+// for the active translation and is then drawn disabled.
+type readerTreeRow struct {
+	volume   string
+	chapter  string
+	header   bool
+	expanded bool
+	missing  bool
+	// available/total are shown on a volume header.
+	available int
+	total     int
 }
 
 // readerPageState is one manga page in the virtualised list.
@@ -71,6 +93,7 @@ type readerPageState struct {
 	chunks  []image.Image
 	width   int
 	height  int
+	chapter int
 	loading bool
 	failed  bool
 }
@@ -87,6 +110,14 @@ type readerChapterResult struct {
 	key     string
 	content catalog.ReadingContent
 	err     error
+}
+
+// readerMangaRow is one virtualised list row. Tall scans are split into
+// several chunk rows so the GPU only receives textures that are near the
+// viewport, instead of uploading a whole 25000px page at once.
+type readerMangaRow struct {
+	page  int
+	chunk int
 }
 
 // readerScreen is the manga and ranobe reader. It owns the chapter list, the
@@ -111,20 +142,26 @@ type readerScreen struct {
 
 	selectedVoice   int
 	selectedChapter int
-	// chapters are the keys of the selected translation.
+	pageIndex       int
+	// chapters are the keys available in the selected translation.
 	chapters []string
 	// translations is the ordered translation-team list with chapter counts.
 	translations []readerTranslation
+	// treeRows is the flattened volume/chapter tree shown in the sidebar.
+	treeRows      []readerTreeRow
+	treeClick     []widget.Clickable
+	expanded      map[string]bool
+	pendingToggle string
 
-	// search filters the chapter list by display label or raw key.
-	filtered  []string
+	// search filters the chapter tree by display label or raw key.
 	lastQuery string
 	search    widget.Editor
 	clear     widget.Clickable
 
-	translationClick widget.Clickable
-	openTranslations bool
-	translationScrim widget.Clickable
+	translationClick  widget.Clickable
+	translationAnchor image.Rectangle
+	openTranslations  bool
+	translationScrim  widget.Clickable
 
 	searchList            layout.List
 	chapterClick          []widget.Clickable
@@ -147,8 +184,17 @@ type readerScreen struct {
 	imageCancel    context.CancelFunc
 	imageSem       chan struct{}
 	pages          []readerPageState
+	mangaRows      []readerMangaRow
+	mangaRowsDirty bool
 	mangaList      layout.List
 	ranobeList     layout.List
+	// autoStitch turns the current chapter into an endless vertical strip:
+	// approaching the bottom appends the next chapter instead of stopping.
+	autoStitch    bool
+	stitchClick   widget.Clickable
+	streamNext    int
+	streamPending bool
+	streamLoaded  map[int]bool
 
 	back footerNamedButton
 	prev footerNamedButton
@@ -172,6 +218,7 @@ func newReaderScreen(typo *typography, item historyTitle, source readerSource) *
 		chapterResults: make(chan readerChapterResult, 32),
 		chapterCache:   make(map[string]catalog.ReadingContent),
 		chapterPending: make(map[string]bool),
+		expanded:       make(map[string]bool),
 		contentCtx:     contentCtx,
 		contentCancel:  contentCancel,
 		imageResults:   make(chan readerImageResult, 32),
@@ -222,19 +269,46 @@ func (r *readerScreen) prefill(title catalog.Title) {
 	if r.selectedChapter < 0 {
 		r.selectedChapter = 0
 	}
+	r.expandCurrentVolume()
 	r.loadChapter()
 }
 
 func (r *readerScreen) rebuildTranslations() {
+	current := r.currentChapterKey()
 	r.translations = r.translations[:0]
 	for _, voice := range r.title.Voiceovers {
+		hasCurrent := false
+		for _, key := range voice.Episodes {
+			if key == current {
+				hasCurrent = true
+				break
+			}
+		}
 		r.translations = append(r.translations, readerTranslation{
-			name:  voice.Name,
-			count: len(voice.Episodes),
+			name:       voice.Name,
+			count:      len(voice.Episodes),
+			missing:    len(voice.Missing),
+			hasCurrent: hasCurrent,
 		})
 	}
 	if r.selectedVoice >= len(r.translations) {
 		r.selectedVoice = 0
+	}
+}
+
+func (r *readerScreen) refreshTranslationFlags() {
+	current := r.currentChapterKey()
+	for index := range r.translations {
+		if index >= len(r.title.Voiceovers) {
+			continue
+		}
+		r.translations[index].hasCurrent = false
+		for _, key := range r.title.Voiceovers[index].Episodes {
+			if key == current {
+				r.translations[index].hasCurrent = true
+				break
+			}
+		}
 	}
 }
 
@@ -248,17 +322,110 @@ func (r *readerScreen) rebuildChapters() {
 	r.applySearchFilter()
 }
 
-func (r *readerScreen) refreshFiltered() {
-	r.filtered = r.filtered[:0]
-	query := strings.ToLower(strings.TrimSpace(r.search.Text()))
-	for _, key := range r.chapters {
-		if query == "" ||
-			strings.Contains(strings.ToLower(key), query) ||
-			strings.Contains(strings.ToLower(readingChapterLabel(key)), query) {
-			r.filtered = append(r.filtered, key)
+// chapterAvailable reports whether the selected translation has the key.
+func (r *readerScreen) chapterAvailable(key string) bool {
+	for _, candidate := range r.chapters {
+		if candidate == key {
+			return true
 		}
 	}
+	return false
+}
+
+// rebuildTree groups the complete title into volumes and marks chapters the
+// active translation skipped. The global episode list is used on purpose: a
+// reader must see that team A has a gap where team B has a chapter.
+func (r *readerScreen) rebuildTree() {
+	all := r.title.Episodes
+	if len(all) == 0 {
+		all = r.chapters
+	}
+	if r.expanded == nil {
+		r.expanded = make(map[string]bool)
+	}
+	available := make(map[string]bool, len(r.chapters))
+	for _, key := range r.chapters {
+		available[key] = true
+	}
+	query := strings.ToLower(strings.TrimSpace(r.search.Text()))
+	matches := func(key string) bool {
+		return query == "" ||
+			strings.Contains(strings.ToLower(key), query) ||
+			strings.Contains(strings.ToLower(readingChapterLabel(key)), query)
+	}
+
+	volumeOrder := make([]string, 0, 16)
+	byVolume := make(map[string][]string, 16)
+	for _, key := range all {
+		volume, _ := catalog.SplitReadingChapterKey(key)
+		if _, ok := byVolume[volume]; !ok {
+			volumeOrder = append(volumeOrder, volume)
+		}
+		byVolume[volume] = append(byVolume[volume], key)
+	}
+
+	r.treeRows = r.treeRows[:0]
+	for _, volume := range volumeOrder {
+		keys := byVolume[volume]
+		shown := make([]string, 0, len(keys))
+		availableCount := 0
+		for _, key := range keys {
+			if available[key] {
+				availableCount++
+			}
+			if matches(key) {
+				shown = append(shown, key)
+			}
+		}
+		if len(shown) == 0 {
+			continue
+		}
+		expanded := r.expanded[volume] || query != ""
+		r.treeRows = append(r.treeRows, readerTreeRow{
+			volume:    volume,
+			header:    true,
+			expanded:  expanded,
+			available: availableCount,
+			total:     len(keys),
+		})
+		if !expanded {
+			continue
+		}
+		for _, key := range shown {
+			r.treeRows = append(r.treeRows, readerTreeRow{
+				volume:  volume,
+				chapter: key,
+				missing: !available[key],
+			})
+		}
+	}
+	r.treeClick = make([]widget.Clickable, len(r.treeRows))
 	r.chapterList.Position = layout.Position{}
+}
+
+func (r *readerScreen) refreshFiltered() {
+	r.rebuildTree()
+}
+
+func (r *readerScreen) expandCurrentVolume() {
+	volume, _ := catalog.SplitReadingChapterKey(r.currentChapterKey())
+	if volume == "" {
+		return
+	}
+	if r.expanded == nil {
+		r.expanded = make(map[string]bool)
+	}
+	if !r.expanded[volume] {
+		r.expanded[volume] = true
+		r.rebuildTree()
+	}
+}
+
+func readerVolumeLabel(volume string) string {
+	if volume == "" || volume == "0" {
+		return "Без тома"
+	}
+	return "Том " + volume
 }
 
 // applySearchFilter rebuilds the filtered list only when the typed query
@@ -292,6 +459,7 @@ func (r *readerScreen) currentChapterKey() string {
 // window is requested so one more chapter forward/back is already ready.
 func (r *readerScreen) loadChapter() {
 	r.loadGeneration++
+	r.pageIndex = 0
 	r.loadErr = ""
 	r.cancelImages()
 	for len(r.imageResults) > 0 {
@@ -301,6 +469,7 @@ func (r *readerScreen) loadChapter() {
 	voice := r.translationName()
 	key := r.currentChapterKey()
 	title := r.title
+	r.refreshTranslationFlags()
 
 	r.trackSelection(title, voice, key)
 
@@ -359,12 +528,34 @@ func (r *readerScreen) trackSelection(title catalog.Title, voice, key string) {
 	}()
 }
 
+// scrollPage moves the manga viewport by whole pages. Chapters still change
+// with the footer buttons; arrows are for reading inside the current chapter.
+func (r *readerScreen) scrollPage(delta int) {
+	if len(r.pages) == 0 {
+		return
+	}
+	next := r.pageIndex + delta
+	if next < 0 {
+		next = 0
+	}
+	if next >= len(r.pages) {
+		next = len(r.pages) - 1
+	}
+	r.pageIndex = next
+	if len(r.mangaRows) == 0 {
+		r.rebuildMangaRows()
+	}
+	r.mangaList.ScrollTo(r.rowForPage(next))
+	r.requestFrame()
+}
+
 // selectChapter switches to a chapter in the current translation.
 func (r *readerScreen) selectChapter(index int) {
 	if index < 0 || index >= len(r.chapters) || index == r.selectedChapter {
 		return
 	}
 	r.selectedChapter = index
+	r.expandCurrentVolume()
 	r.loadChapter()
 }
 
@@ -434,13 +625,126 @@ func (r *readerScreen) applyChapterContent(content catalog.ReadingContent) {
 	r.pages = make([]readerPageState, len(content.Pages))
 	for index, page := range content.Pages {
 		r.pages[index] = readerPageState{
-			url:    page.URL,
-			width:  page.Width,
-			height: page.Height,
+			url:     page.URL,
+			width:   page.Width,
+			height:  page.Height,
+			chapter: r.selectedChapter,
 		}
 	}
+	r.streamNext = r.selectedChapter + 1
+	r.streamPending = false
+	r.streamLoaded = map[int]bool{r.selectedChapter: true}
+	r.mangaRowsDirty = true
 	r.mangaList.Position = layout.Position{}
 	r.ranobeList.Position = layout.Position{}
+}
+
+// streamChapterKey returns the next chapter that should be stitched below the
+// current strip, or "" at the end of the translation.
+func (r *readerScreen) streamChapterKey() string {
+	if r.streamNext < 0 || r.streamNext >= len(r.chapters) {
+		return ""
+	}
+	return r.chapters[r.streamNext]
+}
+
+// appendStreamChapter appends a loaded chapter below the current pages. The
+// sidebar still selects the chapter at the top of the strip; as the viewport
+// reaches a new chapter, syncStreamPosition moves the saved position forward.
+func (r *readerScreen) appendStreamChapter(index int, content catalog.ReadingContent) bool {
+	if index < 0 || index >= len(r.chapters) {
+		return false
+	}
+	if r.streamLoaded == nil {
+		r.streamLoaded = make(map[int]bool)
+	}
+	if r.streamLoaded[index] {
+		return false
+	}
+	if len(content.Pages) == 0 {
+		// An empty chapter must not stall the strip forever: mark it seen and
+		// let the next layout request the following chapter.
+		r.streamLoaded[index] = true
+		r.streamPending = false
+		if index >= r.streamNext {
+			r.streamNext = index + 1
+		}
+		return false
+	}
+	for _, page := range content.Pages {
+		r.pages = append(r.pages, readerPageState{
+			url:     page.URL,
+			width:   page.Width,
+			height:  page.Height,
+			chapter: index,
+		})
+	}
+	r.streamLoaded[index] = true
+	r.streamPending = false
+	if index >= r.streamNext {
+		r.streamNext = index + 1
+	}
+	r.mangaRowsDirty = true
+	r.requestFrame()
+	return true
+}
+
+// extendStream requests or appends the next chapter. It is called only when
+// the viewport is close to the end and never blocks the layout goroutine.
+func (r *readerScreen) extendStream() {
+	if !r.autoStitch || r.title.IsRanobe() || r.streamPending {
+		return
+	}
+	index := r.streamNext
+	key := r.streamChapterKey()
+	if key == "" {
+		return
+	}
+	if content, ok := r.chapterCache[readerChapterCacheKey(r.translationName(), key)]; ok {
+		r.appendStreamChapter(index, content)
+		return
+	}
+	r.streamPending = true
+	r.requestChapter(r.translationName(), key, r.title)
+}
+
+// syncStreamPosition updates the saved chapter when the viewport crosses into
+// a chapter appended by auto-stitch. It deliberately does not call loadChapter:
+// the already appended pages stay in place.
+func (r *readerScreen) syncStreamPosition(page int) {
+	if !r.autoStitch || page < 0 || page >= len(r.pages) {
+		return
+	}
+	chapter := r.pages[page].chapter
+	if chapter < 0 || chapter >= len(r.chapters) || chapter == r.selectedChapter {
+		return
+	}
+	r.selectedChapter = chapter
+	r.refreshTranslationFlags()
+	r.expandCurrentVolume()
+	r.trackSelection(r.title, r.translationName(), r.chapters[chapter])
+}
+
+// toggleAutoStitch starts or stops the endless strip without throwing away
+// pages that have already been appended.
+func (r *readerScreen) toggleAutoStitch() {
+	if r.title.IsRanobe() {
+		return
+	}
+	r.autoStitch = !r.autoStitch
+	if r.autoStitch {
+		if r.streamLoaded == nil {
+			r.streamLoaded = make(map[int]bool)
+		}
+		r.streamLoaded[r.selectedChapter] = true
+		if r.streamNext <= r.selectedChapter {
+			r.streamNext = r.selectedChapter + 1
+		}
+		r.extendStream()
+	} else {
+		r.streamPending = false
+	}
+	r.requestFrame()
 }
 
 // selectTranslation changes the team and keeps the nearest saved chapter. A
@@ -462,6 +766,7 @@ func (r *readerScreen) selectTranslation(index int) {
 	if r.selectedChapter < 0 {
 		r.selectedChapter = 0
 	}
+	r.expandCurrentVolume()
 	r.loadChapter()
 }
 
@@ -508,6 +813,11 @@ func (r *readerScreen) updateChapterResult(gtx layout.Context) {
 			delete(r.chapterPending, cacheKey)
 			current := result.voice == r.translationName() && result.key == r.currentChapterKey()
 			if result.err != nil {
+				if result.key == r.streamChapterKey() {
+					r.streamPending = false
+					r.autoStitch = false
+					logger.Warn("reader auto-stitch stopped", "slug", r.title.Slug, "translation", result.voice, "chapter", result.key, "error", result.err)
+				}
 				if current {
 					r.loading = false
 					r.loadErr = userErrorText(result.err)
@@ -526,13 +836,23 @@ func (r *readerScreen) updateChapterResult(gtx layout.Context) {
 				r.chapterCache = make(map[string]catalog.ReadingContent)
 			}
 			r.chapterCache[cacheKey] = result.content
-			if !current {
+			if current {
+				r.loading = false
+				r.applyChapterContent(result.content)
+				if r.autoStitch {
+					r.extendStream()
+				}
+				if r.animationsRun() {
+					gtx.Execute(op.InvalidateCmd{})
+				}
 				continue
 			}
-			r.loading = false
-			r.applyChapterContent(result.content)
-			if r.animationsRun() {
-				gtx.Execute(op.InvalidateCmd{})
+			if r.autoStitch && result.key == r.streamChapterKey() {
+				r.streamPending = false
+				r.appendStreamChapter(r.streamNext, result.content)
+				if r.animationsRun() {
+					gtx.Execute(op.InvalidateCmd{})
+				}
 			}
 		default:
 			return
@@ -554,13 +874,17 @@ func (r *readerScreen) updateImages(gtx layout.Context) {
 			if result.err != nil {
 				page.failed = true
 			} else {
-				page.img = result.img
-				page.chunks = splitReaderImage(result.img, readerMaxTextureSide)
-				if page.img != nil {
-					page.width = page.img.Bounds().Dx()
-					page.height = page.img.Bounds().Dy()
+				if result.img != nil {
+					bounds := result.img.Bounds()
+					page.width = bounds.Dx()
+					page.height = bounds.Dy()
 				}
+				page.chunks = splitReaderImage(result.img, readerMaxTextureSide)
+				// The chunks own their pixels. Keeping the decoded parent as
+				// well would double the memory of every webtoon page.
+				page.img = nil
 				page.failed = false
+				r.mangaRowsDirty = true
 			}
 			if r.animationsRun() {
 				gtx.Execute(op.InvalidateCmd{})
@@ -575,7 +899,7 @@ func (r *readerScreen) updateImages(gtx layout.Context) {
 // semaphore so a long chapter does not hammer the CDN.
 func (r *readerScreen) downloadPage(index int) {
 	generation := r.loadGeneration
-	if r.pages[index].loading || r.pages[index].img != nil {
+	if r.pages[index].loading || r.pages[index].img != nil || len(r.pages[index].chunks) > 0 {
 		return
 	}
 	r.pages[index].loading = true
@@ -626,8 +950,9 @@ func (r *readerScreen) layout(gtx layout.Context) {
 	}
 }
 
-// handleReaderKeys maps Left/Right to chapter navigation. Up/Down scroll the
-// content list through the normal focus; PageUp/PageDown are left to the list.
+// handleReaderKeys maps Left/Right to manga page navigation. Ranobe chapters
+// are still switched by the footer; Up/Down scroll the content list through the
+// normal focus and PageUp/PageDown are left to the list.
 func (r *readerScreen) handleReaderKeys(gtx layout.Context) {
 	for {
 		ev, ok := gtx.Event(key.Filter{
@@ -646,9 +971,17 @@ func (r *readerScreen) handleReaderKeys(gtx layout.Context) {
 		}
 		switch e.Name {
 		case key.NameLeftArrow:
-			r.selectChapter(r.selectedChapter - 1)
+			if r.title.IsRanobe() {
+				r.selectChapter(r.selectedChapter - 1)
+			} else {
+				r.scrollPage(-1)
+			}
 		case key.NameRightArrow:
-			r.selectChapter(r.selectedChapter + 1)
+			if r.title.IsRanobe() {
+				r.selectChapter(r.selectedChapter + 1)
+			} else {
+				r.scrollPage(1)
+			}
 		}
 	}
 }
@@ -699,6 +1032,7 @@ func (r *readerScreen) layoutSidebar(gtx layout.Context, rect image.Rectangle) {
 	// Translation selector button.
 	controlHeight := gtx.Dp(readerControlHeight)
 	translationRect := image.Rect(pad, top, pad+width, top+controlHeight)
+	r.translationAnchor = translationRect.Add(rect.Min)
 	if r.layoutTranslationTrigger(gtx, translationRect) {
 		r.openTranslations = !r.openTranslations
 		gtx.Execute(op.InvalidateCmd{})
@@ -728,16 +1062,19 @@ func (r *readerScreen) layoutTranslationMenu(gtx layout.Context, size image.Poin
 		r.translationClickables = make([]widget.Clickable, len(r.translations))
 	}
 	pad := gtx.Dp(readerPanelPad)
-	itemHeight := gtx.Dp(unit.Dp(36))
+	itemHeight := gtx.Dp(unit.Dp(50))
 	itemGap := gtx.Dp(unit.Dp(2))
 	menuPad := gtx.Dp(unit.Dp(4))
 	height := len(r.translations)*itemHeight + len(r.translations)*itemGap + 2*menuPad
-	anchor := image.Rect(
-		sidebar.Min.X+pad,
-		sidebar.Min.Y+pad,
-		sidebar.Max.X-pad,
-		sidebar.Min.Y+pad+gtx.Dp(readerControlHeight),
-	)
+	anchor := r.translationAnchor
+	if anchor.Empty() {
+		anchor = image.Rect(
+			sidebar.Min.X+pad,
+			sidebar.Min.Y+pad,
+			sidebar.Max.X-pad,
+			sidebar.Min.Y+pad+gtx.Dp(readerControlHeight),
+		)
+	}
 	menu := placePopupList(anchor, height, gtx.Dp(unit.Dp(4)), image.Rectangle{Max: size})
 	if layoutOverlayScrim(gtx, image.Rectangle{Max: size}, &r.translationScrim) {
 		r.openTranslations = false
@@ -765,32 +1102,48 @@ func (r *readerScreen) layoutTranslationItem(gtx layout.Context, rect image.Rect
 		return false
 	}
 	click := &r.translationClickables[index]
-	clicked := layoutClickableRect(gtx, rect, click, func(gtx layout.Context, local image.Rectangle) {
+	draw := func(gtx layout.Context, local image.Rectangle) {
 		radius := gtx.Dp(unit.Dp(6))
 		if index == r.selectedVoice {
-			fillRounded(gtx, settingsMenuSelected, local, radius)
-		} else if click.Hovered() {
-			fillRounded(gtx, tokenDomainFillHover, local, radius)
+			fillRounded(gtx, readerChapterActive, local, radius)
+		} else if translation.hasCurrent && click.Hovered() {
+			fillRounded(gtx, readerChapterHover, local, radius)
 		}
-		face := font.Font{Typeface: fontFamily, Weight: font.Medium}
 		name := translation.name
 		if name == "" {
 			name = "Без команды"
 		}
-		label := fmt.Sprintf("%s · %d", name, translation.count)
+		label := fmt.Sprintf("%s · %d гл.", name, translation.count)
 		padX := gtx.Dp(unit.Dp(10))
-		_, ink := r.typo.measure(gtx, label, face, unit.Sp(12.5))
+		face := font.Font{Typeface: fontFamily, Weight: font.Medium}
 		textColor := mainTextColor
-		if index == r.selectedVoice {
-			textColor = badgeTextColor
+		if !translation.hasCurrent {
+			textColor = readerDisabledText
+		} else if index == r.selectedVoice {
+			textColor = titleColor
 		}
-		r.typo.draw(gtx, label, face, unit.Sp(12.5), textColor, image.Pt(padX, (local.Dy()-ink.Dy())/2))
+		r.typo.draw(gtx, label, face, unit.Sp(12.5), textColor, image.Pt(padX, gtx.Dp(unit.Dp(7))))
+		note := fmt.Sprintf("нет %d гл.", translation.missing)
+		noteColor := readerMutedColor
+		if !translation.hasCurrent {
+			note = "нет этой главы"
+			noteColor = mainDangerColor
+		}
+		if translation.missing == 0 {
+			note = "все главы"
+			noteColor = readerMutedColor
+		}
+		r.typo.draw(gtx, note, font.Font{Typeface: fontFamily, Weight: font.Normal}, unit.Sp(10.5), noteColor, image.Pt(padX, gtx.Dp(unit.Dp(27))))
 		if index == r.selectedVoice {
 			check := image.Pt(local.Dx()-padX-gtx.Dp(unit.Dp(7)), local.Dy()/2)
-			drawCheckIcon(gtx, check, gtx.Dp(unit.Dp(13)), badgeTextColor)
+			drawCheckIcon(gtx, check, gtx.Dp(unit.Dp(13)), mainAccentColor1)
 		}
-	})
-	return clicked
+	}
+	if !translation.hasCurrent {
+		draw(gtx, rect)
+		return false
+	}
+	return layoutClickableRect(gtx, rect, click, draw)
 }
 
 func (r *readerScreen) layoutTranslationTrigger(gtx layout.Context, rect image.Rectangle) bool {
@@ -802,11 +1155,13 @@ func (r *readerScreen) layoutTranslationTrigger(gtx layout.Context, rect image.R
 	padX := gtx.Dp(unit.Dp(10))
 	layoutClickableRect(gtx, rect, &r.translationClick, func(gtx layout.Context, local image.Rectangle) {
 		radius := gtx.Dp(unit.Dp(7))
-		fill := tokenDomainFill
+		border := mainInputBorder
+		fill := mainInputColor
 		if active {
-			fill = tokenDomainFillHover
+			border = mainInputFocusBorder
+			fill = mixColor(mainInputColor, mainAccentColor1, 0.12)
 		}
-		fillRounded(gtx, tokenDomainBorder, local, radius)
+		fillRounded(gtx, border, local, radius)
 		fillRounded(gtx, fill, local.Inset(gtx.Dp(unit.Dp(1))), radius-gtx.Dp(unit.Dp(1)))
 		face := font.Font{Typeface: fontFamily, Weight: font.Medium}
 		name := r.translationName()
@@ -818,9 +1173,9 @@ func (r *readerScreen) layoutTranslationTrigger(gtx layout.Context, rect image.R
 		size := gtx.Dp(unit.Dp(9))
 		center := image.Pt(local.Dx()-padX-size/2, local.Dy()/2)
 		if active {
-			drawChevronUp(gtx, center, size, gtx.Dp(unit.Dp(1.6)), settingsNoteColor)
+			drawChevronUp(gtx, center, size, gtx.Dp(unit.Dp(1.6)), mainMutedColor)
 		} else {
-			drawChevronDown(gtx, center, size, gtx.Dp(unit.Dp(1.6)), settingsNoteColor)
+			drawChevronDown(gtx, center, size, gtx.Dp(unit.Dp(1.6)), mainMutedColor)
 		}
 	})
 	return clicked
@@ -881,63 +1236,128 @@ func (r *readerScreen) layoutChapterList(gtx layout.Context, rect image.Rectangl
 	if rect.Empty() {
 		return
 	}
-	if len(r.filtered) == 0 {
+	if len(r.treeRows) == 0 && len(r.chapters) > 0 {
+		r.rebuildTree()
+	}
+	if len(r.treeRows) == 0 {
 		r.typo.draw(gtx, "Ничего не найдено", font.Font{Typeface: fontFamily, Weight: font.Medium}, unit.Sp(12), mainMutedColor, image.Pt(0, gtx.Dp(unit.Dp(8))))
 		return
 	}
 	if len(r.chapterClick) != len(r.chapters) {
 		r.chapterClick = make([]widget.Clickable, len(r.chapters))
 	}
+	if len(r.treeClick) != len(r.treeRows) {
+		r.treeClick = make([]widget.Clickable, len(r.treeRows))
+	}
 	stack := op.Offset(rect.Min).Push(gtx.Ops)
 	defer stack.Pop()
 	cgtx := gtx
 	cgtx.Constraints = layout.Exact(rect.Size())
-	r.chapterList.Layout(cgtx, len(r.filtered), func(gtx layout.Context, index int) layout.Dimensions {
-		key := r.filtered[index]
-		// Map back to the clickable for the real chapter index.
-		chapterIndex := chapterIndexForKey(r.chapters, key)
-		rowHeight := gtx.Dp(readerChapterHeight)
-		item := image.Rect(0, 0, rect.Dx(), rowHeight)
-		if r.layoutChapterRow(gtx, item, key, chapterIndex == r.selectedChapter) {
-			r.selectChapter(chapterIndex)
+	r.chapterList.Layout(cgtx, len(r.treeRows), func(gtx layout.Context, index int) layout.Dimensions {
+		item := image.Rect(0, 0, rect.Dx(), gtx.Dp(readerChapterHeight))
+		if index >= len(r.treeRows) {
+			return layout.Dimensions{Size: item.Size()}
+		}
+		row := r.treeRows[index]
+		var clicked bool
+		if row.header {
+			clicked = r.layoutVolumeRow(gtx, item, row, index)
+			if clicked {
+				r.pendingToggle = row.volume
+			}
+		} else {
+			chapterIndex := chapterIndexForKey(r.chapters, row.chapter)
+			clicked = r.layoutChapterRow(gtx, item, row, chapterIndex)
+			if clicked {
+				r.selectChapter(chapterIndex)
+			}
 		}
 		return layout.Dimensions{Size: item.Size()}
 	})
+	if volume := r.pendingToggle; volume != "" {
+		r.pendingToggle = ""
+		r.expanded[volume] = !r.expanded[volume]
+		r.rebuildTree()
+		gtx.Execute(op.InvalidateCmd{})
+	}
 }
 
-func (r *readerScreen) layoutChapterRow(gtx layout.Context, rect image.Rectangle, key string, selected bool) bool {
+func (r *readerScreen) layoutVolumeRow(gtx layout.Context, rect image.Rectangle, row readerTreeRow, index int) bool {
+	if rect.Empty() || index < 0 || index >= len(r.treeClick) {
+		return false
+	}
+	click := &r.treeClick[index]
+	return layoutClickableRect(gtx, rect, click, func(gtx layout.Context, local image.Rectangle) {
+		radius := gtx.Dp(unit.Dp(7))
+		if click.Hovered() {
+			fillRounded(gtx, readerChapterHover, local.Inset(gtx.Dp(unit.Dp(2))), radius)
+		}
+		padX := gtx.Dp(unit.Dp(8))
+		label := readerVolumeLabel(row.volume)
+		face := font.Font{Typeface: fontFamily, Weight: font.Bold}
+		_, ink := r.typo.measure(gtx, label, face, unit.Sp(12.5))
+		r.typo.draw(gtx, label, face, unit.Sp(12.5), readerTitleColor, image.Pt(padX+gtx.Dp(unit.Dp(14)), (local.Dy()-ink.Dy())/2))
+		count := fmt.Sprintf("%d/%d", row.available, row.total)
+		countFace := font.Font{Typeface: fontFamily, Weight: font.Medium}
+		_, countInk := r.typo.measure(gtx, count, countFace, unit.Sp(10.5))
+		r.typo.draw(gtx, count, countFace, unit.Sp(10.5), readerMutedColor, image.Pt(local.Dx()-padX-countInk.Dx(), (local.Dy()-countInk.Dy())/2))
+		chevron := image.Pt(padX+gtx.Dp(unit.Dp(3)), local.Dy()/2)
+		if row.expanded {
+			drawChevronUp(gtx, chevron, gtx.Dp(unit.Dp(8)), gtx.Dp(unit.Dp(1.5)), readerMutedColor)
+		} else {
+			drawChevronDown(gtx, chevron, gtx.Dp(unit.Dp(8)), gtx.Dp(unit.Dp(1.5)), readerMutedColor)
+		}
+	})
+}
+
+func (r *readerScreen) layoutChapterRow(gtx layout.Context, rect image.Rectangle, row readerTreeRow, index int) bool {
 	if rect.Empty() {
 		return false
 	}
-	index := chapterIndexForKey(r.chapters, key)
-	if index < 0 {
-		return false
+	selected := index >= 0 && index == r.selectedChapter
+	var click *widget.Clickable
+	if index >= 0 && index < len(r.chapterClick) {
+		click = &r.chapterClick[index]
 	}
-	click := &r.chapterClick[index]
-	row := image.Rect(
-		rect.Min.X+gtx.Dp(unit.Dp(4)),
-		rect.Min.Y+gtx.Dp(unit.Dp(2)),
-		rect.Max.X-gtx.Dp(unit.Dp(4)),
-		rect.Max.Y-gtx.Dp(unit.Dp(2)),
-	)
-	clicked := layoutClickableRect(gtx, row, click, func(gtx layout.Context, local image.Rectangle) {
+	draw := func(gtx layout.Context, local image.Rectangle) {
 		radius := gtx.Dp(unit.Dp(6))
-		bg := readerChapterHover
+		background := color.NRGBA{A: 0}
 		if selected {
-			bg = readerChapterActive
+			background = readerChapterActive
+		} else if click != nil && click.Hovered() {
+			background = readerChapterHover
 		}
-		fillRounded(gtx, bg, local, radius)
-		face := font.Font{Typeface: fontFamily, Weight: font.Medium}
+		if background.A != 0 {
+			fillRounded(gtx, background, local, radius)
+		}
+		weight := font.Medium
+		if row.missing {
+			weight = font.Normal
+		}
+		face := font.Font{Typeface: fontFamily, Weight: weight}
 		textColor := mainTextColor
-		if selected {
-			textColor = badgeTextColor
+		switch {
+		case row.missing:
+			textColor = readerDisabledText
+		case selected:
+			textColor = titleColor
 		}
-		label := readingChapterLabel(key)
-		padX := gtx.Dp(unit.Dp(10))
+		label := readingChapterLabel(row.chapter)
+		padX := gtx.Dp(unit.Dp(12))
 		_, ink := r.typo.measure(gtx, label, face, unit.Sp(12.5))
 		r.typo.draw(gtx, label, face, unit.Sp(12.5), textColor, image.Pt(padX, (local.Dy()-ink.Dy())/2))
-	})
-	return clicked
+		if row.missing {
+			note := "нет"
+			noteFace := font.Font{Typeface: fontFamily, Weight: font.Normal}
+			_, noteInk := r.typo.measure(gtx, note, noteFace, unit.Sp(10.5))
+			r.typo.draw(gtx, note, noteFace, unit.Sp(10.5), readerDisabledText, image.Pt(local.Dx()-padX-noteInk.Dx(), (local.Dy()-noteInk.Dy())/2))
+		}
+	}
+	if row.missing || click == nil {
+		draw(gtx, image.Rect(0, 0, rect.Dx(), rect.Dy()))
+		return false
+	}
+	return layoutClickableRect(gtx, rect, click, draw)
 }
 
 // layoutReaderArea draws the right side: the chapter header (or loading/error)
@@ -960,6 +1380,22 @@ func (r *readerScreen) layoutReaderArea(gtx layout.Context, rect image.Rectangle
 	}
 	face := font.Font{Typeface: fontFamily, Weight: font.Bold}
 	r.typo.draw(gtx, label, face, unit.Sp(14), mainTextColor, image.Pt(padX, gtx.Dp(unit.Dp(10))))
+	controlTop := (headerH - gtx.Dp(unit.Dp(28))) / 2
+	right := local.Dx() - padX
+	if !r.title.IsRanobe() && len(r.pages) > 0 {
+		counter := fmt.Sprintf("%d / %d", min(r.pageIndex+1, len(r.pages)), len(r.pages))
+		counterFace := font.Font{Typeface: fontFamily, Weight: font.Medium}
+		_, counterInk := r.typo.measure(gtx, counter, counterFace, unit.Sp(11))
+		counterX := right - gtx.Dp(unit.Dp(96)) - gtx.Dp(unit.Dp(12)) - counterInk.Dx()
+		r.typo.draw(gtx, counter, counterFace, unit.Sp(11), mainMutedColor, image.Pt(counterX, gtx.Dp(unit.Dp(13))))
+	}
+	if !r.title.IsRanobe() {
+		toggleRect := image.Rect(right-gtx.Dp(unit.Dp(96)), controlTop, right, controlTop+gtx.Dp(unit.Dp(28)))
+		if r.layoutStitchToggle(gtx, toggleRect) {
+			r.toggleAutoStitch()
+			gtx.Execute(op.InvalidateCmd{})
+		}
+	}
 	fill(gtx, readerRowDivider, image.Rect(padX, headerH-gtx.Dp(unit.Dp(1)), local.Dx()-padX, headerH))
 
 	if r.loading {
@@ -979,6 +1415,46 @@ func (r *readerScreen) layoutReaderArea(gtx layout.Context, rect image.Rectangle
 	}
 }
 
+// layoutStitchToggle is the reader's infinite-strip switch. It changes only
+// reading behaviour, so it sits next to the chapter title rather than in the
+// title settings page.
+func (r *readerScreen) layoutStitchToggle(gtx layout.Context, rect image.Rectangle) bool {
+	if rect.Empty() {
+		return false
+	}
+	if len(r.pages) == 0 {
+		return false
+	}
+	clicked := layoutClickableRect(gtx, rect, &r.stitchClick, func(gtx layout.Context, local image.Rectangle) {
+		radius := gtx.Dp(unit.Dp(14))
+		background := mainInputColor
+		border := mainInputBorder
+		text := mainMutedColor
+		if r.autoStitch {
+			background = mixColor(mainInputColor, mainAccentColor1, 0.22)
+			border = mainAccentColor1
+			text = titleColor
+		} else if r.stitchClick.Hovered() {
+			border = mainInputFocusBorder
+			text = mainTextColor
+		}
+		fillRounded(gtx, border, local, radius)
+		fillRounded(gtx, background, local.Inset(gtx.Dp(unit.Dp(1))), radius-gtx.Dp(unit.Dp(1)))
+		label := "Лента"
+		face := font.Font{Typeface: fontFamily, Weight: font.Medium}
+		_, ink := r.typo.measure(gtx, label, face, unit.Sp(11.5))
+		r.typo.draw(gtx, label, face, unit.Sp(11.5), text, image.Pt(gtx.Dp(unit.Dp(12)), (local.Dy()-ink.Dy())/2))
+		dot := image.Pt(local.Dx()-gtx.Dp(unit.Dp(14)), local.Dy()/2)
+		dotColor := readerMutedColor
+		if r.autoStitch {
+			dotColor = mainAccentColor1
+		}
+		radiusDot := gtx.Dp(unit.Dp(3))
+		fillRounded(gtx, dotColor, image.Rect(dot.X-radiusDot, dot.Y-radiusDot, dot.X+radiusDot, dot.Y+radiusDot), radiusDot)
+	})
+	return clicked
+}
+
 func (r *readerScreen) layoutLoading(gtx layout.Context, rect image.Rectangle, top int) {
 	center := image.Pt(rect.Dx()/2, top+(rect.Dy()-top)/2)
 	gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(time.Second / 3)})
@@ -994,8 +1470,69 @@ func (r *readerScreen) layoutLoadError(gtx layout.Context, rect image.Rectangle,
 	return
 }
 
-// layoutManga renders the lazy page image list. Pages are fetched on demand as
-// they enter the viewport.
+// rebuildMangaRows flattens source pages and their texture chunks into the
+// virtualised list. The rebuild is deferred to layout, so image results never
+// mutate the slice that layout.List is currently walking.
+func (r *readerScreen) rebuildMangaRows() {
+	r.mangaRows = r.mangaRows[:0]
+	for pageIndex := range r.pages {
+		page := &r.pages[pageIndex]
+		chunks := len(page.chunks)
+		if chunks == 0 && page.width > 0 && page.height > 0 {
+			// Reserve the final number of chunk rows from the known page size.
+			// Otherwise every loaded image would shift all following rows and
+			// the list would jump under the reader.
+			chunks = (page.height + readerMaxTextureSide - 1) / readerMaxTextureSide
+		}
+		if chunks == 0 {
+			r.mangaRows = append(r.mangaRows, readerMangaRow{page: pageIndex, chunk: -1})
+			continue
+		}
+		for chunk := 0; chunk < chunks; chunk++ {
+			r.mangaRows = append(r.mangaRows, readerMangaRow{page: pageIndex, chunk: chunk})
+		}
+	}
+	r.mangaRowsDirty = false
+}
+
+// rowForPage maps a source page to the first row that displays it.
+func (r *readerScreen) rowForPage(page int) int {
+	for index, row := range r.mangaRows {
+		if row.page == page {
+			return index
+		}
+	}
+	return 0
+}
+
+// evictPagesOutside releases decoded pixels for pages that are far from the
+// viewport. Page metadata stays, so the list keeps its geometry and a page is
+// downloaded again when the reader scrolls back to it.
+func (r *readerScreen) evictPagesOutside(firstRow, lastRow int) {
+	if firstRow < 0 || lastRow < firstRow || len(r.mangaRows) == 0 {
+		return
+	}
+	firstRow = max(0, firstRow)
+	lastRow = min(lastRow, len(r.mangaRows)-1)
+	startPage := r.mangaRows[firstRow].page
+	endPage := r.mangaRows[lastRow].page
+	for index := range r.pages {
+		if index >= startPage-1 && index <= endPage+1 {
+			continue
+		}
+		page := &r.pages[index]
+		if page.img == nil && len(page.chunks) == 0 {
+			continue
+		}
+		page.img = nil
+		page.chunks = nil
+		page.loading = false
+		r.mangaRowsDirty = true
+	}
+}
+
+// layoutManga renders the lazy, centred page column. Every visible chunk is a
+// separate list row, so Gio uploads only the textures the user can actually see.
 func (r *readerScreen) layoutManga(gtx layout.Context, rect image.Rectangle) {
 	if rect.Empty() {
 		return
@@ -1004,25 +1541,49 @@ func (r *readerScreen) layoutManga(gtx layout.Context, rect image.Rectangle) {
 		r.typo.draw(gtx, "В главе нет страниц", font.Font{Typeface: fontFamily, Weight: font.Medium}, unit.Sp(13), mainMutedColor, image.Pt(0, gtx.Dp(unit.Dp(12))))
 		return
 	}
-	stack := op.Offset(rect.Min).Push(gtx.Ops)
+	if r.mangaRowsDirty || len(r.mangaRows) == 0 {
+		r.rebuildMangaRows()
+	}
+	pageWidth := min(rect.Dx(), gtx.Dp(readerPageMaxWidth))
+	if pageWidth <= 0 {
+		return
+	}
+	column := image.Rect(
+		rect.Min.X+(rect.Dx()-pageWidth)/2,
+		rect.Min.Y,
+		rect.Min.X+(rect.Dx()-pageWidth)/2+pageWidth,
+		rect.Max.Y,
+	)
+	stack := op.Offset(column.Min).Push(gtx.Ops)
 	defer stack.Pop()
 	cgtx := gtx
-	cgtx.Constraints = layout.Exact(rect.Size())
-	r.mangaList.Layout(cgtx, len(r.pages), func(gtx layout.Context, index int) layout.Dimensions {
-		page := &r.pages[index]
-		if page.img == nil && len(page.chunks) == 0 {
-			r.downloadPage(index)
+	cgtx.Constraints = layout.Exact(column.Size())
+	visibleFirst, visibleLast := -1, -1
+	r.mangaList.Layout(cgtx, len(r.mangaRows), func(gtx layout.Context, index int) layout.Dimensions {
+		if visibleFirst < 0 {
+			visibleFirst = index
 		}
-		width := rect.Dx()
+		visibleLast = index
+		row := r.mangaRows[index]
+		page := &r.pages[row.page]
+		width := pageWidth
 		height := gtx.Dp(unit.Dp(20))
+		if page.img == nil && len(page.chunks) == 0 {
+			r.downloadPage(row.page)
+		}
 		switch {
-		case page.width > 0 && page.height > 0:
-			height = width * page.height / page.width
-		case page.img != nil:
-			b := page.img.Bounds()
+		case row.chunk >= 0 && row.chunk < len(page.chunks):
+			b := page.chunks[row.chunk].Bounds()
 			if b.Dx() > 0 {
 				height = width * b.Dy() / b.Dx()
 			}
+		case row.chunk >= 0 && page.width > 0 && page.height > 0:
+			chunkHeight := min(readerMaxTextureSide, page.height-row.chunk*readerMaxTextureSide)
+			if chunkHeight > 0 {
+				height = width * chunkHeight / page.width
+			}
+		case row.chunk < 0 && page.width > 0 && page.height > 0:
+			height = width * page.height / page.width
 		case page.loading:
 			height = gtx.Dp(unit.Dp(120))
 		}
@@ -1030,37 +1591,36 @@ func (r *readerScreen) layoutManga(gtx layout.Context, rect image.Rectangle) {
 			height = gtx.Dp(unit.Dp(40))
 		}
 		item := image.Rect(0, 0, width, height)
-		if len(page.chunks) > 0 {
-			y := 0
-			for _, chunk := range page.chunks {
-				b := chunk.Bounds()
-				if b.Dx() <= 0 || b.Dy() <= 0 {
-					continue
-				}
-				h := width * b.Dy() / b.Dx()
-				drawImage(gtx, chunk, image.Rect(0, y, width, y+h))
-				y += h
-			}
-		} else if page.img != nil {
+		switch {
+		case row.chunk >= 0 && row.chunk < len(page.chunks):
+			drawImage(gtx, page.chunks[row.chunk], item)
+		case page.img != nil:
 			drawImage(gtx, page.img, item)
-		} else if page.failed {
+		case page.failed:
 			r.typo.drawCentered(gtx, "Не удалось загрузить", font.Font{Typeface: fontFamily, Weight: font.Medium}, unit.Sp(12), mainMutedColor, centerOf(item))
-		} else {
+		default:
 			phase := float64(time.Now().UnixNano()) / 1e9
 			f := phase*2 - float64(int(phase*2))
 			drawSpinner(gtx, centerOf(item), gtx.Dp(unit.Dp(9)), gtx.Dp(unit.Dp(2)), f, mainAccentColor1)
 		}
 		return layout.Dimensions{Size: item.Size()}
 	})
+	first := r.mangaList.Position.First
+	if first >= 0 && first < len(r.mangaRows) {
+		page := r.mangaRows[first].page
+		r.pageIndex = page
+		r.syncStreamPosition(page)
+		if r.autoStitch && first+8 >= len(r.mangaRows) {
+			r.extendStream()
+		}
+	}
+	r.evictPagesOutside(visibleFirst, visibleLast)
 }
 
-type subImager interface {
-	SubImage(image.Rectangle) image.Image
-}
-
-// splitReaderImage cuts a tall webtoon page into GPU-safe textures. Subimages
-// keep sharing the decoded backing array, so splitting does not duplicate the
-// page in memory. A 760x25000 page becomes seven 760x4096 chunks.
+// splitReaderImage cuts a tall webtoon page into GPU-safe textures. Each chunk
+// is copied into its own RGBA buffer: subimages would keep the whole decoded
+// page alive, and a chapter of 25000px pages would then hold hundreds of
+// megabytes after the user has scrolled past it.
 func splitReaderImage(src image.Image, maxSide int) []image.Image {
 	if src == nil || maxSide <= 0 {
 		return nil
@@ -1069,22 +1629,12 @@ func splitReaderImage(src image.Image, maxSide int) []image.Image {
 	if bounds.Dx() <= 0 || bounds.Dy() <= 0 {
 		return nil
 	}
-	if bounds.Dy() <= maxSide {
-		return []image.Image{src}
-	}
-	sub, ok := src.(subImager)
-	if !ok {
-		// Decoded PNG/JPEG/WebP images normally implement SubImage. The copy is
-		// only a fallback for a custom image type.
-		copyImage := image.NewNRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
-		stddraw.Draw(copyImage, copyImage.Bounds(), src, bounds.Min, stddraw.Src)
-		sub = copyImage
-		bounds = copyImage.Bounds()
-	}
 	chunks := make([]image.Image, 0, (bounds.Dy()+maxSide-1)/maxSide)
 	for y := bounds.Min.Y; y < bounds.Max.Y; y += maxSide {
 		end := min(y+maxSide, bounds.Max.Y)
-		chunks = append(chunks, sub.SubImage(image.Rect(bounds.Min.X, y, bounds.Max.X, end)))
+		chunk := image.NewRGBA(image.Rect(0, 0, bounds.Dx(), end-y))
+		stddraw.Draw(chunk, chunk.Bounds(), src, image.Pt(bounds.Min.X, y), stddraw.Src)
+		chunks = append(chunks, chunk)
 	}
 	return chunks
 }

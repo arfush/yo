@@ -63,7 +63,17 @@ func applySectionTheme(section librarySection) {
 
 	settingsToggleOnColor = p.accent1
 	settingsMenuSelected = mixColor(contentColor, p.accent2, 0.26)
-	readerChapterActive = mixColor(contentColor, p.accent2, 0.26)
+
+	// The reader keeps the same surfaces, dividers and accent as the rest of
+	// the application instead of maintaining a separate purple palette.
+	readerTitleColor = titleColor
+	readerMutedColor = mainMutedColor
+	readerPanelFill = chromeColor
+	readerPanelBorder = dividerColor
+	readerChapterHover = mixColor(contentColor, p.accent1, 0.08)
+	readerChapterActive = mixColor(contentColor, p.accent1, 0.18)
+	readerRowDivider = dividerColor
+	readerDisabledText = withAlpha(mainMutedColor, 0x8c)
 
 	titleVoiceSelectedFill = mixColor(contentColor, p.accent2, 0.18)
 	titleVoiceSelectedBorder = p.accent1
