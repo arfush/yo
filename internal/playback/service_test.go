@@ -13,7 +13,7 @@ func TestUnopenedErrorDescribesKodik(t *testing.T) {
 	err := unopenedError(&playlistEntry{
 		Episode: library.PlaybackEpisode{Number: "7"},
 		Kind:    "hls",
-	})
+	}, "animelib")
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -29,8 +29,28 @@ func TestUnopenedErrorDescribesKodik(t *testing.T) {
 	}
 }
 
+func TestUnopenedErrorDescribesKinopoiskPlayer(t *testing.T) {
+	err := unopenedError(&playlistEntry{
+		Episode: library.PlaybackEpisode{Number: "S1E2"},
+		Kind:    "hls",
+	}, "kinopoisk")
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	message := err.Error()
+	if strings.Contains(message, "Kodik") {
+		t.Fatalf("the player error must not blame Kodik: %q", message)
+	}
+	if !strings.Contains(message, "плеера") {
+		t.Fatalf("message %q should name the player", message)
+	}
+	if !unicode.IsUpper([]rune(message)[0]) {
+		t.Fatalf("message %q should start with a capital letter", message)
+	}
+}
+
 func TestUnopenedErrorFallsBackToGenericText(t *testing.T) {
-	err := unopenedError(nil)
+	err := unopenedError(nil, "")
 	if err == nil || err.Error() == "" {
 		t.Fatal("expected a non-empty error")
 	}

@@ -336,6 +336,13 @@ type Session struct {
 
 	quality int
 
+	// openRetried marks the single first-open retry: when mpv fails to open
+	// the very first file, the session re-resolves it with a fresh signed URL
+	// and loads the player again before giving up. freshResolve makes the next
+	// Kinopoisk resolve skip the manifest cache.
+	openRetried  bool
+	freshResolve bool
+
 	chapterSem     chan struct{}
 	chaptersMu     sync.Mutex
 	chaptersNoData map[string]bool
@@ -564,6 +571,10 @@ func (s *Session) onEndFile(event mpvEvent) {
 // file. A failed open arrives as end-file with reason "error" and no preceding
 // file-loaded event; without this check mpv would stay on its idle "drop files"
 // screen while the application window remains hidden.
+//
+// The first failure is retried with a fresh resolve: a signed CDN URL can go
+// stale between the resolve and mpv opening it (Kinopoisk especially), so a
+// second attempt often brings the same episode up instead of ending playback.
 func (s *Session) failUnopened(position int) {
 	s.mu.Lock()
 	loaded := s.loadedOnce
@@ -577,18 +588,79 @@ func (s *Session) failUnopened(position int) {
 		return
 	}
 
-	s.finish(unopenedError(entry))
+	if s.retryOpenOnce() {
+		// The fresh entry reloaded fine; the resumed open will either play or
+		// end with its own end-file event.
+		return
+	}
+	s.finish(unopenedError(entry, s.planSource()))
 	if mpv != nil {
 		mpv.close()
 	}
 }
 
-func unopenedError(entry *playlistEntry) error {
+// retryOpenOnce resolves the first playlist entry again (skipping the Kinopoisk
+// manifest cache) and loads it into mpv. It returns true when the load command
+// was accepted; it reports false and lets failUnopened finish the session when
+// the resolve also fails, or when the session changed underneath.
+func (s *Session) retryOpenOnce() bool {
+	s.mu.Lock()
+	if s.openRetried || s.mpv == nil || len(s.entries) == 0 || s.loadedOnce {
+		s.mu.Unlock()
+		return false
+	}
+	s.openRetried = true
+	s.freshResolve = true
+	mpv := s.mpv
+	index := s.entries[0].EpisodeIndex
+	resume := s.resumePending
+	s.mu.Unlock()
+
+	entry, err := s.resolveEntry(s.ctx, index)
+	if err != nil {
+		s.mu.Lock()
+		s.freshResolve = false
+		s.mu.Unlock()
+		return false
+	}
+	s.mu.Lock()
+	if s.mpv != mpv || s.loadedOnce {
+		s.freshResolve = false
+		s.mu.Unlock()
+		return false
+	}
+	err = mpv.load(entry.URL, headersFor(entry))
+	s.freshResolve = false
+	if err != nil {
+		s.mu.Unlock()
+		return false
+	}
+	s.entries = []*playlistEntry{entry}
+	s.resolved = map[int]*playlistEntry{index: entry}
+	s.resumePending = resume
+	s.current = 0
+	s.currentEp = index
+	s.currentNumber = entry.Episode.Number
+	s.mu.Unlock()
+	return true
+}
+
+func (s *Session) planSource() string {
+	if s == nil || s.plan == nil {
+		return ""
+	}
+	return s.plan.Source
+}
+
+func unopenedError(entry *playlistEntry, source string) error {
 	message := "Не удалось воспроизвести серию"
 	if entry != nil {
-		if entry.Kind == "hls" {
+		switch {
+		case entry.Kind == "hls" && source == kinopoisk.Source:
+			message = "Не удалось открыть видео из плеера, проверьте подключение"
+		case entry.Kind == "hls":
 			message = "Сервер Kodik не отвечает, проверьте подключение"
-		} else {
+		default:
 			message = "Не удалось воспроизвести видео"
 		}
 	}

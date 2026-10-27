@@ -43,13 +43,25 @@ func (s *Session) resolveKinopoisk(ctx context.Context, index int) (*playlistEnt
 	if quality <= 0 {
 		quality = 1080
 	}
-	media, err := s.service.kinopoisk.Resolve(ctx, kinopoisk.Request{
+	s.mu.Lock()
+	fresh := s.freshResolve
+	s.mu.Unlock()
+	request := kinopoisk.Request{
 		Iframe:        s.plan.Kinopoisk.Iframe,
 		Season:        season,
 		Episode:       number,
 		TranslationID: s.plan.Kinopoisk.TranslationID,
 		Quality:       quality,
-	})
+	}
+	var media kinopoisk.Media
+	var err error
+	if fresh {
+		// The first open failed; a signed URL may have expired, so do not
+		// trust the 40-minute manifest cache for this retry.
+		media, err = s.service.kinopoisk.ResolveFresh(ctx, request)
+	} else {
+		media, err = s.service.kinopoisk.Resolve(ctx, request)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("серия %s: %w", episode.Number, err)
 	}

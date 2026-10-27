@@ -110,6 +110,19 @@ func NewResolver(manager *browser.Manager) *Resolver {
 	}
 }
 
+// ResolveFresh forgets the cached manifest for the request and resolves it
+// again. The player uses it for a retry after mpv failed to open a URL: the
+// signed CDN links can expire faster than the 40-minute cache TTL.
+func (r *Resolver) ResolveFresh(ctx context.Context, request Request) (Media, error) {
+	if r == nil {
+		return Media{}, errors.New("браузер Kinopoisk недоступен")
+	}
+	r.cacheMu.Lock()
+	delete(r.cache, cacheKey(request))
+	r.cacheMu.Unlock()
+	return r.Resolve(ctx, request)
+}
+
 // Resolve returns a playable manifest for one episode.
 func (r *Resolver) Resolve(ctx context.Context, request Request) (Media, error) {
 	request.Iframe = strings.TrimSpace(request.Iframe)

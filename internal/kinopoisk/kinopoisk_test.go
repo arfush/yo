@@ -1,11 +1,13 @@
 package kinopoisk
 
 import (
+	"context"
 	"encoding/json"
 	"net/url"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseInput(t *testing.T) {
@@ -275,6 +277,18 @@ func TestMirrorURLs(t *testing.T) {
 	url, quality := pickQuality(sources[0], 1080)
 	if url != "https://a.vk/1/1080.m3u8" || quality != 1080 {
 		t.Fatalf("pickQuality = %q, %d", url, quality)
+	}
+}
+
+func TestResolveFreshClearsTheCache(t *testing.T) {
+	resolver := NewResolver(nil)
+	request := Request{Iframe: "https://theatre.example/room", Season: 1, Episode: 3, TranslationID: 7, Quality: 1080}
+	resolver.cache[cacheKey(request)] = cacheEntry{expires: time.Now().Add(time.Hour)}
+	// The resolver has no browser manager, so the fresh call fails, but the
+	// stale manifest must be gone before the attempt.
+	_, _ = resolver.ResolveFresh(context.Background(), request)
+	if _, ok := resolver.cached(cacheKey(request)); ok {
+		t.Fatal("ResolveFresh left the stale manifest in the cache")
 	}
 }
 
