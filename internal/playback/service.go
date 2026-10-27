@@ -13,6 +13,7 @@ import (
 
 	"github.com/arfush/yoanime/internal/animelib"
 	"github.com/arfush/yoanime/internal/browser"
+	"github.com/arfush/yoanime/internal/kinopoisk"
 	"github.com/arfush/yoanime/internal/kodik"
 	"github.com/arfush/yoanime/internal/library"
 	"github.com/arfush/yoanime/internal/metadata"
@@ -51,6 +52,9 @@ type StartOptions struct {
 type Service struct {
 	lib      *library.Library
 	resolver *kodik.Resolver
+	// kinopoisk resolves Alloha streams through its own headless browser. It is
+	// created with the service and never started until a Kinopoisk title plays.
+	kinopoisk *kinopoisk.Resolver
 
 	mu       sync.Mutex
 	session  *Session
@@ -61,8 +65,9 @@ type Service struct {
 // New returns a playback service. mpv is located lazily when Start is called.
 func New(lib *library.Library, manager *browser.Manager) *Service {
 	return &Service{
-		lib:      lib,
-		resolver: kodik.New(manager),
+		lib:       lib,
+		resolver:  kodik.New(manager),
+		kinopoisk: kinopoisk.NewResolver(manager),
 	}
 }
 
@@ -106,15 +111,24 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 
 	token, err := s.lib.Token()
 	if err != nil {
-		log.Error("cannot read token for playback", "error", err)
-		return nil, err
+		// Kinopoisk playback has nothing to do with the AnimeLIB account, so an
+		// expired token must not block it.
+		if plan.Source != kinopoisk.Source {
+			log.Error("cannot read token for playback", "error", err)
+			return nil, err
+		}
+		token = ""
 	}
 	sessionCtx, cancel := context.WithCancel(context.Background())
+	var client *animelib.Client
+	if plan.Source != kinopoisk.Source {
+		client = animelib.New(token)
+	}
 	session := &Session{
 		service:         s,
 		plan:            plan,
 		options:         options,
-		client:          animelib.New(token),
+		client:          client,
 		ctx:             sessionCtx,
 		cancel:          cancel,
 		resolved:        make(map[int]*playlistEntry),
@@ -155,7 +169,7 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 		return nil, err
 	}
 	session.mpv = mpv
-	if err := mpv.load(entry.URL); err != nil {
+	if err := mpv.load(entry.URL, headersFor(entry)); err != nil {
 		log.Error("cannot load the first video", "episode", entry.Episode.Number, "error", err)
 		mpv.close()
 		cancel()
@@ -233,6 +247,9 @@ func (s *Service) Close() {
 	if s.resolver != nil {
 		_ = s.resolver.Close()
 	}
+	if s.kinopoisk != nil {
+		_ = s.kinopoisk.Close()
+	}
 }
 
 func (s *Service) clearSession(session *Session) {
@@ -251,6 +268,13 @@ type playlistEntry struct {
 	Quality       int
 	SubtitleURL   string
 	SubtitleLabel string
+	// Headers are the per-file HTTP headers mpv must send. A Kinopoisk stream
+	// only opens with the theatre page as Referer and the session's
+	// authorizations header.
+	Headers []string
+	// Subtitles are the caption tracks the source offers. Every track is added
+	// to mpv so the player's own track menu can switch between them.
+	Subtitles []kinopoisk.Subtitle
 
 	chapters        []metadata.Chapter
 	chaptersReady   bool
@@ -641,14 +665,37 @@ const (
 	// preloadBehind is how many previous episodes stay available for seeking
 	// back without a new request.
 	preloadBehind = 5
+	// Kinopoisk episodes are resolved through a headless theatre page, one at
+	// a time, so the window is much smaller than the AnimeLIB one: a handful
+	// ahead is enough to hide the resolve latency without keeping Chromium busy
+	// for minutes.
+	kinopoiskPreloadAhead  = 8
+	kinopoiskPreloadBehind = 2
 )
+
+// ahead returns the forward preload window of the current plan.
+func (s *Session) ahead() int {
+	if s.plan != nil && s.plan.Source == kinopoisk.Source {
+		return kinopoiskPreloadAhead
+	}
+	return preloadAhead
+}
+
+// behind returns the backward preload window of the current plan.
+func (s *Session) behind() int {
+	if s.plan != nil && s.plan.Source == kinopoisk.Source {
+		return kinopoiskPreloadBehind
+	}
+	return preloadBehind
+}
 
 // backgroundLoader fills the initial preload window around the selected
 // episode. Previous episodes are also added on demand by ensurePrevious.
 func (s *Session) backgroundLoader() {
 	start := s.plan.EpisodeIndex
 	s.loadForward(start)
-	for index := start - 1; index >= 0 && index >= start-preloadBehind; index-- {
+	behind := s.behind()
+	for index := start - 1; index >= 0 && index >= start-behind; index-- {
 		if s.ctx.Err() != nil {
 			return
 		}
@@ -671,7 +718,7 @@ func (s *Session) loadForward(currentEp int) {
 	if currentEp > last {
 		currentEp = last
 	}
-	limit := currentEp + preloadAhead
+	limit := currentEp + s.ahead()
 	if limit > last {
 		limit = last
 	}
@@ -887,7 +934,7 @@ func (s *Session) resolveAndAdd(index int) {
 	waiting := s.waitingForNext
 	s.mu.Unlock()
 
-	if err := s.mpv.insert(insertAt, entry.URL); err != nil {
+	if err := s.mpv.insert(insertAt, entry.URL, headersFor(entry)); err != nil {
 		// The entry never reached mpv. Roll back the in-memory playlist so
 		// progress attribution and later insert positions stay consistent.
 		s.mu.Lock()
@@ -915,6 +962,9 @@ func (s *Session) resolveAndAdd(index int) {
 func (s *Session) resolveEntry(ctx context.Context, index int) (*playlistEntry, error) {
 	if index < 0 || index >= len(s.plan.Episodes) {
 		return nil, errors.New("некорректный индекс серии")
+	}
+	if s.plan.Source == kinopoisk.Source {
+		return s.resolveKinopoisk(ctx, index)
 	}
 	episode := s.plan.Episodes[index]
 	if episode.ID <= 0 {
@@ -1023,10 +1073,33 @@ func (s *Session) applyChapters(entry *playlistEntry) {
 }
 
 func (s *Session) applySubtitles(entry *playlistEntry) {
-	if entry == nil || strings.TrimSpace(entry.SubtitleURL) == "" {
+	if entry == nil {
 		return
 	}
-	// Missing or broken subtitles must never stop playback.
+	if len(entry.Subtitles) > 0 {
+		// Every caption variant is added so the player's own track menu can
+		// switch between them; the variant the source marks as default (or the
+		// first one) becomes active.
+		active := 0
+		for index, subtitle := range entry.Subtitles {
+			if subtitle.Default {
+				active = index
+				break
+			}
+		}
+		for index, subtitle := range entry.Subtitles {
+			flags := "auto"
+			if index == active {
+				flags = "select"
+			}
+			// Missing or broken subtitles must never stop playback.
+			_ = s.mpv.addSubtitleFlags(subtitle.URL, subtitle.Label, flags)
+		}
+		return
+	}
+	if strings.TrimSpace(entry.SubtitleURL) == "" {
+		return
+	}
 	_ = s.mpv.addSubtitle(entry.SubtitleURL, entry.SubtitleLabel)
 }
 

@@ -60,23 +60,31 @@ func Segments() []Segment {
 	return append([]Segment(nil), segmentOrder...)
 }
 
+// segmentTitles is the single source of truth for the English chapter labels.
+// buildChapters, SegmentFromChapterTitle and out-of-introdb sources such as
+// Alloha skip ranges all go through it, so auto-skip keeps recognising chapters.
+var segmentTitles = map[Segment]string{
+	SegmentRecap:       "Recap",
+	SegmentIntro:       "Opening",
+	SegmentOutro:       "Ending",
+	SegmentPreview:     "Preview",
+	SegmentCredits:     "Credits",
+	SegmentPostCredits: "Post-credits",
+}
+
+// ChapterTitle returns the mpv chapter label of a segment.
+func ChapterTitle(segment Segment) string {
+	return segmentTitles[segment]
+}
+
 // SegmentFromChapterTitle maps an mpv chapter title back to its introdb
 // segment. The titles come from buildChapters and stay English because mpv
 // shows them above its seek bar.
 func SegmentFromChapterTitle(title string) (Segment, bool) {
-	switch title {
-	case "Recap":
-		return SegmentRecap, true
-	case "Opening":
-		return SegmentIntro, true
-	case "Ending":
-		return SegmentOutro, true
-	case "Preview":
-		return SegmentPreview, true
-	case "Credits":
-		return SegmentCredits, true
-	case "Post-credits":
-		return SegmentPostCredits, true
+	for segment, label := range segmentTitles {
+		if label == title {
+			return segment, true
+		}
 	}
 	return "", false
 }
@@ -405,12 +413,12 @@ func buildChapters(body []byte) ([]Chapter, error) {
 		events = append(events, event{time: start, title: title, order: order})
 		events = append(events, event{time: end, title: "Episode", order: order + 1})
 	}
-	add("recap", "Recap", 10)
-	add("intro", "Opening", 20)
-	add("outro", "Ending", 30)
-	add("preview", "Preview", 40)
-	add("credits", "Credits", 50)
-	add("post_credits", "Post-credits", 60)
+	add("recap", ChapterTitle(SegmentRecap), 10)
+	add("intro", ChapterTitle(SegmentIntro), 20)
+	add("outro", ChapterTitle(SegmentOutro), 30)
+	add("preview", ChapterTitle(SegmentPreview), 40)
+	add("credits", ChapterTitle(SegmentCredits), 50)
+	add("post_credits", ChapterTitle(SegmentPostCredits), 60)
 	if len(events) == 0 {
 		return nil, nil
 	}

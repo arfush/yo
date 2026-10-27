@@ -287,12 +287,28 @@ func (m *mpvProcess) call(arguments ...interface{}) (interface{}, error) {
 	return m.conn.Call(arguments...)
 }
 
-func (m *mpvProcess) load(url string) error {
+// setHeaders replaces the HTTP headers mpv sends for the next file. mpv takes a
+// single comma-separated string, so header values must not contain commas.
+func (m *mpvProcess) setHeaders(headers []string) error {
+	if len(headers) == 0 {
+		return nil
+	}
+	_, err := m.call("set_property", "http-header-fields", strings.Join(headers, ","))
+	return err
+}
+
+func (m *mpvProcess) load(url string, headers []string) error {
+	if err := m.setHeaders(headers); err != nil {
+		return err
+	}
 	_, err := m.call("loadfile", url, "replace")
 	return err
 }
 
-func (m *mpvProcess) insert(index int, url string) error {
+func (m *mpvProcess) insert(index int, url string, headers []string) error {
+	if err := m.setHeaders(headers); err != nil {
+		return err
+	}
 	// playlist-insert was removed from mpv's command interface. loadfile
 	// insert-at is the supported way to add an entry at an exact position;
 	// an index at or past the end appends the entry.
@@ -309,11 +325,21 @@ func (m *mpvProcess) seek(seconds float64) error {
 }
 
 func (m *mpvProcess) addSubtitle(url, title string) error {
+	return m.addSubtitleFlags(url, title, "select")
+}
+
+// addSubtitleFlags adds one external subtitle track. mpv treats "select" as
+// "make this track active" and "auto" as "add it but keep the current track",
+// which is how several caption variants stay switchable in the player menu.
+func (m *mpvProcess) addSubtitleFlags(url, title, flags string) error {
 	url = strings.TrimSpace(url)
 	if url == "" {
 		return nil
 	}
-	arguments := []interface{}{"sub-add", url, "select"}
+	if strings.TrimSpace(flags) == "" {
+		flags = "select"
+	}
+	arguments := []interface{}{"sub-add", url, flags}
 	if title = strings.TrimSpace(title); title != "" {
 		arguments = append(arguments, title)
 	}
