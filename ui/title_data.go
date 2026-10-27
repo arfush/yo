@@ -441,10 +441,20 @@ func episodeRangeLabel(episodes []string) string {
 }
 
 func voiceMissingLabel(voice voiceover) string {
-	if len(voice.missing) == 0 {
+	return voiceMissingLabelForEpisodes(voice.missing)
+}
+
+// voiceMissingLabelForEpisodes formats a filtered missing list. Filmlib keys
+// are season-scoped ("S2E4"), so the prefix is stripped before grouping; the
+// same helper still accepts AnimeLIB's flat episode numbers.
+func voiceMissingLabelForEpisodes(missing []string) string {
+	if len(missing) == 0 {
 		return ""
 	}
-	episodes := uniqueSortedEpisodes(voice.missing)
+	episodes := missingDisplayLabels(missing)
+	if len(episodes) == 0 {
+		return ""
+	}
 	parts := make([]string, 0, len(episodes))
 	for index := 0; index < len(episodes); {
 		start, startErr := strconv.Atoi(episodes[index])
@@ -471,6 +481,39 @@ func voiceMissingLabel(voice voiceover) string {
 		index = next
 	}
 	return "Нет серий: " + strings.Join(parts, ", ")
+}
+
+// missingDisplayLabels turns source keys into the numbers shown in the episode
+// grid and sorts numeric lists numerically. Mixed lists (specials such as
+// "1.5" or "SP1") keep lexical order so specials remain next to their neighbors.
+func missingDisplayLabels(keys []string) []string {
+	seen := make(map[string]bool, len(keys))
+	labels := make([]string, 0, len(keys))
+	for _, key := range keys {
+		label := strings.TrimSpace(episodeDisplayLabel(key))
+		if label == "" || seen[label] {
+			continue
+		}
+		seen[label] = true
+		labels = append(labels, label)
+	}
+	allNumeric := len(labels) > 0
+	for _, label := range labels {
+		if _, err := strconv.Atoi(label); err != nil {
+			allNumeric = false
+			break
+		}
+	}
+	if allNumeric {
+		sort.SliceStable(labels, func(i, j int) bool {
+			left, _ := strconv.Atoi(labels[i])
+			right, _ := strconv.Atoi(labels[j])
+			return left < right
+		})
+	} else {
+		sort.SliceStable(labels, func(i, j int) bool { return labels[i] < labels[j] })
+	}
+	return labels
 }
 
 func uniqueSortedEpisodes(episodes []string) []string {

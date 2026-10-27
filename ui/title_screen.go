@@ -781,6 +781,45 @@ func (w *titleScreen) visibleEpisodeIndices() []int {
 	return indices
 }
 
+// currentSeasonEpisodeSet limits voice badges and tooltips to the season whose
+// grid is visible. AnimeLIB titles have no seasons, so their flat list stays
+// unscoped.
+func (w *titleScreen) currentSeasonEpisodeSet() map[string]bool {
+	if len(w.item.seasons) == 0 {
+		return nil
+	}
+	season := w.selectedSeason
+	if season < 0 || season >= len(w.item.seasons) {
+		season = 0
+	}
+	set := make(map[string]bool, len(w.item.seasons[season].episodes))
+	for _, episode := range w.item.seasons[season].episodes {
+		set[episode] = true
+	}
+	return set
+}
+
+func (w *titleScreen) missingForCurrentSeason(voice voiceover) []string {
+	set := w.currentSeasonEpisodeSet()
+	if set == nil {
+		return voice.missing
+	}
+	missing := make([]string, 0, len(voice.missing))
+	for _, episode := range voice.missing {
+		if set[episode] {
+			missing = append(missing, episode)
+		}
+	}
+	return missing
+}
+
+func (w *titleScreen) voiceIncomplete(index int) bool {
+	if index < 0 || index >= len(w.item.voices) {
+		return false
+	}
+	return len(w.missingForCurrentSeason(w.item.voices[index])) > 0
+}
+
 // selectSeason switches the visible season and moves the selection to its first
 // available episode, so pressing Watch after browsing a season plays what the
 // grid highlights.

@@ -16,37 +16,41 @@ func (w *titleScreen) layoutTooltip(gtx layout.Context, size image.Point) {
 	if w.tooltipKodik {
 		label = "Будут серии с Kodik"
 	} else {
-		label = voiceMissingLabel(w.item.voices[w.tooltipIndex])
+		missing := w.missingForCurrentSeason(w.item.voices[w.tooltipIndex])
+		label = voiceMissingLabelForEpisodes(missing)
 	}
 	if label == "" {
 		return
 	}
 	face := font.Font{Typeface: fontFamily, Weight: font.Medium}
-	_, ink := w.typo.measure(gtx, label, face, titlePageTooltipSize)
+	margin := gtx.Dp(unit.Dp(8))
+	padX := gtx.Dp(unit.Dp(10))
+	padY := gtx.Dp(unit.Dp(7))
+	maxTextWidth := min(gtx.Dp(unit.Dp(340)), size.X-2*margin-2*padX)
+	maxTextWidth = max(maxTextWidth, gtx.Dp(unit.Dp(80)))
+	_, ink := w.typo.measureWrapped(gtx, label, face, titlePageTooltipSize, maxTextWidth)
 	if ink.Empty() {
 		return
 	}
-	padX := gtx.Dp(unit.Dp(10))
-	padY := gtx.Dp(unit.Dp(7))
 	tipWidth := ink.Dx() + 2*padX
 	tipHeight := ink.Dy() + 2*padY
 	x := w.tooltipAnchor.X
 	y := w.tooltipAnchor.Y - tipHeight/2
-	if x+tipWidth > size.X-gtx.Dp(unit.Dp(8)) {
-		x = size.X - gtx.Dp(unit.Dp(8)) - tipWidth
+	if x+tipWidth > size.X-margin {
+		x = size.X - margin - tipWidth
 	}
-	if x < gtx.Dp(unit.Dp(8)) {
-		x = gtx.Dp(unit.Dp(8))
+	if x < margin {
+		x = margin
 	}
-	if y < gtx.Dp(unit.Dp(8)) {
-		y = gtx.Dp(unit.Dp(8))
+	if y < margin {
+		y = margin
 	}
-	if y+tipHeight > size.Y-gtx.Dp(unit.Dp(8)) {
-		y = size.Y - gtx.Dp(unit.Dp(8)) - tipHeight
+	if y+tipHeight > size.Y-margin {
+		y = size.Y - margin - tipHeight
 	}
 	rect := image.Rect(x, y, x+tipWidth, y+tipHeight)
 	radius := gtx.Dp(unit.Dp(6))
 	fillRounded(gtx, titleTooltipBorder, rect, radius)
 	fillRounded(gtx, titleTooltipFill, rect.Inset(gtx.Dp(unit.Dp(1))), radius-gtx.Dp(unit.Dp(1)))
-	w.typo.draw(gtx, label, face, titlePageTooltipSize, titleTooltipText, image.Pt(rect.Min.X+padX, rect.Min.Y+padY))
+	w.typo.drawWrapped(gtx, label, face, titlePageTooltipSize, titleTooltipText, image.Pt(rect.Min.X+padX, rect.Min.Y+padY), maxTextWidth)
 }

@@ -34,6 +34,34 @@ func TestVoiceMissingLabelCompressesRanges(t *testing.T) {
 			t.Fatalf("voiceMissingLabel(%v) = %q, want %q", test.missing, got, test.want)
 		}
 	}
+	if got := voiceMissingLabelForEpisodes([]string{"S1E10", "S1E2", "S1E3"}); got != "Нет серий: 2-3, 10" {
+		t.Fatalf("season-prefixed label = %q", got)
+	}
+}
+
+func TestVoiceMissingLabelUsesSelectedSeason(t *testing.T) {
+	voice := voiceover{missing: []string{"S1E2", "S2E1", "S2E2", "S2E3"}}
+	w := titleScreen{
+		item: historyTitle{
+			seasons: []titleSeason{
+				{number: 1, episodes: []string{"S1E1", "S1E2"}},
+				{number: 2, episodes: []string{"S2E1", "S2E2", "S2E3"}},
+			},
+			voices: []voiceover{voice},
+		},
+		selectedSeason: 1,
+	}
+	if !w.voiceIncomplete(0) {
+		t.Fatal("voice must be incomplete in the selected season")
+	}
+	missing := w.missingForCurrentSeason(voice)
+	if got := voiceMissingLabelForEpisodes(missing); got != "Нет серий: 1-3" {
+		t.Fatalf("selected-season label = %q (%v)", got, missing)
+	}
+	w.selectedSeason = 0
+	if got := voiceMissingLabelForEpisodes(w.missingForCurrentSeason(voice)); got != "Нет серий: 2" {
+		t.Fatalf("first-season label = %q", got)
+	}
 }
 
 func TestVoiceoverKodikFlagSurvivesConversion(t *testing.T) {

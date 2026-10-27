@@ -76,7 +76,7 @@ func (w *titleScreen) layoutVoiceRow(gtx layout.Context, index, width, height in
 	row := &w.voices[index]
 	voice := w.item.voices[index]
 	selected := index == w.selectedVoice
-	incomplete := !voice.complete()
+	incomplete := w.voiceIncomplete(index)
 	hasKodik := voice.hasKodik
 
 	_, clicked := row.click.Update(gtx)
