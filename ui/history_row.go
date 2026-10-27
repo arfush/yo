@@ -220,24 +220,31 @@ func (m *mainWindow) drawHistoryRowCard(gtx layout.Context, rect image.Rectangle
 	drawStatusPill(gtx, m.typo, geom.releaseStatus, item.status)
 	drawUserStatusPill(gtx, m.typo, geom.status, item.userStatus, true)
 
+	actionStyle := iconButtonStyle{
+		Fill:        mainControlFill,
+		FillHover:   footerControlHoverFill,
+		Border:      mainControlBorder,
+		BorderHover: footerControlHoverBorder,
+		Radius:      mainControlRadius,
+	}
 	if vis.itemLoading {
-		drawIconButtonSurface(gtx, geom.play, iconButtonStyle{Fill: mainControlFill, Border: mainAccentColor1, Radius: mainControlRadius}, 0)
+		loadingStyle := actionStyle
+		loadingStyle.Border = mainAccentColor1
+		loadingStyle.BorderHover = mainAccentColor1
+		drawIconButtonSurface(gtx, geom.play, loadingStyle, 0)
 		drawSpinner(gtx, centerOf(geom.play), gtx.Dp(unit.Dp(8)), gtx.Dp(unit.Dp(1.5)), 0, mainAccentColor1)
 	} else {
-		buttonTextColor := mainControlColor
+		buttonTextColor := mixColor(mainControlColor, mainHistoryPlayColor, vis.playHover)
 		if vis.loading {
 			buttonTextColor = withAlpha(mainFaintColor, 0xb0)
 		}
-		fill := mixColor(mainControlFill, mainPlayButtonFill, vis.playHover)
-		stroke := mixColor(mainControlBorder, mainPlayButtonBorder, vis.playHover)
-		drawIconButtonSurface(gtx, geom.play, iconButtonStyle{Fill: fill, Border: stroke, Radius: mainControlRadius}, 0)
-		drawPlay(gtx, centerOf(geom.play), gtx.Dp(unit.Dp(24)), buttonTextColor)
+		drawIconButtonSurface(gtx, geom.play, actionStyle, vis.playHover)
+		drawHistoryPlay(gtx, centerOf(geom.play), gtx.Dp(unit.Dp(24)), buttonTextColor)
 	}
 
-	trashFill := mixColor(mainControlFill, mainTrashButtonFill, vis.trashHover)
-	trashBorder := mixColor(mainControlBorder, mainTrashButtonBorder, vis.trashHover)
-	drawIconButtonSurface(gtx, geom.trash, iconButtonStyle{Fill: trashFill, Border: trashBorder, Radius: mainControlRadius}, 0)
-	drawTrash(gtx, centerOf(geom.trash), gtx.Dp(unit.Dp(24)), mainControlColor)
+	trashColor := mixColor(mainControlColor, mainDangerColor, vis.trashHover)
+	drawIconButtonSurface(gtx, geom.trash, actionStyle, vis.trashHover)
+	drawHistoryTrash(gtx, centerOf(geom.trash), gtx.Dp(unit.Dp(24)), trashColor)
 }
 
 func (m *mainWindow) layoutHistoryRow(gtx layout.Context, index, width, height int) {

@@ -42,38 +42,24 @@
 <rect x="519.75" y="11.75" width="32.5" height="32.5" rx="8.25" fill="#1A1822"/>
 <rect x="519.75" y="11.75" width="32.5" height="32.5" rx="8.25" stroke="#2E293D" stroke-width="1.5"/>
 <path d="M530 22H535.25M530 25.75H535.25M530 29.5H533M539 22V31M542 28L539 31L536 28M534.5 34H542.75" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke="#78738D"/>
-<rect x="21.75" y="57.75" width="32.5" height="32.5" rx="8.25" fill="#1A1822"/>
-<rect x="21.75" y="57.75" width="32.5" height="32.5" rx="8.25" stroke="#2E293D" stroke-width="1.5"/>
 <path d="M32.7494 74H43.2506" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke="#78738D"/>
-<rect x="63.75" y="57.75" width="32.5" height="32.5" rx="8.25" fill="#1A1822"/>
-<rect x="63.75" y="57.75" width="32.5" height="32.5" rx="8.25" stroke="#2E293D" stroke-width="1.5"/>
 <mask id="stroke0_37_2" fill="white">
 <path d="M85.25 67.25H74.75C73.9216 67.25 73.25 67.9216 73.25 68.75V79.25C73.25 80.0784 73.9216 80.75 74.75 80.75H85.25C86.0784 80.75 86.75 80.0784 86.75 79.25V68.75C86.75 67.9216 86.0784 67.25 85.25 67.25Z"/>
 </mask>
 <path d="M74.75 67.25H85.25C86.0784 67.25 86.75 67.9216 86.75 68.75V79.25C86.75 80.0784 86.0784 80.75 85.25 80.75H74.75C73.9216 80.75 73.25 80.0784 73.25 79.25V68.75C73.25 67.9216 73.9216 67.25 74.75 67.25Z" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" stroke="#78738D" mask="url(#stroke0_37_2)"/>
-<rect x="105.75" y="57.75" width="32.5" height="32.5" rx="8.25" fill="#1A1822"/>
-<rect x="105.75" y="57.75" width="32.5" height="32.5" rx="8.25" stroke="#2E293D" stroke-width="1.5"/>
 <path d="M117.125 71H123.875C124.496 71 125 71.5037 125 72.125V78.875C125 79.4963 124.496 80 123.875 80H117.125C116.504 80 116 79.4963 116 78.875V72.125C116 71.5037 116.504 71 117.125 71Z" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke="#78738D"/>
 <path d="M119 69.125V68.375C119 67.625 119.375 67.25 120.125 67.25H126.875C127.625 67.25 128 67.625 128 68.375V75.125C128 75.875 127.625 76.25 126.875 76.25H126.5" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke="#78738D"/>
-<rect x="147.75" y="57.75" width="32.5" height="32.5" rx="8.25" fill="#1A1822"/>
-<rect x="147.75" y="57.75" width="32.5" height="32.5" rx="8.25" stroke="#2E293D" stroke-width="1.5"/>
 <path d="M168.5 69.5L164 74M164 74L159.5 78.5M164 74L159.5 69.5M164 74L168.5 78.5" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke="#78738D"/>
-<rect x="205.75" y="57.75" width="32.5" height="32.5" rx="8.25" fill="#1A1822"/>
-<rect x="205.75" y="57.75" width="32.5" height="32.5" rx="8.25" stroke="#2E293D" stroke-width="1.5"/>
 <path d="M216.749 74H227.251" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke="#BA9AFF"/>
-<rect x="247.75" y="57.75" width="32.5" height="32.5" rx="8.25" fill="#1A1822"/>
-<rect x="247.75" y="57.75" width="32.5" height="32.5" rx="8.25" stroke="#2E293D" stroke-width="1.5"/>
 <mask id="stroke1_37_2" fill="white">
 <path d="M269.25 67.25H258.75C257.922 67.25 257.25 67.9216 257.25 68.75V79.25C257.25 80.0784 257.922 80.75 258.75 80.75H269.25C270.078 80.75 270.75 80.0784 270.75 79.25V68.75C270.75 67.9216 270.078 67.25 269.25 67.25Z"/>
 </mask>
 <path d="M258.75 67.25H269.25C270.078 67.25 270.75 67.9216 270.75 68.75V79.25C270.75 80.0784 270.078 80.75 269.25 80.75H258.75C257.922 80.75 257.25 80.0784 257.25 79.25V68.75C257.25 67.9216 257.922 67.25 258.75 67.25Z" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" stroke="#BA9AFF" mask="url(#stroke1_37_2)"/>
-<rect x="289.75" y="57.75" width="32.5" height="32.5" rx="8.25" fill="#1A1822"/>
-<rect x="289.75" y="57.75" width="32.5" height="32.5" rx="8.25" stroke="#2E293D" stroke-width="1.5"/>
 <path d="M301.125 71H307.875C308.496 71 309 71.5037 309 72.125V78.875C309 79.4963 308.496 80 307.875 80H301.125C300.504 80 300 79.4963 300 78.875V72.125C300 71.5037 300.504 71 301.125 71Z" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke="#BA9AFF"/>
 <path d="M303 69.125V68.375C303 67.625 303.375 67.25 304.125 67.25H310.875C311.625 67.25 312 67.625 312 68.375V75.125C312 75.875 311.625 76.25 310.875 76.25H310.5" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke="#BA9AFF"/>
-<rect x="331.75" y="57.75" width="32.5" height="32.5" rx="8.25" fill="#1A1822"/>
-<rect x="331.75" y="57.75" width="32.5" height="32.5" rx="8.25" stroke="#2E293D" stroke-width="1.5"/>
 <path d="M352.5 69.5L348 74M348 74L343.5 78.5M348 74L343.5 69.5M348 74L352.5 78.5" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke="#BA9AFF"/>
+<path d="M397 67.9956C397 66.9779 397.435 66.7404 398.306 67.2832L407.247 72.9823C408.251 73.6608 408.251 74.3392 407.247 75.0177L398.306 80.7168C397.435 81.2596 397 81.0221 397 80.0044V67.9956Z" fill="#AAA5BB"/>
+<path d="M442.5 73.25V77.75M445.5 73.25V77.75M449.25 69.5V80C449.25 80.3978 449.092 80.7794 448.811 81.0607C448.529 81.342 448.148 81.5 447.75 81.5H440.25C439.852 81.5 439.471 81.342 439.189 81.0607C438.908 80.7794 438.75 80.3978 438.75 80V69.5M449.25 69.5H447M449.25 69.5H450.75M438.75 69.5H437.25M438.75 69.5H441M441 69.5H447M441 69.5V68C441 67.6022 441.158 67.2206 441.439 66.9393C441.721 66.658 442.102 66.5 442.5 66.5H445.5C445.898 66.5 446.279 66.658 446.561 66.9393C446.842 67.2206 447 67.6022 447 68V69.5" stroke-width="1.6" stroke-linecap="round" stroke="#78738D"/>
 <defs>
 <clipPath id="clip0_37_2">
 <rect width="18" height="18" fill="white" transform="translate(281 19)"/>

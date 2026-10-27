@@ -29,13 +29,20 @@ func TestIconSheetProducesEveryGlyph(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := len(svgIconNames) + 1; len(specs) != want {
+	if want := len(svgIconNames) + len(svgGlyphFrames) + 1; len(specs) != want {
 		t.Fatalf("generated %d sheet glyphs, want %d", len(specs), want)
 	}
+	names := make(map[string]bool, len(specs))
 	for _, icon := range specs {
+		names[icon.name] = true
 		b := iconBounds(icon.build())
 		if b.minX < 0 || b.minY < 0 || b.maxX > 1 || b.maxY > 1 {
 			t.Errorf("%s bounds %+v leave the unit view box", icon.name, b)
+		}
+	}
+	for _, name := range []string{"history_play", "history_trash"} {
+		if !names[name] {
+			t.Errorf("sheet is missing %q", name)
 		}
 	}
 }

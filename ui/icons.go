@@ -37,7 +37,9 @@ func drawUpdateIcon(gtx layout.Context, center image.Point, g geometry, col colo
 }
 
 func drawSettingsIcon(gtx layout.Context, center image.Point, g geometry, col color.NRGBA) {
-	drawAppIcon(gtx, "settings", center, g.px(24), col)
+	// Slightly smaller than the neighbouring footer controls: the sliders read
+	// heavier than the other glyphs at the same 24 dp box.
+	drawAppIcon(gtx, "settings", center, g.px(22), col)
 }
 
 func drawPeopleIcon(gtx layout.Context, center image.Point, g geometry, col color.NRGBA) {
@@ -65,6 +67,16 @@ func drawCopyIcon(gtx layout.Context, center image.Point, g geometry, col color.
 
 func drawPlay(gtx layout.Context, center image.Point, size int, col color.NRGBA) {
 	drawAppIcon(gtx, "play", center, max(1, size), col)
+}
+
+// drawHistoryPlay is the filled triangle from the sheet's history pair. The
+// general footer play glyph keeps its outlined stop bar.
+func drawHistoryPlay(gtx layout.Context, center image.Point, size int, col color.NRGBA) {
+	drawAppIcon(gtx, "history_play", center, max(1, size), col)
+}
+
+func drawHistoryTrash(gtx layout.Context, center image.Point, size int, col color.NRGBA) {
+	drawAppIcon(gtx, "history_trash", center, max(1, size), col)
 }
 
 func drawTrash(gtx layout.Context, center image.Point, size int, col color.NRGBA) {

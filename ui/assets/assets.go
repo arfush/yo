@@ -71,6 +71,8 @@ var IconNames = []string{
 	"close_active",
 	"copy",
 	"error",
+	"history_play",
+	"history_trash",
 	"info",
 	"keyboard",
 	"link",

@@ -37,13 +37,29 @@ func (b svgBox) iconRect() (x, y, size float64) {
 }
 
 type svgGlyph struct {
-	width float64
-	subs  []svgSubpath
+	width  float64
+	filled bool
+	subs   []svgSubpath
 }
 
 type svgSubpath struct {
 	points []vec
 	closed bool
+}
+
+// svgGlyphFrame is the 24-unit box that normalizes an unboxed glyph. The
+// current sheet draws the window controls and history actions without their
+// decorative button tiles, so their authored position on the 24-unit grid has
+// to be restored here instead of inferred from the glyph bounds.
+type svgGlyphFrame struct {
+	name string
+	x, y float64
+	size float64
+}
+
+func (f svgGlyphFrame) contains(glyph svgGlyph) bool {
+	c := glyph.center()
+	return c.x >= f.x && c.x <= f.x+f.size && c.y >= f.y && c.y <= f.y+f.size
 }
 
 func loadIconSheet(path string) ([]iconSpec, error) {
@@ -56,6 +72,7 @@ func loadIconSheet(path string) ([]iconSpec, error) {
 	}
 	assignments := make([][]svgGlyph, len(sheet.boxes))
 	smallGlyphs := make([]svgGlyph, len(sheet.small))
+	frameGlyphs := make([][]svgGlyph, len(svgGlyphFrames))
 	for _, glyph := range sheet.glyphs {
 		box, ok := glyphBox(glyph, sheet.small)
 		if ok {
@@ -73,13 +90,24 @@ func loadIconSheet(path string) ([]iconSpec, error) {
 				break
 			}
 		}
-		if index < 0 {
+		if index >= 0 {
+			assignments[index] = append(assignments[index], glyph)
+			continue
+		}
+		frameIndex := -1
+		for i, frame := range svgGlyphFrames {
+			if frame.contains(glyph) {
+				frameIndex = i
+				break
+			}
+		}
+		if frameIndex < 0 {
 			return nil, fmt.Errorf("glyph at %v is outside every icon box", glyph.center())
 		}
-		assignments[index] = append(assignments[index], glyph)
+		frameGlyphs[frameIndex] = append(frameGlyphs[frameIndex], glyph)
 	}
 
-	specs := make([]iconSpec, 0, len(sheet.boxes)+len(sheet.small))
+	specs := make([]iconSpec, 0, len(sheet.boxes)+len(sheet.small)+len(svgGlyphFrames))
 	for i, box := range sheet.boxes {
 		if len(assignments[i]) == 0 {
 			return nil, fmt.Errorf("icon %q has no paths", svgIconNames[i])
@@ -103,6 +131,19 @@ func loadIconSheet(path string) ([]iconSpec, error) {
 			name: "trash_small",
 			build: func() []shape {
 				return []shape{buildSVGGlyphs([]svgGlyph{glyph}, box)}
+			},
+		})
+	}
+	for i, frame := range svgGlyphFrames {
+		if len(frameGlyphs[i]) == 0 {
+			return nil, fmt.Errorf("icon %q has no paths", frame.name)
+		}
+		frame := frame
+		glyphs := frameGlyphs[i]
+		specs = append(specs, iconSpec{
+			name: frame.name,
+			build: func() []shape {
+				return []shape{buildSVGGlyphsInRect(glyphs, frame.x, frame.y, frame.size)}
 			},
 		})
 	}
@@ -151,7 +192,9 @@ func readIconSheet(path string) (svgSheet, error) {
 		case "path":
 			d := svgAttr(start, "d")
 			width := svgFloat(start, "stroke-width")
-			if d == "" || width <= 0 {
+			fill := strings.TrimSpace(svgAttr(start, "fill"))
+			filled := fill != "" && !strings.EqualFold(fill, "none")
+			if d == "" || (width <= 0 && !filled) {
 				continue
 			}
 			// The masked maximize glyph uses a doubled stroke so only its inner
@@ -163,7 +206,7 @@ func readIconSheet(path string) (svgSheet, error) {
 			if err != nil {
 				return svgSheet{}, fmt.Errorf("parse path %q: %w", d, err)
 			}
-			sheet.glyphs = append(sheet.glyphs, svgGlyph{width: width, subs: subs})
+			sheet.glyphs = append(sheet.glyphs, svgGlyph{width: width, filled: filled, subs: subs})
 		}
 	}
 	sort.SliceStable(sheet.boxes, func(i, j int) bool {
@@ -230,8 +273,12 @@ func glyphInsideBox(glyph svgGlyph, box svgBox) bool {
 }
 
 func buildSVGGlyphs(glyphs []svgGlyph, box svgBox) shape {
-	var out shape
 	originX, originY, size := box.iconRect()
+	return buildSVGGlyphsInRect(glyphs, originX, originY, size)
+}
+
+func buildSVGGlyphsInRect(glyphs []svgGlyph, originX, originY, size float64) shape {
+	var out shape
 	for _, glyph := range glyphs {
 		width := glyph.width / size
 		for _, sub := range glyph.subs {
@@ -244,6 +291,12 @@ func buildSVGGlyphs(glyphs []svgGlyph, box svgBox) shape {
 			}
 			points = trimDuplicatePoints(points)
 			if len(points) == 0 {
+				continue
+			}
+			if glyph.filled {
+				if len(points) > 2 {
+					out.polygon(points)
+				}
 				continue
 			}
 			if sub.closed {
@@ -286,14 +339,23 @@ var svgIconNames = []string{
 	"pause",
 	"autoscroll_on",
 	"autoscroll_off",
-	"minimize",
-	"maximize",
-	"restore",
-	"close",
-	"minimize_active",
-	"maximize_active",
-	"restore_active",
-	"close_active",
+}
+
+// The supplied sheet leaves the window controls and the two history actions
+// without tiles. Their frames are the 24-unit inner boxes of the former
+// 32.5-unit button tiles (4.25 units of padding on each side), so removing the
+// decorative tiles does not shift the glyphs.
+var svgGlyphFrames = []svgGlyphFrame{
+	{"minimize", 26, 62, svgGlyphBox},
+	{"maximize", 68, 62, svgGlyphBox},
+	{"restore", 110, 62, svgGlyphBox},
+	{"close", 152, 62, svgGlyphBox},
+	{"minimize_active", 210, 62, svgGlyphBox},
+	{"maximize_active", 252, 62, svgGlyphBox},
+	{"restore_active", 294, 62, svgGlyphBox},
+	{"close_active", 336, 62, svgGlyphBox},
+	{"history_play", 390.5, 62, svgGlyphBox},
+	{"history_trash", 432, 62, svgGlyphBox},
 }
 
 // --- SVG path parsing ----------------------------------------------------
