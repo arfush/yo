@@ -1,6 +1,6 @@
 //go:build windows
 
-package ui
+package tray
 
 import (
 	"errors"
@@ -67,37 +67,44 @@ const (
 	// the foreground window to any process instead of one process id.
 	allowSetForegroundAny = ^uintptr(0)
 
+	// dpiAwarenessContextPerMonitorAwareV2 is DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2.
+	dpiAwarenessContextPerMonitorAwareV2 = ^uintptr(3)
+
 	menuOpen = 1
 	menuExit = 2
 )
 
 var (
+	user32               = windows.NewLazySystemDLL("user32.dll")
 	shell32              = windows.NewLazySystemDLL("shell32.dll")
 	gdi32                = windows.NewLazySystemDLL("gdi32.dll")
 	kernel32             = windows.NewLazySystemDLL("kernel32.dll")
 	procShellNotifyIconW = shell32.NewProc("Shell_NotifyIconW")
 	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
 
-	procRegisterClassExW   = user32.NewProc("RegisterClassExW")
-	procCreateWindowExW    = user32.NewProc("CreateWindowExW")
-	procDefWindowProcW     = user32.NewProc("DefWindowProcW")
-	procDestroyWindow      = user32.NewProc("DestroyWindow")
-	procGetMessageW        = user32.NewProc("GetMessageW")
-	procTranslateMessage   = user32.NewProc("TranslateMessage")
-	procDispatchMessageW   = user32.NewProc("DispatchMessageW")
-	procPostQuitMessage    = user32.NewProc("PostQuitMessage")
-	procPostMessageW       = user32.NewProc("PostMessageW")
-	procCreatePopupMenu    = user32.NewProc("CreatePopupMenu")
-	procAppendMenuW        = user32.NewProc("AppendMenuW")
-	procDestroyMenu        = user32.NewProc("DestroyMenu")
-	procTrackPopupMenu     = user32.NewProc("TrackPopupMenu")
-	procGetSystemMetrics   = user32.NewProc("GetSystemMetrics")
-	procCreateIconIndirect = user32.NewProc("CreateIconIndirect")
-	procDestroyIcon        = user32.NewProc("DestroyIcon")
-	procGetDC              = user32.NewProc("GetDC")
-	procReleaseDC          = user32.NewProc("ReleaseDC")
-	procFindWindowW        = user32.NewProc("FindWindowW")
-	procAllowSetForeground = user32.NewProc("AllowSetForegroundWindow")
+	procRegisterClassExW             = user32.NewProc("RegisterClassExW")
+	procCreateWindowExW              = user32.NewProc("CreateWindowExW")
+	procDefWindowProcW               = user32.NewProc("DefWindowProcW")
+	procDestroyWindow                = user32.NewProc("DestroyWindow")
+	procGetMessageW                  = user32.NewProc("GetMessageW")
+	procTranslateMessage             = user32.NewProc("TranslateMessage")
+	procDispatchMessageW             = user32.NewProc("DispatchMessageW")
+	procPostQuitMessage              = user32.NewProc("PostQuitMessage")
+	procPostMessageW                 = user32.NewProc("PostMessageW")
+	procCreatePopupMenu              = user32.NewProc("CreatePopupMenu")
+	procAppendMenuW                  = user32.NewProc("AppendMenuW")
+	procDestroyMenu                  = user32.NewProc("DestroyMenu")
+	procTrackPopupMenu               = user32.NewProc("TrackPopupMenu")
+	procGetSystemMetrics             = user32.NewProc("GetSystemMetrics")
+	procCreateIconIndirect           = user32.NewProc("CreateIconIndirect")
+	procDestroyIcon                  = user32.NewProc("DestroyIcon")
+	procGetDC                        = user32.NewProc("GetDC")
+	procReleaseDC                    = user32.NewProc("ReleaseDC")
+	procFindWindowW                  = user32.NewProc("FindWindowW")
+	procAllowSetForeground           = user32.NewProc("AllowSetForegroundWindow")
+	procGetCursorPos                 = user32.NewProc("GetCursorPos")
+	procSetForegroundWindow          = user32.NewProc("SetForegroundWindow")
+	procSetThreadDpiAwarenessContext = user32.NewProc("SetThreadDpiAwarenessContext")
 
 	procCreateDIBSection = gdi32.NewProc("CreateDIBSection")
 	procCreateBitmap     = gdi32.NewProc("CreateBitmap")
@@ -117,6 +124,11 @@ type wndClassExW struct {
 	MenuName   *uint16
 	ClassName  *uint16
 	IconSm     windows.Handle
+}
+
+type winPoint struct {
+	X int32
+	Y int32
 }
 
 type winMessage struct {
@@ -170,13 +182,13 @@ type bitmapInfoHeader struct {
 
 // tray owns the notification-area icon. open and exit are called from the tray
 // thread, so they must be safe to call from another goroutine.
-type tray struct {
+type Tray struct {
 	open func()
 	exit func()
 
 	hwnd windows.HWND
 	// ready carries the result of the window and icon creation back to
-	// newTray; done is closed after the message loop cleaned everything up.
+	// New; done is closed after the message loop cleaned everything up.
 	ready   chan error
 	done    chan struct{}
 	closing sync.Once
@@ -186,7 +198,7 @@ type tray struct {
 	notifyMu sync.Mutex
 }
 
-func traySupported() bool { return true }
+func Supported() bool { return true }
 
 // ActivateRunningInstance asks the copy that already owns the lock to show its
 // window, and reports whether the request was handed over.
@@ -215,11 +227,11 @@ func ActivateRunningInstance() bool {
 	return posted != 0
 }
 
-// newTray adds the notification-area icon and parks a message loop in the
+// New adds the notification-area icon and parks a message loop in the
 // background. A failure is recoverable: the caller keeps the plain close
 // behaviour and reports the reason.
-func newTray(icon image.Image, onOpen, onExit func()) (*tray, error) {
-	t := &tray{
+func New(icon image.Image, onOpen, onExit func()) (*Tray, error) {
+	t := &Tray{
 		open:  onOpen,
 		exit:  onExit,
 		ready: make(chan error, 1),
@@ -232,10 +244,10 @@ func newTray(icon image.Image, onOpen, onExit func()) (*tray, error) {
 	return t, nil
 }
 
-// close removes the icon and stops the tray thread. It waits briefly so the
+// Close removes the icon and stops the tray thread. It waits briefly so the
 // icon disappears immediately instead of lingering until the pointer happens to
 // pass over the notification area.
-func (t *tray) close() {
+func (t *Tray) Close() {
 	if t == nil {
 		return
 	}
@@ -248,7 +260,7 @@ func (t *tray) close() {
 	})
 }
 
-func (t *tray) run(icon image.Image) {
+func (t *Tray) run(icon image.Image) {
 	// The tray callback window and its message loop belong to one OS thread.
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -312,7 +324,7 @@ func (t *tray) run(icon image.Image) {
 	procDestroyIcon.Call(uintptr(hicon))
 }
 
-func (t *tray) messageLoop() {
+func (t *Tray) messageLoop() {
 	for {
 		var message winMessage
 		ret, _, _ := procGetMessageW.Call(uintptr(unsafe.Pointer(&message)), 0, 0, 0)
@@ -324,7 +336,7 @@ func (t *tray) messageLoop() {
 	}
 }
 
-func (t *tray) windowProc(hwnd, message, wparam, lparam uintptr) uintptr {
+func (t *Tray) windowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 	switch uint32(message) {
 	case trayCallback:
 		switch uint32(lparam) {
@@ -353,7 +365,7 @@ func (t *tray) windowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 
 // buildMenu creates the notification-area context menu. The caller owns the
 // handle and destroys it.
-func (t *tray) buildMenu() uintptr {
+func (t *Tray) buildMenu() uintptr {
 	menu, _, _ := procCreatePopupMenu.Call()
 	if menu == 0 {
 		return 0
@@ -367,7 +379,7 @@ func (t *tray) buildMenu() uintptr {
 // showMenu draws the context menu on the notification-area thread.
 // TrackPopupMenu runs its own modal loop, so the selection is returned directly
 // and the actions run only after the menu is gone.
-func (t *tray) showMenu(hwnd windows.HWND) {
+func (t *Tray) showMenu(hwnd windows.HWND) {
 	menu := t.buildMenu()
 	if menu == 0 {
 		return
@@ -416,7 +428,7 @@ func appendMenuItem(menu uintptr, flags uint32, id uintptr, label string) {
 	procAppendMenuW.Call(menu, uintptr(flags), id, uintptr(unsafe.Pointer(text)))
 }
 
-func (t *tray) notify(command uint32, icon windows.Handle) bool {
+func (t *Tray) notify(command uint32, icon windows.Handle) bool {
 	data := notifyIconData{
 		Wnd:             t.hwnd,
 		ID:              1,
@@ -437,10 +449,10 @@ func (t *tray) notify(command uint32, icon windows.Handle) bool {
 	return ok != 0
 }
 
-// notifyMessage shows a standard Windows notification through the existing
+// NotifyMessage shows a standard Windows notification through the existing
 // tray icon. NIF_INFO is queued by Explorer; on Windows 10/11 it appears in the
 // notification center like any other application toast.
-func (t *tray) notifyMessage(title, body string) error {
+func (t *Tray) NotifyMessage(title, body string) error {
 	if t == nil || t.hwnd == 0 {
 		return errors.New("уведомления Windows недоступны")
 	}
@@ -458,7 +470,7 @@ func (t *tray) notifyMessage(title, body string) error {
 	// leaves a small visual gap between the series name and the episode text.
 	// One UTF-16 unit is reserved for it inside the fixed szInfo array.
 	if body != "" {
-		body = "\n" + trimNotificationText(body, maxNotificationBody-1)
+		body = "\n" + TrimNotificationText(body, MaxNotificationBody-1)
 	}
 	if value, err := windows.UTF16FromString(body); err == nil {
 		copy(data.Info[:], value)

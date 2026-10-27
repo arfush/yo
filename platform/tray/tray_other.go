@@ -1,6 +1,6 @@
 //go:build !windows
 
-package ui
+package tray
 
 import (
 	"errors"
@@ -9,15 +9,15 @@ import (
 
 // tray is the notification-area icon. Only Windows implements the notification
 // area; elsewhere the window controls keep their usual behaviour.
-type tray struct{}
+type Tray struct{}
 
-func traySupported() bool { return false }
+func Supported() bool { return false }
 
-func newTray(image.Image, func(), func()) (*tray, error) { return nil, nil }
+func New(image.Image, func(), func()) (*Tray, error) { return nil, nil }
 
-func (t *tray) close() {}
+func (t *Tray) Close() {}
 
-func (t *tray) notifyMessage(string, string) error {
+func (t *Tray) NotifyMessage(string, string) error {
 	return errors.New("уведомления Windows недоступны")
 }
 

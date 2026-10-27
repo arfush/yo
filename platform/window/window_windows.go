@@ -1,6 +1,6 @@
 //go:build windows
 
-package ui
+package window
 
 import (
 	"image"
@@ -42,7 +42,7 @@ var (
 )
 
 var (
-	pendingAppRect    windowRect
+	pendingAppRect    Rect
 	pendingAppRectSet bool
 )
 
@@ -66,21 +66,21 @@ type winRect struct {
 	Left, Top, Right, Bottom int32
 }
 
-func hoverPollingSupported() bool { return true }
+func HoverPollingSupported() bool { return true }
 
-// mouseLeftPress reports the current physical left-button state and whether it
+// MouseLeftPress reports the current physical left-button state and whether it
 // was pressed since the previous call. The pressed flag is used for presses in
 // non-client areas, where Gio never receives pointer events and Windows may run
 // a modal move loop before the app can observe the button being held.
-func mouseLeftPress() (down, pressed bool) {
+func MouseLeftPress() (down, pressed bool) {
 	state, _, _ := procGetAsyncKeyState.Call(vkLeftButton)
 	return state&0x8000 != 0, state&0x0001 != 0
 }
 
-// cursorInRect reports whether the system cursor is inside r. r is in Gio's
+// CursorInRect reports whether the system cursor is inside r. r is in Gio's
 // device-pixel client coordinates, which match Win32 client coordinates for
 // this per-monitor DPI-aware window.
-func cursorInRect(r image.Rectangle) bool {
+func CursorInRect(r image.Rectangle) bool {
 	hwnd := windows.HWND(windowHandle.Load())
 	if hwnd == 0 {
 		return true
@@ -100,10 +100,10 @@ func cursorInRect(r image.Rectangle) bool {
 	return image.Pt(int(pt.X), int(pt.Y)).In(r)
 }
 
-// cursorInWindow reports whether the system cursor is inside the client area.
+// CursorInWindow reports whether the system cursor is inside the client area.
 // It is used to cancel a drag that leaves the window even if Gio's captured
 // pointer stops delivering move events.
-func cursorInWindow() bool {
+func CursorInWindow() bool {
 	hwnd := windows.HWND(windowHandle.Load())
 	if hwnd == 0 {
 		return true
@@ -115,10 +115,10 @@ func cursorInWindow() bool {
 	if rect.Right <= rect.Left || rect.Bottom <= rect.Top {
 		return true
 	}
-	return cursorInRect(image.Rect(int(rect.Left), int(rect.Top), int(rect.Right), int(rect.Bottom)))
+	return CursorInRect(image.Rect(int(rect.Left), int(rect.Top), int(rect.Right), int(rect.Bottom)))
 }
 
-func handleViewEvent(e event.Event) {
+func HandleViewEvent(e event.Event) {
 	view, ok := e.(app.Win32ViewEvent)
 	if !ok || !view.Valid() {
 		return
@@ -162,10 +162,10 @@ func handleViewEvent(e event.Event) {
 	)
 }
 
-// appWindowBounds returns the application window rectangle in device
+// AppWindowBounds returns the application window rectangle in device
 // independent pixels. Chromium's --window-size/--window-position switches use
 // DIPs, while GetWindowRect reports physical pixels.
-func appWindowBounds(scale float64) (catalog.Bounds, bool) {
+func AppWindowBounds(scale float64) (catalog.Bounds, bool) {
 	hwnd := windows.HWND(windowHandle.Load())
 	if hwnd == 0 {
 		return catalog.Bounds{}, false
@@ -188,29 +188,29 @@ func appWindowBounds(scale float64) (catalog.Bounds, bool) {
 	}, true
 }
 
-type windowRect struct {
+type Rect struct {
 	X      int
 	Y      int
 	Width  int
 	Height int
 }
 
-// appWindowRect returns the physical window rectangle. mpv's --geometry uses
+// AppWindowRect returns the physical window rectangle. mpv's --geometry uses
 // physical pixels, so this deliberately skips the DIP conversion used for
 // Chromium.
-func appWindowRect() (windowRect, bool) {
+func AppWindowRect() (Rect, bool) {
 	hwnd := windows.HWND(windowHandle.Load())
 	if hwnd == 0 {
-		return windowRect{}, false
+		return Rect{}, false
 	}
 	var rect winRect
 	if ok, _, _ := procGetWindowRect.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&rect))); ok == 0 {
-		return windowRect{}, false
+		return Rect{}, false
 	}
 	if rect.Right <= rect.Left || rect.Bottom <= rect.Top {
-		return windowRect{}, false
+		return Rect{}, false
 	}
-	return windowRect{
+	return Rect{
 		X:      int(rect.Left),
 		Y:      int(rect.Top),
 		Width:  int(rect.Right - rect.Left),
@@ -218,7 +218,7 @@ func appWindowRect() (windowRect, bool) {
 	}, true
 }
 
-func hideAppWindow() {
+func Hide() {
 	hwnd := windows.HWND(windowHandle.Load())
 	if hwnd == 0 {
 		return
@@ -226,19 +226,19 @@ func hideAppWindow() {
 	_, _, _ = procShowWindow.Call(uintptr(hwnd), swHide)
 }
 
-// rememberAppWindowRect stores the rectangle the main window should come back
+// Remember stores the rectangle the main window should come back
 // to. It is applied as soon as the window handle exists, on the first view
 // event of the session.
-func rememberAppWindowRect(rect windowRect) {
+func Remember(rect Rect) {
 	pendingAppRect = rect
 	pendingAppRectSet = true
 }
 
 // takeRememberedWindowRect claims the stored rectangle exactly once. Claiming it
 // on the UI goroutine keeps repeated view events from scheduling the move twice.
-func takeRememberedWindowRect() (windowRect, bool) {
+func takeRememberedWindowRect() (Rect, bool) {
 	if !pendingAppRectSet {
-		return windowRect{}, false
+		return Rect{}, false
 	}
 	pendingAppRectSet = false
 	return pendingAppRect, true
@@ -247,8 +247,8 @@ func takeRememberedWindowRect() (windowRect, bool) {
 // setAppWindowRect moves the freshly created window to the spot the user kept
 // it in during the previous session. The frame is placed unchanged and left
 // inactive, so the first launch does not steal focus from itself. It must run
-// off the UI goroutine; see handleViewEvent.
-func setAppWindowRect(hwnd windows.HWND, rect windowRect) {
+// off the UI goroutine; see HandleViewEvent.
+func setAppWindowRect(hwnd windows.HWND, rect Rect) {
 	if rect.Width <= 0 || rect.Height <= 0 {
 		return
 	}
@@ -268,7 +268,7 @@ func setAppWindowRect(hwnd windows.HWND, rect windowRect) {
 	)
 }
 
-func showAppWindow() {
+func Show() {
 	hwnd := windows.HWND(windowHandle.Load())
 	if hwnd == 0 {
 		return

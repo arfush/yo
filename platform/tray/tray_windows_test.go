@@ -1,8 +1,10 @@
 //go:build windows
 
-package ui
+package tray
 
 import (
+	"image"
+	"image/color"
 	"testing"
 	"unsafe"
 )
@@ -59,12 +61,14 @@ func TestTrayStructLayout(t *testing.T) {
 }
 
 // Building the icon handle only uses GDI, so it is checked without a shell:
-// this is the step that turns the embedded PNG into the HICON the notification
-// area needs.
+// this is the step that turns an image into the HICON the notification area
+// needs.
 func TestTrayIconHandle(t *testing.T) {
-	icon, err := loadAppIcon()
-	if err != nil {
-		t.Fatalf("load app icon: %v", err)
+	icon := image.NewRGBA(image.Rect(0, 0, 32, 32))
+	for y := 0; y < 32; y++ {
+		for x := 0; x < 32; x++ {
+			icon.Set(x, y, color.NRGBA{R: 0xb4, G: 0x9c, B: 0xff, A: 0xff})
+		}
 	}
 	handle, err := iconHandle(icon)
 	if err != nil {

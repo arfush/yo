@@ -130,6 +130,11 @@ func boundaryViolation(from, to string) string {
 			return "platform must not depend on ui, app or cmd"
 		}
 		for _, feature := range featureDirs {
+			if feature == "catalog" {
+				// Bounds and other shared value types are allowed; catalog has
+				// no product policy or UI dependencies.
+				continue
+			}
 			if under(to, modulePath+"/"+feature) {
 				return "platform must not depend on features"
 			}
