@@ -1320,7 +1320,7 @@ func (a *application) selectSection(section librarySection) {
 	applySectionTheme(section)
 	a.main.setSection(section)
 	if a.library != nil {
-		a.library.SetSetting(librarySectionKey, section.key())
+		go func() { _ = a.library.SetSetting(librarySectionKey, section.key()) }()
 	}
 	if a.shell != nil {
 		a.shell.selectSection(section)

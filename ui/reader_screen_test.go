@@ -147,6 +147,66 @@ func TestReaderPrefetchesFiveChaptersAroundSelection(t *testing.T) {
 	}
 }
 
+type blockingTrackSource struct {
+	readerSourceStub
+	started chan struct{}
+	release chan struct{}
+}
+
+func (s *blockingTrackSource) TrackViewing(catalog.Title, string, string) (int64, error) {
+	close(s.started)
+	<-s.release
+	return 1, nil
+}
+
+func TestReaderPrefillDoesNotBlockOnTracking(t *testing.T) {
+	typo, err := newTypography()
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := &blockingTrackSource{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	chapters := []string{"1:1", "1:2"}
+	item := historyTitle{
+		source:   catalog.SourceMangaLib,
+		slug:     "test",
+		title:    "Test",
+		episodes: chapters,
+		voices:   []voiceover{{name: "Team", episodes: chapters}},
+	}
+	title := catalog.Title{
+		Source:          catalog.SourceMangaLib,
+		Slug:            "test",
+		Russian:         "Test",
+		SelectedVoice:   "Team",
+		SelectedEpisode: "1:1",
+		Voiceovers: []catalog.Voiceover{{
+			Name:     "Team",
+			Episodes: chapters,
+		}},
+	}
+
+	done := make(chan struct{})
+	go func() {
+		r := newReaderScreen(typo, item, source)
+		r.prefill(title)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("prefill blocked on TrackViewing")
+	}
+	select {
+	case <-source.started:
+	case <-time.After(time.Second):
+		t.Fatal("TrackViewing was not started in the background")
+	}
+	close(source.release)
+}
+
 func itoaReaderTest(value int) string {
 	if value < 10 {
 		return string(rune('0' + value))

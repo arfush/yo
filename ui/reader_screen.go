@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"gioui.org/font"
@@ -93,6 +94,13 @@ type readerScreen struct {
 	section librarySection
 	source  readerSource
 
+	// trackedID is the history id used for the asynchronous selection writes.
+	// A freshly fetched title starts at zero until TrackViewing creates its
+	// row; keeping this out of the UI path is what keeps opening a manga from
+	// blocking the frame loop.
+	trackedID    atomic.Int64
+	trackPending atomic.Bool
+
 	selectedVoice   int
 	selectedChapter int
 	// chapters are the keys of the selected translation.
@@ -161,6 +169,7 @@ func newReaderScreen(typo *typography, item historyTitle, source readerSource) *
 		imageResults:   make(chan readerImageResult, 32),
 		imageSem:       make(chan struct{}, 3),
 	}
+	r.trackedID.Store(item.id)
 	r.search.SingleLine = true
 	r.searchList.Axis = layout.Vertical
 	r.chapterList.Axis = layout.Vertical
@@ -196,6 +205,7 @@ func (r *readerScreen) prefill(title catalog.Title) {
 	r.item.slug = title.Slug
 	if title.ID != 0 {
 		r.item.id = title.ID
+		r.trackedID.Store(title.ID)
 	}
 	r.selectedVoice = voiceIndex(r.item, title.SelectedVoice)
 	r.selectedChapter = episodeIndex(r.item, title.SelectedEpisode)
@@ -284,17 +294,7 @@ func (r *readerScreen) loadChapter() {
 	key := r.currentChapterKey()
 	title := r.title
 
-	if r.source != nil {
-		if r.item.id == 0 {
-			id, err := r.source.TrackViewing(title, voice, key)
-			if err == nil {
-				r.item.id = id
-				r.title.ID = id
-			}
-		} else {
-			_ = r.source.SaveSelection(r.item.id, voice, key)
-		}
-	}
+	r.trackSelection(title, voice, key)
 
 	if key == "" {
 		r.loading = false
@@ -318,6 +318,37 @@ func (r *readerScreen) loadChapter() {
 	r.requestChapter(voice, key, title)
 	r.prefetchChapters()
 	r.requestFrame()
+}
+
+// trackSelection persists the reader position without ever doing database or
+// network work on the UI goroutine. A new title first gets a history row, and
+// later chapter moves only update that row.
+func (r *readerScreen) trackSelection(title catalog.Title, voice, key string) {
+	if r.source == nil {
+		return
+	}
+	if id := r.trackedID.Load(); id != 0 {
+		go func() {
+			if err := r.source.SaveSelection(id, voice, key); err != nil {
+				logger.Warn("cannot save reader selection", "slug", title.Slug, "chapter", key, "error", err)
+			}
+		}()
+		return
+	}
+	if !r.trackPending.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		defer r.trackPending.Store(false)
+		id, err := r.source.TrackViewing(title, voice, key)
+		if err != nil {
+			logger.Warn("cannot track reader position", "slug", title.Slug, "chapter", key, "error", err)
+			return
+		}
+		if id != 0 {
+			r.trackedID.Store(id)
+		}
+	}()
 }
 
 // selectChapter switches to a chapter in the current translation.
