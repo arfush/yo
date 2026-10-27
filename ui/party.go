@@ -806,13 +806,13 @@ func (m *partyManager) applyControl(session *party.Session, control party.Contro
 		return
 	}
 	if err != nil {
-		log.Warn("watch-party control apply failed", "action", control.Action, "error", err)
+		log.Warn("party control apply failed", "action", control.Action, "error", err)
 		return
 	}
-	log.Info("watch-party guest control applied", "action", control.Action, "position", control.Position)
+	log.Info("party guest control applied", "action", control.Action, "position", control.Position)
 	if state, ok := m.hostState(); ok {
 		if err := session.Publish(state); err != nil {
-			log.Warn("watch-party host publish failed", "provider", session.Provider, "error", err)
+			log.Warn("party host publish failed", "provider", session.Provider, "error", err)
 		}
 	}
 }
@@ -864,7 +864,7 @@ func (m *partyManager) startGuest(state party.State) {
 		// follow with a playlist jump and let the drift loop find the position.
 		if current.Matches(state.TitleSlug, state.Voice) {
 			if err := current.JumpTo(state.Episode); err == nil {
-				log.Info("watch-party guest jumped to host episode", "episode", state.Episode)
+				log.Info("party guest jumped to host episode", "episode", state.Episode)
 				m.mu.Lock()
 				m.guestRunning = state
 				m.mu.Unlock()
@@ -896,7 +896,7 @@ func (m *partyManager) startGuest(state party.State) {
 	m.guestStarting = true
 	m.guestRunning = state
 	m.mu.Unlock()
-	log.Info("watch-party guest starting playback", "slug", state.TitleSlug, "voice", state.Voice, "episode", state.Episode, "position", state.Position)
+	log.Info("party guest starting playback", "slug", state.TitleSlug, "voice", state.Voice, "episode", state.Episode, "position", state.Position)
 
 	go func() {
 		err := m.app.startPartyPlayback(state)
@@ -1011,7 +1011,7 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 			// mpv is still opening the file or the host moved on; the drift
 			// numbers are meaningless until file-loaded arrives.
 			if !mismatchLogged {
-				log.Info("watch-party guest waiting for episode sync", "host", state.Episode, "player", number)
+				log.Info("party guest waiting for episode sync", "host", state.Episode, "player", number)
 				mismatchLogged = true
 			}
 			rate = 1
@@ -1025,7 +1025,7 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 		// Ask once, then back off — the hello makes the host republish.
 		stale := !anchorAt.IsZero() && now.Sub(anchorAt) >= partyStaleAnchor && now.Sub(lastRefresh) >= partyRefreshBackoff
 		if current != nil && !current.Paused() && stale {
-			log.Info("watch-party guest anchor feed stale, requesting a fresh anchor", "since", now.Sub(anchorAt).Round(time.Second), "episode", number)
+			log.Info("party guest anchor feed stale, requesting a fresh anchor", "since", now.Sub(anchorAt).Round(time.Second), "episode", number)
 			if err := session.RequestRefresh(); err == nil {
 				lastRefresh = now
 			}
@@ -1043,7 +1043,7 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 				if paused {
 					action = party.ControlPause
 				}
-				log.Info("watch-party guest sent control", "action", action)
+				log.Info("party guest sent control", "action", action)
 				_ = session.SendControl(action, 0)
 				holdUntil = now.Add(partyControlHold)
 			case !lastPaused && !lastSample.IsZero():
@@ -1052,7 +1052,7 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 				// it, so only a real jump counts as a seek; otherwise a slow
 				// connection would drag the host back to the guest.
 				if position != lastPosition && math.Abs(position-expected) > partyUserSeekThreshold {
-					log.Info("watch-party guest sent control", "action", party.ControlSeek, "position", position)
+					log.Info("party guest sent control", "action", party.ControlSeek, "position", position)
 					_ = session.SendControl(party.ControlSeek, position)
 					holdUntil = now.Add(partyControlHold)
 				}
@@ -1073,11 +1073,11 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 		switch {
 		case !state.Playing:
 			if !current.Paused() {
-				log.Info("watch-party guest pausing to host")
+				log.Info("party guest pausing to host")
 				_ = current.SetPaused(true)
 			}
 			if math.Abs(position-state.Position) > 0.8 {
-				log.Info("watch-party guest seek to paused host", "host", state.Position, "player", position)
+				log.Info("party guest seek to paused host", "host", state.Position, "player", position)
 				_ = current.SeekTo(state.Position)
 				tracked = state.Position
 			}
@@ -1086,7 +1086,7 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 				rate = 1
 			}
 		case current.Paused():
-			log.Info("watch-party guest resuming to host")
+			log.Info("party guest resuming to host")
 			_ = current.SetPaused(false)
 			fallthrough
 		default:
@@ -1096,12 +1096,12 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 				lastPosition = tracked
 				continue
 			}
-			log.Debug("watch-party guest tick", "episode", number, "player", position, "want", want, "playing", state.Playing, "paused", paused)
+			log.Debug("party guest tick", "episode", number, "player", position, "want", want, "playing", state.Playing, "paused", paused)
 			drift := position - want
 			switch {
 			case math.Abs(drift) > partySeekThreshold:
 				target := want + partySeekLead
-				log.Info("watch-party guest seek", "to", target, "want", want, "player", position)
+				log.Info("party guest seek", "to", target, "want", want, "player", position)
 				_ = current.SeekTo(target)
 				tracked = target
 				if rate != 1 {
@@ -1111,7 +1111,7 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 			case math.Abs(drift) > partySpeedThreshold:
 				next := clampRate(1 - drift*partySpeedGain)
 				if math.Abs(next-rate) > 0.004 {
-					log.Info("watch-party guest speed", "rate", next, "want", want, "player", position)
+					log.Info("party guest speed", "rate", next, "want", want, "player", position)
 					_ = current.SetSpeed(next)
 					rate = next
 				}
@@ -1146,7 +1146,7 @@ func (m *partyManager) hostStarted(session *playback.Session, title library.Titl
 	}
 	room := m.session
 	m.mu.Unlock()
-	log.Info("watch-party host attached playback", "slug", title.Slug, "voice", voice, "episode", episode)
+	log.Info("party host attached playback", "slug", title.Slug, "voice", voice, "episode", episode)
 	if room == nil || room.Role != party.Host {
 		return
 	}
@@ -1170,10 +1170,10 @@ func (m *partyManager) startHostLoop(room *party.Session, session *playback.Sess
 	// Publish once immediately so a guest does not wait for the first tick.
 	if state, ok := m.hostState(); ok {
 		if err := room.Publish(state); err != nil {
-			log.Warn("watch-party host publish failed", "provider", room.Provider, "error", err)
+			log.Warn("party host publish failed", "provider", room.Provider, "error", err)
 		}
 	} else if err := room.Publish(party.State{}); err != nil {
-		log.Warn("watch-party host publish failed", "provider", room.Provider, "error", err)
+		log.Warn("party host publish failed", "provider", room.Provider, "error", err)
 	}
 	m.invalidate()
 }
@@ -1251,7 +1251,7 @@ func (m *partyManager) hostLoop(room *party.Session, stop chan struct{}, session
 					return
 				}
 				if err := room.Publish(party.State{}); err != nil {
-					log.Warn("watch-party host publish failed", "provider", room.Provider, "error", err)
+					log.Warn("party host publish failed", "provider", room.Provider, "error", err)
 				}
 				lastPublish = now
 				first = false
@@ -1273,7 +1273,7 @@ func (m *partyManager) hostLoop(room *party.Session, stop chan struct{}, session
 				if err := room.Publish(party.State{}); err == nil {
 					lastPublish = now
 				} else {
-					log.Warn("watch-party host publish failed", "provider", room.Provider, "error", err)
+					log.Warn("party host publish failed", "provider", room.Provider, "error", err)
 				}
 				first = false
 			}
@@ -1296,9 +1296,9 @@ func (m *partyManager) hostLoop(room *party.Session, stop chan struct{}, session
 		}
 
 		if changed || seeked || now.Sub(lastPublish) >= interval {
-			log.Debug("watch-party host anchor", "episode", state.Episode, "position", state.Position, "playing", state.Playing, "voice", state.Voice)
+			log.Debug("party host anchor", "episode", state.Episode, "position", state.Position, "playing", state.Playing, "voice", state.Voice)
 			if err := room.Publish(state); err != nil {
-				log.Warn("watch-party host publish failed", "provider", room.Provider, "error", err)
+				log.Warn("party host publish failed", "provider", room.Provider, "error", err)
 			} else {
 				lastPublish = now
 			}
