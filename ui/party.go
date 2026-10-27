@@ -11,6 +11,7 @@ import (
 	"github.com/arfush/yoanime/internal/appdata"
 	"github.com/arfush/yoanime/internal/library"
 	"github.com/arfush/yoanime/internal/playback"
+	"github.com/arfush/yoanime/log"
 	"github.com/arfush/yoanime/party"
 )
 
@@ -796,10 +797,14 @@ func (m *partyManager) applyControl(session *party.Session, control party.Contro
 		return
 	}
 	if err != nil {
+		log.Warn("watch-party control apply failed", "action", control.Action, "error", err)
 		return
 	}
+	log.Info("watch-party guest control applied", "action", control.Action, "position", control.Position)
 	if state, ok := m.hostState(); ok {
-		_ = session.Publish(state)
+		if err := session.Publish(state); err != nil {
+			log.Warn("watch-party host publish failed", "provider", session.Provider, "error", err)
+		}
 	}
 }
 
@@ -844,6 +849,19 @@ func (m *partyManager) startGuest(state party.State) {
 			m.mu.Unlock()
 			return
 		}
+		// The host moved to another episode of the same title and voice. The
+		// local player already carries a resolved window of that voice (mpv
+		// resolves Kinopoisk episodes too slowly for a restart chase), so
+		// follow with a playlist jump and let the drift loop find the position.
+		if current.Matches(state.TitleSlug, state.Voice) {
+			if err := current.JumpTo(state.Episode); err == nil {
+				log.Info("watch-party guest jumped to host episode", "episode", state.Episode)
+				m.mu.Lock()
+				m.guestRunning = state
+				m.mu.Unlock()
+				return
+			}
+		}
 	}
 	m.mu.Lock()
 	if m.app.playback.Current() == nil && !m.guestStarting {
@@ -869,6 +887,7 @@ func (m *partyManager) startGuest(state party.State) {
 	m.guestStarting = true
 	m.guestRunning = state
 	m.mu.Unlock()
+	log.Info("watch-party guest starting playback", "slug", state.TitleSlug, "voice", state.Voice, "episode", state.Episode, "position", state.Position)
 
 	go func() {
 		err := m.app.startPartyPlayback(state)
@@ -942,6 +961,7 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 	var lastPaused bool
 	var holdUntil time.Time
 	var seeded bool
+	var mismatchLogged bool
 	for {
 		select {
 		case <-stop:
@@ -970,10 +990,15 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 		if number == "" || number != state.Episode {
 			// mpv is still opening the file or the host moved on; the drift
 			// numbers are meaningless until file-loaded arrives.
+			if !mismatchLogged {
+				log.Info("watch-party guest waiting for episode sync", "host", state.Episode, "player", number)
+				mismatchLogged = true
+			}
 			rate = 1
 			seeded = false
 			continue
 		}
+		mismatchLogged = false
 		now := time.Now()
 		position := current.LivePosition()
 		paused := current.Paused()
@@ -988,6 +1013,7 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 				if paused {
 					action = party.ControlPause
 				}
+				log.Info("watch-party guest sent control", "action", action)
 				_ = session.SendControl(action, 0)
 				holdUntil = now.Add(partyControlHold)
 			case !lastPaused && !lastSample.IsZero():
@@ -996,6 +1022,7 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 				// it, so only a real jump counts as a seek; otherwise a slow
 				// connection would drag the host back to the guest.
 				if position != lastPosition && math.Abs(position-expected) > partyUserSeekThreshold {
+					log.Info("watch-party guest sent control", "action", party.ControlSeek, "position", position)
 					_ = session.SendControl(party.ControlSeek, position)
 					holdUntil = now.Add(partyControlHold)
 				}
@@ -1016,9 +1043,11 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 		switch {
 		case !state.Playing:
 			if !current.Paused() {
+				log.Info("watch-party guest pausing to host")
 				_ = current.SetPaused(true)
 			}
 			if math.Abs(position-state.Position) > 0.8 {
+				log.Info("watch-party guest seek to paused host", "host", state.Position, "player", position)
 				_ = current.SeekTo(state.Position)
 				tracked = state.Position
 			}
@@ -1027,6 +1056,7 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 				rate = 1
 			}
 		case current.Paused():
+			log.Info("watch-party guest resuming to host")
 			_ = current.SetPaused(false)
 			fallthrough
 		default:
@@ -1036,10 +1066,12 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 				lastPosition = tracked
 				continue
 			}
+			log.Debug("watch-party guest tick", "episode", number, "player", position, "want", want, "playing", state.Playing, "paused", paused)
 			drift := position - want
 			switch {
 			case math.Abs(drift) > partySeekThreshold:
 				target := want + partySeekLead
+				log.Info("watch-party guest seek", "to", target, "want", want, "player", position)
 				_ = current.SeekTo(target)
 				tracked = target
 				if rate != 1 {
@@ -1049,6 +1081,7 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 			case math.Abs(drift) > partySpeedThreshold:
 				next := clampRate(1 - drift*partySpeedGain)
 				if math.Abs(next-rate) > 0.004 {
+					log.Info("watch-party guest speed", "rate", next, "want", want, "player", position)
 					_ = current.SetSpeed(next)
 					rate = next
 				}
@@ -1083,6 +1116,7 @@ func (m *partyManager) hostStarted(session *playback.Session, title library.Titl
 	}
 	room := m.session
 	m.mu.Unlock()
+	log.Info("watch-party host attached playback", "slug", title.Slug, "voice", voice, "episode", episode)
 	if room == nil || room.Role != party.Host {
 		return
 	}
@@ -1105,9 +1139,11 @@ func (m *partyManager) startHostLoop(room *party.Session, session *playback.Sess
 	go m.hostLoop(room, stop, session)
 	// Publish once immediately so a guest does not wait for the first tick.
 	if state, ok := m.hostState(); ok {
-		_ = room.Publish(state)
-	} else {
-		_ = room.Publish(party.State{})
+		if err := room.Publish(state); err != nil {
+			log.Warn("watch-party host publish failed", "provider", room.Provider, "error", err)
+		}
+	} else if err := room.Publish(party.State{}); err != nil {
+		log.Warn("watch-party host publish failed", "provider", room.Provider, "error", err)
 	}
 	m.invalidate()
 }
@@ -1184,7 +1220,9 @@ func (m *partyManager) hostLoop(room *party.Session, stop chan struct{}, session
 					// A newer playback already took over the room.
 					return
 				}
-				_ = room.Publish(party.State{})
+				if err := room.Publish(party.State{}); err != nil {
+					log.Warn("watch-party host publish failed", "provider", room.Provider, "error", err)
+				}
 				lastPublish = now
 				first = false
 				session = nil
@@ -1204,6 +1242,8 @@ func (m *partyManager) hostLoop(room *party.Session, stop chan struct{}, session
 			if first || now.Sub(lastPublish) >= partyHeartbeatIdle {
 				if err := room.Publish(party.State{}); err == nil {
 					lastPublish = now
+				} else {
+					log.Warn("watch-party host publish failed", "provider", room.Provider, "error", err)
 				}
 				first = false
 			}
@@ -1226,7 +1266,10 @@ func (m *partyManager) hostLoop(room *party.Session, stop chan struct{}, session
 		}
 
 		if changed || seeked || now.Sub(lastPublish) >= interval {
-			if err := room.Publish(state); err == nil {
+			log.Debug("watch-party host anchor", "episode", state.Episode, "position", state.Position, "playing", state.Playing, "voice", state.Voice)
+			if err := room.Publish(state); err != nil {
+				log.Warn("watch-party host publish failed", "provider", room.Provider, "error", err)
+			} else {
 				lastPublish = now
 			}
 			lastEpisode = state.Episode
