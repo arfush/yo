@@ -407,7 +407,7 @@ func (fr *firstRun) drawProgress(gtx layout.Context, size image.Point, progress 
 	label := fmt.Sprintf("%d%%", int(math.Round(progress)))
 	labelColor := color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}
 	if preparing {
-		label = "??????????..."
+		label = "Подготовка..."
 		labelColor = firstRunProgressText
 	}
 	fr.typo.drawCentered(gtx, label, font.Font{Typeface: fontFamily, Weight: font.Medium}, firstRunProgressSize, labelColor, image.Pt(inner.Min.X+inner.Dx()/2, inner.Min.Y+inner.Dy()/2))

@@ -77,7 +77,7 @@ func (w *shortcutsWindow) layout(gtx layout.Context) {
 	right := card.Max.X - innerPad
 	top := card.Min.Y + innerPad
 	_, dividerY := screenCardHeader{
-		title:         "??????? ???????",
+		title:         "Горячие клавиши",
 		subtitle:      w.info.page,
 		titleSize:     shortcutTitleSize,
 		subtitleSize:  shortcutPageSize,

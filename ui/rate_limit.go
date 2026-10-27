@@ -95,7 +95,7 @@ func (b *rateLimitBanner) notice(gtx layout.Context, g geometry) (headerNotice, 
 
 	text := b.phrase
 	if remaining := animelib.RateLimitRemaining(); remaining > 0 {
-		text += " ? " + rateLimitWaitLabel(remaining)
+		text += " · " + rateLimitWaitLabel(remaining)
 	}
 	return headerNotice{text: text, tone: headerNoticeRate}, true
 }

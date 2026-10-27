@@ -1250,9 +1250,9 @@ func (m *mainWindow) layoutHistory(gtx layout.Context, rect image.Rectangle) {
 	m.listGap = gap
 	m.handleHistoryDrag(gtx, rect, rowHeight, gap)
 	if len(m.history) == 0 {
-		text := "??????? ???? ?????"
+		text := "История пока пуста"
 		if m.filter != filterAll {
-			text = "?????? ?? ???????"
+			text = "Ничего не найдено"
 		}
 		emptyState(gtx, m.typo, rect, text, mainHistoryCountSize, mainMutedColor)
 		return

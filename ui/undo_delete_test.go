@@ -116,6 +116,20 @@ func TestUndoDeleteRestartsCountdownForEachDeletion(t *testing.T) {
 	}
 }
 
+func TestUndoHeaderNoticeSeparatesCountdown(t *testing.T) {
+	m := undoTestWindow()
+	now := time.Now()
+	if !m.queueHistoryDelete(0, now) {
+		t.Fatal("queueHistoryDelete returned false")
+	}
+
+	notice := m.headerNotice(now)
+	want := m.undo.phrase + " · " + rateLimitWaitLabel(m.undo.remaining(now))
+	if notice.text != want {
+		t.Fatalf("notice = %q, want %q", notice.text, want)
+	}
+}
+
 func TestVisibleHistorySkipsPendingRows(t *testing.T) {
 	m := undoTestWindow()
 	if !m.queueHistoryDelete(3, time.Now()) {

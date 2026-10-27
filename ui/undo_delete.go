@@ -326,7 +326,7 @@ func (m *mainWindow) finalizeHistoryDeletes() {
 }
 
 // headerNotice exposes the undo countdown to the shell header. The history
-// header keeps the "????????" action and the filters; only the transient
+// header keeps the "Отменить" action and the filters; only the transient
 // sentence moves up.
 func (m *mainWindow) headerNotice(now time.Time) headerNotice {
 	remaining := m.undo.remaining(now)
@@ -334,7 +334,7 @@ func (m *mainWindow) headerNotice(now time.Time) headerNotice {
 		return headerNotice{}
 	}
 	return headerNotice{
-		text: m.undo.phrase + " ? " + rateLimitWaitLabel(remaining),
+		text: m.undo.phrase + " · " + rateLimitWaitLabel(remaining),
 		tone: headerNoticeUndo,
 	}
 }
