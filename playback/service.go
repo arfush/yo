@@ -11,11 +11,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arfush/yo/animelib"
 	"github.com/arfush/yo/browser"
 	"github.com/arfush/yo/filmlib"
 	"github.com/arfush/yo/kodik"
 	"github.com/arfush/yo/library"
+	"github.com/arfush/yo/libsocial"
 	"github.com/arfush/yo/log"
 	"github.com/arfush/yo/metadata"
 )
@@ -117,9 +117,9 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 		token = ""
 	}
 	sessionCtx, cancel := context.WithCancel(context.Background())
-	var client *animelib.Client
+	var client *libsocial.Client
 	if plan.Source != filmlib.Source {
-		client = animelib.New(token)
+		client = libsocial.New(token)
 	}
 	session := &Session{
 		service:         s,
@@ -129,7 +129,7 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 		ctx:             sessionCtx,
 		cancel:          cancel,
 		resolved:        make(map[int]*playlistEntry),
-		details:         make(map[int]*animelib.EpisodeDetail),
+		details:         make(map[int]*libsocial.EpisodeDetail),
 		detailFlight:    make(map[int]chan struct{}),
 		chapterSem:      make(chan struct{}, 2),
 		quality:         options.Quality,
@@ -281,14 +281,14 @@ type Session struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	client *animelib.Client
+	client *libsocial.Client
 	mpv    *mpvProcess
 
 	// details caches episode payloads fetched by the parallel batch prefetch so
 	// resolveEntry does not request the same episode twice. detailFlight
 	// deduplicates concurrent fetches of the same episode.
 	detailMu     sync.Mutex
-	details      map[int]*animelib.EpisodeDetail
+	details      map[int]*libsocial.EpisodeDetail
 	detailFlight map[int]chan struct{}
 
 	mu             sync.Mutex
@@ -896,7 +896,7 @@ func (s *Session) prefetchDetails(indices []int) {
 // episodeDetail returns the cached payload for an episode or fetches it once.
 // Concurrent callers for the same id wait for the first fetch instead of
 // issuing duplicate requests.
-func (s *Session) episodeDetail(ctx context.Context, id int) (*animelib.EpisodeDetail, error) {
+func (s *Session) episodeDetail(ctx context.Context, id int) (*libsocial.EpisodeDetail, error) {
 	for {
 		s.detailMu.Lock()
 		if cached := s.details[id]; cached != nil {
@@ -1084,19 +1084,19 @@ func (s *Session) resolveEntry(ctx context.Context, index int) (*playlistEntry, 
 		return nil, fmt.Errorf("episode %s: %w", episode.Number, err)
 	}
 
-	animelibPlayer, kodikPlayer := selectVoicePlayers(detail.Players, s.plan.Voice)
+	libsocialPlayer, kodikPlayer := selectVoicePlayers(detail.Players, s.plan.Voice)
 
-	// AnimeLIB always wins when the selected voice has a direct file for this
+	// LibSocial always wins when the selected voice has a direct file for this
 	// episode. Kodik is the fallback only for episodes without one.
-	if animelibPlayer != nil {
-		link := pickAnimelibQuality(animelibPlayer.Qualities, s.quality)
+	if libsocialPlayer != nil {
+		link := pickLibSocialQuality(libsocialPlayer.Qualities, s.quality)
 		if link.Href != "" {
-			mediaURL, joinErr := s.joinAnimelib(resolveCtx, link.Href, animelibPlayer.VideoDomain)
+			mediaURL, joinErr := s.joinLibSocial(resolveCtx, link.Href, libsocialPlayer.VideoDomain)
 			if joinErr == nil && mediaURL != "" {
 				// Subtitles belong to the player that is actually playing.
 				// Never borrow tracks from another voice or from a Kodik
 				// fallback, where the timings may differ.
-				subtitleURL, subtitleLabel := s.subtitleForPlayer(resolveCtx, animelibPlayer)
+				subtitleURL, subtitleLabel := s.subtitleForPlayer(resolveCtx, libsocialPlayer)
 				return &playlistEntry{
 					EpisodeIndex:  index,
 					Episode:       episode,
@@ -1129,21 +1129,21 @@ func (s *Session) resolveEntry(ctx context.Context, index int) (*playlistEntry, 
 	return nil, fmt.Errorf("voice %q is unavailable for episode %s", s.plan.Voice, episode.Number)
 }
 
-func (s *Session) joinAnimelib(ctx context.Context, href, domain string) (string, error) {
+func (s *Session) joinLibSocial(ctx context.Context, href, domain string) (string, error) {
 	if isAbsoluteURL(href) {
 		return href, nil
 	}
-	bases, err := s.animelibBases(ctx)
+	bases, err := s.libsocialBases(ctx)
 	if err != nil {
 		return "", err
 	}
-	if joined := animelib.JoinVideoBase(pickVideoBase(bases, domain), href); joined != "" {
+	if joined := libsocial.JoinVideoBase(pickVideoBase(bases, domain), href); joined != "" {
 		return joined, nil
 	}
 	return "", errors.New("AnimeLIB returned no video servers")
 }
 
-func (s *Session) animelibBases(ctx context.Context) ([]string, error) {
+func (s *Session) libsocialBases(ctx context.Context) ([]string, error) {
 	s.baseMu.Lock()
 	defer s.baseMu.Unlock()
 	if len(s.videoBases) > 0 {
@@ -1297,21 +1297,21 @@ func (s *Session) setChaptersIfCurrent(entry *playlistEntry, chapters []metadata
 	}
 }
 
-func pickAnimelibQuality(links []animelib.QualityLink, preferred int) animelib.QualityLink {
+func pickLibSocialQuality(links []libsocial.QualityLink, preferred int) libsocial.QualityLink {
 	if len(links) == 0 {
-		return animelib.QualityLink{}
+		return libsocial.QualityLink{}
 	}
 	if preferred <= 0 {
 		preferred = 1080
 	}
-	sorted := append([]animelib.QualityLink(nil), links...)
+	sorted := append([]libsocial.QualityLink(nil), links...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Quality < sorted[j].Quality })
 	for _, link := range sorted {
 		if link.Quality == preferred {
 			return link
 		}
 	}
-	lower := animelib.QualityLink{}
+	lower := libsocial.QualityLink{}
 	for _, link := range sorted {
 		if link.Quality < preferred {
 			lower = link
@@ -1323,9 +1323,9 @@ func pickAnimelibQuality(links []animelib.QualityLink, preferred int) animelib.Q
 	return sorted[0]
 }
 
-func selectVoicePlayers(players []animelib.EpisodePlayer, voice string) (*animelib.EpisodePlayer, *animelib.EpisodePlayer) {
-	var animelibPlayer *animelib.EpisodePlayer
-	var kodikPlayer *animelib.EpisodePlayer
+func selectVoicePlayers(players []libsocial.EpisodePlayer, voice string) (*libsocial.EpisodePlayer, *libsocial.EpisodePlayer) {
+	var libsocialPlayer *libsocial.EpisodePlayer
+	var kodikPlayer *libsocial.EpisodePlayer
 	for playerIndex := range players {
 		player := &players[playerIndex]
 		if !sameTeam(player.TeamName, voice) {
@@ -1333,8 +1333,8 @@ func selectVoicePlayers(players []animelib.EpisodePlayer, voice string) (*animel
 		}
 		switch strings.ToLower(strings.TrimSpace(player.Player)) {
 		case "animelib":
-			if animelibPlayer == nil && len(player.Qualities) > 0 {
-				animelibPlayer = player
+			if libsocialPlayer == nil && len(player.Qualities) > 0 {
+				libsocialPlayer = player
 			}
 		case "kodik":
 			if kodikPlayer == nil && player.Src != "" {
@@ -1342,13 +1342,13 @@ func selectVoicePlayers(players []animelib.EpisodePlayer, voice string) (*animel
 			}
 		}
 	}
-	return animelibPlayer, kodikPlayer
+	return libsocialPlayer, kodikPlayer
 }
 
 // pickSubtitleTrack enforces the playback preference: ASS first, VTT only when
 // the selected player has no ASS track.
-func pickSubtitleTrack(tracks []animelib.SubtitleTrack) (animelib.SubtitleTrack, bool) {
-	var fallback animelib.SubtitleTrack
+func pickSubtitleTrack(tracks []libsocial.SubtitleTrack) (libsocial.SubtitleTrack, bool) {
+	var fallback libsocial.SubtitleTrack
 	hasFallback := false
 	for _, track := range tracks {
 		if strings.TrimSpace(track.Src) == "" {
@@ -1367,7 +1367,7 @@ func pickSubtitleTrack(tracks []animelib.SubtitleTrack) (animelib.SubtitleTrack,
 	return fallback, hasFallback
 }
 
-func (s *Session) subtitleForPlayer(ctx context.Context, player *animelib.EpisodePlayer) (string, string) {
+func (s *Session) subtitleForPlayer(ctx context.Context, player *libsocial.EpisodePlayer) (string, string) {
 	if player == nil {
 		return "", ""
 	}
@@ -1380,7 +1380,7 @@ func (s *Session) subtitleForPlayer(ctx context.Context, player *animelib.Episod
 	if isAbsoluteURL(src) {
 		return src, label
 	}
-	bases, err := s.animelibBases(ctx)
+	bases, err := s.libsocialBases(ctx)
 	if err != nil {
 		return "", ""
 	}
@@ -1429,7 +1429,7 @@ func resolveRelativeSubtitle(src, domain string, bases []string) string {
 	if isAbsoluteURL(src) {
 		return src
 	}
-	return animelib.JoinVideoBase(pickVideoBase(bases, domain), src)
+	return libsocial.JoinVideoBase(pickVideoBase(bases, domain), src)
 }
 
 func sameTeam(left, right string) bool {

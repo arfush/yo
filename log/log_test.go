@@ -45,18 +45,18 @@ func TestForTagsEveryEntryWithTheSource(t *testing.T) {
 	}
 	defer Close()
 
-	For(SourceAnimelib).Info("request")
-	For(SourceStore).Info("schema ready")
+	For(SourceLibSocial).Info("request")
+	For(SourceStorage).Info("schema ready")
 
 	entries := Recent()
 	if len(entries) != 2 {
 		t.Fatalf("recent length = %d, want 2", len(entries))
 	}
-	if entries[0].Source != SourceAnimelib {
-		t.Fatalf("first entry source = %q, want %q", entries[0].Source, SourceAnimelib)
+	if entries[0].Source != SourceLibSocial {
+		t.Fatalf("first entry source = %q, want %q", entries[0].Source, SourceLibSocial)
 	}
-	if entries[1].Source != SourceStore {
-		t.Fatalf("second entry source = %q, want %q", entries[1].Source, SourceStore)
+	if entries[1].Source != SourceStorage {
+		t.Fatalf("second entry source = %q, want %q", entries[1].Source, SourceStorage)
 	}
 }
 
@@ -66,13 +66,13 @@ func TestSourceIsNotDuplicatedInExpandedDetail(t *testing.T) {
 	}
 	defer Close()
 
-	For(SourceStore).Info("history loaded", "count", 3)
+	For(SourceStorage).Info("history loaded", "count", 3)
 	entries := Recent()
 	if len(entries) != 1 {
 		t.Fatalf("recent length = %d, want 1", len(entries))
 	}
-	if entries[0].Source != SourceStore {
-		t.Fatalf("source = %q, want %q", entries[0].Source, SourceStore)
+	if entries[0].Source != SourceStorage {
+		t.Fatalf("source = %q, want %q", entries[0].Source, SourceStorage)
 	}
 	if strings.Contains(entries[0].Detail, "source=") {
 		t.Fatalf("detail duplicates the source column: %q", entries[0].Detail)

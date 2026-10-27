@@ -21,13 +21,13 @@ import (
 	playwright "github.com/mxschmitt/playwright-go"
 
 	"github.com/arfush/yo/browser"
+	"github.com/arfush/yo/libsocial"
 	"github.com/arfush/yo/log"
 )
 
-const (
-	embedReferer = "https://v5.animelib.org/"
-	cacheTTL     = 45 * time.Minute
-)
+const cacheTTL = 45 * time.Minute
+
+var embedReferer = libsocial.WebOrigin + "/"
 
 // Resolver owns the headless Chromium used for Kodik.
 type Resolver struct {

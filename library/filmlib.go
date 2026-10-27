@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/arfush/yo/filmlib"
-	"github.com/arfush/yo/store"
+	"github.com/arfush/yo/storage"
 )
 
 // loadFilmlib builds a title from the mirror catalogue. persist mirrors the
@@ -48,7 +48,7 @@ func (l *Library) loadFilmlib(ctx context.Context, link filmlib.Link, persist bo
 	}
 
 	title := filmlibTitle(meta, catalog, voices)
-	existing, err := l.store.GetTitle(title.Slug)
+	existing, err := l.storage.GetTitle(title.Slug)
 	if err != nil {
 		return Title{}, err
 	}
@@ -72,7 +72,7 @@ func (l *Library) loadFilmlib(ctx context.Context, link filmlib.Link, persist bo
 	} else {
 		title.SelectedVoice, title.SelectedEpisode = chooseSelection(title, title.SelectedVoice, title.SelectedEpisode)
 		if existing != nil {
-			if entry, historyErr := l.store.GetHistory(existing.ID); historyErr == nil && entry != nil {
+			if entry, historyErr := l.storage.GetHistory(existing.ID); historyErr == nil && entry != nil {
 				title.SelectedVoice, title.SelectedEpisode = chooseSelection(title, entry.Voiceover, entry.Episode)
 				title.ResumeAt = entry.ResumeAt
 				title.Duration = entry.Duration
@@ -206,7 +206,7 @@ func missingEpisodes(all, available []string) []string {
 // applyStoredFilmlib restores the local identity and user choice that the
 // network response cannot know. A fallback name produced after a metadata
 // outage must not replace a real stored name.
-func applyStoredFilmlib(title *Title, stored store.Title) {
+func applyStoredFilmlib(title *Title, stored storage.Title) {
 	if title == nil {
 		return
 	}

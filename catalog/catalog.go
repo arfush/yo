@@ -14,7 +14,7 @@ import (
 // share one API and one reader, but keep their own value so history and covers
 // can still tell the sites apart.
 const (
-	SourceAnimeLIB  = "animelib"
+	SourceLibSocial = "libsocial"
 	SourceFilmlib   = "filmlib"
 	SourceMangaLib  = "mangalib"
 	SourceYaoiLib   = "yaoilib"
@@ -103,7 +103,7 @@ type Season struct {
 // Title is everything the title window needs, plus the saved selection.
 type Title struct {
 	ID int64
-	// Source is SourceAnimeLIB or SourceFilmlib and decides which resolver
+	// Source is SourceLibSocial or SourceFilmlib and decides which resolver
 	// may open the title.
 	Source string
 	// ExternalID is the id inside Source (the Filmlib film id).

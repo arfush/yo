@@ -18,7 +18,7 @@ const dirName = "yoanime"
 
 const (
 	databaseName      = "yoanime.sqlite"
-	tokenName         = "animelib_token.txt"
+	tokenName         = "libsocial.token"
 	profileName       = "browser"
 	coversName        = "covers"
 	mpvName           = "mpv"
@@ -122,7 +122,7 @@ func DatabasePath() (string, error) {
 	return path(databaseName)
 }
 
-// TokenPath returns the AnimeLIB token path inside the data directory.
+// TokenPath returns the LibSocial token path inside the data directory.
 func TokenPath() (string, error) {
 	return path(tokenName)
 }

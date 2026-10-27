@@ -1,5 +1,5 @@
-// Package animelib talks to the AnimeLIB (cdnlibs) API.
-package animelib
+// Package libsocial talks to the AnimeLIB (cdnlibs) API.
+package libsocial
 
 import (
 	"context"
@@ -22,9 +22,11 @@ import (
 
 const (
 	apiBaseURL = "https://api.cdnlibs.org"
-	// Animelib's current frontend lives on the v5 subdomain. Use it for the
-	// browser-like request headers instead of the old animelib.org origin.
-	webOrigin = "https://v5.animelib.org"
+	// WebOrigin is the public site used for browser-like request headers. Keep
+	// the origin in one place so a blocked mirror can be replaced without
+	// touching covers, Kodik and mpv headers.
+	WebOrigin = "https://anilib.me"
+	webOrigin = WebOrigin
 	userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/154.0.0.0 Safari/537.36"
 )
 
@@ -247,13 +249,13 @@ func unescapePathSegment(segment string) string {
 func (c *Client) Fetch(ctx context.Context, input string) (*TitleData, error) {
 	slug, err := ParseInput(input)
 	if err != nil {
-		logger.Warn("cannot parse animelib input", "input", input, "error", err)
+		logger.Warn("cannot parse libsocial input", "input", input, "error", err)
 		return nil, err
 	}
-	logger.Debug("resolving animelib title", "slug", slug)
+	logger.Debug("resolving libsocial title", "slug", slug)
 	title, err := c.resolve(ctx, slug)
 	if err != nil {
-		logger.Error("cannot resolve animelib title", "slug", slug, "error", err)
+		logger.Error("cannot resolve libsocial title", "slug", slug, "error", err)
 		return nil, err
 	}
 	if announced(title) {
@@ -295,7 +297,7 @@ func (c *Client) Fetch(ctx context.Context, input string) (*TitleData, error) {
 		Episodes:   episodes,
 		Voiceovers: buildVoiceovers(episodes, groups, complete, kodik),
 	}
-	logger.Info("animelib title resolved", "title", title.RusName, "slug", title.Slug, "episodes", len(episodes), "voices", len(data.Voiceovers))
+	logger.Info("libsocial title resolved", "title", title.RusName, "slug", title.Slug, "episodes", len(episodes), "voices", len(data.Voiceovers))
 	return data, nil
 }
 
@@ -371,23 +373,23 @@ func (c *Client) fetchTeamAvailability(ctx context.Context, animeID, teamID int6
 	complete := true
 	// AnimeLIB's own player and Kodik are both used by the site. Kodik often
 	// carries dubs that are absent from the AnimeLIB player.
-	animelib, animelibErr := c.fetchPlayerExists(ctx, animeID, teamID, "Animelib")
-	animelibOK := animelibErr == nil
-	if !animelibOK {
+	direct, directErr := c.fetchPlayerExists(ctx, animeID, teamID, "Animelib")
+	directOK := directErr == nil
+	if !directOK {
 		complete = false
 	}
 	kodik, kodikErr := c.fetchPlayerExists(ctx, animeID, teamID, "Kodik")
 	if kodikErr != nil {
 		complete = false
 	}
-	for id := range animelib {
+	for id := range direct {
 		episodes[id] = true
 	}
 	for id := range kodik {
 		episodes[id] = true
 		// Without a trustworthy AnimeLIB answer every Kodik episode would look
 		// Kodik-only, so the badge is only reported for confirmed fallbacks.
-		if animelibOK && !animelib[id] {
+		if directOK && !direct[id] {
 			kodikOnly[id] = true
 		}
 	}
@@ -652,11 +654,11 @@ func (c *Client) get(ctx context.Context, endpoint string, siteID int) ([]byte, 
 
 		sentAt := time.Now()
 		noteRequestSent(sentAt)
-		logger.Debug("animelib request", "endpoint", endpoint, "site", siteID)
+		logger.Debug("libsocial request", "endpoint", endpoint, "site", siteID)
 		body, status, retryAfter, err := c.do(ctx, endpoint, siteID)
 		<-c.sem
 		if err != nil {
-			logger.Warn("animelib request failed", "endpoint", endpoint, "site", siteID, "error", err)
+			logger.Warn("libsocial request failed", "endpoint", endpoint, "site", siteID, "error", err)
 			return nil, err
 		}
 		switch {
@@ -666,7 +668,7 @@ func (c *Client) get(ctx context.Context, endpoint string, siteID int) ([]byte, 
 			// until AnimeLIB answers without a rate limit. AnimeLIB usually
 			// omits Retry-After, so log the pause the client actually uses.
 			pause := noteRateLimit(sentAt, parseRetryAfter(retryAfter))
-			logger.Warn("animelib rate limit reached", "endpoint", endpoint, "retry_after", pause.Round(time.Second))
+			logger.Warn("libsocial rate limit reached", "endpoint", endpoint, "retry_after", pause.Round(time.Second))
 			continue
 		case status >= http.StatusOK && status < http.StatusMultipleChoices:
 			noteRateLimitSuccess(sentAt)
@@ -676,7 +678,7 @@ func (c *Client) get(ctx context.Context, endpoint string, siteID int) ([]byte, 
 			if len(snippet) > 240 {
 				snippet = snippet[:240] + "…"
 			}
-			logger.Warn("animelib returned an error", "endpoint", endpoint, "status", status)
+			logger.Warn("libsocial returned an error", "endpoint", endpoint, "status", status)
 			return nil, fmt.Errorf("HTTP %d: %s", status, snippet)
 		}
 	}
@@ -770,4 +772,4 @@ func SortEpisodes(episodes []string) {
 	})
 }
 
-var logger = log.For(log.SourceAnimelib)
+var logger = log.For(log.SourceLibSocial)

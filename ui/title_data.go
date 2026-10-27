@@ -215,10 +215,14 @@ func (t historyTitle) seasonsSectionLabel() string {
 	}
 	first := t.seasons[0].number
 	last := t.seasons[len(t.seasons)-1].number
-	if first == last {
-		return fmt.Sprintf("СЕЗОНЫ (%d)", first)
+	label := "СЕЗОНЫ"
+	if t.reading() {
+		label = "ТОМЫ"
 	}
-	return fmt.Sprintf("СЕЗОНЫ (%d-%d)", first, last)
+	if first == last {
+		return fmt.Sprintf("%s (%d)", label, first)
+	}
+	return fmt.Sprintf("%s (%d-%d)", label, first, last)
 }
 
 // episodesSectionLabel names the episode block for the season currently shown.
@@ -233,7 +237,11 @@ func (t historyTitle) episodesSectionLabel(season int) string {
 		}
 		episodes = t.seasons[season].episodes
 	}
-	return episodeRangeLabel(episodes)
+	label := episodeRangeLabel(episodes)
+	if t.reading() {
+		label = strings.Replace(label, "СЕРИИ", "ГЛАВЫ", 1)
+	}
+	return label
 }
 
 // seasonIndexForEpisode finds the season that contains the episode at index. It
@@ -288,6 +296,27 @@ func titleFromLibrary(item catalog.Title) historyTitle {
 			number:   season.Number,
 			episodes: append([]string(nil), season.Episodes...),
 		})
+	}
+	if catalog.IsReadingSource(item.Source) && len(title.seasons) == 0 && len(title.episodes) > 0 {
+		// Reading titles call their seasons volumes. Reuse the anime season
+		// strip so the title screen stays pixel-for-pixel the same; only the
+		// labels change.
+		volumeOrder := make([]string, 0, 8)
+		byVolume := make(map[string][]string, 8)
+		for _, key := range title.episodes {
+			volume, _ := catalog.SplitReadingChapterKey(key)
+			if _, ok := byVolume[volume]; !ok {
+				volumeOrder = append(volumeOrder, volume)
+			}
+			byVolume[volume] = append(byVolume[volume], key)
+		}
+		for _, volume := range volumeOrder {
+			number, _ := strconv.Atoi(volume)
+			title.seasons = append(title.seasons, titleSeason{
+				number:   number,
+				episodes: append([]string(nil), byVolume[volume]...),
+			})
+		}
 	}
 	for _, voice := range item.Voiceovers {
 		title.voices = append(title.voices, voiceover{
@@ -457,6 +486,12 @@ func posterInitial(title string) string {
 // episodeDisplayLabel strips the season prefix from a Filmlib episode key, so
 // the grid shows the plain episode number inside its season.
 func episodeDisplayLabel(key string) string {
+	if strings.Contains(key, ":") {
+		_, number := catalog.SplitReadingChapterKey(key)
+		if number != "" {
+			return number
+		}
+	}
 	return catalog.EpisodeLabel(key)
 }
 

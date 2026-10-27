@@ -44,18 +44,18 @@ func TestJoinAnimelibUsesPlayerDomain(t *testing.T) {
 	}}
 	href := "/uploads/converted_videos/anime/20698/players/29031/29031_1080.mp4"
 
-	got, err := session.joinAnimelib(context.Background(), href, "secondary_2")
+	got, err := session.joinLibSocial(context.Background(), href, "secondary_2")
 	if err != nil {
-		t.Fatalf("joinAnimelib: %v", err)
+		t.Fatalf("joinLibSocial: %v", err)
 	}
 	want := "https://video1.imglib.info/uploads/converted_videos/anime/20698/players/29031/29031_1080.mp4"
 	if got != want {
 		t.Fatalf("url = %q, want %q", got, want)
 	}
 
-	got, err = session.joinAnimelib(context.Background(), href, "")
+	got, err = session.joinLibSocial(context.Background(), href, "")
 	if err != nil {
-		t.Fatalf("joinAnimelib without a domain: %v", err)
+		t.Fatalf("joinLibSocial without a domain: %v", err)
 	}
 	want = "https://video1.cdnlibs.org/.%D0%B0s/uploads/converted_videos/anime/20698/players/29031/29031_1080.mp4"
 	if got != want {
@@ -63,7 +63,7 @@ func TestJoinAnimelibUsesPlayerDomain(t *testing.T) {
 	}
 
 	absolute := "https://cdn.example.com/video.mp4"
-	got, err = session.joinAnimelib(context.Background(), absolute, "secondary_2")
+	got, err = session.joinLibSocial(context.Background(), absolute, "secondary_2")
 	if err != nil || got != absolute {
 		t.Fatalf("absolute url = %q (%v), want %q", got, err, absolute)
 	}

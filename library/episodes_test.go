@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/arfush/yo/animelib"
-	"github.com/arfush/yo/store"
+	"github.com/arfush/yo/libsocial"
+	"github.com/arfush/yo/storage"
 )
 
 func openEpisodeTestLibrary(t *testing.T) *Library {
@@ -21,21 +21,21 @@ func openEpisodeTestLibrary(t *testing.T) *Library {
 	return lib
 }
 
-func addEpisodeTestTitle(t *testing.T, lib *Library, title store.Title, episode, voice string) int64 {
+func addEpisodeTestTitle(t *testing.T, lib *Library, title storage.Title, episode, voice string) int64 {
 	t.Helper()
-	tid, err := lib.store.UpsertTitle(title)
+	tid, err := lib.storage.UpsertTitle(title)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := lib.store.EnsureHistory(tid, episode, voice); err != nil {
+	if _, err := lib.storage.EnsureHistory(tid, episode, voice); err != nil {
 		t.Fatal(err)
 	}
 	return tid
 }
 
-func episodeTestWatch(t *testing.T, lib *Library, tid int64) store.EpisodeWatch {
+func episodeTestWatch(t *testing.T, lib *Library, tid int64) storage.EpisodeWatch {
 	t.Helper()
-	watches, err := lib.store.ListEpisodeWatches()
+	watches, err := lib.storage.ListEpisodeWatches()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,19 +45,19 @@ func episodeTestWatch(t *testing.T, lib *Library, tid int64) store.EpisodeWatch 
 		}
 	}
 	t.Fatalf("title %d is missing from watches", tid)
-	return store.EpisodeWatch{}
+	return storage.EpisodeWatch{}
 }
 
-func ongoingEpisodeTitle(slug, russian string) store.Title {
-	return store.Title{
+func ongoingEpisodeTitle(slug, russian string) storage.Title {
+	return storage.Title{
 		Slug:    slug,
 		RusName: russian,
 		Status:  int(StatusOngoing),
 	}
 }
 
-func fixedEpisodeFetcher(release *animelib.EpisodeRelease, calls *int) episodeFetcher {
-	return func(context.Context, string) (*animelib.EpisodeRelease, error) {
+func fixedEpisodeFetcher(release *libsocial.EpisodeRelease, calls *int) episodeFetcher {
+	return func(context.Context, string) (*libsocial.EpisodeRelease, error) {
 		if calls != nil {
 			*calls++
 		}
@@ -69,10 +69,10 @@ func TestCheckEpisodeNotificationsSeedsExistingHistorySilently(t *testing.T) {
 	lib := openEpisodeTestLibrary(t)
 	tid := addEpisodeTestTitle(t, lib, ongoingEpisodeTitle("seed", "Сид"), "1", "Озвучка")
 
-	release := &animelib.EpisodeRelease{
-		StatusID: animelib.StatusOngoing,
+	release := &libsocial.EpisodeRelease{
+		StatusID: libsocial.StatusOngoing,
 		Episode:  "5",
-		Voiceovers: []animelib.ReleaseVoiceover{
+		Voiceovers: []libsocial.ReleaseVoiceover{
 			{Name: "Озвучка"},
 		},
 	}
@@ -98,15 +98,15 @@ func TestCheckEpisodeNotificationsSeedsExistingHistorySilently(t *testing.T) {
 func TestCheckEpisodeNotificationsTwoStageDelivery(t *testing.T) {
 	lib := openEpisodeTestLibrary(t)
 	tid := addEpisodeTestTitle(t, lib, ongoingEpisodeTitle("two-stage", "Две стадии"), "1", "Моя озвучка")
-	if err := lib.store.SeedEpisodeTracking(tid, "1"); err != nil {
+	if err := lib.storage.SeedEpisodeTracking(tid, "1"); err != nil {
 		t.Fatal(err)
 	}
 
 	var events []EpisodeNotification
-	lib.episodeFetcher = fixedEpisodeFetcher(&animelib.EpisodeRelease{
-		StatusID: animelib.StatusOngoing,
+	lib.episodeFetcher = fixedEpisodeFetcher(&libsocial.EpisodeRelease{
+		StatusID: libsocial.StatusOngoing,
 		Episode:  "2",
-		Voiceovers: []animelib.ReleaseVoiceover{
+		Voiceovers: []libsocial.ReleaseVoiceover{
 			{Name: "Другая озвучка", KodikOnly: true},
 		},
 	}, nil)
@@ -127,10 +127,10 @@ func TestCheckEpisodeNotificationsTwoStageDelivery(t *testing.T) {
 		t.Fatalf("unexpected tracking after first notification: %#v", watch)
 	}
 
-	lib.episodeFetcher = fixedEpisodeFetcher(&animelib.EpisodeRelease{
-		StatusID: animelib.StatusOngoing,
+	lib.episodeFetcher = fixedEpisodeFetcher(&libsocial.EpisodeRelease{
+		StatusID: libsocial.StatusOngoing,
 		Episode:  "2",
-		Voiceovers: []animelib.ReleaseVoiceover{
+		Voiceovers: []libsocial.ReleaseVoiceover{
 			{Name: "Другая озвучка"},
 			{Name: "Моя озвучка"},
 		},
@@ -167,14 +167,14 @@ func TestCheckEpisodeNotificationsTwoStageDelivery(t *testing.T) {
 func TestCheckEpisodeNotificationsIgnoresOlderEpisode(t *testing.T) {
 	lib := openEpisodeTestLibrary(t)
 	tid := addEpisodeTestTitle(t, lib, ongoingEpisodeTitle("rewind", "Назад"), "5", "Озвучка")
-	if err := lib.store.SeedEpisodeTracking(tid, "5"); err != nil {
+	if err := lib.storage.SeedEpisodeTracking(tid, "5"); err != nil {
 		t.Fatal(err)
 	}
 
-	lib.episodeFetcher = fixedEpisodeFetcher(&animelib.EpisodeRelease{
-		StatusID: animelib.StatusOngoing,
+	lib.episodeFetcher = fixedEpisodeFetcher(&libsocial.EpisodeRelease{
+		StatusID: libsocial.StatusOngoing,
 		Episode:  "4",
-		Voiceovers: []animelib.ReleaseVoiceover{
+		Voiceovers: []libsocial.ReleaseVoiceover{
 			{Name: "Озвучка"},
 		},
 	}, nil)
@@ -196,15 +196,15 @@ func TestCheckEpisodeNotificationsIgnoresOlderEpisode(t *testing.T) {
 func TestCheckEpisodeNotificationsPreferredVoiceInFirstRelease(t *testing.T) {
 	lib := openEpisodeTestLibrary(t)
 	tid := addEpisodeTestTitle(t, lib, ongoingEpisodeTitle("preferred-first", "Сразу моя"), "1", "Моя озвучка")
-	if err := lib.store.SeedEpisodeTracking(tid, "1"); err != nil {
+	if err := lib.storage.SeedEpisodeTracking(tid, "1"); err != nil {
 		t.Fatal(err)
 	}
 
 	var events []EpisodeNotification
-	lib.episodeFetcher = fixedEpisodeFetcher(&animelib.EpisodeRelease{
-		StatusID: animelib.StatusOngoing,
+	lib.episodeFetcher = fixedEpisodeFetcher(&libsocial.EpisodeRelease{
+		StatusID: libsocial.StatusOngoing,
 		Episode:  "2",
-		Voiceovers: []animelib.ReleaseVoiceover{
+		Voiceovers: []libsocial.ReleaseVoiceover{
 			{Name: "Моя озвучка"},
 			{Name: "Другая озвучка"},
 		},
@@ -231,21 +231,21 @@ func TestCheckEpisodeNotificationsPreferredVoiceInFirstRelease(t *testing.T) {
 
 func TestCheckEpisodeNotificationsAnnouncedTitle(t *testing.T) {
 	lib := openEpisodeTestLibrary(t)
-	title := store.Title{
+	title := storage.Title{
 		Slug:    "announced",
 		RusName: "Анонс",
 		Status:  int(StatusAnnounced),
 	}
 	tid := addEpisodeTestTitle(t, lib, title, "", "Моя озвучка")
-	if err := lib.store.SeedEpisodeTracking(tid, ""); err != nil {
+	if err := lib.storage.SeedEpisodeTracking(tid, ""); err != nil {
 		t.Fatal(err)
 	}
 
 	var events []EpisodeNotification
-	lib.episodeFetcher = fixedEpisodeFetcher(&animelib.EpisodeRelease{
-		StatusID: animelib.StatusOngoing,
+	lib.episodeFetcher = fixedEpisodeFetcher(&libsocial.EpisodeRelease{
+		StatusID: libsocial.StatusOngoing,
 		Episode:  "1",
-		Voiceovers: []animelib.ReleaseVoiceover{
+		Voiceovers: []libsocial.ReleaseVoiceover{
 			{Name: "Моя озвучка"},
 		},
 	}, nil)
@@ -267,12 +267,12 @@ func TestCheckEpisodeNotificationsAnnouncedTitle(t *testing.T) {
 func TestCheckEpisodeNotificationsWaitsForFirstVoiceover(t *testing.T) {
 	lib := openEpisodeTestLibrary(t)
 	tid := addEpisodeTestTitle(t, lib, ongoingEpisodeTitle("waiting", "Ждём озвучку"), "1", "Моя озвучка")
-	if err := lib.store.SeedEpisodeTracking(tid, "1"); err != nil {
+	if err := lib.storage.SeedEpisodeTracking(tid, "1"); err != nil {
 		t.Fatal(err)
 	}
 
-	release := &animelib.EpisodeRelease{
-		StatusID: animelib.StatusOngoing,
+	release := &libsocial.EpisodeRelease{
+		StatusID: libsocial.StatusOngoing,
 		Episode:  "2",
 	}
 	lib.episodeFetcher = fixedEpisodeFetcher(release, nil)
@@ -291,7 +291,7 @@ func TestCheckEpisodeNotificationsWaitsForFirstVoiceover(t *testing.T) {
 		t.Fatalf("tracking advanced without a publisher: %#v", watch)
 	}
 
-	release.Voiceovers = []animelib.ReleaseVoiceover{{Name: "Другая озвучка"}}
+	release.Voiceovers = []libsocial.ReleaseVoiceover{{Name: "Другая озвучка"}}
 	if err := lib.CheckEpisodeNotifications(context.Background(), func(EpisodeNotification) error {
 		events++
 		return nil
@@ -306,14 +306,14 @@ func TestCheckEpisodeNotificationsWaitsForFirstVoiceover(t *testing.T) {
 func TestCheckEpisodeNotificationsCompletedTitleDropsTracking(t *testing.T) {
 	lib := openEpisodeTestLibrary(t)
 	tid := addEpisodeTestTitle(t, lib, ongoingEpisodeTitle("finished", "Завершён"), "1", "Озвучка")
-	if err := lib.store.SeedEpisodeTracking(tid, "1"); err != nil {
+	if err := lib.storage.SeedEpisodeTracking(tid, "1"); err != nil {
 		t.Fatal(err)
 	}
 
-	lib.episodeFetcher = fixedEpisodeFetcher(&animelib.EpisodeRelease{
-		StatusID: animelib.StatusCompleted,
+	lib.episodeFetcher = fixedEpisodeFetcher(&libsocial.EpisodeRelease{
+		StatusID: libsocial.StatusCompleted,
 		Episode:  "12",
-		Voiceovers: []animelib.ReleaseVoiceover{
+		Voiceovers: []libsocial.ReleaseVoiceover{
 			{Name: "Озвучка"},
 		},
 	}, nil)
@@ -344,7 +344,7 @@ func TestCheckEpisodeNotificationsDisabledSkipsNetwork(t *testing.T) {
 	}
 
 	calls := 0
-	lib.episodeFetcher = func(context.Context, string) (*animelib.EpisodeRelease, error) {
+	lib.episodeFetcher = func(context.Context, string) (*libsocial.EpisodeRelease, error) {
 		calls++
 		return nil, errors.New("must not be called")
 	}
@@ -380,14 +380,14 @@ func TestSaveSeedsEpisodeTracking(t *testing.T) {
 func TestCheckEpisodeNotificationsUpdatesEpisodeTotal(t *testing.T) {
 	lib := openEpisodeTestLibrary(t)
 	tid := addEpisodeTestTitle(t, lib, ongoingEpisodeTitle("total", "Итого"), "1", "Озвучка")
-	if err := lib.store.SeedEpisodeTracking(tid, "1"); err != nil {
+	if err := lib.storage.SeedEpisodeTracking(tid, "1"); err != nil {
 		t.Fatal(err)
 	}
-	lib.episodeFetcher = fixedEpisodeFetcher(&animelib.EpisodeRelease{
-		StatusID:     animelib.StatusOngoing,
+	lib.episodeFetcher = fixedEpisodeFetcher(&libsocial.EpisodeRelease{
+		StatusID:     libsocial.StatusOngoing,
 		Episode:      "2",
 		EpisodeCount: 12,
-		Voiceovers:   []animelib.ReleaseVoiceover{{Name: "Озвучка"}},
+		Voiceovers:   []libsocial.ReleaseVoiceover{{Name: "Озвучка"}},
 	}, nil)
 
 	if err := lib.CheckEpisodeNotifications(context.Background(), func(EpisodeNotification) error {

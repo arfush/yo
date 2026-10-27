@@ -76,7 +76,7 @@ func TestTitleQualityLabels(t *testing.T) {
 
 func TestQualitySectionLabel(t *testing.T) {
 	for _, item := range []historyTitle{
-		{source: "animelib", movie: false},
+		{source: "libsocial", movie: false},
 		{source: "filmlib", movie: false},
 		{source: "filmlib", movie: true},
 	} {

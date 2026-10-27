@@ -7,9 +7,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/arfush/yo/animelib"
+	"github.com/arfush/yo/libsocial"
 	"github.com/arfush/yo/metadata"
-	"github.com/arfush/yo/store"
+	"github.com/arfush/yo/storage"
 )
 
 // PlaybackEpisode is one episode that can be added to the mpv playlist.
@@ -60,7 +60,7 @@ func (l *Library) PlaybackPlan(ctx context.Context, title Title, voiceName, epis
 	if err != nil {
 		return nil, err
 	}
-	client := animelib.New(token)
+	client := libsocial.New(token)
 
 	meta, err := client.ResolveTitle(ctx, title.Slug)
 	if err != nil {
@@ -71,9 +71,9 @@ func (l *Library) PlaybackPlan(ctx context.Context, title Title, voiceName, epis
 		return nil, err
 	}
 
-	byNumber := make(map[string]animelib.EpisodeListItem, len(list))
+	byNumber := make(map[string]libsocial.EpisodeListItem, len(list))
 	for _, item := range list {
-		number := animelib.NormalizeEpisodeNumber(item.Number)
+		number := libsocial.NormalizeEpisodeNumber(item.Number)
 		if number == "" {
 			continue
 		}
@@ -88,7 +88,7 @@ func (l *Library) PlaybackPlan(ctx context.Context, title Title, voiceName, epis
 	}
 	voiceSet := make(map[string]bool)
 	for _, number := range voice.Episodes {
-		voiceSet[animelib.NormalizeEpisodeNumber(number)] = true
+		voiceSet[libsocial.NormalizeEpisodeNumber(number)] = true
 	}
 	if len(voiceSet) == 0 {
 		return nil, fmt.Errorf("the selected voiceover has no available episodes")
@@ -100,7 +100,7 @@ func (l *Library) PlaybackPlan(ctx context.Context, title Title, voiceName, epis
 	// the title window. If the local list is incomplete, fall back to the fresh
 	// AnimeLIB list.
 	for _, number := range title.Episodes {
-		number = animelib.NormalizeEpisodeNumber(number)
+		number = libsocial.NormalizeEpisodeNumber(number)
 		if number == "" || seen[number] || !voiceSet[number] || byNumber[number].ID == 0 {
 			continue
 		}
@@ -108,7 +108,7 @@ func (l *Library) PlaybackPlan(ctx context.Context, title Title, voiceName, epis
 		orderedNumbers = append(orderedNumbers, number)
 	}
 	for _, item := range list {
-		number := animelib.NormalizeEpisodeNumber(item.Number)
+		number := libsocial.NormalizeEpisodeNumber(item.Number)
 		if number == "" || seen[number] || !voiceSet[number] {
 			continue
 		}
@@ -185,7 +185,7 @@ func (l *Library) PlaybackPlan(ctx context.Context, title Title, voiceName, epis
 
 	resumeAt, duration := 0.0, 0.0
 	if title.ID != 0 {
-		if entry, historyErr := l.store.GetHistory(title.ID); historyErr == nil && entry != nil && entry.Episode == chosen.Number {
+		if entry, historyErr := l.storage.GetHistory(title.ID); historyErr == nil && entry != nil && entry.Episode == chosen.Number {
 			resumeAt, duration = entry.ResumeAt, entry.Duration
 			// Treat the episode as finished if playback stopped at its very end,
 			// and ignore a few leading seconds so a title does not reopen there.
@@ -205,10 +205,10 @@ func (l *Library) PlaybackPlan(ctx context.Context, title Title, voiceName, epis
 		}
 		storedRussian := strings.TrimSpace(meta.RusName)
 		if storedEnglish != "" || storedRussian != "" {
-			_ = l.store.UpdateNames(title.ID, storedEnglish, storedRussian)
+			_ = l.storage.UpdateNames(title.ID, storedEnglish, storedRussian)
 		}
 		if imdbID != "" || season > 0 {
-			_ = l.store.UpdateMetadata(title.ID, imdbID, season)
+			_ = l.storage.UpdateMetadata(title.ID, imdbID, season)
 		}
 	}
 
@@ -231,7 +231,7 @@ func (l *Library) PlaybackPlan(ctx context.Context, title Title, voiceName, epis
 		ResumeAt:         resumeAt,
 		Duration:         duration,
 		CompleteOnFinish: planCompletesTitle(title, episodes),
-		Source:           store.SourceAnimeLIB,
+		Source:           storage.SourceLibSocial,
 	}, nil
 }
 
@@ -249,7 +249,7 @@ func planCompletesTitle(title Title, episodes []PlaybackEpisode) bool {
 	if len(title.Episodes) == 0 {
 		return title.EpisodesTotal > 0 && len(episodes) == title.EpisodesTotal
 	}
-	last := animelib.NormalizeEpisodeNumber(title.Episodes[len(title.Episodes)-1])
+	last := libsocial.NormalizeEpisodeNumber(title.Episodes[len(title.Episodes)-1])
 	return last != "" && episodes[len(episodes)-1].Number == last
 }
 
@@ -272,7 +272,7 @@ func findVoiceover(voices []Voiceover, name string) *Voiceover {
 }
 
 func indexOfEpisode(episodes []PlaybackEpisode, number string) int {
-	number = animelib.NormalizeEpisodeNumber(number)
+	number = libsocial.NormalizeEpisodeNumber(number)
 	for index, episode := range episodes {
 		if episode.Number == number {
 			return index
@@ -284,12 +284,12 @@ func indexOfEpisode(episodes []PlaybackEpisode, number string) int {
 // nextAvailableIndex walks the displayed episode order forward from the
 // selected episode. It never falls back to an earlier episode.
 func nextAvailableIndex(displayOrder []string, episodes []PlaybackEpisode, selected string) int {
-	selected = animelib.NormalizeEpisodeNumber(selected)
+	selected = libsocial.NormalizeEpisodeNumber(selected)
 	start := 0
 	if selected != "" {
 		found := false
 		for index, number := range displayOrder {
-			if animelib.NormalizeEpisodeNumber(number) == selected {
+			if libsocial.NormalizeEpisodeNumber(number) == selected {
 				start = index + 1
 				found = true
 				break

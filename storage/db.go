@@ -1,10 +1,10 @@
-// Package store persists titles, history and local settings in SQLite.
+// Package storage persists titles, history and local settings in SQLite.
 //
 // The schema is created from scratch on first run. Until the first public
 // release there are no versioned migrations: opening a database stamps the
 // current version and rewrites the known legacy source values in place. A file
 // whose tables miss the columns of the current schema is rejected as corrupted.
-package store
+package storage
 
 import (
 	"database/sql"
@@ -24,7 +24,7 @@ const defaultUserStatus = 2
 
 // Source names accepted by the titles.source column.
 const (
-	SourceAnimeLIB  = "animelib"
+	SourceLibSocial = "libsocial"
 	SourceFilmlib   = "filmlib"
 	SourceMangaLib  = "mangalib"
 	SourceYaoiLib   = "yaoilib"
@@ -42,62 +42,6 @@ const schemaVersion = 2
 //
 // ErrCorruptDatabase lives in errors.go together with the other package
 // sentinels.
-
-const schemaSQL = `
-CREATE TABLE IF NOT EXISTS titles (
-    id             INTEGER PRIMARY KEY,
-    slug           TEXT    UNIQUE NOT NULL,
-    source         TEXT    NOT NULL DEFAULT 'animelib',
-    external_id    TEXT    NOT NULL DEFAULT '',
-    eng_name       TEXT    NOT NULL DEFAULT '',
-    rus_name       TEXT    NOT NULL DEFAULT '',
-    imdb_id        TEXT    NOT NULL DEFAULT '',
-    season         INTEGER NOT NULL DEFAULT 0,
-    status         INTEGER NOT NULL DEFAULT 0,
-    user_status    INTEGER NOT NULL DEFAULT 2,
-    episodes_total INTEGER NOT NULL DEFAULT 0,
-    is_movie       INTEGER NOT NULL DEFAULT 0,
-    updated_at     INTEGER NOT NULL DEFAULT 0
-);
-CREATE TABLE IF NOT EXISTS history (
-    tid          INTEGER PRIMARY KEY REFERENCES titles(id) ON DELETE CASCADE,
-    episode      TEXT    NOT NULL DEFAULT '',
-    resume_at    REAL    NOT NULL DEFAULT 0,
-    duration     REAL    NOT NULL DEFAULT 0,
-    voiceover    TEXT    NOT NULL DEFAULT '',
-    sort_order   INTEGER NOT NULL DEFAULT 0,
-    status_order INTEGER NOT NULL DEFAULT 0
-);
-CREATE INDEX IF NOT EXISTS idx_history_order ON history(sort_order);
-CREATE INDEX IF NOT EXISTS idx_history_status_order ON history(status_order);
-CREATE TABLE IF NOT EXISTS cover_cache (
-    tid        INTEGER PRIMARY KEY REFERENCES titles(id) ON DELETE CASCADE,
-    filename   TEXT    NOT NULL DEFAULT '',
-    expires_at INTEGER NOT NULL DEFAULT 0,
-    failed_at  INTEGER NOT NULL DEFAULT 0
-);
-CREATE TABLE IF NOT EXISTS introdb_cache (
-    tid      INTEGER NOT NULL REFERENCES titles(id) ON DELETE CASCADE,
-    episode  TEXT    NOT NULL,
-    chapters TEXT    NOT NULL DEFAULT '',
-    no_data  INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (tid, episode)
-);
-CREATE TABLE IF NOT EXISTS settings (
-    key   TEXT PRIMARY KEY,
-    value TEXT NOT NULL DEFAULT ''
-);
-CREATE TABLE IF NOT EXISTS episode_tracking (
-    tid                      INTEGER PRIMARY KEY REFERENCES titles(id) ON DELETE CASCADE,
-    last_episode             TEXT    NOT NULL DEFAULT '',
-    any_voice_notified       INTEGER NOT NULL DEFAULT 0,
-    preferred_voice_notified INTEGER NOT NULL DEFAULT 0
-);
-CREATE TABLE IF NOT EXISTS title_qualities (
-    tid  INTEGER PRIMARY KEY REFERENCES titles(id) ON DELETE CASCADE,
-    data TEXT    NOT NULL DEFAULT ''
-);
-`
 
 // expectedColumns is the completeness contract of the current schema. verify
 // uses it to distinguish a fresh/current database from an old or damaged file.
@@ -125,7 +69,7 @@ var expectedColumns = map[string][]string{
 // request. IsMovie keeps films from showing an episode counter in history.
 type Title struct {
 	ID int64
-	// Source names the catalogue the title came from ("animelib" or
+	// Source names the catalogue the title came from ("libsocial" or
 	// "filmlib" or one of the LibSocial reading sites). It decides which
 	// resolver may open the title and which background checks apply to it.
 	Source string
@@ -189,14 +133,14 @@ type EpisodeTracking struct {
 	PreferredVoiceNotified bool
 }
 
-// Store is a SQLite-backed title and history store.
-type Store struct {
+// Storage is a SQLite-backed title and history storage.
+type Storage struct {
 	db *sql.DB
 }
 
 // Open creates the database (and its directory) if needed, stamps the current
 // schema version and rejects files that no longer match the current schema.
-func Open(path string) (*Store, error) {
+func Open(path string) (*Storage, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		logger.Error("cannot create database directory", "path", filepath.Dir(path), "error", err)
 		return nil, err
@@ -214,7 +158,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	existingTables := 0
-	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`).Scan(&existingTables); err != nil {
+	if err := db.QueryRow(sqlQuery("system.table_count")).Scan(&existingTables); err != nil {
 		db.Close()
 		logger.Error("cannot inspect database", "path", path, "error", err)
 		return nil, err
@@ -242,7 +186,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	logger.Info("database opened", "path", path)
-	return &Store{db: db}, nil
+	return &Storage{db: db}, nil
 }
 
 // prepareDatabase stamps the current schema version and rewrites the source
@@ -253,24 +197,20 @@ func prepareDatabase(db *sql.DB) error {
 	if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
 		return fmt.Errorf("stamp schema version: %w", err)
 	}
-	if _, err := db.Exec(`
-        UPDATE titles SET source = 'filmlib' WHERE source = 'kinopoisk'`); err != nil {
+	if _, err := db.Exec(sqlQuery("system.normalize_filmlib_source")); err != nil {
 		return fmt.Errorf("normalize title source: %w", err)
 	}
-	if _, err := db.Exec(`
-        UPDATE titles
-        SET slug = 'filmlib:' || CASE
-            WHEN external_id <> '' THEN external_id
-            ELSE substr(slug, 11)
-        END
-        WHERE slug LIKE 'kinopoisk:%'`); err != nil {
+	if _, err := db.Exec(sqlQuery("system.normalize_libsocial_source")); err != nil {
+		return fmt.Errorf("normalize libsocial source: %w", err)
+	}
+	if _, err := db.Exec(sqlQuery("system.normalize_filmlib_slug")); err != nil {
 		return fmt.Errorf("normalize title slug: %w", err)
 	}
 	return nil
 }
 
 // Close closes the underlying database.
-func (s *Store) Close() error {
+func (s *Storage) Close() error {
 	if s == nil || s.db == nil {
 		return nil
 	}
@@ -278,12 +218,12 @@ func (s *Store) Close() error {
 }
 
 // Validate checks an opened database with a cheap query.
-func (s *Store) Validate() error {
+func (s *Storage) Validate() error {
 	if s == nil || s.db == nil {
 		return fmt.Errorf("database is not open")
 	}
 	var count int
-	return s.db.QueryRow("SELECT COUNT(*) FROM titles").Scan(&count)
+	return s.db.QueryRow(sqlQuery("system.title_count")).Scan(&count)
 }
 
 // verifySchema compares the live column list of every table with the contract
@@ -347,7 +287,7 @@ func scanTitle(row *sql.Row) (*Title, error) {
 		return nil, err
 	}
 	if title.Source == "" {
-		title.Source = SourceAnimeLIB
+		title.Source = SourceLibSocial
 	}
 	return &title, nil
 }
@@ -355,7 +295,7 @@ func scanTitle(row *sql.Row) (*Title, error) {
 // titleSource keeps rows written before sources existed readable.
 func titleSource(title Title) string {
 	if title.Source == "" {
-		return SourceAnimeLIB
+		return SourceLibSocial
 	}
 	return title.Source
 }
@@ -366,4 +306,4 @@ type rowQuerier interface {
 	QueryRow(query string, args ...any) *sql.Row
 }
 
-var logger = log.For(log.SourceStore)
+var logger = log.For(log.SourceStorage)

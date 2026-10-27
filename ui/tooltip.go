@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image"
+	"strings"
 
 	"gioui.org/font"
 	"gioui.org/layout"
@@ -18,6 +19,9 @@ func (w *titleScreen) layoutTooltip(gtx layout.Context, size image.Point) {
 	} else {
 		missing := w.missingForCurrentSeason(w.item.voices[w.tooltipIndex])
 		label = voiceMissingLabelForEpisodes(missing)
+		if w.item.reading() {
+			label = strings.Replace(label, "Нет серий", "Нет глав", 1)
+		}
 	}
 	if label == "" {
 		return

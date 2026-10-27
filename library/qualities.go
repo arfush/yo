@@ -86,7 +86,7 @@ func (l *Library) applyStoredQualities(title *Title) {
 	if l == nil || title == nil || title.ID == 0 {
 		return
 	}
-	raw, err := l.store.GetTitleQualities(title.ID)
+	raw, err := l.storage.GetTitleQualities(title.ID)
 	if err != nil {
 		logger.Warn("cannot load cached filmlib qualities", "title", title.ID, "error", err)
 		return

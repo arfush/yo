@@ -3,11 +3,11 @@ package playback
 import (
 	"testing"
 
-	"github.com/arfush/yo/animelib"
+	"github.com/arfush/yo/libsocial"
 )
 
 func TestPickAnimelibQuality(t *testing.T) {
-	links := []animelib.QualityLink{
+	links := []libsocial.QualityLink{
 		{Quality: 720, Href: "720"},
 		{Quality: 480, Href: "480"},
 		{Quality: 1080, Href: "1080"},
@@ -25,14 +25,14 @@ func TestPickAnimelibQuality(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := pickAnimelibQuality(links, test.preferred)
+			got := pickLibSocialQuality(links, test.preferred)
 			if got.Quality != test.want {
 				t.Fatalf("quality = %d, want %d", got.Quality, test.want)
 			}
 		})
 	}
 
-	if got := pickAnimelibQuality(nil, 1080); got.Href != "" {
+	if got := pickLibSocialQuality(nil, 1080); got.Href != "" {
 		t.Fatalf("empty links should stay empty, got %+v", got)
 	}
 }

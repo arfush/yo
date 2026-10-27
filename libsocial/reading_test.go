@@ -1,6 +1,7 @@
-package animelib
+package libsocial
 
 import (
+	"encoding/json"
 	"testing"
 )
 
@@ -74,6 +75,38 @@ func TestNormalizeReadingImageURL(t *testing.T) {
 		if got := NormalizeReadingImageURL(tc.raw, tc.site); got != tc.want {
 			t.Fatalf("NormalizeReadingImageURL(%q, %d) = %q, want %q", tc.raw, tc.site, got, tc.want)
 		}
+	}
+}
+
+func TestParseReadingContentProseMirror(t *testing.T) {
+	raw := []byte(`{"data":{"content":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Первый абзац."}]},{"type":"paragraph","content":[{"type":"text","text":"Второй"},{"type":"hardBreak"},{"type":"text","text":"абзац."}]},{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Пункт списка."}]}]}]}]}}}`)
+	var response struct {
+		Data struct {
+			Content json.RawMessage `json:"content"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &response); err != nil {
+		t.Fatal(err)
+	}
+	html, paragraphs := parseReadingContent(response.Data.Content)
+	if html != "" {
+		t.Fatalf("html = %q, want empty", html)
+	}
+	want := []string{"Первый абзац.", "Второй\nабзац.", "Пункт списка."}
+	if len(paragraphs) != len(want) {
+		t.Fatalf("paragraphs = %#v, want %#v", paragraphs, want)
+	}
+	for i := range want {
+		if paragraphs[i] != want[i] {
+			t.Fatalf("paragraph %d = %q, want %q", i, paragraphs[i], want[i])
+		}
+	}
+}
+
+func TestParseReadingContentHTMLString(t *testing.T) {
+	html, paragraphs := parseReadingContent(json.RawMessage(`"<p>Текст</p>"`))
+	if html != "<p>Текст</p>" || len(paragraphs) != 0 {
+		t.Fatalf("html = %q, paragraphs = %#v", html, paragraphs)
 	}
 }
 

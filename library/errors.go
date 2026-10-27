@@ -4,17 +4,17 @@ import (
 	"errors"
 
 	"github.com/arfush/yo/catalog"
-	"github.com/arfush/yo/store"
+	"github.com/arfush/yo/storage"
 )
 
 // Sentinels returned by the library layer. Messages are technical English:
 // the UI maps them to Russian sentences instead of showing them directly.
 var (
-	// ErrDatabaseUnavailable means the store was not opened.
+	// ErrDatabaseUnavailable means storage was not opened.
 	ErrDatabaseUnavailable = errors.New("database is not available")
-	// ErrDatabaseCorrupt re-exports the store sentinel so UI code does not
+	// ErrDatabaseCorrupt re-exports the storage sentinel so UI code does not
 	// import the data layer directly.
-	ErrDatabaseCorrupt = store.ErrCorruptDatabase
+	ErrDatabaseCorrupt = storage.ErrCorruptDatabase
 	// ErrUnknownUserStatus is returned by SetUserStatus for an invalid value.
 	ErrUnknownUserStatus = errors.New("unknown title status")
 	// ErrTokenMissing means the AnimeLIB token file was not found.
@@ -36,7 +36,7 @@ var (
 	ErrBadPageURL = errors.New("invalid page URL")
 
 	// Cover errors.
-	ErrCoversClosed = errors.New("cover store is not open")
+	ErrCoversClosed = errors.New("cover storage is not open")
 	ErrNoCoverURL   = errors.New("title has no cover URL")
 	ErrNoTitleID    = errors.New("title has no local id")
 	ErrBadCoverFile = errors.New("cover: empty or oversized file")

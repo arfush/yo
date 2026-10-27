@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arfush/yo/animelib"
 	"github.com/arfush/yo/catalog"
 	"github.com/arfush/yo/filmlib"
+	"github.com/arfush/yo/libsocial"
 	"github.com/arfush/yo/log"
 	"github.com/arfush/yo/metadata"
-	"github.com/arfush/yo/store"
+	"github.com/arfush/yo/storage"
 	"github.com/arfush/yo/token"
 )
 
@@ -46,9 +46,9 @@ func NormalizeUserStatus(status UserStatus) UserStatus {
 	return catalog.NormalizeUserStatus(status)
 }
 
-// Library owns the store and reads the token file on demand.
+// Library owns the storage and reads the token file on demand.
 type Library struct {
-	store     *store.Store
+	storage   *storage.Storage
 	tokenPath string
 	covers    *coverManager
 	// filmlib talks to the mirror and the metadata API. It holds no browser:
@@ -65,12 +65,12 @@ type Library struct {
 // Open opens the local database and returns a library. The token is read lazily
 // so a future token-entry screen can replace the file while the app is running.
 func Open(databasePath, tokenPath string) (*Library, error) {
-	db, err := store.Open(databasePath)
+	db, err := storage.Open(databasePath)
 	if err != nil {
 		return nil, err
 	}
 	return &Library{
-		store:     db,
+		storage:   db,
 		tokenPath: tokenPath,
 		covers:    newCoverManager(databasePath, db),
 		filmlib:   filmlib.NewClient(),
@@ -82,12 +82,12 @@ func (l *Library) Close() error {
 	if l == nil {
 		return nil
 	}
-	return l.store.Close()
+	return l.storage.Close()
 }
 
 // History returns all saved titles in the visible order.
 func (l *Library) History() ([]Title, error) {
-	entries, err := l.store.ListHistory()
+	entries, err := l.storage.ListHistory()
 	if err != nil {
 		logger.Error("cannot load history", "error", err)
 		return nil, err
@@ -114,7 +114,7 @@ func (l *Library) Load(ctx context.Context, input string) (Title, error) {
 	if link, ok := filmlib.ParseInput(input); ok {
 		return l.loadFilmlib(ctx, link, true)
 	}
-	if link, ok, err := animelib.ParseReadingInput(input); err != nil {
+	if link, ok, err := libsocial.ParseReadingInput(input); err != nil {
 		return Title{}, err
 	} else if ok {
 		return l.loadReading(ctx, link, true)
@@ -122,11 +122,11 @@ func (l *Library) Load(ctx context.Context, input string) (Title, error) {
 	logger.Info("loading title", "input", input)
 	token, err := l.readToken()
 	if err != nil {
-		logger.Error("cannot read animelib token", "error", err)
+		logger.Error("cannot read site token", "error", err)
 		return Title{}, err
 	}
 
-	client := animelib.New(token)
+	client := libsocial.New(token)
 	data, err := client.Fetch(ctx, input)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -155,14 +155,14 @@ func (l *Library) Load(ctx context.Context, input string) (Title, error) {
 // exists in the database. UpsertTitle deliberately preserves the current user
 // status on conflict, so the in-memory copy still carries the schema default;
 // reloading it is what makes the title page show the status chosen in history.
-func (l *Library) upsertLoadedTitle(stored store.Title) (store.Title, error) {
-	id, err := l.store.UpsertTitle(stored)
+func (l *Library) upsertLoadedTitle(stored storage.Title) (storage.Title, error) {
+	id, err := l.storage.UpsertTitle(stored)
 	if err != nil {
-		return store.Title{}, fmt.Errorf("cannot save title: %w", err)
+		return storage.Title{}, fmt.Errorf("cannot save title: %w", err)
 	}
-	persisted, err := l.store.GetTitleByID(id)
+	persisted, err := l.storage.GetTitleByID(id)
 	if err != nil {
-		return store.Title{}, err
+		return storage.Title{}, err
 	}
 	if persisted != nil {
 		return *persisted, nil
@@ -179,7 +179,7 @@ func (l *Library) Fetch(ctx context.Context, input string) (Title, error) {
 	if link, ok := filmlib.ParseInput(input); ok {
 		return l.loadFilmlib(ctx, link, false)
 	}
-	if link, ok, err := animelib.ParseReadingInput(input); err != nil {
+	if link, ok, err := libsocial.ParseReadingInput(input); err != nil {
 		return Title{}, err
 	} else if ok {
 		return l.loadReading(ctx, link, false)
@@ -187,11 +187,11 @@ func (l *Library) Fetch(ctx context.Context, input string) (Title, error) {
 	logger.Info("fetching title", "input", input)
 	token, err := l.readToken()
 	if err != nil {
-		logger.Error("cannot read animelib token", "error", err)
+		logger.Error("cannot read site token", "error", err)
 		return Title{}, err
 	}
 
-	client := animelib.New(token)
+	client := libsocial.New(token)
 	data, err := client.Fetch(ctx, input)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -204,11 +204,11 @@ func (l *Library) Fetch(ctx context.Context, input string) (Title, error) {
 
 	// A title that was saved earlier keeps its local id and selection, so the
 	// Save button updates that history entry instead of creating a duplicate.
-	existing, err := l.store.GetTitle(data.SlugURL)
+	existing, err := l.storage.GetTitle(data.SlugURL)
 	if err != nil {
 		return Title{}, err
 	}
-	var stored store.Title
+	var stored storage.Title
 	if existing != nil {
 		stored = *existing
 	}
@@ -216,7 +216,7 @@ func (l *Library) Fetch(ctx context.Context, input string) (Title, error) {
 	var voice, episode string
 	if existing != nil {
 		title.ID = existing.ID
-		entry, err := l.store.GetHistory(existing.ID)
+		entry, err := l.storage.GetHistory(existing.ID)
 		if err != nil {
 			return Title{}, err
 		}
@@ -239,7 +239,7 @@ func (l *Library) Fetch(ctx context.Context, input string) (Title, error) {
 func (l *Library) Save(title Title, voice, episode string) (Title, error) {
 	logger.Info("saving title", "title", title.Russian, "slug", title.Slug, "user_status", title.UserStatus)
 	stored := storedTitleFromLibrary(title)
-	id, err := l.store.UpsertTitle(stored)
+	id, err := l.storage.UpsertTitle(stored)
 	if err != nil {
 		logger.Error("cannot save title", "slug", title.Slug, "error", err)
 		return Title{}, fmt.Errorf("cannot save title: %w", err)
@@ -248,7 +248,7 @@ func (l *Library) Save(title Title, voice, episode string) (Title, error) {
 	if data := encodeVoiceQualities(title.Voiceovers); data != "" {
 		// The quality ladder costs a headless resolve, so it is cached only for
 		// titles the user actually keeps in history.
-		if err := l.store.SaveTitleQualities(id, data); err != nil {
+		if err := l.storage.SaveTitleQualities(id, data); err != nil {
 			logger.Warn("cannot cache filmlib qualities", "title", id, "error", err)
 		}
 	}
@@ -263,10 +263,10 @@ func (l *Library) Save(title Title, voice, episode string) (Title, error) {
 	saved.Voiceovers = append([]Voiceover(nil), title.Voiceovers...)
 	saved.Seasons = append([]Season(nil), title.Seasons...)
 	saved.SelectedVoice, saved.SelectedEpisode = chooseSelection(saved, voice, episode)
-	if _, err := l.store.EnsureHistory(id, saved.SelectedEpisode, saved.SelectedVoice); err != nil {
+	if _, err := l.storage.EnsureHistory(id, saved.SelectedEpisode, saved.SelectedVoice); err != nil {
 		return Title{}, err
 	}
-	if err := l.store.SaveSelection(id, saved.SelectedEpisode, saved.SelectedVoice); err != nil {
+	if err := l.storage.SaveSelection(id, saved.SelectedEpisode, saved.SelectedVoice); err != nil {
 		return Title{}, err
 	}
 	if err := l.seedEpisodeTracking(saved); err != nil {
@@ -275,7 +275,7 @@ func (l *Library) Save(title Title, voice, episode string) (Title, error) {
 	// UpsertTitle keeps the existing status so background metadata refreshes do
 	// not overwrite a manual choice. Save is explicit, so write the status from
 	// the title window even when the title already existed without history.
-	if err := l.store.SetUserStatus(id, int(stored.UserStatus)); err != nil {
+	if err := l.storage.SetUserStatus(id, int(stored.UserStatus)); err != nil {
 		logger.Error("cannot save user status", "title", id, "error", err)
 		return Title{}, err
 	}
@@ -302,11 +302,11 @@ func (l *Library) Token() (string, error) {
 // only saw through the room. The saved position is kept.
 func (l *Library) TrackViewing(title Title, voice, episode string) (int64, error) {
 	stored := storedTitleFromLibrary(title)
-	id, err := l.store.UpsertTitle(stored)
+	id, err := l.storage.UpsertTitle(stored)
 	if err != nil {
 		return 0, fmt.Errorf("cannot save title: %w", err)
 	}
-	if err := l.store.TrackViewing(id, episode, voice); err != nil {
+	if err := l.storage.TrackViewing(id, episode, voice); err != nil {
 		logger.Error("cannot track viewing", "title", id, "episode", episode, "error", err)
 		return id, err
 	}
@@ -318,7 +318,7 @@ func (l *Library) TrackViewing(title Title, voice, episode string) (int64, error
 // SaveSelection persists the voiceover and episode selected in the title
 // window.
 func (l *Library) SaveSelection(tid int64, voice, episode string) error {
-	return l.store.SaveSelection(tid, episode, voice)
+	return l.storage.SaveSelection(tid, episode, voice)
 }
 
 // SetUserStatus stores the local library status. Announced titles can only be
@@ -328,7 +328,7 @@ func (l *Library) SetUserStatus(tid int64, status UserStatus) error {
 		return ErrUnknownUserStatus
 	}
 	if tid != 0 {
-		title, err := l.store.GetTitleByID(tid)
+		title, err := l.storage.GetTitleByID(tid)
 		if err != nil {
 			return err
 		}
@@ -336,16 +336,16 @@ func (l *Library) SetUserStatus(tid int64, status UserStatus) error {
 			status = UserStatusPlanned
 		}
 	}
-	return l.store.SetUserStatus(tid, int(status))
+	return l.storage.SetUserStatus(tid, int(status))
 }
 
 // promoteWatching moves a planned title to "Watching" when playback starts. It
 // deliberately leaves every other status alone.
 func (l *Library) promoteWatching(tid int64) {
-	if tid == 0 || l.store == nil {
+	if tid == 0 || l.storage == nil {
 		return
 	}
-	if err := l.store.SetUserStatusFrom(tid, int(UserStatusPlanned), int(UserStatusWatching)); err != nil {
+	if err := l.storage.SetUserStatusFrom(tid, int(UserStatusPlanned), int(UserStatusWatching)); err != nil {
 		logger.Warn("cannot promote user status", "title", tid, "error", err)
 		return
 	}
@@ -355,10 +355,10 @@ func (l *Library) promoteWatching(tid int64) {
 // read failure falls back to the default "Planned"; the UI only needs this to
 // refresh a pill after playback.
 func (l *Library) UserStatus(tid int64) UserStatus {
-	if tid == 0 || l.store == nil {
+	if tid == 0 || l.storage == nil {
 		return UserStatusPlanned
 	}
-	title, err := l.store.GetTitleByID(tid)
+	title, err := l.storage.GetTitleByID(tid)
 	if err != nil {
 		logger.Warn("cannot read user status", "title", tid, "error", err)
 		return UserStatusPlanned
@@ -373,10 +373,10 @@ func (l *Library) UserStatus(tid int64) UserStatus {
 // Unlike SetUserStatus it is unconditional: reaching the end is a stronger
 // signal than the status the user picked earlier.
 func (l *Library) MarkCompleted(tid int64) error {
-	if tid == 0 || l.store == nil {
+	if tid == 0 || l.storage == nil {
 		return nil
 	}
-	if err := l.store.SetUserStatus(tid, int(UserStatusCompleted)); err != nil {
+	if err := l.storage.SetUserStatus(tid, int(UserStatusCompleted)); err != nil {
 		logger.Error("cannot mark title completed", "title", tid, "error", err)
 		return err
 	}
@@ -386,12 +386,12 @@ func (l *Library) MarkCompleted(tid int64) error {
 
 // SaveProgress stores the current episode and playback position.
 func (l *Library) SaveProgress(tid int64, episode string, position, duration float64) error {
-	return l.store.SaveProgress(tid, episode, position, duration)
+	return l.storage.SaveProgress(tid, episode, position, duration)
 }
 
 // Progress returns the latest saved episode and position for a title.
 func (l *Library) Progress(tid int64) (episode string, resumeAt, duration float64) {
-	entry, err := l.store.GetHistory(tid)
+	entry, err := l.storage.GetHistory(tid)
 	if err != nil || entry == nil {
 		return "", 0, 0
 	}
@@ -401,53 +401,53 @@ func (l *Library) Progress(tid int64) (episode string, resumeAt, duration float6
 // UpdateNames refreshes the stored English and Russian titles discovered during
 // playback. Existing values are kept when the new one is empty.
 func (l *Library) UpdateNames(tid int64, english, russian string) error {
-	return l.store.UpdateNames(tid, english, russian)
+	return l.storage.UpdateNames(tid, english, russian)
 }
 
 // UpdateMetadata stores an IMDb id and franchise season discovered for a title.
 func (l *Library) UpdateMetadata(tid int64, imdbID string, season int) error {
-	return l.store.UpdateMetadata(tid, imdbID, season)
+	return l.storage.UpdateMetadata(tid, imdbID, season)
 }
 
 // PreferredQuality returns the globally remembered playback quality.
 func (l *Library) PreferredQuality() int {
-	return l.store.PreferredQuality()
+	return l.storage.PreferredQuality()
 }
 
 // SetPreferredQuality remembers playback quality for all titles.
 func (l *Library) SetPreferredQuality(quality int) error {
-	return l.store.SetPreferredQuality(quality)
+	return l.storage.SetPreferredQuality(quality)
 }
 
 // SharedControlEnabled reports whether watch-party guests may control playback.
 func (l *Library) SharedControlEnabled() bool {
-	if l == nil || l.store == nil {
+	if l == nil || l.storage == nil {
 		return true
 	}
-	return l.store.SharedControlEnabled()
+	return l.storage.SharedControlEnabled()
 }
 
 // Setting returns a raw settings row. It is used for UI geometry the app
 // remembers on disk (window and mpv placement); nil-safe so tests can call it
 // without opening a database.
 func (l *Library) Setting(key string) (string, bool) {
-	if l == nil || l.store == nil {
+	if l == nil || l.storage == nil {
 		return "", false
 	}
-	return l.store.Settings(key)
+	return l.storage.Settings(key)
 }
 
 // SetSetting stores a raw settings row.
 func (l *Library) SetSetting(key, value string) error {
-	if l == nil || l.store == nil {
+	if l == nil || l.storage == nil {
 		return nil
 	}
-	return l.store.SetSettings(key, value)
+	return l.storage.SetSettings(key, value)
 }
 
 // SetSharedControlEnabled stores the shared-control choice.
 func (l *Library) SetSharedControlEnabled(enabled bool) error {
-	return l.store.SetSharedControlEnabled(enabled)
+	return l.storage.SetSharedControlEnabled(enabled)
 }
 
 // AutoSkipSegments returns the introdb segments that playback should skip.
@@ -455,93 +455,93 @@ func (l *Library) SetSharedControlEnabled(enabled bool) error {
 func (l *Library) AutoSkipSegments() map[metadata.Segment]bool {
 	segments := metadata.Segments()
 	out := make(map[metadata.Segment]bool, len(segments))
-	if l == nil || l.store == nil {
+	if l == nil || l.storage == nil {
 		return out
 	}
 	for _, segment := range segments {
-		out[segment] = l.store.AutoSkipSegment(string(segment))
+		out[segment] = l.storage.AutoSkipSegment(string(segment))
 	}
 	return out
 }
 
 // SetAutoSkipSegment stores the per-type auto-skip choice.
 func (l *Library) SetAutoSkipSegment(segment metadata.Segment, enabled bool) error {
-	if l == nil || l.store == nil {
+	if l == nil || l.storage == nil {
 		return ErrDatabaseUnavailable
 	}
-	return l.store.SetAutoSkipSegment(string(segment), enabled)
+	return l.storage.SetAutoSkipSegment(string(segment), enabled)
 }
 
 // AutoUpdateEnabled reports whether updates may install without asking.
 func (l *Library) AutoUpdateEnabled() bool {
-	if l == nil || l.store == nil {
+	if l == nil || l.storage == nil {
 		return false
 	}
-	return l.store.AutoUpdateEnabled()
+	return l.storage.AutoUpdateEnabled()
 }
 
 // SetAutoUpdateEnabled stores the automatic-update choice.
 func (l *Library) SetAutoUpdateEnabled(enabled bool) error {
-	return l.store.SetAutoUpdateEnabled(enabled)
+	return l.storage.SetAutoUpdateEnabled(enabled)
 }
 
 // BetaUpdatesEnabled reports whether patch releases may be installed.
 func (l *Library) BetaUpdatesEnabled() bool {
-	if l == nil || l.store == nil {
+	if l == nil || l.storage == nil {
 		return false
 	}
-	return l.store.BetaUpdatesEnabled()
+	return l.storage.BetaUpdatesEnabled()
 }
 
 // SetBetaUpdatesEnabled stores the beta-testing choice.
 func (l *Library) SetBetaUpdatesEnabled(enabled bool) error {
-	return l.store.SetBetaUpdatesEnabled(enabled)
+	return l.storage.SetBetaUpdatesEnabled(enabled)
 }
 
 // PartyProvider returns the relay picked for new rooms, or "" when the
 // user never picked one.
 func (l *Library) PartyProvider() string {
-	if l == nil || l.store == nil {
+	if l == nil || l.storage == nil {
 		return ""
 	}
-	return l.store.PartyProvider()
+	return l.storage.PartyProvider()
 }
 
 // SetPartyProvider remembers the relay picked for new rooms.
 func (l *Library) SetPartyProvider(provider string) error {
-	return l.store.SetPartyProvider(provider)
+	return l.storage.SetPartyProvider(provider)
 }
 
 // PartyName returns the stored room nickname, or "" when the user never
 // picked one.
 func (l *Library) PartyName() string {
-	if l == nil || l.store == nil {
+	if l == nil || l.storage == nil {
 		return ""
 	}
-	return l.store.PartyName()
+	return l.storage.PartyName()
 }
 
 // SetPartyName stores the room nickname.
 func (l *Library) SetPartyName(name string) error {
-	return l.store.SetPartyName(name)
+	return l.storage.SetPartyName(name)
 }
 
 // IntrodbCache returns cached chapters or a no-data marker. The third result
 // reports whether an entry exists at all.
 func (l *Library) IntrodbCache(tid int64, episode string) ([]byte, bool, bool) {
-	return l.store.GetIntrodbCache(tid, episode)
+	return l.storage.GetIntrodbCache(tid, episode)
 }
 
 // SaveIntrodbCache stores chapters or a no-data marker for an episode.
 func (l *Library) SaveIntrodbCache(tid int64, episode string, chapters []byte, noData bool) error {
-	return l.store.SaveIntrodbCache(tid, episode, chapters, noData)
+	return l.storage.SaveIntrodbCache(tid, episode, chapters, noData)
 }
 
 // DeleteHistory removes one title from the visible history and drops its cached
 // cover. Title metadata stays in the database, but the cover file would
 // otherwise stay on disk forever after the history row is gone.
 func (l *Library) DeleteHistory(tid int64) error {
-	if err := l.store.DeleteHistory(tid); err != nil {
+	if err := l.storage.DeleteHistory(tid); err != nil {
 		logger.Error("cannot delete history", "title", tid, "error", err)
 		return err
 	}
@@ -552,7 +552,7 @@ func (l *Library) DeleteHistory(tid int64) error {
 
 // ClearHistory removes every title from the visible history.
 func (l *Library) ClearHistory() error {
-	if err := l.store.ClearHistory(); err != nil {
+	if err := l.storage.ClearHistory(); err != nil {
 		logger.Error("cannot clear history", "error", err)
 		return err
 	}
@@ -566,7 +566,7 @@ func (l *Library) ReorderHistory(titles []Title) error {
 	for _, title := range titles {
 		ids = append(ids, title.ID)
 	}
-	return l.store.ReorderHistory(ids)
+	return l.storage.ReorderHistory(ids)
 }
 
 // ReorderStatusHistory persists a reorder inside one user status.
@@ -575,7 +575,7 @@ func (l *Library) ReorderStatusHistory(status UserStatus, titles []Title) error 
 	for _, title := range titles {
 		ids = append(ids, title.ID)
 	}
-	return l.store.ReorderStatusHistory(int(NormalizeUserStatus(status)), ids)
+	return l.storage.ReorderStatusHistory(int(NormalizeUserStatus(status)), ids)
 }
 
 func (l *Library) readToken() (string, error) {
@@ -595,7 +595,7 @@ func (l *Library) readToken() (string, error) {
 // restoreSelection loads the saved voiceover and episode, falling back to the
 // first complete selection. New titles are inserted into history here.
 func (l *Library) restoreSelection(title *Title) error {
-	entry, err := l.store.GetHistory(title.ID)
+	entry, err := l.storage.GetHistory(title.ID)
 	if err != nil {
 		return err
 	}
@@ -606,11 +606,11 @@ func (l *Library) restoreSelection(title *Title) error {
 		title.Duration = entry.Duration
 	}
 	if entry == nil {
-		if _, err := l.store.EnsureHistory(title.ID, episode, voice); err != nil {
+		if _, err := l.storage.EnsureHistory(title.ID, episode, voice); err != nil {
 			return err
 		}
 	} else if entry.Voiceover != voice || entry.Episode != episode {
-		if err := l.store.SaveSelection(title.ID, episode, voice); err != nil {
+		if err := l.storage.SaveSelection(title.ID, episode, voice); err != nil {
 			return err
 		}
 	}
@@ -619,7 +619,7 @@ func (l *Library) restoreSelection(title *Title) error {
 	return nil
 }
 
-func storedTitleFromData(data *animelib.TitleData) store.Title {
+func storedTitleFromData(data *libsocial.TitleData) storage.Title {
 	// eng_name is null for some titles (for example Cyberpunk: Edgerunners)
 	// while name already contains the English title. Never fall back to the
 	// Russian name: the title window would then show the same line twice.
@@ -631,9 +631,9 @@ func storedTitleFromData(data *animelib.TitleData) store.Title {
 	if russian == "" {
 		russian = english
 	}
-	return store.Title{
+	return storage.Title{
 		Slug:          data.SlugURL,
-		Source:        store.SourceAnimeLIB,
+		Source:        storage.SourceLibSocial,
 		ExternalID:    data.SlugURL,
 		EngName:       english,
 		RusName:       russian,
@@ -643,20 +643,20 @@ func storedTitleFromData(data *animelib.TitleData) store.Title {
 	}
 }
 
-func storedTitleFromLibrary(title Title) store.Title {
+func storedTitleFromLibrary(title Title) storage.Title {
 	userStatus := NormalizeUserStatus(title.UserStatus)
 	if title.Status == StatusAnnounced {
 		userStatus = UserStatusPlanned
 	}
 	source := title.Source
 	if source == "" {
-		source = store.SourceAnimeLIB
+		source = storage.SourceLibSocial
 	}
 	externalID := title.ExternalID
-	if externalID == "" && source == store.SourceAnimeLIB {
+	if externalID == "" && source == storage.SourceLibSocial {
 		externalID = title.Slug
 	}
-	return store.Title{
+	return storage.Title{
 		Slug:          title.Slug,
 		Source:        source,
 		ExternalID:    externalID,
@@ -675,7 +675,7 @@ func storedTitleFromLibrary(title Title) store.Title {
 // response. Episodes and voiceovers always come from data and are never loaded
 // from the database. A nil data keeps the lists empty; Save copies the
 // already-loaded lists over the returned title.
-func titleFromData(stored store.Title, data *animelib.TitleData) Title {
+func titleFromData(stored storage.Title, data *libsocial.TitleData) Title {
 	title := titleFromStore(stored)
 	if data == nil {
 		return title
@@ -723,10 +723,10 @@ func titleFromData(stored store.Title, data *animelib.TitleData) Title {
 	return title
 }
 
-func titleFromStore(stored store.Title) Title {
+func titleFromStore(stored storage.Title) Title {
 	source := stored.Source
 	if source == "" {
-		source = store.SourceAnimeLIB
+		source = storage.SourceLibSocial
 	}
 	title := Title{
 		ID:            stored.ID,
@@ -795,11 +795,11 @@ func chooseSelection(title Title, savedVoice, savedEpisode string) (string, stri
 
 func statusFrom(id int, label string) Status {
 	switch id {
-	case animelib.StatusOngoing:
+	case libsocial.StatusOngoing:
 		return StatusOngoing
-	case animelib.StatusCompleted:
+	case libsocial.StatusCompleted:
 		return StatusCompleted
-	case animelib.StatusAnnounced:
+	case libsocial.StatusAnnounced:
 		return StatusAnnounced
 	}
 	lower := strings.ToLower(strings.TrimSpace(label))
@@ -815,7 +815,7 @@ func statusFrom(id int, label string) Status {
 	}
 }
 
-func coverURL(cover animelib.Cover) string {
+func coverURL(cover libsocial.Cover) string {
 	for _, candidate := range []string{cover.Original, cover.MD, cover.Default, cover.Thumbnail} {
 		if strings.TrimSpace(candidate) != "" {
 			return candidate

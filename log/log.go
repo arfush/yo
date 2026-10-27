@@ -41,31 +41,31 @@ const (
 // Source constants name every module that writes to the journal. A package
 // builds its logger once at load time:
 //
-//	var logger = log.For(log.SourceAnimelib)
+//	var logger = log.For(log.SourceLibSocial)
 //
-// and every entry it writes then carries `source=animelib`, without the log
+// and every entry it writes then carries `source=libsocial`, without the log
 // package having to look at the call stack.
 const (
-	SourceAnimelib = "animelib"
-	SourceApp      = "app"
-	SourceBrowser  = "browser"
-	SourceFilmlib  = "filmlib"
-	SourceKodik    = "kodik"
-	SourceLibrary  = "library"
-	SourceMpv      = "mpv"
-	SourceParty    = "party"
-	SourcePlayback = "playback"
-	SourceStore    = "store"
-	SourceUI       = "ui"
-	SourceUpdate   = "update"
+	SourceLibSocial = "libsocial"
+	SourceApp       = "app"
+	SourceBrowser   = "browser"
+	SourceFilmlib   = "filmlib"
+	SourceKodik     = "kodik"
+	SourceLibrary   = "library"
+	SourceMpv       = "mpv"
+	SourceParty     = "party"
+	SourcePlayback  = "playback"
+	SourceStorage   = "storage"
+	SourceUI        = "ui"
+	SourceUpdate    = "update"
 )
 
 // Sources returns every module name in display order. The log window uses the
 // list only as an affordance; the row value always comes from the entry.
 func Sources() []string {
 	return []string{
-		SourceAnimelib, SourceApp, SourceBrowser, SourceFilmlib, SourceKodik,
-		SourceLibrary, SourceMpv, SourceParty, SourcePlayback, SourceStore,
+		SourceLibSocial, SourceApp, SourceBrowser, SourceFilmlib, SourceKodik,
+		SourceLibrary, SourceMpv, SourceParty, SourcePlayback, SourceStorage,
 		SourceUI, SourceUpdate,
 	}
 }

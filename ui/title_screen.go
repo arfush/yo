@@ -373,6 +373,10 @@ func newTitleScreen(typo *typography, item historyTitle, preferredQuality int) *
 		},
 		watchButton: newWatchFooterButton(),
 	}
+	if item.reading() {
+		w.watchButton.label = "Читать"
+		w.watchButton.reserve = "Читать"
+	}
 	w.voiceList.Axis = layout.Vertical
 	w.voiceList.Gap = 0
 	w.episodeList.Axis = layout.Vertical
@@ -945,9 +949,13 @@ func (w *titleScreen) layoutTitlePanel(gtx layout.Context, rect image.Rectangle)
 		return visibleRows*rowHeight + (visibleRows-1)*gridGap
 	}
 
-	sectionCount := 2
+	sections := make([]int, 0, 3)
 	if seasonsLabel != "" {
-		sectionCount = 3
+		sections = append(sections, 0) // seasons or volumes
+	}
+	sections = append(sections, 1) // episodes or chapters
+	if !w.item.reading() {
+		sections = append(sections, 2) // qualities
 	}
 	stack := op.Offset(rect.Min.Add(view.Min)).Push(gtx.Ops)
 	defer stack.Pop()
@@ -955,33 +963,14 @@ func (w *titleScreen) layoutTitlePanel(gtx layout.Context, rect image.Rectangle)
 	lgtx.Constraints = layout.Exact(view.Size())
 	w.panelList.Axis = layout.Vertical
 	w.panelList.Gap = 0
-	w.panelList.Layout(lgtx, sectionCount, func(gtx layout.Context, index int) layout.Dimensions {
+	w.panelList.Layout(lgtx, len(sections), func(gtx layout.Context, index int) layout.Dimensions {
 		itemHeight := labelInk.Dy() + labelGap
 		drawLabel := func(label string) {
 			w.typo.draw(gtx, label, labelFace, titlePageSectionSize, mainMutedColor, image.Pt(innerPad, 0))
 		}
-		seasonIndex := -1
-		episodeIndex := -1
-		qualityIndex := -1
-		if seasonsLabel != "" {
-			switch index {
-			case 0:
-				seasonIndex = index
-			case 1:
-				episodeIndex = index
-			case 2:
-				qualityIndex = index
-			}
-		} else {
-			switch index {
-			case 0:
-				episodeIndex = index
-			case 1:
-				qualityIndex = index
-			}
-		}
-		switch {
-		case seasonIndex >= 0:
+		section := sections[index]
+		switch section {
+		case 0:
 			columns := max(1, episodeGridColumns(innerWidth, gridGap, gtx.Dp(titlePageEpisodeMinWidth)))
 			rows := (len(w.item.seasons) + columns - 1) / columns
 			blockHeight := gridHeight(rows)
@@ -990,7 +979,7 @@ func (w *titleScreen) layoutTitlePanel(gtx layout.Context, rect image.Rectangle)
 				w.layoutSeasons(gtx, image.Rect(innerPad, labelInk.Dy()+labelGap, innerPad+innerWidth, labelInk.Dy()+labelGap+blockHeight))
 			}
 			itemHeight += blockHeight + sectionGap
-		case episodeIndex >= 0:
+		case 1:
 			episodes := w.visibleEpisodeIndices()
 			columns := max(1, episodeGridColumns(innerWidth, gridGap, gtx.Dp(titlePageEpisodeMinWidth)))
 			rows := (len(episodes) + columns - 1) / columns
@@ -1000,7 +989,7 @@ func (w *titleScreen) layoutTitlePanel(gtx layout.Context, rect image.Rectangle)
 				w.layoutEpisodes(gtx, image.Rect(innerPad, labelInk.Dy()+labelGap, innerPad+innerWidth, labelInk.Dy()+labelGap+blockHeight))
 			}
 			itemHeight += blockHeight + sectionGap
-		case qualityIndex >= 0:
+		case 2:
 			drawLabel(qualityLabel)
 			w.layoutQualities(gtx, image.Rect(innerPad, labelInk.Dy()+labelGap, innerPad+innerWidth, labelInk.Dy()+labelGap+qualityHeight))
 			itemHeight += qualityHeight
@@ -1078,6 +1067,9 @@ func (w *titleScreen) layoutFooter(gtx layout.Context) {
 
 	if !watchRect.Empty() {
 		w.watchButton.label = "Смотреть"
+		if w.item.reading() {
+			w.watchButton.label = "Читать"
+		}
 		if w.watching {
 			w.watchButton.label = "Запуск..."
 		}
@@ -1130,15 +1122,23 @@ func (w *titleScreen) shortcutInfo() shortcutInfo {
 	items := []shortcutItem{
 		{keys: "F1", label: "Открыть или закрыть сводку"},
 	}
+	episodeWord := "серия"
+	voiceWord := "озвучка"
+	watchLabel := "Запустить просмотр"
+	if w.item.reading() {
+		episodeWord = "глава"
+		voiceWord = "переводчик"
+		watchLabel = "Открыть чтение"
+	}
 	if len(w.item.episodes) > 1 && !w.item.movie {
-		items = append(items, shortcutItem{keys: "← / →", label: "Предыдущая или следующая серия"})
+		items = append(items, shortcutItem{keys: "← / →", label: "Предыдущая или следующая " + episodeWord})
 	}
 	if len(w.item.voices) > 1 {
-		items = append(items, shortcutItem{keys: "↑ / ↓", label: "Предыдущая или следующая озвучка"})
+		items = append(items, shortcutItem{keys: "↑ / ↓", label: "Предыдущий или следующий " + voiceWord})
 	}
 	items = append(items, shortcutItem{keys: "S", label: "Сохранить изменения"})
 	if w.item.status != statusAnnounced {
-		items = append(items, shortcutItem{keys: "Enter", label: "Запустить просмотр"})
+		items = append(items, shortcutItem{keys: "Enter", label: watchLabel})
 	}
 	items = append(items,
 		shortcutItem{keys: "Esc", label: "Вернуться или закрыть меню"},

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arfush/yo/animelib"
 	"github.com/arfush/yo/library"
+	"github.com/arfush/yo/libsocial"
 	applog "github.com/arfush/yo/log"
 	"github.com/arfush/yo/update"
 )
@@ -34,7 +34,7 @@ func TestRecoverPanicLogsAtPanicLevelAndShowsUserError(t *testing.T) {
 }
 
 func TestStartFailureResultKeepsRateLimitOnMainScreen(t *testing.T) {
-	rateErr := fmt.Errorf("load: %w", animelib.ErrRateLimited)
+	rateErr := fmt.Errorf("load: %w", libsocial.ErrRateLimited)
 	item := &historyTitle{id: 7}
 
 	result := startFailureResult(rateErr, item, 7, false)

@@ -6,7 +6,7 @@ import (
 
 	"github.com/arfush/yo/catalog"
 	"github.com/arfush/yo/library"
-	"github.com/arfush/yo/store"
+	"github.com/arfush/yo/storage"
 )
 
 func TestUserStatusFilterStatus(t *testing.T) {
@@ -82,7 +82,7 @@ func TestMoveFilteredHistoryUpdatesOnlyItsStatusOrder(t *testing.T) {
 
 func TestEachSectionKeepsItsOwnHistory(t *testing.T) {
 	all := []historyTitle{
-		{id: 1, source: catalog.SourceAnimeLIB},
+		{id: 1, source: catalog.SourceLibSocial},
 		{id: 2, source: catalog.SourceMangaLib},
 		{id: 3, source: catalog.SourceRanobeLib},
 		{id: 4, source: catalog.SourceYaoiLib},
@@ -111,7 +111,7 @@ func TestEachSectionKeepsItsOwnHistory(t *testing.T) {
 
 func TestRepeatedSectionSwitchesKeepAllHistory(t *testing.T) {
 	all := []historyTitle{
-		{id: 1, source: catalog.SourceAnimeLIB},
+		{id: 1, source: catalog.SourceLibSocial},
 		{id: 2, source: catalog.SourceMangaLib},
 		{id: 3, source: catalog.SourceRanobeLib},
 		{id: 4, source: catalog.SourceMangaLib},
@@ -134,7 +134,7 @@ func TestRepeatedSectionSwitchesKeepAllHistory(t *testing.T) {
 
 func TestMovingRowsInOneSectionPreservesOtherSections(t *testing.T) {
 	all := []historyTitle{
-		{id: 1, source: catalog.SourceAnimeLIB},
+		{id: 1, source: catalog.SourceLibSocial},
 		{id: 2, source: catalog.SourceMangaLib},
 		{id: 3, source: catalog.SourceRanobeLib},
 		{id: 4, source: catalog.SourceMangaLib},
@@ -212,7 +212,7 @@ func TestSetUserStatusRemovesRowFromCurrentFilter(t *testing.T) {
 func TestPersistHistoryOrderWritesOnlyTheActiveStatus(t *testing.T) {
 	dir := t.TempDir()
 	databasePath := filepath.Join(dir, "yoanime.sqlite")
-	db, err := store.Open(databasePath)
+	db, err := storage.Open(databasePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +229,7 @@ func TestPersistHistoryOrderWritesOnlyTheActiveStatus(t *testing.T) {
 	}
 	ids := make([]int64, len(specs))
 	for index, spec := range specs {
-		id, err := db.UpsertTitle(store.Title{Slug: spec.slug, UserStatus: spec.status})
+		id, err := db.UpsertTitle(storage.Title{Slug: spec.slug, UserStatus: spec.status})
 		if err != nil {
 			t.Fatal(err)
 		}

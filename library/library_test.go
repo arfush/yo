@@ -14,9 +14,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/arfush/yo/animelib"
+	"github.com/arfush/yo/libsocial"
 	"github.com/arfush/yo/metadata"
-	"github.com/arfush/yo/store"
+	"github.com/arfush/yo/storage"
 )
 
 func TestChoiceFallsBackToCompleteVoiceAndEpisode(t *testing.T) {
@@ -88,7 +88,7 @@ func TestTrackViewingTracksUnseenTitles(t *testing.T) {
 	if id == 0 {
 		t.Fatal("tracking did not persist the title")
 	}
-	entry, err := lib.store.GetHistory(id)
+	entry, err := lib.storage.GetHistory(id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestTrackViewingTracksUnseenTitles(t *testing.T) {
 	if episode != "5" {
 		t.Fatalf("episode = %q, tracking must not drop the saved episode", episode)
 	}
-	entry, err = lib.store.GetHistory(id)
+	entry, err = lib.storage.GetHistory(id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestCoverCacheFailureIsRetriedAndThenReused(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = lib.Close() })
 
-	tid, err := lib.store.UpsertTitle(store.Title{Slug: "cover-test"})
+	tid, err := lib.storage.UpsertTitle(storage.Title{Slug: "cover-test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestCoverCacheFailureIsRetriedAndThenReused(t *testing.T) {
 	if _, err := lib.RefreshCover(context.Background(), tid, coverURL); err == nil {
 		t.Fatal("failed download was reported as success")
 	}
-	cache, err := lib.store.GetCoverCache(tid)
+	cache, err := lib.storage.GetCoverCache(tid)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestCoverCacheFailureIsRetriedAndThenReused(t *testing.T) {
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("cover file was not written: %v", err)
 	}
-	cache, err = lib.store.GetCoverCache(tid)
+	cache, err = lib.storage.GetCoverCache(tid)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,11 +224,11 @@ func TestDeleteHistoryRemovesCachedCover(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = lib.Close() })
 
-	tid, err := lib.store.UpsertTitle(store.Title{Slug: "delete-cover"})
+	tid, err := lib.storage.UpsertTitle(storage.Title{Slug: "delete-cover"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := lib.store.EnsureHistory(tid, "1", "Озвучка"); err != nil {
+	if _, err := lib.storage.EnsureHistory(tid, "1", "Озвучка"); err != nil {
 		t.Fatal(err)
 	}
 	coverPath, err := lib.RefreshCover(context.Background(), tid, server.URL+"/cover.png")
@@ -251,14 +251,14 @@ func TestDeleteHistoryRemovesCachedCover(t *testing.T) {
 	if _, err := os.Stat(coverPath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("cover file still exists after deletion: %v", err)
 	}
-	cache, err := lib.store.GetCoverCache(tid)
+	cache, err := lib.storage.GetCoverCache(tid)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cache != nil {
 		t.Fatalf("cover cache row still exists: %#v", cache)
 	}
-	history, err := lib.store.ListHistory()
+	history, err := lib.storage.ListHistory()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,18 +284,18 @@ func TestUpsertLoadedTitleKeepsStoredUserStatus(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = lib.Close() })
 
-	id, err := lib.store.UpsertTitle(store.Title{Slug: "loaded-status", RusName: "Старое имя"})
+	id, err := lib.storage.UpsertTitle(storage.Title{Slug: "loaded-status", RusName: "Старое имя"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := lib.store.EnsureHistory(id, "1", "Озвучка"); err != nil {
+	if _, err := lib.storage.EnsureHistory(id, "1", "Озвучка"); err != nil {
 		t.Fatal(err)
 	}
 	if err := lib.SetUserStatus(id, UserStatusWatching); err != nil {
 		t.Fatal(err)
 	}
 
-	loaded, err := lib.upsertLoadedTitle(store.Title{
+	loaded, err := lib.upsertLoadedTitle(storage.Title{
 		Slug:    "loaded-status",
 		RusName: "Новое имя",
 	})
@@ -595,7 +595,7 @@ func TestCoverIsReplacedWhenURLFilenameChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = lib.Close() })
-	tid, err := lib.store.UpsertTitle(store.Title{Slug: "cover-replace"})
+	tid, err := lib.storage.UpsertTitle(storage.Title{Slug: "cover-replace"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -662,19 +662,19 @@ func TestCoverNameMatchesURL(t *testing.T) {
 }
 
 func TestTitleFromDataDetectsMovie(t *testing.T) {
-	film := &animelib.TitleData{Title: animelib.Title{TypeID: animelib.TypeMovie, TypeLabel: "Фильм"}}
-	title := titleFromData(store.Title{}, film)
+	film := &libsocial.TitleData{Title: libsocial.Title{TypeID: libsocial.TypeMovie, TypeLabel: "Фильм"}}
+	title := titleFromData(storage.Title{}, film)
 	if !title.IsMovie {
 		t.Fatal("film type was not propagated to the library title")
 	}
 	if stored := storedTitleFromData(film); !stored.IsMovie {
 		t.Fatal("film type was not persisted")
 	}
-	if restored := titleFromData(store.Title{IsMovie: true}, nil); !restored.IsMovie {
+	if restored := titleFromData(storage.Title{IsMovie: true}, nil); !restored.IsMovie {
 		t.Fatal("film type was not restored from storage")
 	}
-	series := &animelib.TitleData{Title: animelib.Title{TypeID: 16, TypeLabel: "TV Сериал"}}
-	if title := titleFromData(store.Title{}, series); title.IsMovie {
+	series := &libsocial.TitleData{Title: libsocial.Title{TypeID: 16, TypeLabel: "TV Сериал"}}
+	if title := titleFromData(storage.Title{}, series); title.IsMovie {
 		t.Fatal("TV series was detected as a film")
 	}
 }

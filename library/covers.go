@@ -19,7 +19,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arfush/yo/store"
+	"github.com/arfush/yo/libsocial"
+	"github.com/arfush/yo/storage"
 )
 
 const (
@@ -29,7 +30,7 @@ const (
 
 type coverManager struct {
 	dir      string
-	db       *store.Store
+	db       *storage.Storage
 	http     *http.Client
 	mu       sync.Mutex
 	inflight map[int64]*coverCall
@@ -41,7 +42,7 @@ type coverCall struct {
 	err  error
 }
 
-func newCoverManager(databasePath string, db *store.Store) *coverManager {
+func newCoverManager(databasePath string, db *storage.Storage) *coverManager {
 	return &coverManager{
 		dir:      filepath.Join(filepath.Dir(databasePath), "covers"),
 		db:       db,
@@ -294,7 +295,7 @@ func (c *coverManager) fetch(ctx context.Context, sourceURL string) ([]byte, str
 		return nil, "", err
 	}
 	req.Header.Set("Accept", "image/jpeg,image/png,image/*;q=0.8")
-	req.Header.Set("Referer", "https://v5.animelib.org/")
+	req.Header.Set("Referer", libsocial.WebOrigin+"/")
 	req.Header.Set("User-Agent", coverUserAgent)
 
 	response, err := c.http.Do(req)

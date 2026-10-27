@@ -24,11 +24,11 @@ import (
 	"gioui.org/op"
 	"gioui.org/unit"
 
-	"github.com/arfush/yo/animelib"
 	"github.com/arfush/yo/browser"
 	"github.com/arfush/yo/catalog"
 	"github.com/arfush/yo/filmlib"
 	"github.com/arfush/yo/library"
+	"github.com/arfush/yo/libsocial"
 	"github.com/arfush/yo/log"
 	"github.com/arfush/yo/metadata"
 	"github.com/arfush/yo/mpv"
@@ -1371,9 +1371,8 @@ func (a *application) openReader(item historyTitle, title catalog.Title, back Sc
 	a.window.Invalidate()
 }
 
-// openReadingTitle opens the manga or ranobe landing page. It is intentionally
-// not the anime titleScreen: there are no voice qualities or mpv controls, and
-// the only forward action is the reader.
+// openReadingTitle opens the manga or ranobe landing page. It delegates drawing
+// to the shared title screen, so only labels and the forward action differ.
 func (a *application) openReadingTitle(item historyTitle) {
 	if a.window == nil {
 		return
@@ -1408,6 +1407,9 @@ func (a *application) openReadingTitle(item historyTitle) {
 	}
 	screen.onSaved = func(title catalog.Title) {
 		loaded = titleFromLibrary(title)
+	}
+	screen.onUserStatus = func(item historyTitle, status library.UserStatus) error {
+		return a.setUserStatus(item, status)
 	}
 	screen.onRead = func(item historyTitle, title catalog.Title, voice, chapter string) {
 		title.SelectedVoice = voice
@@ -1589,7 +1591,7 @@ func (a *application) startPlaybackNotify(title library.Title, voice, episode st
 		defer cancel()
 		// Playback start must not sit in a rate-limit pause: the row spinner
 		// would look hung. Fail fast and let the header show the countdown.
-		ctx = animelib.FailFastOnRateLimit(ctx)
+		ctx = libsocial.FailFastOnRateLimit(ctx)
 		if len(title.Voiceovers) == 0 || len(title.Episodes) == 0 {
 			// History rows keep only the saved selection, never the episode
 			// list or the voiceovers. Reload them from AnimeLIB so a direct
@@ -1678,8 +1680,8 @@ func playbackStartError(err error) error {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return userMessage(fmt.Sprintf("Не удалось начать воспроизведение за %s — попробуйте ещё раз", playbackStartTimeout))
 	}
-	if errors.Is(err, animelib.ErrRateLimited) {
-		if remaining := animelib.RateLimitRemaining(); remaining > 0 {
+	if errors.Is(err, libsocial.ErrRateLimited) {
+		if remaining := libsocial.RateLimitRemaining(); remaining > 0 {
 			return userMessage(fmt.Sprintf("AnimeLIB временно ограничил запросы — попробуйте снова через %s", rateLimitWaitLabel(remaining)))
 		}
 		return userMessage("AnimeLIB временно ограничил запросы — попробуйте снова чуть позже.")
@@ -1698,7 +1700,7 @@ func startFailureResult(err error, historyItem *historyTitle, titleID int64, par
 		titleID:     titleID,
 		party:       partyGuest,
 	}
-	if historyItem != nil && errors.Is(err, animelib.ErrRateLimited) {
+	if historyItem != nil && errors.Is(err, libsocial.ErrRateLimited) {
 		result.historyItem = nil
 		result.historyFailure = true
 	}

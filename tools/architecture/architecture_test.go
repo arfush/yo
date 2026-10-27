@@ -21,7 +21,7 @@ const modulePath = "github.com/arfush/yo"
 // featureDirs are packages that implement a product feature. Platform code is
 // allowed to use leaves such as log or version, but must not depend on them.
 var featureDirs = []string{
-	"animelib",
+	"libsocial",
 	"app",
 	"browser",
 	"catalog",
@@ -31,7 +31,7 @@ var featureDirs = []string{
 	"mpv",
 	"playback",
 	"party",
-	"store",
+	"storage",
 	"updates",
 	"updater",
 	"ui",
@@ -117,8 +117,8 @@ func boundaryViolation(from, to string) string {
 	if fromUI && under(to, modulePath+"/app") {
 		return "ui must not import app: pass data and actions instead"
 	}
-	if fromUI && under(to, modulePath+"/store") {
-		return "ui must not import store: data comes through app"
+	if fromUI && under(to, modulePath+"/storage") {
+		return "ui must not import storage: data comes through app"
 	}
 
 	if isLeaf(from) && !under(to, modulePath+"/catalog") {

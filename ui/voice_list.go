@@ -10,10 +10,14 @@ import (
 )
 
 func (w *titleScreen) layoutVoiceLabel(gtx layout.Context, rect image.Rectangle) int {
+	label := "ОЗВУЧКА"
+	if w.item.reading() {
+		label = "ПЕРЕВОДЧИКИ"
+	}
 	face := font.Font{Typeface: fontFamily, Weight: font.Medium}
-	_, ink := w.typo.measure(gtx, "ОЗВУЧКА", face, titlePageSectionSize)
+	_, ink := w.typo.measure(gtx, label, face, titlePageSectionSize)
 	top := rect.Min.Y + gtx.Dp(unit.Dp(5))
-	w.typo.draw(gtx, "ОЗВУЧКА", face, titlePageSectionSize, mainMutedColor, image.Pt(rect.Min.X, top))
+	w.typo.draw(gtx, label, face, titlePageSectionSize, mainMutedColor, image.Pt(rect.Min.X, top))
 	return top + ink.Dy() + gtx.Dp(unit.Dp(7))
 }
 

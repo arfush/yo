@@ -8,7 +8,7 @@ import "errors"
 var (
 	// ErrRateLimited means the shared AnimeLIB rate-limit window is still
 	// cooling down, and the request was parked instead of sent.
-	ErrRateLimited = errors.New("animelib: rate limited")
+	ErrRateLimited = errors.New("libsocial: rate limited")
 	// ErrTokenMissing means the AnimeLIB token file could not be read.
 	ErrTokenMissing = errors.New("token file not found")
 	// ErrChapterNotFound is returned by the reader when a chapter key does not

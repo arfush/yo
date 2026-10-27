@@ -26,16 +26,19 @@ type readingTitleLoadResult struct {
 	err        error
 }
 
-// readingTitleScreen is the landing page for manga and ranobe titles. It is
-// deliberately separate from the anime title window: there are no qualities or
-// mpv controls here, only translations, volumes, chapters and the transition
-// into the reader.
+// readingTitleScreen is the landing page for manga and ranobe titles. Once its
+// chapter list arrives, it delegates all drawing to the shared titleScreen so
+// the layout is pixel-identical to anime; only the section labels and the
+// forward action change.
 type readingTitleScreen struct {
 	typo *typography
 
 	item   historyTitle
 	title  catalog.Title
 	loaded bool
+	// inner is the shared anime title screen. Reading titles use exactly the
+	// same layout and controls, with only the section labels renamed.
+	inner *titleScreen
 
 	loading        bool
 	loadErr        string
@@ -43,6 +46,7 @@ type readingTitleScreen struct {
 	loadResults    chan readingTitleLoadResult
 	loadCtx        context.Context
 	loadCancel     context.CancelFunc
+	onUserStatus   func(historyTitle, catalog.UserStatus) error
 
 	selectedVoice   int
 	selectedChapter int
@@ -169,6 +173,59 @@ func (w *readingTitleScreen) applyLoaded(title catalog.Title) {
 	}
 	w.selectedChapter = w.item.selectedEpisode
 	w.rebuildChapters()
+	w.buildInner()
+}
+
+// buildInner hands rendering to the shared title screen. Only the reading
+// callbacks differ: Save persists chapters and Watch becomes Read.
+func (w *readingTitleScreen) buildInner() {
+	if w.typo == nil || len(w.item.episodes) == 0 {
+		w.inner = nil
+		return
+	}
+	inner := newTitleScreen(w.typo, w.item, 0)
+	inner.hidden = w.hidden
+	inner.onBack = func() {
+		if w.onBack != nil {
+			w.onBack()
+		}
+	}
+	inner.onError = func(err error) {
+		if w.onError != nil {
+			w.onError(err)
+		}
+	}
+	inner.onUserStatus = func(item historyTitle, status catalog.UserStatus) error {
+		if w.onUserStatus == nil {
+			return nil
+		}
+		return w.onUserStatus(item, status)
+	}
+	inner.onSave = func(voice, chapter string) error {
+		if w.saveFunc == nil {
+			return nil
+		}
+		saved, err := w.saveFunc(libraryTitleFromHistory(w.item), voice, chapter)
+		if err != nil {
+			return err
+		}
+		w.item.id = saved.ID
+		w.item.slug = saved.Slug
+		w.item.coverPath = saved.CoverPath
+		w.item.coverNeedsRetry = saved.CoverNeedsRetry
+		inner.applySaved(w.item)
+		if w.onSaved != nil {
+			w.onSaved(saved)
+		}
+		return nil
+	}
+	inner.onWatch = func(voice, chapter string, _ int) error {
+		if w.onRead != nil {
+			w.onRead(w.item, w.title, voice, chapter)
+		}
+		return nil
+	}
+	w.inner = inner
 }
 
 func (w *readingTitleScreen) rebuildFromItem() {
@@ -347,6 +404,10 @@ func (w *readingTitleScreen) layout(gtx layout.Context) {
 	w.updateLoad(gtx)
 	if !w.loaded && !w.loading && w.loadErr == "" {
 		w.startLoad()
+	}
+	if w.inner != nil {
+		w.inner.layout(gtx)
+		return
 	}
 	if !w.focusCleared {
 		w.focusCleared = true
@@ -591,6 +652,10 @@ func (w *readingTitleScreen) layoutError(gtx layout.Context, rect image.Rectangl
 }
 
 func (w *readingTitleScreen) layoutFooter(gtx layout.Context) {
+	if w.inner != nil {
+		w.inner.layoutFooter(gtx)
+		return
+	}
 	size := gtx.Constraints.Max
 	if size.X <= 0 || size.Y <= 0 {
 		return

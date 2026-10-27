@@ -16,6 +16,7 @@ import (
 
 	"github.com/dexterlb/mpvipc"
 
+	"github.com/arfush/yo/libsocial"
 	"github.com/arfush/yo/metadata"
 	"github.com/arfush/yo/mpv"
 )
@@ -93,7 +94,7 @@ func startMPV(ctx context.Context, geometry, title string) (*mpvProcess, error) 
 		// Watch-party guests seek in small steps; without exact seeking mpv
 		// rounds to the nearest keyframe and the correction overshoots.
 		"--hr-seek=yes",
-		"--http-header-fields=Referer: https://v5.animelib.org/,Origin: https://v5.animelib.org",
+		"--http-header-fields=Referer: " + libsocial.WebOrigin + "/,Origin: " + libsocial.WebOrigin,
 		"--background-color=#0d0e14",
 	}
 	if geometry != "" {

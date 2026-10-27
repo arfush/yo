@@ -1,4 +1,4 @@
-package animelib
+package libsocial
 
 import (
 	"context"
@@ -129,9 +129,9 @@ func EpisodeNewer(candidate, previous string) bool {
 
 func releaseVoiceovers(players []EpisodePlayer) []ReleaseVoiceover {
 	type availability struct {
-		name        string
-		hasAnimelib bool
-		hasKodik    bool
+		name               string
+		hasLibSocialPlayer bool
+		hasKodik           bool
 	}
 	byName := make(map[string]*availability)
 	order := make([]string, 0, len(players))
@@ -148,7 +148,7 @@ func releaseVoiceovers(players []EpisodePlayer) []ReleaseVoiceover {
 		}
 		switch strings.ToLower(strings.TrimSpace(player.Player)) {
 		case "animelib":
-			item.hasAnimelib = true
+			item.hasLibSocialPlayer = true
 		case "kodik":
 			item.hasKodik = true
 		}
@@ -157,12 +157,12 @@ func releaseVoiceovers(players []EpisodePlayer) []ReleaseVoiceover {
 	out := make([]ReleaseVoiceover, 0, len(order))
 	for _, name := range order {
 		item := byName[name]
-		if !item.hasAnimelib && !item.hasKodik {
+		if !item.hasLibSocialPlayer && !item.hasKodik {
 			continue
 		}
 		out = append(out, ReleaseVoiceover{
 			Name:      item.name,
-			KodikOnly: item.hasKodik && !item.hasAnimelib,
+			KodikOnly: item.hasKodik && !item.hasLibSocialPlayer,
 		})
 	}
 	return out

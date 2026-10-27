@@ -7,15 +7,16 @@ import (
 	"strings"
 
 	"github.com/arfush/yo/filmlib"
+	"github.com/arfush/yo/libsocial"
 	"github.com/arfush/yo/metadata"
 )
 
-// animelibStreamHeaders keep AnimeLIB direct files and Kodik manifests working.
-// They are set explicitly on every file because a Filmlib episode replaces the
-// same mpv property with its own headers.
-var animelibStreamHeaders = []string{
-	"Referer: https://v5.animelib.org/",
-	"Origin: https://v5.animelib.org",
+// libsocialStreamHeaders keep the direct LibSocial files and Kodik manifests
+// working. They are set explicitly on every file because a Filmlib episode
+// replaces the same mpv property with its own headers.
+var libsocialStreamHeaders = []string{
+	"Referer: " + libsocial.WebOrigin + "/",
+	"Origin: " + libsocial.WebOrigin,
 }
 
 // headersFor returns the headers of one playlist entry.
@@ -23,7 +24,7 @@ func headersFor(entry *playlistEntry) []string {
 	if entry != nil && len(entry.Headers) > 0 {
 		return entry.Headers
 	}
-	return animelibStreamHeaders
+	return libsocialStreamHeaders
 }
 
 // resolveFilmlib resolves one Alloha episode through the headless theatre.

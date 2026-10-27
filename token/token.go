@@ -1,7 +1,7 @@
 // Package token reads and writes the AnimeLIB access token.
 //
 // AnimeLIB stores an OAuth token object in its localStorage. yoanime keeps the
-// same fields in %APPDATA%\yoanime\animelib_token.txt, encrypted with user-scoped
+// same fields in %APPDATA%\yoanime\libsocial.token, encrypted with user-scoped
 // Windows DPAPI, so the expiration can be checked before the main window opens
 // and the file is useless to another user or machine. A plain-text token is
 // still accepted for compatibility with hand-written and pre-DPAPI files; Load
@@ -127,7 +127,7 @@ func Save(path string, token Token) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create %s: %w", dir, err)
 	}
-	tmp, err := os.CreateTemp(dir, ".animelib-token-*.tmp")
+	tmp, err := os.CreateTemp(dir, ".libsocial-token-*.tmp")
 	if err != nil {
 		return err
 	}

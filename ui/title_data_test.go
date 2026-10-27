@@ -17,6 +17,29 @@ func TestReadingChapterLabel(t *testing.T) {
 	}
 }
 
+func TestReadingTitleUsesAnimeSectionsWithReadingLabels(t *testing.T) {
+	title := titleFromLibrary(library.Title{
+		Russian:  "Ранобэ",
+		Source:   "ranobelib",
+		Episodes: []string{"1:1", "1:2", "2:1"},
+	})
+	if !title.reading() {
+		t.Fatal("reading title must be detected")
+	}
+	if len(title.seasons) != 2 || title.seasons[0].number != 1 || len(title.seasons[0].episodes) != 2 {
+		t.Fatalf("volumes were not synthesized as seasons: %#v", title.seasons)
+	}
+	if got := title.seasonsSectionLabel(); got != "ТОМЫ (1-2)" {
+		t.Fatalf("seasons label = %q", got)
+	}
+	if got := title.episodesSectionLabel(0); got != "ГЛАВЫ (1-2)" {
+		t.Fatalf("chapters label = %q", got)
+	}
+	if got := episodeDisplayLabel("2:1"); got != "1" {
+		t.Fatalf("chapter display label = %q", got)
+	}
+}
+
 func TestVoiceMissingLabelCompressesRanges(t *testing.T) {
 	tests := []struct {
 		missing []string

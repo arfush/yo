@@ -20,21 +20,21 @@ import (
 
 	_ "golang.org/x/image/webp"
 
-	"github.com/arfush/yo/animelib"
 	"github.com/arfush/yo/catalog"
-	"github.com/arfush/yo/store"
+	"github.com/arfush/yo/libsocial"
+	"github.com/arfush/yo/storage"
 )
 
 // loadReading refreshes a LibSocial title. Chapters are never persisted: only
 // metadata, the chosen translation and the chosen chapter are stored.
-func (l *Library) loadReading(ctx context.Context, link animelib.ReadingLink, persist bool) (Title, error) {
+func (l *Library) loadReading(ctx context.Context, link libsocial.ReadingLink, persist bool) (Title, error) {
 	logger.Info("loading reading title", "site", link.SiteID, "slug", link.Slug, "persist", persist)
 	token, err := l.readToken()
 	if err != nil {
-		logger.Error("cannot read animelib token", "error", err)
+		logger.Error("cannot read site token", "error", err)
 		return Title{}, err
 	}
-	client := animelib.New(token)
+	client := libsocial.New(token)
 	data, err := client.FetchReading(ctx, link.Slug, link.SiteID)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -54,7 +54,7 @@ func (l *Library) loadReading(ctx context.Context, link animelib.ReadingLink, pe
 		title.ID = stored.ID
 		title.UserStatus = NormalizeUserStatus(UserStatus(stored.UserStatus))
 		title.UpdatedAt = stored.UpdatedAt
-	} else if existing, err := l.store.GetTitle(data.SlugURL); err != nil {
+	} else if existing, err := l.storage.GetTitle(data.SlugURL); err != nil {
 		return Title{}, err
 	} else if existing != nil {
 		title.ID = existing.ID
@@ -62,9 +62,9 @@ func (l *Library) loadReading(ctx context.Context, link animelib.ReadingLink, pe
 		title.UpdatedAt = existing.UpdatedAt
 	}
 
-	var entry *store.HistoryEntry
+	var entry *storage.HistoryEntry
 	if title.ID != 0 {
-		entry, err = l.store.GetHistory(title.ID)
+		entry, err = l.storage.GetHistory(title.ID)
 		if err != nil {
 			return Title{}, err
 		}
@@ -81,14 +81,14 @@ func (l *Library) loadReading(ctx context.Context, link animelib.ReadingLink, pe
 	return title, nil
 }
 
-func readingHistoryVoice(entry *store.HistoryEntry) string {
+func readingHistoryVoice(entry *storage.HistoryEntry) string {
 	if entry == nil {
 		return ""
 	}
 	return entry.Voiceover
 }
 
-func readingHistoryChapter(entry *store.HistoryEntry) string {
+func readingHistoryChapter(entry *storage.HistoryEntry) string {
 	if entry == nil {
 		return ""
 	}
@@ -97,20 +97,20 @@ func readingHistoryChapter(entry *store.HistoryEntry) string {
 
 func readingSource(siteID int) string {
 	switch siteID {
-	case animelib.SiteMangaLib:
+	case libsocial.SiteMangaLib:
 		return catalog.SourceMangaLib
-	case animelib.SiteYaoiLib:
+	case libsocial.SiteYaoiLib:
 		return catalog.SourceYaoiLib
-	case animelib.SiteRanobeLib:
+	case libsocial.SiteRanobeLib:
 		return catalog.SourceRanobeLib
-	case animelib.SiteHentaiLib:
+	case libsocial.SiteHentaiLib:
 		return catalog.SourceHentaiLib
 	default:
 		return ""
 	}
 }
 
-func storedTitleFromReading(data *animelib.ReadingTitleData, title Title) store.Title {
+func storedTitleFromReading(data *libsocial.ReadingTitleData, title Title) storage.Title {
 	source := readingSource(data.SiteID)
 	english := strings.TrimSpace(data.EngName)
 	if english == "" {
@@ -120,7 +120,7 @@ func storedTitleFromReading(data *animelib.ReadingTitleData, title Title) store.
 	if russian == "" {
 		russian = english
 	}
-	return store.Title{
+	return storage.Title{
 		Slug:          data.SlugURL,
 		Source:        source,
 		ExternalID:    data.SlugURL,
@@ -135,7 +135,7 @@ func storedTitleFromReading(data *animelib.ReadingTitleData, title Title) store.
 // titleFromReadingData builds the display title, grouping chapters by
 // translation team. The global episode list keeps every unique chapter key,
 // while each voiceover lists the keys that team actually published.
-func titleFromReadingData(data *animelib.ReadingTitleData) Title {
+func titleFromReadingData(data *libsocial.ReadingTitleData) Title {
 	english := strings.TrimSpace(data.EngName)
 	if english == "" {
 		english = strings.TrimSpace(data.Name)
@@ -271,7 +271,7 @@ func findReadingChapter(title Title, translation, key string) (catalog.ReadingCh
 // itself is never cached; the caller must pass the title loaded for this
 // reader session.
 func (l *Library) ReadChapter(ctx context.Context, title Title, translation, key string) (catalog.ReadingContent, error) {
-	siteID, ok := animelib.SiteIDForSource(title.Source)
+	siteID, ok := libsocial.SiteIDForSource(title.Source)
 	if !ok {
 		return catalog.ReadingContent{}, ErrUnsupportedSource
 	}
@@ -283,7 +283,7 @@ func (l *Library) ReadChapter(ctx context.Context, title Title, translation, key
 	if err != nil {
 		return catalog.ReadingContent{}, err
 	}
-	client := animelib.New(token)
+	client := libsocial.New(token)
 	data, err := client.FetchReadingChapter(ctx, title.Slug, siteID, chapter.Volume, chapter.Number, chapter.BranchID)
 	if err != nil {
 		logger.Error("cannot load reading chapter", "slug", title.Slug, "chapter", key, "translation", translation, "error", err)
@@ -307,7 +307,9 @@ func (l *Library) ReadChapter(ctx context.Context, title Title, translation, key
 			Ratio:  page.Ratio,
 		})
 	}
-	if strings.TrimSpace(data.RawContent) != "" {
+	if len(data.Paragraphs) > 0 {
+		content.Paragraphs = append([]string(nil), data.Paragraphs...)
+	} else if strings.TrimSpace(data.RawContent) != "" {
 		content.Paragraphs = parseRanobeParagraphs(data.RawContent)
 	}
 	logger.Info("reading chapter loaded", "slug", title.Slug, "chapter", key, "translation", translation, "pages", len(content.Pages), "paragraphs", len(content.Paragraphs))
@@ -323,11 +325,11 @@ func (l *Library) ReadingImage(ctx context.Context, title Title, rawURL string) 
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
 		return nil, ErrBadPageURL
 	}
-	siteID, ok := animelib.SiteIDForSource(title.Source)
+	siteID, ok := libsocial.SiteIDForSource(title.Source)
 	if !ok {
-		siteID = animelib.SiteMangaLib
+		siteID = libsocial.SiteMangaLib
 	}
-	origin := animelib.ReadingOrigin(siteID)
+	origin := libsocial.ReadingOrigin(siteID)
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
 	if err != nil {
 		return nil, err
@@ -336,7 +338,7 @@ func (l *Library) ReadingImage(ctx context.Context, title Title, rawURL string) 
 	request.Header.Set("Referer", origin+"/")
 	request.Header.Set("Origin", origin)
 	request.Header.Set("Site-Id", strconv.Itoa(siteID))
-	request.Header.Set("User-Agent", animelib.BrowserUserAgent())
+	request.Header.Set("User-Agent", libsocial.BrowserUserAgent())
 	logger.Debug("reading page request", "url", parsed.String(), "site", siteID)
 	response, err := readingImageClient.Do(request)
 	if err != nil {

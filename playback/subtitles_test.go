@@ -4,19 +4,19 @@ import (
 	"context"
 	"testing"
 
-	"github.com/arfush/yo/animelib"
+	"github.com/arfush/yo/libsocial"
 )
 
 func TestPickSubtitleTrackPrefersASS(t *testing.T) {
 	tests := []struct {
 		name   string
-		tracks []animelib.SubtitleTrack
+		tracks []libsocial.SubtitleTrack
 		want   string
 		ok     bool
 	}{
 		{
 			name: "ass wins even when vtt comes first",
-			tracks: []animelib.SubtitleTrack{
+			tracks: []libsocial.SubtitleTrack{
 				{Format: "vtt", Src: "https://example.com/sub.vtt"},
 				{Format: "ASS", Src: "https://example.com/sub.ass"},
 			},
@@ -25,7 +25,7 @@ func TestPickSubtitleTrackPrefersASS(t *testing.T) {
 		},
 		{
 			name: "vtt is the fallback",
-			tracks: []animelib.SubtitleTrack{
+			tracks: []libsocial.SubtitleTrack{
 				{Format: "vtt", Src: "https://example.com/sub.vtt"},
 				{Format: "srt", Src: "https://example.com/sub.srt"},
 			},
@@ -34,13 +34,13 @@ func TestPickSubtitleTrackPrefersASS(t *testing.T) {
 		},
 		{
 			name: "other formats are ignored",
-			tracks: []animelib.SubtitleTrack{
+			tracks: []libsocial.SubtitleTrack{
 				{Format: "srt", Src: "https://example.com/sub.srt"},
 			},
 		},
 		{
 			name: "tracks without a source are ignored",
-			tracks: []animelib.SubtitleTrack{
+			tracks: []libsocial.SubtitleTrack{
 				{Format: "ass", Src: " "},
 				{Format: "vtt", Src: "https://example.com/sub.vtt"},
 			},
@@ -135,9 +135,9 @@ func TestSubtitleForPlayerUsesASSAndSelectedServer(t *testing.T) {
 		"https://video2.cdnlibs.org/",
 		"https://video1.imglib.info/",
 	}}
-	player := &animelib.EpisodePlayer{
+	player := &libsocial.EpisodePlayer{
 		VideoDomain: "secondary_2",
-		Subtitles: []animelib.SubtitleTrack{
+		Subtitles: []libsocial.SubtitleTrack{
 			{Format: "vtt", Src: "/uploads/subtitles/1/a.vtt"},
 			{Format: "ass", Src: "/uploads/subtitles/1/a.ass"},
 		},
@@ -151,8 +151,8 @@ func TestSubtitleForPlayerUsesASSAndSelectedServer(t *testing.T) {
 		t.Fatalf("label = %q, want ASS", label)
 	}
 
-	absolute := &animelib.EpisodePlayer{
-		Subtitles: []animelib.SubtitleTrack{
+	absolute := &libsocial.EpisodePlayer{
+		Subtitles: []libsocial.SubtitleTrack{
 			{Format: "vtt", Src: "https://api.cdnlibs.org/a.vtt"},
 		},
 	}
@@ -163,13 +163,13 @@ func TestSubtitleForPlayerUsesASSAndSelectedServer(t *testing.T) {
 }
 
 func TestSelectVoicePlayersDoesNotLeakSubtitlesAcrossVoices(t *testing.T) {
-	players := []animelib.EpisodePlayer{
+	players := []libsocial.EpisodePlayer{
 		{
 			ID:        1,
 			Player:    "Animelib",
 			TeamName:  "Voice A",
-			Qualities: []animelib.QualityLink{{Quality: 1080, Href: "/a.mp4"}},
-			Subtitles: []animelib.SubtitleTrack{
+			Qualities: []libsocial.QualityLink{{Quality: 1080, Href: "/a.mp4"}},
+			Subtitles: []libsocial.SubtitleTrack{
 				{Format: "ass", Src: "https://example.com/a.ass"},
 			},
 		},
@@ -177,8 +177,8 @@ func TestSelectVoicePlayersDoesNotLeakSubtitlesAcrossVoices(t *testing.T) {
 			ID:        2,
 			Player:    "Animelib",
 			TeamName:  "Voice B",
-			Qualities: []animelib.QualityLink{{Quality: 1080, Href: "/b.mp4"}},
-			Subtitles: []animelib.SubtitleTrack{
+			Qualities: []libsocial.QualityLink{{Quality: 1080, Href: "/b.mp4"}},
+			Subtitles: []libsocial.SubtitleTrack{
 				{Format: "ass", Src: "https://example.com/b.ass"},
 			},
 		},
@@ -190,22 +190,22 @@ func TestSelectVoicePlayersDoesNotLeakSubtitlesAcrossVoices(t *testing.T) {
 		},
 	}
 
-	animelibPlayer, kodikPlayer := selectVoicePlayers(players, "Voice A")
-	if animelibPlayer == nil || animelibPlayer.ID != 1 {
-		t.Fatalf("animelib player = %#v, want Voice A player 1", animelibPlayer)
+	libsocialPlayer, kodikPlayer := selectVoicePlayers(players, "Voice A")
+	if libsocialPlayer == nil || libsocialPlayer.ID != 1 {
+		t.Fatalf("libsocial player = %#v, want Voice A player 1", libsocialPlayer)
 	}
 	if kodikPlayer == nil || kodikPlayer.ID != 3 {
 		t.Fatalf("kodik player = %#v, want Voice A player 3", kodikPlayer)
 	}
-	if len(animelibPlayer.Subtitles) != 1 || animelibPlayer.Subtitles[0].Src != "https://example.com/a.ass" {
-		t.Fatalf("selected player must keep only its own subtitles: %#v", animelibPlayer.Subtitles)
+	if len(libsocialPlayer.Subtitles) != 1 || libsocialPlayer.Subtitles[0].Src != "https://example.com/a.ass" {
+		t.Fatalf("selected player must keep only its own subtitles: %#v", libsocialPlayer.Subtitles)
 	}
 
-	animelibPlayer, _ = selectVoicePlayers(players, "Voice B")
-	if animelibPlayer == nil || animelibPlayer.ID != 2 {
-		t.Fatalf("animelib player = %#v, want Voice B player 2", animelibPlayer)
+	libsocialPlayer, _ = selectVoicePlayers(players, "Voice B")
+	if libsocialPlayer == nil || libsocialPlayer.ID != 2 {
+		t.Fatalf("libsocial player = %#v, want Voice B player 2", libsocialPlayer)
 	}
-	if len(animelibPlayer.Subtitles) != 1 || animelibPlayer.Subtitles[0].Src != "https://example.com/b.ass" {
-		t.Fatalf("selected player must keep only its own subtitles: %#v", animelibPlayer.Subtitles)
+	if len(libsocialPlayer.Subtitles) != 1 || libsocialPlayer.Subtitles[0].Src != "https://example.com/b.ass" {
+		t.Fatalf("selected player must keep only its own subtitles: %#v", libsocialPlayer.Subtitles)
 	}
 }

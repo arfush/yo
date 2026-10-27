@@ -79,7 +79,7 @@ func (l *Library) filmlibPlan(ctx context.Context, title Title, voiceName, episo
 
 	resumeAt, duration := 0.0, 0.0
 	if title.ID != 0 {
-		if entry, historyErr := l.store.GetHistory(title.ID); historyErr == nil && entry != nil && entry.Episode == chosen.Number {
+		if entry, historyErr := l.storage.GetHistory(title.ID); historyErr == nil && entry != nil && entry.Episode == chosen.Number {
 			resumeAt, duration = entry.ResumeAt, entry.Duration
 			if duration > 0 && resumeAt >= duration-5 {
 				resumeAt = 0

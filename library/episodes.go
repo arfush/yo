@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/arfush/yo/animelib"
 	"github.com/arfush/yo/catalog"
 	"github.com/arfush/yo/filmlib"
-	"github.com/arfush/yo/store"
+	"github.com/arfush/yo/libsocial"
+	"github.com/arfush/yo/storage"
 )
 
 // Notification types are shared with the UI through catalog.
@@ -19,7 +19,7 @@ type (
 
 // episodeFetcher is replaced by tests so the checker can run without a network.
 // Production leaves it nil and uses the paced background AnimeLIB client.
-type episodeFetcher func(context.Context, string) (*animelib.EpisodeRelease, error)
+type episodeFetcher func(context.Context, string) (*libsocial.EpisodeRelease, error)
 
 // episodeCountFetcher is the test seam for the episode-total backfill.
 type episodeCountFetcher func(context.Context, string) (int, error)
@@ -30,7 +30,7 @@ func (l *Library) EpisodeNotificationsEnabled() bool {
 	if l == nil {
 		return false
 	}
-	return l.store.EpisodeNotificationsEnabled()
+	return l.storage.EpisodeNotificationsEnabled()
 }
 
 // SetEpisodeNotificationsEnabled stores the notification choice.
@@ -38,7 +38,7 @@ func (l *Library) SetEpisodeNotificationsEnabled(enabled bool) error {
 	if l == nil {
 		return ErrDatabaseUnavailable
 	}
-	return l.store.SetEpisodeNotificationsEnabled(enabled)
+	return l.storage.SetEpisodeNotificationsEnabled(enabled)
 }
 
 // CheckEpisodeNotifications polls every saved ongoing or announced title and
@@ -46,10 +46,10 @@ func (l *Library) SetEpisodeNotificationsEnabled(enabled bool) error {
 // after a notification has been delivered, so a failed delivery is retried on
 // the next pass instead of being silently lost.
 func (l *Library) CheckEpisodeNotifications(ctx context.Context, notify func(EpisodeNotification) error) error {
-	if l == nil || !l.store.EpisodeNotificationsEnabled() {
+	if l == nil || !l.storage.EpisodeNotificationsEnabled() {
 		return nil
 	}
-	watches, err := l.store.ListEpisodeWatches()
+	watches, err := l.storage.ListEpisodeWatches()
 	if err != nil {
 		return err
 	}
@@ -63,7 +63,7 @@ func (l *Library) CheckEpisodeNotifications(ctx context.Context, notify func(Epi
 		if err != nil {
 			return err
 		}
-		client := animelib.NewBackground(token)
+		client := libsocial.NewBackground(token)
 		fetch = client.LatestEpisode
 	}
 
@@ -75,7 +75,7 @@ func (l *Library) CheckEpisodeNotifications(ctx context.Context, notify func(Epi
 		status := Status(watch.Status)
 		if status == StatusCompleted ||
 			(status != StatusOngoing && status != StatusAnnounced) {
-			if err := l.store.DeleteEpisodeTracking(watch.TitleID); err != nil {
+			if err := l.storage.DeleteEpisodeTracking(watch.TitleID); err != nil {
 				failures = append(failures, fmt.Errorf("%s: %w", watch.Slug, err))
 			}
 			continue
@@ -93,26 +93,26 @@ func (l *Library) CheckEpisodeNotifications(ctx context.Context, notify func(Epi
 	return errors.Join(failures...)
 }
 
-func (l *Library) processEpisodeRelease(watch store.EpisodeWatch, release *animelib.EpisodeRelease, notify func(EpisodeNotification) error) error {
+func (l *Library) processEpisodeRelease(watch storage.EpisodeWatch, release *libsocial.EpisodeRelease, notify func(EpisodeNotification) error) error {
 	if release == nil {
 		return nil
 	}
 	// The episode list length is the total shown by the history progress bar.
 	// It grows when an ongoing title gets a new episode.
 	if release.EpisodeCount > 0 {
-		if err := l.store.UpdateEpisodesTotal(watch.TitleID, release.EpisodeCount); err != nil {
+		if err := l.storage.UpdateEpisodesTotal(watch.TitleID, release.EpisodeCount); err != nil {
 			return err
 		}
 	}
 	remoteStatus := statusFrom(release.StatusID, release.StatusLabel)
 	if remoteStatus == StatusCompleted {
-		if err := l.store.UpdateTitleStatus(watch.TitleID, int(remoteStatus)); err != nil {
+		if err := l.storage.UpdateTitleStatus(watch.TitleID, int(remoteStatus)); err != nil {
 			return err
 		}
-		return l.store.DeleteEpisodeTracking(watch.TitleID)
+		return l.storage.DeleteEpisodeTracking(watch.TitleID)
 	}
 	if remoteStatus != Status(watch.Status) {
-		if err := l.store.UpdateTitleStatus(watch.TitleID, int(remoteStatus)); err != nil {
+		if err := l.storage.UpdateTitleStatus(watch.TitleID, int(remoteStatus)); err != nil {
 			return err
 		}
 	}
@@ -120,14 +120,14 @@ func (l *Library) processEpisodeRelease(watch store.EpisodeWatch, release *anime
 	if !watch.Tracked {
 		// Existing history predates the tracking table. Record what is already
 		// available without firing notifications for old episodes.
-		return l.store.SeedEpisodeTracking(watch.TitleID, release.Episode)
+		return l.storage.SeedEpisodeTracking(watch.TitleID, release.Episode)
 	}
 	if release.Episode == "" {
 		return nil
 	}
 
 	if release.Episode != watch.LastEpisode {
-		if !animelib.EpisodeNewer(release.Episode, watch.LastEpisode) {
+		if !libsocial.EpisodeNewer(release.Episode, watch.LastEpisode) {
 			return nil
 		}
 		return l.notifyNewEpisode(watch, release, notify)
@@ -135,7 +135,7 @@ func (l *Library) processEpisodeRelease(watch store.EpisodeWatch, release *anime
 	return l.notifyPreferredVoice(watch, release, notify)
 }
 
-func (l *Library) notifyNewEpisode(watch store.EpisodeWatch, release *animelib.EpisodeRelease, notify func(EpisodeNotification) error) error {
+func (l *Library) notifyNewEpisode(watch storage.EpisodeWatch, release *libsocial.EpisodeRelease, notify func(EpisodeNotification) error) error {
 	if len(release.Voiceovers) == 0 {
 		// The episode exists in the flat list but no team has published it yet.
 		// Keep the previous marker so the first real release is still noticed.
@@ -153,17 +153,17 @@ func (l *Library) notifyNewEpisode(watch store.EpisodeWatch, release *animelib.E
 		return err
 	}
 
-	tracking := store.EpisodeTracking{
+	tracking := storage.EpisodeTracking{
 		LastEpisode:      release.Episode,
 		AnyVoiceNotified: true,
 		// The first notification already covered the saved voice when that
 		// voice was among the teams that published the episode.
 		PreferredVoiceNotified: preferred,
 	}
-	return l.store.SaveEpisodeTracking(watch.TitleID, tracking)
+	return l.storage.SaveEpisodeTracking(watch.TitleID, tracking)
 }
 
-func (l *Library) notifyPreferredVoice(watch store.EpisodeWatch, release *animelib.EpisodeRelease, notify func(EpisodeNotification) error) error {
+func (l *Library) notifyPreferredVoice(watch storage.EpisodeWatch, release *libsocial.EpisodeRelease, notify func(EpisodeNotification) error) error {
 	if !watch.AnyVoiceNotified || watch.PreferredVoiceNotified || watch.Voiceover == "" {
 		return nil
 	}
@@ -181,7 +181,7 @@ func (l *Library) notifyPreferredVoice(watch store.EpisodeWatch, release *animel
 	if err := sendNotification(notify, event); err != nil {
 		return err
 	}
-	return l.store.SaveEpisodeTracking(watch.TitleID, store.EpisodeTracking{
+	return l.storage.SaveEpisodeTracking(watch.TitleID, storage.EpisodeTracking{
 		LastEpisode:            watch.LastEpisode,
 		AnyVoiceNotified:       true,
 		PreferredVoiceNotified: true,
@@ -195,7 +195,7 @@ func sendNotification(notify func(EpisodeNotification) error, event EpisodeNotif
 	return notify(event)
 }
 
-func preferredVoice(voices []animelib.ReleaseVoiceover, name string) bool {
+func preferredVoice(voices []libsocial.ReleaseVoiceover, name string) bool {
 	if name == "" {
 		return false
 	}
@@ -207,8 +207,8 @@ func preferredVoice(voices []animelib.ReleaseVoiceover, name string) bool {
 	return false
 }
 
-func filterVoiceovers(voices []animelib.ReleaseVoiceover, name string) []animelib.ReleaseVoiceover {
-	out := make([]animelib.ReleaseVoiceover, 0, 1)
+func filterVoiceovers(voices []libsocial.ReleaseVoiceover, name string) []libsocial.ReleaseVoiceover {
+	out := make([]libsocial.ReleaseVoiceover, 0, 1)
 	for _, voice := range voices {
 		if voice.Name == name {
 			out = append(out, voice)
@@ -217,7 +217,7 @@ func filterVoiceovers(voices []animelib.ReleaseVoiceover, name string) []animeli
 	return out
 }
 
-func voiceoversForNotification(voices []animelib.ReleaseVoiceover) []EpisodeVoiceover {
+func voiceoversForNotification(voices []libsocial.ReleaseVoiceover) []EpisodeVoiceover {
 	out := make([]EpisodeVoiceover, 0, len(voices))
 	for _, voice := range voices {
 		out = append(out, EpisodeVoiceover{Name: voice.Name, KodikOnly: voice.KodikOnly})
@@ -225,7 +225,7 @@ func voiceoversForNotification(voices []animelib.ReleaseVoiceover) []EpisodeVoic
 	return out
 }
 
-func displayTitle(watch store.EpisodeWatch) string {
+func displayTitle(watch storage.EpisodeWatch) string {
 	if watch.RusName != "" {
 		return watch.RusName
 	}
@@ -267,7 +267,7 @@ func (l *Library) RefreshMissingEpisodeTotals(ctx context.Context, onUpdate func
 		if err != nil {
 			return err
 		}
-		client := animelib.NewBackground(token)
+		client := libsocial.NewBackground(token)
 		fetch = client.EpisodeCount
 	}
 
@@ -284,7 +284,7 @@ func (l *Library) RefreshMissingEpisodeTotals(ctx context.Context, onUpdate func
 		if total <= 0 {
 			continue
 		}
-		if err := l.store.UpdateEpisodesTotal(title.ID, total); err != nil {
+		if err := l.storage.UpdateEpisodesTotal(title.ID, total); err != nil {
 			failures = append(failures, fmt.Errorf("%s: %w", title.Slug, err))
 			continue
 		}
@@ -308,9 +308,9 @@ func (l *Library) seedEpisodeTracking(title Title) error {
 		return nil
 	}
 	if title.Status == StatusCompleted {
-		return l.store.DeleteEpisodeTracking(title.ID)
+		return l.storage.DeleteEpisodeTracking(title.ID)
 	}
-	return l.store.SeedEpisodeTracking(title.ID, latestEpisodeNumber(title.Episodes))
+	return l.storage.SeedEpisodeTracking(title.ID, latestEpisodeNumber(title.Episodes))
 }
 
 func latestEpisodeNumber(episodes []string) string {
@@ -318,6 +318,6 @@ func latestEpisodeNumber(episodes []string) string {
 		return ""
 	}
 	numbers := append([]string(nil), episodes...)
-	animelib.SortEpisodes(numbers)
+	libsocial.SortEpisodes(numbers)
 	return numbers[len(numbers)-1]
 }

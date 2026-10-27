@@ -109,7 +109,7 @@ func buildServices() (ui.Services, error) {
 		MPV:               mpv.New(),
 		Playback:          playback.New(lib, browserManager),
 		UpdateStore:       updateStore,
-		RateLimit:         animeLibRateLimit{},
+		RateLimit:         libsocialRateLimit{},
 		History:           history,
 		TokenPath:         tokenPath,
 		BrowserProfileDir: profileDir,

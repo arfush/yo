@@ -3,18 +3,18 @@ package library
 import (
 	"testing"
 
-	"github.com/arfush/yo/animelib"
 	"github.com/arfush/yo/catalog"
+	"github.com/arfush/yo/libsocial"
 )
 
 func TestTitleFromReadingDataGroupsByTranslation(t *testing.T) {
-	data := &animelib.ReadingTitleData{
-		SiteID:   animelib.SiteMangaLib,
+	data := &libsocial.ReadingTitleData{
+		SiteID:   libsocial.SiteMangaLib,
 		ID:       42,
 		Name:     "Test Manga",
 		SlugURL:  "42--test-manga",
 		StatusID: 1,
-		Chapters: []animelib.ReadingChapterData{
+		Chapters: []libsocial.ReadingChapterData{
 			{Volume: "1", Number: "0", Translation: "Team A", BranchID: 101},
 			{Volume: "1", Number: "0", Translation: "Team B", BranchID: 201},
 			{Volume: "1", Number: "0.5", Translation: "Team B", BranchID: 202},

@@ -1,4 +1,4 @@
-package animelib
+package libsocial
 
 import (
 	"context"

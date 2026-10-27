@@ -1,4 +1,4 @@
-package animelib
+package libsocial
 
 import (
 	"bytes"
@@ -191,7 +191,7 @@ type ReadingChapterData struct {
 }
 
 // ReadingChapterContent is a loaded chapter body. Manga responses carry page
-// images, ranobe responses carry HTML in RawContent.
+// images; ranobe responses may carry HTML or a ProseMirror JSON document.
 type ReadingChapterContent struct {
 	ID         int64
 	Volume     string
@@ -199,6 +199,7 @@ type ReadingChapterContent struct {
 	Name       string
 	Pages      []ReadingPage
 	RawContent string
+	Paragraphs []string
 }
 
 // ReadingPage is one scanned page returned by the chapter endpoint.
@@ -254,11 +255,11 @@ type readingTeam struct {
 
 type readingChapterResponse struct {
 	Data struct {
-		ID      int64      `json:"id"`
-		Volume  flexString `json:"volume"`
-		Number  flexString `json:"number"`
-		Name    string     `json:"name"`
-		Content string     `json:"content"`
+		ID      int64           `json:"id"`
+		Volume  flexString      `json:"volume"`
+		Number  flexString      `json:"number"`
+		Name    string          `json:"name"`
+		Content json.RawMessage `json:"content"`
 		Pages   []struct {
 			URL    string     `json:"url"`
 			Image  string     `json:"image"`
@@ -267,6 +268,80 @@ type readingChapterResponse struct {
 			Ratio  flexString `json:"ratio"`
 		} `json:"pages"`
 	} `json:"data"`
+}
+
+// readingRichNode is the subset of ProseMirror nodes used by LibSocial
+// ranobe chapters. The API returns the document as an object for some titles
+// and as HTML for others, so both shapes are accepted.
+type readingRichNode struct {
+	Type    string            `json:"type"`
+	Text    string            `json:"text"`
+	Content []readingRichNode `json:"content"`
+}
+
+// parseReadingContent returns HTML for the legacy string shape and plain
+// paragraphs for the ProseMirror object shape.
+func parseReadingContent(raw json.RawMessage) (string, []string) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+		return "", nil
+	}
+	if raw[0] == '"' {
+		var html string
+		if err := json.Unmarshal(raw, &html); err == nil {
+			return html, nil
+		}
+		return "", nil
+	}
+	if raw[0] != '{' && raw[0] != '[' {
+		return "", nil
+	}
+	var node readingRichNode
+	if err := json.Unmarshal(raw, &node); err != nil {
+		return "", nil
+	}
+	paragraphs := make([]string, 0, 32)
+	collectReadingBlocks(node, &paragraphs)
+	return "", paragraphs
+}
+
+func collectReadingBlocks(node readingRichNode, out *[]string) {
+	switch node.Type {
+	case "paragraph", "heading", "codeBlock":
+		if text := strings.TrimSpace(readingRichText(node)); text != "" {
+			*out = append(*out, text)
+		}
+	case "bulletList", "orderedList", "blockquote", "listItem":
+		for _, child := range node.Content {
+			collectReadingBlocks(child, out)
+		}
+	case "text", "hardBreak", "horizontalRule", "image":
+		// Top-level text nodes are unusual; paragraph and list handling below
+		// covers normal documents.
+	default:
+		for _, child := range node.Content {
+			collectReadingBlocks(child, out)
+		}
+	}
+}
+
+func readingRichText(node readingRichNode) string {
+	var builder strings.Builder
+	var walk func(readingRichNode)
+	walk = func(current readingRichNode) {
+		switch current.Type {
+		case "text":
+			builder.WriteString(current.Text)
+		case "hardBreak":
+			builder.WriteByte('\n')
+		default:
+			for _, child := range current.Content {
+				walk(child)
+			}
+		}
+	}
+	walk(node)
+	return builder.String()
 }
 
 // flexString accepts strings and numbers. LibSocial occasionally changes
@@ -400,12 +475,14 @@ func (c *Client) FetchReadingChapter(ctx context.Context, slug string, siteID in
 		return nil, fmt.Errorf("invalid chapter response: %w", err)
 	}
 	data := response.Data
+	rawContent, paragraphs := parseReadingContent(data.Content)
 	content := &ReadingChapterContent{
 		ID:         data.ID,
 		Volume:     string(data.Volume),
 		Number:     string(data.Number),
 		Name:       data.Name,
-		RawContent: data.Content,
+		RawContent: rawContent,
+		Paragraphs: paragraphs,
 	}
 	content.Pages = make([]ReadingPage, 0, len(data.Pages))
 	for _, page := range data.Pages {
