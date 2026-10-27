@@ -1,11 +1,14 @@
 package ui
 
 import (
+	"image"
+	"strconv"
 	"testing"
 	"time"
 
 	"gioui.org/layout"
 	"gioui.org/op"
+	"gioui.org/unit"
 )
 
 func TestSavedTitleButtonUsesMutedGreen(t *testing.T) {
@@ -27,6 +30,34 @@ func TestSavedTitleButtonUsesMutedGreen(t *testing.T) {
 	if fill.G > fill.R || border.G > border.R || text.G > text.R {
 		t.Fatal("the ordinary footer button gained the saved green tone")
 	}
+}
+
+func TestTitlePanelScrollsSeasonsEpisodesAndQuality(t *testing.T) {
+	typo, err := newTypography()
+	if err != nil {
+		t.Fatal(err)
+	}
+	episodes := make([]string, 0, 60)
+	for index := 1; index <= 60; index++ {
+		episodes = append(episodes, strconv.Itoa(index))
+	}
+	item := historyTitle{
+		episodes:        episodes,
+		episodesTotal:   len(episodes),
+		selectedEpisode: 0,
+		selectedVoice:   0,
+		voices:          []voiceover{{name: "Team", episodes: episodes}},
+		seasons:         []titleSeason{{number: 1, episodes: episodes[:30]}, {number: 2, episodes: episodes[30:]}},
+	}
+	screen := newTitleScreen(typo, item, 1080)
+	gtx := layout.Context{
+		Ops:         new(op.Ops),
+		Metric:      unit.Metric{PxPerDp: 1, PxPerSp: 1},
+		Constraints: layout.Exact(image.Pt(420, 190)),
+	}
+	// A short panel used to hide the quality row behind the episode grid. The
+	// outer section list must still lay out all three blocks without panicking.
+	screen.layoutTitlePanel(gtx, image.Rect(0, 0, 420, 190))
 }
 
 func TestStepEpisodeMovesLeftAndRight(t *testing.T) {

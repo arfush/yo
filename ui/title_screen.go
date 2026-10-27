@@ -229,10 +229,13 @@ type titleScreen struct {
 	episodeList layout.List
 	seasonList  layout.List
 	qualityList layout.List
-	voices      []titleVoiceRow
-	episodes    []widget.Clickable
-	seasons     []widget.Clickable
-	qualities   []widget.Clickable
+	// panelList scrolls the whole seasons/episodes/quality block. The season
+	// and episode lists keep their own scrolling inside it.
+	panelList layout.List
+	voices    []titleVoiceRow
+	episodes  []widget.Clickable
+	seasons   []widget.Clickable
+	qualities []widget.Clickable
 
 	// qualityOptions is what the quality block draws; it follows the selected
 	// voice's ladder and the probe result.
@@ -832,6 +835,7 @@ func (w *titleScreen) selectSeason(gtx layout.Context, index int) {
 		w.selectedEpisode = episode
 	}
 	w.episodesPlaced = false
+	w.panelList.Position = layout.Position{}
 	w.ensureEpisodeVisible()
 	gtx.Execute(op.InvalidateCmd{})
 }
@@ -897,10 +901,9 @@ func (w *titleScreen) layoutTitlePanel(gtx layout.Context, rect image.Rectangle)
 	}
 	panelStyle{fill: titlePanelFill, border: titlePanelBorder, radius: unit.Dp(10)}.layout(gtx, rect)
 
-	innerX := rect.Min.X + gtx.Dp(unit.Dp(16))
-	innerRight := rect.Max.X - gtx.Dp(unit.Dp(16))
+	innerPad := gtx.Dp(unit.Dp(16))
+	innerWidth := rect.Dx() - 2*innerPad
 	compact := rect.Dy() < gtx.Dp(unit.Dp(230))
-
 	labelFace := font.Font{Typeface: fontFamily, Weight: font.Medium}
 	_, labelInk := w.typo.measure(gtx, "СЕРИИ", labelFace, titlePageSectionSize)
 	labelY := rect.Min.Y + gtx.Dp(unit.Dp(13))
@@ -908,76 +911,102 @@ func (w *titleScreen) layoutTitlePanel(gtx layout.Context, rect image.Rectangle)
 		w.layoutMoviePanel(gtx, rect, labelFace, labelInk, labelY, compact)
 		return
 	}
+	if innerWidth <= 0 {
+		return
+	}
 	seasonsLabel := w.item.seasonsSectionLabel()
 	episodesLabel := w.item.episodesSectionLabel(w.selectedSeason)
-	if seasonsLabel == "" {
-		w.typo.draw(gtx, episodesLabel, labelFace, titlePageSectionSize, mainMutedColor, image.Pt(innerX, labelY))
-	} else {
-		w.typo.draw(gtx, seasonsLabel, labelFace, titlePageSectionSize, mainMutedColor, image.Pt(innerX, labelY))
-	}
-	contentTop := labelY + labelInk.Dy() + gtx.Dp(unit.Dp(13))
-	episodeTop := contentTop
 	qualityLabel := w.qualitySectionLabel()
-	_, qualityLabelInk := w.typo.measure(gtx, qualityLabel, labelFace, titlePageSectionSize)
-	qualityHeight := gtx.Dp(titlePageQualityHeight)
 
-	// Anchor the quality block to the panel's lower edge. The episode grid
-	// then gets all remaining height and clips its last visible row at the
-	// block boundary instead of leaving a painted strip above the footer.
-	var qualityLabelTop, qualityTop, gridGap int
-	if compact {
-		qualityHeight = gtx.Dp(unit.Dp(30))
-		bottomPad := gtx.Dp(unit.Dp(8))
-		labelGap := gtx.Dp(unit.Dp(4))
-		gridGap = gtx.Dp(unit.Dp(8))
-		qualityLabelTop = rect.Max.Y - bottomPad - qualityHeight - labelGap - qualityLabelInk.Dy()
-		qualityTop = qualityLabelTop + qualityLabelInk.Dy() + labelGap
-	} else {
-		labelGap := gtx.Dp(unit.Dp(18))
-		gridGap = gtx.Dp(unit.Dp(18))
-		bottomPad := gtx.Dp(unit.Dp(14))
-		qualityTop = rect.Max.Y - bottomPad - qualityHeight
-		qualityLabelTop = qualityTop - labelGap - qualityLabelInk.Dy()
+	// The whole block scrolls as one panel. Seasons and episodes still keep
+	// their own lists: the outer list only moves the three sections, so a long
+	// episode grid no longer runs under the quality row.
+	topPad := gtx.Dp(unit.Dp(8))
+	bottomPad := gtx.Dp(unit.Dp(10))
+	view := image.Rect(0, topPad, rect.Dx(), rect.Dy()-bottomPad)
+	if view.Empty() {
+		return
 	}
-	gridBottom := qualityLabelTop - gridGap
+	labelGap := gtx.Dp(unit.Dp(13))
+	sectionGap := gtx.Dp(unit.Dp(18))
+	qualityHeight := gtx.Dp(titlePageQualityHeight)
+	if compact {
+		labelGap = gtx.Dp(unit.Dp(4))
+		sectionGap = gtx.Dp(unit.Dp(8))
+		qualityHeight = gtx.Dp(unit.Dp(30))
+	}
+	rowHeight := gtx.Dp(titlePageEpisodeHeight)
+	gridGap := gtx.Dp(titlePageEpisodeGap)
+	gridHeight := func(rows int) int {
+		visibleRows := min(rows, titleGridMaxRows)
+		if visibleRows <= 0 {
+			return 0
+		}
+		return visibleRows*rowHeight + (visibleRows-1)*gridGap
+	}
 
+	sectionCount := 2
 	if seasonsLabel != "" {
-		used := w.layoutSeasons(gtx, image.Rect(innerX, contentTop, innerRight, gridBottom))
-		if used > 0 {
-			episodeLabelY := contentTop + used + gtx.Dp(unit.Dp(14))
-			episodeTop = episodeLabelY + labelInk.Dy() + gtx.Dp(unit.Dp(10))
-			if episodeLabelY+labelInk.Dy() < qualityLabelTop {
-				w.typo.draw(
-					gtx,
-					episodesLabel,
-					labelFace,
-					titlePageSectionSize,
-					mainMutedColor,
-					image.Pt(innerX, episodeLabelY),
-				)
+		sectionCount = 3
+	}
+	stack := op.Offset(rect.Min.Add(view.Min)).Push(gtx.Ops)
+	defer stack.Pop()
+	lgtx := gtx
+	lgtx.Constraints = layout.Exact(view.Size())
+	w.panelList.Axis = layout.Vertical
+	w.panelList.Gap = 0
+	w.panelList.Layout(lgtx, sectionCount, func(gtx layout.Context, index int) layout.Dimensions {
+		itemHeight := labelInk.Dy() + labelGap
+		drawLabel := func(label string) {
+			w.typo.draw(gtx, label, labelFace, titlePageSectionSize, mainMutedColor, image.Pt(innerPad, 0))
+		}
+		seasonIndex := -1
+		episodeIndex := -1
+		qualityIndex := -1
+		if seasonsLabel != "" {
+			switch index {
+			case 0:
+				seasonIndex = index
+			case 1:
+				episodeIndex = index
+			case 2:
+				qualityIndex = index
+			}
+		} else {
+			switch index {
+			case 0:
+				episodeIndex = index
+			case 1:
+				qualityIndex = index
 			}
 		}
-	}
-	if gridBottom > episodeTop {
-		w.layoutEpisodes(gtx, image.Rect(innerX, episodeTop, innerRight, gridBottom))
-	}
-	if qualityLabelTop <= episodeTop || qualityLabelTop+qualityLabelInk.Dy() > rect.Max.Y {
-		return
-	}
-	w.typo.draw(
-		gtx,
-		qualityLabel,
-		labelFace,
-		titlePageSectionSize,
-		mainMutedColor,
-		image.Pt(innerX, qualityLabelTop),
-	)
-
-	if qualityTop+qualityHeight > rect.Max.Y {
-		return
-	}
-	qualityRect := image.Rect(innerX, qualityTop, innerRight, qualityTop+qualityHeight)
-	w.layoutQualities(gtx, qualityRect)
+		switch {
+		case seasonIndex >= 0:
+			columns := max(1, episodeGridColumns(innerWidth, gridGap, gtx.Dp(titlePageEpisodeMinWidth)))
+			rows := (len(w.item.seasons) + columns - 1) / columns
+			blockHeight := gridHeight(rows)
+			drawLabel(seasonsLabel)
+			if blockHeight > 0 {
+				w.layoutSeasons(gtx, image.Rect(innerPad, labelInk.Dy()+labelGap, innerPad+innerWidth, labelInk.Dy()+labelGap+blockHeight))
+			}
+			itemHeight += blockHeight + sectionGap
+		case episodeIndex >= 0:
+			episodes := w.visibleEpisodeIndices()
+			columns := max(1, episodeGridColumns(innerWidth, gridGap, gtx.Dp(titlePageEpisodeMinWidth)))
+			rows := (len(episodes) + columns - 1) / columns
+			blockHeight := gridHeight(rows)
+			drawLabel(episodesLabel)
+			if blockHeight > 0 {
+				w.layoutEpisodes(gtx, image.Rect(innerPad, labelInk.Dy()+labelGap, innerPad+innerWidth, labelInk.Dy()+labelGap+blockHeight))
+			}
+			itemHeight += blockHeight + sectionGap
+		case qualityIndex >= 0:
+			drawLabel(qualityLabel)
+			w.layoutQualities(gtx, image.Rect(innerPad, labelInk.Dy()+labelGap, innerPad+innerWidth, labelInk.Dy()+labelGap+qualityHeight))
+			itemHeight += qualityHeight
+		}
+		return layout.Dimensions{Size: image.Pt(rect.Dx(), itemHeight)}
+	})
 }
 
 // layoutMoviePanel leaves only the quality choice for a film. A movie has no
