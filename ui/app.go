@@ -354,7 +354,7 @@ func (a *application) attachWindow(w *app.Window) {
 	a.shell.hidden = a.windowHidden
 	a.main.onOpenTitle = func(item historyTitle) {
 		if item.reading() {
-			a.openReaderScreen(item)
+			a.openReadingTitle(item)
 			return
 		}
 		a.openTitle(item)
@@ -1337,16 +1337,22 @@ func (a *application) selectSection(section librarySection) {
 	}
 }
 
-// openReaderScreen opens the dedicated manga or ranobe reader for a title. For
-// a saved history row the chapter list is empty, so the reader starts in a
-// loading state and fetches the title through the library before drawing pages.
+// openReaderScreen is the direct reader entry kept for older call sites. Reads
+// normally enter through the manga/ranobe title screen now.
 func (a *application) openReaderScreen(item historyTitle) {
+	a.openReader(item, libraryTitleFromHistory(item), a.main)
+}
+
+// openReader opens the dedicated manga or ranobe reader. back is the screen
+// that receives control when the reader closes: a reading title page in the
+// normal flow, or the library when a caller opens the reader directly.
+func (a *application) openReader(item historyTitle, title catalog.Title, back Screen) {
 	if a.window == nil {
 		return
 	}
 	logger.Info("reader opened", "title", item.title, "id", item.id, "slug", item.slug)
-	title := libraryTitleFromHistory(item)
-	reader := newReaderScreen(a.shell.typo, item, a.library)
+	readerItem := titleFromLibrary(title)
+	reader := newReaderScreen(a.shell.typo, readerItem, a.library)
 	reader.hidden = a.windowHidden
 	reader.invalidate = a.window.Invalidate
 	reader.onError = a.reportError
@@ -1354,11 +1360,68 @@ func (a *application) openReaderScreen(item historyTitle) {
 		if a.window == nil {
 			return
 		}
-		a.showWindow(a.window, a.main)
+		if back == nil {
+			back = a.main
+		}
+		a.showWindow(a.window, back)
 		a.window.Invalidate()
 	}
 	reader.prefill(title)
 	a.showWindow(a.window, reader)
+	a.window.Invalidate()
+}
+
+// openReadingTitle opens the manga or ranobe landing page. It is intentionally
+// not the anime titleScreen: there are no voice qualities or mpv controls, and
+// the only forward action is the reader.
+func (a *application) openReadingTitle(item historyTitle) {
+	if a.window == nil {
+		return
+	}
+	logger.Info("reading title page opened", "title", item.title, "id", item.id, "slug", item.slug)
+	screen := newReadingTitleScreen(a.shell.typo, item)
+	screen.hidden = a.windowHidden
+	screen.invalidate = a.window.Invalidate
+	screen.onError = a.reportError
+	loaded := item
+	screen.load = func(ctx context.Context, input string) (catalog.Title, error) {
+		if a.library == nil {
+			return catalog.Title{}, library.ErrDatabaseUnavailable
+		}
+		if loaded.id != 0 {
+			return a.library.Load(ctx, input)
+		}
+		return a.library.Fetch(ctx, input)
+	}
+	screen.saveFunc = func(title catalog.Title, voice, chapter string) (catalog.Title, error) {
+		if a.library == nil {
+			return catalog.Title{}, library.ErrDatabaseUnavailable
+		}
+		saved, err := a.library.Save(title, voice, chapter)
+		if err != nil {
+			return catalog.Title{}, errSaveTitle.wrap(err)
+		}
+		a.main.refreshHistory(saved.ID)
+		a.downloadSavedCover(saved)
+		a.clearError()
+		return saved, nil
+	}
+	screen.onSaved = func(title catalog.Title) {
+		loaded = titleFromLibrary(title)
+	}
+	screen.onRead = func(item historyTitle, title catalog.Title, voice, chapter string) {
+		title.SelectedVoice = voice
+		title.SelectedEpisode = chapter
+		a.openReader(item, title, screen)
+	}
+	screen.onBack = func() {
+		if a.window == nil {
+			return
+		}
+		a.showWindow(a.window, a.main)
+		a.window.Invalidate()
+	}
+	a.showWindow(a.window, screen)
 	a.window.Invalidate()
 }
 
