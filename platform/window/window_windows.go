@@ -125,7 +125,13 @@ func HandleViewEvent(e event.Event) {
 	}
 
 	hwnd := windows.HWND(view.HWND)
-	windowHandle.Store(view.HWND)
+	previous := windowHandle.Swap(view.HWND)
+	// The section chosen at startup was stored before the window existed. A
+	// recreated HWND also needs the last HICON again, otherwise the taskbar
+	// falls back to the executable icon until the next section switch.
+	if previous != view.HWND {
+		go applyPendingAppIcon()
+	}
 	// SetWindowPos sends WM_WINDOWPOSCHANGED to the window thread, and that
 	// thread waits for this goroutine to return to Window.Event() while it
 	// delivers the resulting ConfigEvent. Calling it inline deadlocks both

@@ -26,6 +26,9 @@ func TestSectionThemeChangesEveryAccent(t *testing.T) {
 	if badgeFillColor != manga.badge || badgeBorderColor != manga.edge || badgeTextColor != manga.ink {
 		t.Fatalf("manga badge colors = %v/%v/%v, want %v/%v/%v", badgeFillColor, badgeBorderColor, badgeTextColor, manga.badge, manga.edge, manga.ink)
 	}
+	if catHairColor != manga.accent1 || catDressColor != manga.accent2 {
+		t.Fatalf("manga mascot colors = %v/%v, want %v/%v", catHairColor, catDressColor, manga.accent1, manga.accent2)
+	}
 
 	ranobe := sectionRanobe.palette()
 	applySectionTheme(sectionRanobe)
@@ -34,6 +37,25 @@ func TestSectionThemeChangesEveryAccent(t *testing.T) {
 	}
 	if footerControlHoverIconColor != mixColor(ranobe.accent1, titleColor, 0.55) {
 		t.Fatal("footer hover accent did not follow the section")
+	}
+}
+
+func TestSectionThemeKeepsTitleStatusColorsAndAccentsAllFilter(t *testing.T) {
+	t.Cleanup(func() { applySectionTheme(sectionAnime) })
+
+	wantLive := [3]color.NRGBA{mainStatusLiveText, mainStatusLiveFill, mainStatusLiveBorder}
+	for _, section := range []librarySection{sectionManga, sectionRanobe} {
+		applySectionTheme(section)
+		gotLive := [3]color.NRGBA{mainStatusLiveText, mainStatusLiveFill, mainStatusLiveBorder}
+		if gotLive != wantLive {
+			t.Fatalf("section %s changed live status colors: %v", section.key(), gotLive)
+		}
+		palette := section.palette()
+		wantAll := [3]color.NRGBA{palette.ink, palette.badge, palette.edge}
+		gotAll := [3]color.NRGBA{userStatusAllText, userStatusAllFill, userStatusAllEdge}
+		if gotAll != wantAll {
+			t.Fatalf("section %s all-filter colors = %v, want %v", section.key(), gotAll, wantAll)
+		}
 	}
 }
 

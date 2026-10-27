@@ -242,7 +242,11 @@ func (m *mainScreen) drawHistoryRowCard(gtx layout.Context, rect image.Rectangle
 			buttonTextColor = withAlpha(mainFaintColor, 0xb0)
 		}
 		drawIconButtonSurface(gtx, geom.play, actionStyle, vis.playHover)
-		drawHistoryPlay(gtx, centerOf(geom.play), gtx.Dp(unit.Dp(24)), buttonTextColor)
+		if item.reading() {
+			drawHistoryRead(gtx, centerOf(geom.play), gtx.Dp(unit.Dp(24)), buttonTextColor)
+		} else {
+			drawHistoryPlay(gtx, centerOf(geom.play), gtx.Dp(unit.Dp(24)), buttonTextColor)
+		}
 	}
 
 	trashColor := mixColor(mainControlColor, mainDangerColor, vis.trashHover)

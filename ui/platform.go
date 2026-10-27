@@ -35,3 +35,5 @@ func rememberAppWindowRect(rect windowRect) { platformwindow.Remember(rect) }
 func hideAppWindow() { platformwindow.Hide() }
 
 func showAppWindow() { platformwindow.Show() }
+
+func setAppIcon(icon image.Image) { platformwindow.SetAppIcon(icon) }

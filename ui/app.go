@@ -279,6 +279,7 @@ func newApp(services Services) (*application, error) {
 	applySectionTheme(section)
 	app.main.setSection(section)
 	app.shell.selectSection(section)
+	setAppIcon(app.shell.sectionIcon())
 	state := services.UpdateStore.State()
 	app.updatesAvailable.Store(state.Available)
 	app.autoUpdateStartup.Store(true)
@@ -364,6 +365,7 @@ func (a *application) attachWindow(w *app.Window) {
 	}
 	a.main.onError = a.reportError
 	a.main.onClearError = a.clearError
+	a.shell.onSection = a.selectSection
 	a.shell.onUpdate = a.openUpdate
 	a.shell.onSettings = a.openSettings
 	a.shell.onParty = a.openParty
@@ -727,6 +729,12 @@ func (a *application) openSettings() {
 // reopens on the created (host) or waiting (guest) form with the same key.
 func (a *application) openParty() {
 	if a.window == nil {
+		return
+	}
+	// Watch party belongs to anime playback only. The footer hides the button
+	// for the reading sections; this guard keeps keyboard/debug entry points
+	// from opening a room there as well.
+	if a.main != nil && a.main.section != sectionAnime {
 		return
 	}
 	if a.party == nil {
@@ -1265,8 +1273,8 @@ func (a *application) syncFooterControls() {
 	onMain := a.active == a.main
 	a.shell.settingsVisible = onMain
 	a.shell.logVisible = onMain
-	a.shell.partyVisible = onMain
-	a.shell.partyActive = onMain && a.party != nil && a.party.HasRoom()
+	a.shell.partyVisible = onMain && a.main != nil && a.main.section == sectionAnime
+	a.shell.partyActive = a.shell.partyVisible && a.party != nil && a.party.HasRoom()
 	a.shell.updateVisible = onMain && a.updateAvailable(release)
 	if onMain && a.main != nil {
 		a.shell.notice = a.main.headerNotice
@@ -1305,6 +1313,10 @@ func (a *application) autoUpdatesEnabled() bool {
 // also updated so the menu remembers the intended section even after a chain of
 // section changes.
 func (a *application) selectSection(section librarySection) {
+	previous := sectionAnime
+	if a.main != nil {
+		previous = a.main.section
+	}
 	applySectionTheme(section)
 	a.main.setSection(section)
 	if a.library != nil {
@@ -1312,7 +1324,9 @@ func (a *application) selectSection(section librarySection) {
 	}
 	if a.shell != nil {
 		a.shell.selectSection(section)
+		setAppIcon(a.shell.sectionIcon())
 	}
+	logger.Info("section switched", "from", previous.key(), "to", section.key(), "history", len(a.main.allHistory), "visible", len(a.main.history))
 	if a.window != nil {
 		a.window.Invalidate()
 	}
@@ -1671,7 +1685,7 @@ func (a *application) applyQualityResult(result qualityResult) {
 	if result.err != nil {
 		// The probe is a nicety: the standard quality buttons stay enabled and
 		// playback still picks the nearest available step.
-		logger.Warn("Filmlib quality probe failed", "title", result.slug, "voice", result.voice, "error", result.err)
+		logger.Warn("filmlib quality probe failed", "title", result.slug, "voice", result.voice, "error", result.err)
 		return
 	}
 	index := -1

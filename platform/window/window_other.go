@@ -40,3 +40,6 @@ func Remember(Rect) {}
 func Hide() {}
 
 func Show() {}
+
+// SetAppIcon is a no-op on platforms without a Win32 taskbar.
+func SetAppIcon(image.Image) {}

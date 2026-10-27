@@ -68,10 +68,13 @@ type actionSubmitStyle struct {
 
 func defaultActionSubmitStyle() actionSubmitStyle {
 	return actionSubmitStyle{
-		accent1:   mainAccentColor1,
-		accent2:   mainAccentColor2,
-		hover1:    color.NRGBA{R: 0xae, G: 0x8b, B: 0xff, A: 0xff},
-		hover2:    color.NRGBA{R: 0x82, G: 0x3e, B: 0xee, A: 0xff},
+		accent1: mainAccentColor1,
+		accent2: mainAccentColor2,
+		// Hover is derived from the live section accents. Hard-coded violet
+		// made the URL "next" button stay purple in the manga and ranobe
+		// sections after the rest of the UI had already changed.
+		hover1:    lighten(mainAccentColor1, 0x08),
+		hover2:    lighten(mainAccentColor2, 0x08),
 		disabled1: mainDisabledColor1,
 		disabled2: mainDisabledColor2,
 		error1:    mainDangerColor,

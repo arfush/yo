@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/color"
 
+	"gioui.org/f32"
 	"gioui.org/layout"
 	"gioui.org/op"
 
@@ -68,6 +69,31 @@ func drawPlay(gtx layout.Context, center image.Point, size int, col color.NRGBA)
 // general footer play glyph keeps its outlined stop bar.
 func drawHistoryPlay(gtx layout.Context, center image.Point, size int, col color.NRGBA) {
 	drawAppIcon(gtx, "history_play", center, max(1, size), col)
+}
+
+// drawHistoryRead is the open-book action used by manga and ranobe history
+// rows. The two page halves leave a narrow spine gap, so the glyph reads as
+// reading rather than playback even at 24 dp.
+func drawHistoryRead(gtx layout.Context, center image.Point, size int, col color.NRGBA) {
+	if size <= 0 {
+		return
+	}
+	s := float32(size)
+	cx, cy := float32(center.X), float32(center.Y)
+	left := []f32.Point{
+		{X: cx - s*0.43, Y: cy - s*0.27},
+		{X: cx - s*0.06, Y: cy - s*0.17},
+		{X: cx - s*0.06, Y: cy + s*0.30},
+		{X: cx - s*0.43, Y: cy + s*0.20},
+	}
+	right := []f32.Point{
+		{X: cx + s*0.06, Y: cy - s*0.17},
+		{X: cx + s*0.43, Y: cy - s*0.27},
+		{X: cx + s*0.43, Y: cy + s*0.20},
+		{X: cx + s*0.06, Y: cy + s*0.30},
+	}
+	fillPolygon(gtx, left, col)
+	fillPolygon(gtx, right, col)
 }
 
 func drawHistoryTrash(gtx layout.Context, center image.Point, size int, col color.NRGBA) {

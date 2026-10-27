@@ -109,6 +109,29 @@ func TestEachSectionKeepsItsOwnHistory(t *testing.T) {
 	}
 }
 
+func TestRepeatedSectionSwitchesKeepAllHistory(t *testing.T) {
+	all := []historyTitle{
+		{id: 1, source: catalog.SourceAnimeLIB},
+		{id: 2, source: catalog.SourceMangaLib},
+		{id: 3, source: catalog.SourceRanobeLib},
+		{id: 4, source: catalog.SourceMangaLib},
+	}
+	want := map[librarySection][]int64{
+		sectionAnime:  {1},
+		sectionManga:  {2, 4},
+		sectionRanobe: {3},
+	}
+	m := &mainScreen{allHistory: append([]historyTitle(nil), all...), filter: filterAll}
+	for round := 0; round < 100; round++ {
+		for _, section := range []librarySection{sectionManga, sectionRanobe, sectionAnime} {
+			m.setSection(section)
+			if got := historyIDs(m.history); !equalIDs(got, want[section]) {
+				t.Fatalf("round %d section %s history = %v, want %v", round, section.key(), got, want[section])
+			}
+		}
+	}
+}
+
 func TestMovingRowsInOneSectionPreservesOtherSections(t *testing.T) {
 	all := []historyTitle{
 		{id: 1, source: catalog.SourceAnimeLIB},

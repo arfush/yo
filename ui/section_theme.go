@@ -60,9 +60,6 @@ func applySectionTheme(section librarySection) {
 	mainDisabledColor2 = mixColor(contentColor, p.accent2, 0.20)
 	mainRowSelectedColor = mixColor(contentColor, p.accent1, 0.10)
 	mainDragDotActive = p.ink
-	mainStatusLiveText = p.ink
-	mainStatusLiveFill = p.badge
-	mainStatusLiveBorder = p.edge
 
 	settingsToggleOnColor = p.accent1
 	settingsMenuSelected = mixColor(contentColor, p.accent2, 0.26)
@@ -78,13 +75,27 @@ func applySectionTheme(section librarySection) {
 	undoActionColor = mixColor(p.accent1, titleColor, 0.28)
 	undoActionHoverColor = mixColor(p.accent1, titleColor, 0.60)
 
+	badgeFillColor = p.badge
+	badgeBorderColor = p.edge
+	badgeTextColor = p.ink
+
+	// The "Все" history filter is part of the section switcher, unlike the
+	// live/announced title badges which keep their universal status colors.
 	userStatusAllText = p.ink
 	userStatusAllFill = p.badge
 	userStatusAllEdge = p.edge
 
-	badgeFillColor = p.badge
-	badgeBorderColor = p.edge
-	badgeTextColor = p.ink
+	// The URL-field mascot is part of the section identity, so her hair and
+	// dress follow the same accent. The alert palette stays red: an error must
+	// read as an error in every section.
+	catHairColor = p.accent1
+	catHairShadow = p.accent2
+	catHairLight = p.ink
+	catFaceColor = mixColor(p.accent1, titleColor, 0.88)
+	catEarInnerColor = mixColor(p.accent1, titleColor, 0.68)
+	catPawColor = mixColor(p.accent1, titleColor, 0.82)
+	catDressColor = p.accent2
+	catDressLight = p.ink
 
 	footerControlHoverFill = mixColor(chromeColor, p.accent2, 0.14)
 	footerControlHoverBorder = mixColor(chromeColor, p.accent2, 0.45)

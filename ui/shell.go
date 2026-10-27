@@ -154,11 +154,11 @@ func (s *shell) layoutSectionMenu(gtx layout.Context, g geometry) {
 	}
 	options := otherSections(s.section)
 	pad := gtx.Dp(settingsProviderMenuPad)
-	itemHeight := gtx.Dp(unit.Dp(34))
+	itemHeight := gtx.Dp(unit.Dp(42))
 	itemGap := gtx.Dp(unit.Dp(2))
 	height := len(options)*itemHeight + (len(options)-1)*itemGap + 2*pad
 	anchor := s.sectionAnchor
-	if minimum := gtx.Dp(unit.Dp(168)); anchor.Dx() < minimum {
+	if minimum := gtx.Dp(unit.Dp(190)); anchor.Dx() < minimum {
 		anchor.Max.X = anchor.Min.X + minimum
 	}
 	menu := placePopupList(anchor, height, gtx.Dp(unit.Dp(6)), bounds)
@@ -198,14 +198,16 @@ func (s *shell) layoutSectionItem(gtx layout.Context, rect image.Rectangle, sect
 		if click.Hovered() {
 			fillRounded(gtx, withAlpha(section.palette().accent1, 0x24), local, radius)
 		}
-		face := font.Font{Typeface: fontFamily, Weight: font.Medium}
+		// Menu options use the same icon and label size as the selected
+		// section in the header, so the dropdown never looks shrunken.
+		face := font.Font{Typeface: fontFamily, Weight: font.Bold}
 		label := section.appName()
-		size := gtx.Dp(unit.Dp(18))
-		padX := gtx.Dp(unit.Dp(10))
+		size := gtx.Dp(unit.Dp(24))
+		padX := gtx.Dp(unit.Dp(12))
 		tile := image.Rect(padX, (local.Dy()-size)/2, padX+size, (local.Dy()-size)/2+size)
 		drawImage(gtx, s.sectionIconFor(section), tile)
-		_, ink := s.typo.measure(gtx, label, face, settingsButtonSize)
-		s.typo.draw(gtx, label, face, settingsButtonSize, mainTextColor, image.Pt(padX+size+gtx.Dp(unit.Dp(10)), (local.Dy()-ink.Dy())/2))
+		_, ink := s.typo.measure(gtx, label, face, titleSize)
+		s.typo.draw(gtx, label, face, titleSize, mainTextColor, image.Pt(padX+size+gtx.Dp(unit.Dp(10)), (local.Dy()-ink.Dy())/2))
 	})
 	return clicked
 }
@@ -268,6 +270,11 @@ func (s *shell) animationsRun() bool {
 }
 
 func (s *shell) layout(gtx layout.Context, w *app.Window) {
+	// Applying the palette every frame is cheap and makes the accents
+	// self-healing: a screen or a fast auto-switch that changed the section
+	// without running the menu callback cannot leave the mascot, controls or
+	// history filter on the previous color.
+	applySectionTheme(s.section)
 	s.updateError(gtx)
 	g := makeGeometry(gtx, s.cfg.Mode != app.Windowed, s.settingsVisible, s.partyVisible, s.updateVisible)
 	// The watcher registered last frame has already collected presses for this
@@ -404,11 +411,12 @@ func (s *shell) layoutHeader(gtx layout.Context, w *app.Window, g geometry) {
 	s.layoutLogo(gtx, g, brand)
 
 	// The title is deliberately pinned to a common baseline between the logo
-	// and version badge, rather than being laid out as flowing text.
+	// and version badge, rather than being centered by its ink box. Centering
+	// by ink height made "yomanga" jump up because its descender (g) is taller
+	// than the descenders of the other two section names.
 	titleFace := font.Font{Typeface: fontFamily, Weight: font.Bold}
 	appName := s.section.appName()
-	_, titleInk := s.typo.measure(gtx, appName, titleFace, titleSize)
-	titleY := g.headerCenterY - titleInk.Dy()/2
+	titleY := headerTitleTop(gtx, s.typo, appName, g.headerCenterY, titleFace, titleSize)
 	s.typo.draw(gtx, appName, titleFace, titleSize, titleColor, image.Pt(g.titleX, titleY))
 
 	// The chevron sits after a reserved width for the longest section name, so
@@ -460,6 +468,24 @@ func (s *shell) layoutHeader(gtx layout.Context, w *app.Window, g geometry) {
 	}
 
 	s.layoutDragRegions(gtx, g)
+}
+
+// headerTitleTop returns the ink-top offset that puts every section name on
+// the same baseline. Descenders differ between "yoanime", "yomanga" and
+// "yoranobe", so centering each ink box individually makes one name look
+// higher than the others.
+func headerTitleTop(gtx layout.Context, typo *typography, text string, centerY int, face font.Font, size unit.Sp) int {
+	glyphs, ink := typo.measure(gtx, text, face, size)
+	if len(glyphs) == 0 || ink.Empty() {
+		return centerY
+	}
+	reference, referenceInk := typo.measure(gtx, sectionAnime.appName(), face, size)
+	capHeight := ink.Dy()
+	if len(reference) > 0 && !referenceInk.Empty() {
+		capHeight = int(reference[0].Y) - referenceInk.Min.Y
+	}
+	baseline := int(glyphs[0].Y)
+	return centerY + capHeight/2 - baseline + ink.Min.Y
 }
 
 // brandLayout reserves the same title width for every section. The icon and
