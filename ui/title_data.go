@@ -140,15 +140,48 @@ func (t historyTitle) progressLabel() string {
 	}
 	key := t.currentEpisodeLabel()
 	if t.reading() {
-		return readingProgressLabel(key, t.totalEpisodes())
+		currentVolume, totalVolumes := t.readingVolumeProgress()
+		return readingProgressLabelWithVolumes(key, t.totalEpisodes(), currentVolume, totalVolumes)
 	}
 	return episodeProgressLabel(key, t.totalEpisodes())
+}
+
+// readingVolumeProgress counts distinct volumes in the loaded chapter list.
+// A history row has only the saved key, so zero means the total is unknown.
+func (t historyTitle) readingVolumeProgress() (current, total int) {
+	keys := t.episodes
+	if len(keys) == 0 {
+		for _, chapter := range t.chapters {
+			keys = append(keys, chapter.Key)
+		}
+	}
+	seen := make(map[string]bool)
+	for _, key := range keys {
+		volume, _ := catalog.SplitReadingChapterKey(key)
+		if volume == "" || volume == "0" {
+			continue
+		}
+		seen[volume] = true
+	}
+	volume, _ := catalog.SplitReadingChapterKey(t.currentEpisodeLabel())
+	if volume != "" && volume != "0" {
+		if number, err := strconv.Atoi(volume); err == nil {
+			current = number
+		}
+	}
+	return current, len(seen)
 }
 
 // readingProgressLabel formats the reader progress as "1 т. · 1 / 758 гл.".
 // The volume is shown only when the source supplies one; the chapter word is
 // omitted from the numerator because the denominator already says "гл.".
 func readingProgressLabel(key string, total int) string {
+	return readingProgressLabelWithVolumes(key, total, 0, 0)
+}
+
+// readingProgressLabelWithVolumes adds volume progress when the full list is
+// available: "1 / 9 т. · 1 / 24 гл.".
+func readingProgressLabelWithVolumes(key string, total, currentVolume, totalVolumes int) string {
 	key = strings.TrimSpace(key)
 	if key == "" {
 		return ""
@@ -156,7 +189,16 @@ func readingProgressLabel(key string, total int) string {
 	volume, number := catalog.SplitReadingChapterKey(key)
 	label := strings.TrimSpace(number)
 	if volume != "" && volume != "0" {
-		label = volume + " т. · " + label
+		if currentVolume <= 0 {
+			if parsed, err := strconv.Atoi(volume); err == nil {
+				currentVolume = parsed
+			}
+		}
+		if totalVolumes > 0 && currentVolume > 0 {
+			label = fmt.Sprintf("%d / %d т. · %s", currentVolume, totalVolumes, label)
+		} else {
+			label = volume + " т. · " + label
+		}
 	}
 	if total > 0 {
 		label += fmt.Sprintf(" / %d гл.", total)

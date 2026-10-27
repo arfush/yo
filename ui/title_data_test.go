@@ -181,6 +181,9 @@ func TestReadingProgressLabel(t *testing.T) {
 			t.Fatalf("readingProgressLabel(%q, %d) = %q, want %q", test.key, test.total, got, test.want)
 		}
 	}
+	if got := readingProgressLabelWithVolumes("1:1", 24, 1, 9); got != "1 / 9 т. · 1 / 24 гл." {
+		t.Fatalf("volume progress = %q", got)
+	}
 }
 
 func TestMovieHidesEpisodeProgressLabel(t *testing.T) {
