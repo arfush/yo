@@ -411,31 +411,35 @@ func buildUpdate() []shape {
 	pt := func(x, y float64) vec {
 		return d.pt(x-12, y-12)
 	}
-	width := d.length(1.8)
+	// Scale the original 18-unit glyph to fill the 14 dp slot. The thin stroke
+	// and small arrowheads disappeared at that size; the reference reads as a
+	// full-box icon with heavy corners.
+	const radius = 10.35
+	width := d.length(2.8)
 	var out shape
 
 	// Top arc: left edge, over the top, down to the right shoulder.
-	top := []vec{pt(3, 12)}
+	top := []vec{pt(12-radius, 12)}
 	const steps = 32
 	for i := 1; i <= steps; i++ {
 		angle := math.Pi + (math.Pi-0.62)*float64(i)/steps
-		top = append(top, pt(12+9*math.Cos(angle), 12+9*math.Sin(angle)))
+		top = append(top, pt(12+radius*math.Cos(angle), 12+radius*math.Sin(angle)))
 	}
-	top = append(top, pt(21, 8))
+	top = append(top, pt(22.35, 7.4))
 	out.strokeOpen(top, width)
 
 	// Bottom arc: right edge, under the bottom, up to the left shoulder.
-	bottom := []vec{pt(21, 12)}
+	bottom := []vec{pt(12+radius, 12)}
 	for i := 1; i <= steps; i++ {
 		angle := (math.Pi + 0.62) * float64(i) / steps
-		bottom = append(bottom, pt(12+9*math.Cos(angle), 12+9*math.Sin(angle)))
+		bottom = append(bottom, pt(12+radius*math.Cos(angle), 12+radius*math.Sin(angle)))
 	}
-	bottom = append(bottom, pt(3, 16))
+	bottom = append(bottom, pt(1.65, 16.6))
 	out.strokeOpen(bottom, width)
 
-	// The arrowheads are open right angles, as in the reference.
-	out.strokeOpen([]vec{pt(21, 3), pt(21, 8), pt(16, 8)}, width)
-	out.strokeOpen([]vec{pt(8, 16), pt(3, 16), pt(3, 21)}, width)
+	// The reference's arrowheads read as solid triangular wedges at 14 dp.
+	out.polygon([]vec{pt(22.35, 1.65), pt(22.35, 7.4), pt(16.6, 7.4)})
+	out.polygon([]vec{pt(7.4, 16.6), pt(1.65, 16.6), pt(1.65, 22.35)})
 	return []shape{out}
 }
 
@@ -588,9 +592,11 @@ func chevronBuilder(points []vec, width float64) func() []shape {
 }
 
 func buildUndo() []shape {
-	d := design{size: 1}
-	radius := 0.3
-	width := 1.0 / 14.0
+	// Design in the same 14-unit box the header draws, so the saved geometry is
+	// easy to reason about at the only size that uses this glyph.
+	d := design{size: 14}
+	radius := 5.0
+	width := d.length(1.8)
 	points := []vec{{radius, radius * 0.9}, {radius, 0}}
 	const steps = 24
 	for step := 1; step <= steps; step++ {
@@ -600,11 +606,13 @@ func buildUndo() []shape {
 	var out shape
 	out.strokeOpen(mapPoints(d, points), width)
 
+	// Keep the original return-arrow concept: the arc ends on the left and the
+	// head points down. Widen it so the head stays visible at 14 dp.
 	left := -radius
 	head := []vec{
-		{left, radius * 0.55},
-		{left - radius*0.26, radius * 0.02},
-		{left + radius*0.26, radius * 0.02},
+		{left, 4.8},
+		{left - 2.0, 0.2},
+		{left + 2.0, 0.2},
 	}
 	out.polygon(mapPoints(d, head))
 	return []shape{out}
