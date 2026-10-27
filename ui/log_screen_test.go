@@ -254,6 +254,7 @@ func TestLogLevelLabelsAndColours(t *testing.T) {
 		{slog.LevelWarn, "warn"},
 		{slog.LevelError, "error"},
 		{applog.LevelPanic, "panic"},
+		{slog.Level(100), "unknown"},
 	}
 	for _, test := range cases {
 		if got := applog.LevelLabel(test.level); got != test.label {

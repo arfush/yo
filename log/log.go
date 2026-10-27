@@ -224,23 +224,26 @@ func LastWriteError() error {
 }
 
 // LevelLabel returns the stable lower-case name used by the file and the log
-// window.
+// window. Only the levels the application actually emits have names; every
+// other slog value is reported as unknown.
 func LevelLabel(level slog.Level) string {
-	switch {
-	case level <= LevelTrace:
+	switch level {
+	case LevelTrace:
 		return "trace"
-	case level < slog.LevelInfo:
+	case slog.LevelDebug:
 		return "debug"
-	case level < LevelNotice:
+	case slog.LevelInfo:
 		return "info"
-	case level < slog.LevelWarn:
+	case LevelNotice:
 		return "notice"
-	case level < slog.LevelError:
+	case slog.LevelWarn:
 		return "warn"
-	case level < LevelPanic:
+	case slog.LevelError:
 		return "error"
-	default:
+	case LevelPanic:
 		return "panic"
+	default:
+		return "unknown"
 	}
 }
 
