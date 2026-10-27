@@ -33,6 +33,7 @@ const (
 	titlePageEpisodeGap      = unit.Dp(6)
 	titlePageQualityHeight   = unit.Dp(34)
 	titlePageButtonHeight    = unit.Dp(34)
+	titlePageSeasonHeight    = unit.Dp(26)
 	titlePageFooterButtonGap = unit.Dp(12)
 )
 
@@ -137,6 +138,7 @@ type titleWindow struct {
 	episodeList layout.List
 	voices      []titleVoiceRow
 	episodes    []widget.Clickable
+	seasons     []widget.Clickable
 	qualities   []widget.Clickable
 
 	voicesPlaced   bool
@@ -145,6 +147,10 @@ type titleWindow struct {
 
 	selectedVoice   int
 	selectedEpisode int
+	// selectedSeason is the season whose episodes the grid shows. It always
+	// follows selectedEpisode: switching a season selects that season's first
+	// available episode.
+	selectedSeason  int
 	selectedQuality int
 	focusCleared    bool
 	// progressEpisode is the saved episode whose playback position fills the
@@ -254,6 +260,7 @@ func newTitleWindow(typo *typography, item historyTitle, preferredQuality int) *
 		item:            item,
 		selectedVoice:   selectedVoice,
 		selectedEpisode: selectedEpisode,
+		selectedSeason:  item.seasonIndexForEpisode(selectedEpisode),
 		selectedQuality: titleQualityIndex(preferredQuality),
 		progressEpisode: progressEpisode,
 		tooltipIndex:    -1,
@@ -272,6 +279,9 @@ func newTitleWindow(typo *typography, item historyTitle, preferredQuality int) *
 	w.voices = make([]titleVoiceRow, len(item.voices))
 	if len(item.episodes) > 0 {
 		w.episodes = make([]widget.Clickable, len(item.episodes))
+	}
+	if len(item.seasons) > 1 {
+		w.seasons = make([]widget.Clickable, len(item.seasons))
 	}
 	w.qualities = make([]widget.Clickable, len(titleQualityLabels))
 	return w
@@ -300,6 +310,8 @@ func (w *titleWindow) applyProgress(episode string, resumeAt, duration float64) 
 	w.item.duration = duration
 	if index := episodeIndex(w.item, episode); index >= 0 {
 		w.selectedEpisode = index
+		w.selectedSeason = w.item.seasonIndexForEpisode(index)
+		w.episodesPlaced = false
 		w.progressEpisode = index
 	}
 }
@@ -387,6 +399,8 @@ func (w *titleWindow) stepEpisode(gtx layout.Context, delta int) {
 	for index >= 0 && index < len(w.item.episodes) {
 		if !w.episodeMissing(w.item.episodes[index]) {
 			w.selectedEpisode = index
+			w.selectedSeason = w.item.seasonIndexForEpisode(index)
+			w.episodesPlaced = false
 			w.ensureEpisodeVisible()
 			gtx.Execute(op.InvalidateCmd{})
 			return
@@ -399,10 +413,7 @@ func (w *titleWindow) ensureEpisodeVisible() {
 	if w.selectedEpisode < 0 {
 		return
 	}
-	row := 0
-	if w.episodeColumns > 0 {
-		row = w.selectedEpisode / w.episodeColumns
-	}
+	row := w.selectedVisibleRow()
 	position := w.episodeList.Position
 	if position.Count <= 0 || row < position.First || row >= position.First+position.Count {
 		w.episodeList.ScrollTo(row)
@@ -596,6 +607,86 @@ func (w *titleWindow) selectedEpisodeLabel() string {
 	return w.item.episodes[w.selectedEpisode]
 }
 
+// visibleEpisodeIndices lists the global episode indices the grid shows. A
+// series with several seasons shows only the selected season; everything else
+// shows the whole list so AnimeLIB titles keep their single grid.
+func (w *titleWindow) visibleEpisodeIndices() []int {
+	if len(w.item.seasons) <= 1 {
+		indices := make([]int, len(w.item.episodes))
+		for index := range indices {
+			indices[index] = index
+		}
+		return indices
+	}
+	season := w.selectedSeason
+	if season < 0 || season >= len(w.item.seasons) {
+		season = 0
+	}
+	wanted := make(map[string]bool, len(w.item.seasons[season].episodes))
+	for _, episode := range w.item.seasons[season].episodes {
+		wanted[episode] = true
+	}
+	indices := make([]int, 0, len(wanted))
+	for index, episode := range w.item.episodes {
+		if wanted[episode] {
+			indices = append(indices, index)
+		}
+	}
+	return indices
+}
+
+// selectSeason switches the visible season and moves the selection to its first
+// available episode, so pressing Watch after browsing a season plays what the
+// grid highlights.
+func (w *titleWindow) selectSeason(gtx layout.Context, index int) {
+	if index < 0 || index >= len(w.item.seasons) || index == w.selectedSeason {
+		return
+	}
+	w.selectedSeason = index
+	if episode := w.firstAvailableInSeason(index); episode >= 0 {
+		w.selectedEpisode = episode
+	}
+	w.episodesPlaced = false
+	w.ensureEpisodeVisible()
+	gtx.Execute(op.InvalidateCmd{})
+}
+
+// firstAvailableInSeason returns the first episode of a season the current voice
+// carries, or the first episode at all when the voice misses the opening.
+func (w *titleWindow) firstAvailableInSeason(index int) int {
+	if index < 0 || index >= len(w.item.seasons) {
+		return -1
+	}
+	first := -1
+	for _, key := range w.item.seasons[index].episodes {
+		episode := episodeIndex(w.item, key)
+		if episode < 0 {
+			continue
+		}
+		if first < 0 {
+			first = episode
+		}
+		if !w.episodeMissing(key) {
+			return episode
+		}
+	}
+	return first
+}
+
+// selectedVisibleRow is the grid row of the selected episode inside the visible
+// season, used to keep it on screen.
+func (w *titleWindow) selectedVisibleRow() int {
+	if w.episodeColumns <= 0 {
+		return 0
+	}
+	for position, index := range w.visibleEpisodeIndices() {
+		if index == w.selectedEpisode {
+			return position / w.episodeColumns
+		}
+	}
+	return 0
+}
+
 func (w *titleWindow) selectedVoiceName() string {
 	if w.selectedVoice < 0 || w.selectedVoice >= len(w.item.voices) {
 		return ""
@@ -632,10 +723,18 @@ func (w *titleWindow) layoutTitlePanel(gtx layout.Context, rect image.Rectangle)
 		w.layoutMoviePanel(gtx, rect, labelFace, labelInk, labelY, compact)
 		return
 	}
-	episodesLabel := episodeRangeLabel(w.item.episodes)
+	episodesLabel := w.item.episodesSectionLabel()
 	w.typo.draw(gtx, episodesLabel, labelFace, titlePageSectionSize, mainMutedColor, image.Pt(innerX, labelY))
 
 	episodeTop := labelY + labelInk.Dy() + gtx.Dp(unit.Dp(13))
+	if len(w.item.seasons) > 1 {
+		stripHeight := gtx.Dp(titlePageSeasonHeight)
+		strip := image.Rect(innerX, episodeTop, innerRight, episodeTop+stripHeight)
+		if strip.Max.Y < rect.Max.Y {
+			w.layoutSeasons(gtx, strip)
+			episodeTop = strip.Max.Y + gtx.Dp(unit.Dp(10))
+		}
+	}
 	_, qualityLabelInk := w.typo.measure(gtx, "ПРЕДПОЧТИТЕЛЬНОЕ КАЧЕСТВО", labelFace, titlePageSectionSize)
 	qualityHeight := gtx.Dp(titlePageQualityHeight)
 

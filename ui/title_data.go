@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/arfush/yoanime/internal/kinopoisk"
 	"github.com/arfush/yoanime/internal/library"
 )
 
@@ -31,9 +32,19 @@ func (v voiceover) complete() bool {
 	return len(v.missing) == 0
 }
 
+// titleSeason groups the episodes of a Kinopoisk series. AnimeLIB titles keep
+// their flat episode list and have no seasons at all, so the season strip is
+// only drawn when a title carries more than one season.
+type titleSeason struct {
+	number   int
+	episodes []string
+}
+
 type historyTitle struct {
 	id              int64
 	animeID         int64
+	source          string
+	externalID      string
 	slug            string
 	title           string
 	original        string
@@ -48,6 +59,7 @@ type historyTitle struct {
 	coverPath       string
 	coverNeedsRetry bool
 	episodes        []string
+	seasons         []titleSeason
 	// episodesTotal is the cached count used by history rows, where the episode
 	// list itself is not loaded.
 	episodesTotal int
@@ -94,12 +106,46 @@ func (t historyTitle) progressLabel() string {
 	return episodeProgressLabel(t.currentEpisodeLabel(), t.totalEpisodes())
 }
 
+// episodesSectionLabel names the episode block. A series with several seasons
+// is labelled by its season range ("СЕЗОНЫ (1-3)"); everything else keeps the
+// episode range it already had.
+func (t historyTitle) episodesSectionLabel() string {
+	if len(t.seasons) > 1 {
+		first := t.seasons[0].number
+		last := t.seasons[len(t.seasons)-1].number
+		if first == last {
+			return fmt.Sprintf("СЕЗОНЫ (%d)", first)
+		}
+		return fmt.Sprintf("СЕЗОНЫ (%d-%d)", first, last)
+	}
+	return episodeRangeLabel(t.episodes)
+}
+
+// seasonIndexForEpisode finds the season that contains the episode at index. It
+// returns 0 when the title has no seasons.
+func (t historyTitle) seasonIndexForEpisode(index int) int {
+	if len(t.seasons) == 0 || index < 0 || index >= len(t.episodes) {
+		return 0
+	}
+	key := t.episodes[index]
+	for seasonIndex, season := range t.seasons {
+		for _, episode := range season.episodes {
+			if episode == key {
+				return seasonIndex
+			}
+		}
+	}
+	return 0
+}
+
 // titleFromLibrary converts the API/storage model into the compact model used
 // by the existing widgets.
 func titleFromLibrary(item library.Title) historyTitle {
 	title := historyTitle{
 		id:              item.ID,
 		animeID:         item.AnimeID,
+		source:          item.Source,
+		externalID:      item.ExternalID,
 		slug:            item.Slug,
 		title:           item.Russian,
 		original:        item.Original,
@@ -121,6 +167,12 @@ func titleFromLibrary(item library.Title) historyTitle {
 	}
 	title.poster1, title.poster2 = generatedPosterColors(item.Slug + "|" + item.Russian)
 	title.initial = posterInitial(item.Russian)
+	for _, season := range item.Seasons {
+		title.seasons = append(title.seasons, titleSeason{
+			number:   season.Number,
+			episodes: append([]string(nil), season.Episodes...),
+		})
+	}
 	for _, voice := range item.Voiceovers {
 		title.voices = append(title.voices, voiceover{
 			name:     voice.Name,
@@ -150,6 +202,8 @@ func libraryTitleFromHistory(item historyTitle) library.Title {
 	title := library.Title{
 		ID:            item.id,
 		AnimeID:       item.animeID,
+		Source:        item.source,
+		ExternalID:    item.externalID,
 		Slug:          item.slug,
 		Russian:       item.title,
 		Original:      item.original,
@@ -166,6 +220,12 @@ func libraryTitleFromHistory(item historyTitle) library.Title {
 		ResumeAt:      item.resumeAt,
 		Duration:      item.duration,
 		Voiceovers:    make([]library.Voiceover, 0, len(item.voices)),
+	}
+	for _, season := range item.seasons {
+		title.Seasons = append(title.Seasons, library.Season{
+			Number:   season.number,
+			Episodes: append([]string(nil), season.episodes...),
+		})
 	}
 	for _, voice := range item.voices {
 		title.Voiceovers = append(title.Voiceovers, library.Voiceover{
@@ -267,23 +327,35 @@ func posterInitial(title string) string {
 	return "?"
 }
 
+// episodeDisplayLabel strips the season prefix from a Kinopoisk episode key, so
+// the grid shows the plain episode number inside its season.
+func episodeDisplayLabel(key string) string {
+	return kinopoisk.EpisodeLabel(key)
+}
+
 func episodeRangeLabel(episodes []string) string {
 	if len(episodes) == 0 {
 		return "СЕРИИ"
 	}
-	first, firstErr := strconv.Atoi(episodes[0])
-	last, lastErr := strconv.Atoi(episodes[len(episodes)-1])
-	if firstErr == nil && lastErr == nil && first == 1 {
+	numbers := make([]int, 0, len(episodes))
+	for _, episode := range episodes {
+		number, err := strconv.Atoi(episodeDisplayLabel(episode))
+		if err != nil {
+			numbers = nil
+			break
+		}
+		numbers = append(numbers, number)
+	}
+	if len(numbers) == len(episodes) && len(numbers) > 0 && numbers[0] == 1 {
 		contiguous := true
-		for index, episode := range episodes {
-			number, err := strconv.Atoi(episode)
-			if err != nil || number != index+1 {
+		for index, number := range numbers {
+			if number != index+1 {
 				contiguous = false
 				break
 			}
 		}
 		if contiguous {
-			return fmt.Sprintf("СЕРИИ (1-%d)", last)
+			return fmt.Sprintf("СЕРИИ (1-%d)", numbers[len(numbers)-1])
 		}
 	}
 	return fmt.Sprintf("СЕРИИ (%d)", len(episodes))

@@ -62,6 +62,9 @@ func friendlyError(err error) string {
 		return "Не удалось запустить плеер. Проверьте установку mpv."
 	case strings.Contains(message, "kodik"):
 		return "Не удалось получить видео с Kodik. Попробуйте другую озвучку."
+	case strings.Contains(message, "alloha"), strings.Contains(message, "kinopoisk"),
+		strings.Contains(message, "плеер"):
+		return "Не удалось получить видео с Кинопоиска. Попробуйте позже."
 	case strings.Contains(message, "комнат"), strings.Contains(message, "реле"),
 		strings.Contains(message, "party"), strings.Contains(message, "websocket"):
 		return "Не удалось подключиться к комнате совместного просмотра."

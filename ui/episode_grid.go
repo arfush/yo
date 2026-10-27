@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 
@@ -12,6 +13,10 @@ import (
 
 func (w *titleWindow) layoutEpisodes(gtx layout.Context, rect image.Rectangle) {
 	if rect.Empty() || len(w.episodes) == 0 {
+		return
+	}
+	visible := w.visibleEpisodeIndices()
+	if len(visible) == 0 {
 		return
 	}
 	gap := gtx.Dp(titlePageEpisodeGap)
@@ -29,7 +34,7 @@ func (w *titleWindow) layoutEpisodes(gtx layout.Context, rect image.Rectangle) {
 		return
 	}
 	rowHeight := gtx.Dp(titlePageEpisodeHeight)
-	rows := (len(w.episodes) + columns - 1) / columns
+	rows := (len(visible) + columns - 1) / columns
 	w.episodeList.Axis = layout.Vertical
 	w.episodeList.Gap = gap
 	w.episodeColumns = columns
@@ -37,16 +42,13 @@ func (w *titleWindow) layoutEpisodes(gtx layout.Context, rect image.Rectangle) {
 	if !w.episodesPlaced {
 		w.episodesPlaced = true
 		stride := rowHeight + gap
-		visible := 1
+		visibleRows := 1
 		if stride > 0 {
-			visible = max(1, (rect.Dy()+gap)/stride)
+			visibleRows = max(1, (rect.Dy()+gap)/stride)
 		}
-		first := 0
-		if w.selectedEpisode >= 0 {
-			first = w.selectedEpisode / columns
-		}
-		if first+visible > rows {
-			first = rows - visible
+		first := w.selectedVisibleRow()
+		if first+visibleRows > rows {
+			first = rows - visibleRows
 		}
 		if first < 0 {
 			first = 0
@@ -59,10 +61,11 @@ func (w *titleWindow) layoutEpisodes(gtx layout.Context, rect image.Rectangle) {
 	lgtx.Constraints = layout.Exact(rect.Size())
 	w.episodeList.Layout(lgtx, rows, func(gtx layout.Context, row int) layout.Dimensions {
 		for column := 0; column < columns; column++ {
-			index := row*columns + column
-			if index >= len(w.episodes) {
+			position := row*columns + column
+			if position >= len(visible) {
 				break
 			}
+			index := visible[position]
 			left := column * (buttonWidth + gap)
 			cell := image.Rect(left, 0, left+buttonWidth, rowHeight)
 			w.layoutEpisodeButton(gtx, index, cell)
@@ -70,6 +73,77 @@ func (w *titleWindow) layoutEpisodes(gtx layout.Context, rect image.Rectangle) {
 		return layout.Dimensions{Size: image.Pt(rect.Dx(), rowHeight)}
 	})
 	stack.Pop()
+}
+
+// layoutSeasons draws the season strip above the episode grid. Only a series
+// with more than one season gets it; a single-season title shows its episodes
+// directly, exactly like an AnimeLIB title.
+func (w *titleWindow) layoutSeasons(gtx layout.Context, rect image.Rectangle) {
+	if rect.Empty() || len(w.item.seasons) <= 1 {
+		return
+	}
+	gap := gtx.Dp(titlePageEpisodeGap)
+	columns := len(w.item.seasons)
+	width := (rect.Dx() - gap*(columns-1)) / columns
+	if width <= 0 {
+		return
+	}
+	for index := range w.item.seasons {
+		left := rect.Min.X + index*(width+gap)
+		cell := image.Rect(left, rect.Min.Y, left+width, rect.Max.Y)
+		w.layoutSeasonButton(gtx, index, cell, width)
+	}
+}
+
+func (w *titleWindow) layoutSeasonButton(gtx layout.Context, index int, rect image.Rectangle, width int) {
+	if rect.Empty() || index < 0 || index >= len(w.item.seasons) || index >= len(w.seasons) {
+		return
+	}
+	click := &w.seasons[index]
+	_, clicked := click.Update(gtx)
+	if clicked {
+		w.selectSeason(gtx, index)
+	}
+	hovered := click.Hovered()
+	w.layoutClickableDraw(gtx, rect, click, func(gtx layout.Context) {
+		w.drawSeasonFace(gtx, index, image.Rectangle{Max: rect.Size()}, hovered, width)
+	})
+}
+
+func (w *titleWindow) drawSeasonFace(gtx layout.Context, index int, local image.Rectangle, hovered bool, width int) {
+	if index < 0 || index >= len(w.item.seasons) || local.Empty() {
+		return
+	}
+	selected := index == w.selectedSeason
+	if selected {
+		fillRoundedGradient(gtx, local, local, gtx.Dp(unit.Dp(8)), mainAccentColor1, mainAccentColor2)
+	} else {
+		fill := titleEpisodeFill
+		border := titleEpisodeBorder
+		if hovered {
+			fill = titleEpisodeHover
+			border = titleVoiceHoverBorder
+		}
+		fillRounded(gtx, border, local, gtx.Dp(unit.Dp(8)))
+		fillRounded(gtx, fill, local.Inset(gtx.Dp(unit.Dp(1))), gtx.Dp(unit.Dp(7)))
+	}
+	textColor := titleEpisodeText
+	if selected {
+		textColor = color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}
+	}
+	number := w.item.seasons[index].number
+	label := fmt.Sprintf("%d", number)
+	if width >= gtx.Dp(unit.Dp(72)) {
+		label = fmt.Sprintf("Сезон %d", number)
+	}
+	w.typo.drawCentered(
+		gtx,
+		label,
+		font.Font{Typeface: fontFamily, Weight: font.Medium},
+		titlePageEpisodeSize,
+		textColor,
+		centerOf(local),
+	)
 }
 
 func (w *titleWindow) layoutEpisodeButton(gtx layout.Context, index int, rect image.Rectangle) {
@@ -81,6 +155,8 @@ func (w *titleWindow) layoutEpisodeButton(gtx layout.Context, index int, rect im
 	missing := w.episodeMissing(w.item.episodes[index])
 	if clicked && !missing {
 		w.selectedEpisode = index
+		w.selectedSeason = w.item.seasonIndexForEpisode(index)
+		w.episodesPlaced = false
 		gtx.Execute(op.InvalidateCmd{})
 	}
 	hovered := click.Hovered() && !missing
@@ -97,7 +173,7 @@ func (w *titleWindow) layoutEpisodeButton(gtx layout.Context, index int, rect im
 }
 
 func (w *titleWindow) drawEpisodeFace(gtx layout.Context, index int, local image.Rectangle, missing, hovered bool) {
-	if index < 0 || index >= len(w.episodes) || local.Empty() {
+	if index < 0 || index >= len(w.episodes) || index >= len(w.item.episodes) || local.Empty() {
 		return
 	}
 	if index == w.selectedEpisode && !missing {
@@ -124,7 +200,7 @@ func (w *titleWindow) drawEpisodeFace(gtx layout.Context, index int, local image
 	}
 	w.typo.drawCentered(
 		gtx,
-		w.item.episodes[index],
+		episodeDisplayLabel(w.item.episodes[index]),
 		font.Font{Typeface: fontFamily, Weight: font.Medium},
 		titlePageEpisodeSize,
 		textColor,

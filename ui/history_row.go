@@ -9,6 +9,8 @@ import (
 	"gioui.org/op"
 	"gioui.org/unit"
 	"gioui.org/widget"
+
+	"github.com/arfush/yoanime/internal/library"
 )
 
 type historyRow struct {
@@ -149,8 +151,10 @@ func (m *mainWindow) drawHistoryRowCard(gtx layout.Context, rect image.Rectangle
 		_, labelInk = m.typo.measure(gtx, label, labelFace, episodeProgressLabelSz)
 	}
 	// A film has no episode counter, but its watch progress bar still belongs
-	// in the row. Series without a known episode keep the old title-only layout.
-	showProgress := item.movie || label != ""
+	// in the row — until it is marked watched: a finished film has nothing left
+	// to resume, so the bar would only be noise. Series without a known episode
+	// keep the old title-only layout.
+	showProgress := (item.movie && item.userStatus != library.UserStatusCompleted) || label != ""
 	if !showProgress {
 		m.drawTruncated(
 			gtx,
