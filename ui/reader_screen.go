@@ -35,6 +35,10 @@ const (
 	readerSearchHeight  = unit.Dp(34)
 	readerHeaderHeight  = unit.Dp(48)
 	readerParaGap       = unit.Dp(12)
+	// readerChapterWindow is the number of chapters kept ready on each side of
+	// the current one. Moving one chapter forward/back does not wait for the
+	// network because the next window was already requested.
+	readerChapterWindow = 5
 )
 
 var (
@@ -70,10 +74,10 @@ type readerImageResult struct {
 }
 
 type readerChapterResult struct {
-	generation int
-	id         int64
-	content    catalog.ReadingContent
-	err        error
+	voice   string
+	key     string
+	content catalog.ReadingContent
+	err     error
 }
 
 // readerScreen is the manga and ranobe reader. It owns the chapter list, the
@@ -116,6 +120,13 @@ type readerScreen struct {
 	loadErr        string
 	loadGeneration int
 	chapterResults chan readerChapterResult
+	// chapterCache holds loaded chapter bodies for the current reader session.
+	// The key includes the translation, because the same chapter number has a
+	// different branch id and sometimes different pages in another team.
+	chapterCache   map[string]catalog.ReadingContent
+	chapterPending map[string]bool
+	contentCtx     context.Context
+	contentCancel  context.CancelFunc
 	imageResults   chan readerImageResult
 	imageCancel    context.CancelFunc
 	imageSem       chan struct{}
@@ -136,12 +147,17 @@ type readerScreen struct {
 }
 
 func newReaderScreen(typo *typography, item historyTitle, source readerSource) *readerScreen {
+	contentCtx, contentCancel := context.WithCancel(context.Background())
 	r := &readerScreen{
 		typo:           typo,
 		item:           item,
 		source:         source,
 		section:        item.section(),
-		chapterResults: make(chan readerChapterResult, 2),
+		chapterResults: make(chan readerChapterResult, 32),
+		chapterCache:   make(map[string]catalog.ReadingContent),
+		chapterPending: make(map[string]bool),
+		contentCtx:     contentCtx,
+		contentCancel:  contentCancel,
 		imageResults:   make(chan readerImageResult, 32),
 		imageSem:       make(chan struct{}, 3),
 	}
@@ -252,16 +268,13 @@ func (r *readerScreen) currentChapterKey() string {
 	return ""
 }
 
-// loadChapter starts the fetch for the current chapter and translation. All
-// image loads are tied to a generation counter so a stale reply cannot paint
-// the pages of a previously shown chapter.
+// loadChapter switches the reader to the current chapter. A body that is
+// already in the session cache paints immediately; otherwise the request is
+// queued and the spinner stays until it arrives. Either way the surrounding
+// window is requested so one more chapter forward/back is already ready.
 func (r *readerScreen) loadChapter() {
 	r.loadGeneration++
-	generation := r.loadGeneration
-	r.loading = true
 	r.loadErr = ""
-	r.content = catalog.ReadingContent{}
-	r.pages = nil
 	r.cancelImages()
 	for len(r.imageResults) > 0 {
 		<-r.imageResults
@@ -271,40 +284,120 @@ func (r *readerScreen) loadChapter() {
 	key := r.currentChapterKey()
 	title := r.title
 
-	if r.item.id == 0 {
-		id, err := r.source.TrackViewing(title, voice, key)
-		if err == nil {
-			r.item.id = id
-			r.title.ID = id
+	if r.source != nil {
+		if r.item.id == 0 {
+			id, err := r.source.TrackViewing(title, voice, key)
+			if err == nil {
+				r.item.id = id
+				r.title.ID = id
+			}
+		} else {
+			_ = r.source.SaveSelection(r.item.id, voice, key)
 		}
-	} else if r.item.id != 0 {
-		_ = r.source.SaveSelection(r.item.id, voice, key)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	r.imageCancel = cancel
-	go func() {
-		defer cancel()
-		content, err := r.source.ReadChapter(ctx, title, voice, key)
-		if err != nil {
-			logger.Warn("reader chapter failed", "slug", title.Slug, "chapter", key, "error", err)
-			err = errReaderChapter.wrap(err)
-		}
-		r.chapterResults <- readerChapterResult{generation: generation, content: content, err: err}
-	}()
-	r.invalidate()
-	if r.animationsRun() {
-		// The chapter load must repaint even while the window is visible.
+	if key == "" {
+		r.loading = false
+		r.content = catalog.ReadingContent{}
+		r.pages = nil
+		r.requestFrame()
+		return
 	}
+
+	if content, ok := r.chapterCache[readerChapterCacheKey(voice, key)]; ok {
+		r.loading = false
+		r.applyChapterContent(content)
+		r.prefetchChapters()
+		r.requestFrame()
+		return
+	}
+
+	r.loading = true
+	r.content = catalog.ReadingContent{}
+	r.pages = nil
+	r.requestChapter(voice, key, title)
+	r.prefetchChapters()
+	r.requestFrame()
 }
 
-// selectChapter switches to a chapter in the current translation and reloads it.
+// selectChapter switches to a chapter in the current translation.
 func (r *readerScreen) selectChapter(index int) {
 	if index < 0 || index >= len(r.chapters) || index == r.selectedChapter {
 		return
 	}
 	r.selectedChapter = index
 	r.loadChapter()
+}
+
+// readerChapterCacheKey keeps translations apart: the same chapter number can
+// point at a different branch and different pages in another team.
+func readerChapterCacheKey(voice, key string) string {
+	return voice + "\x00" + key
+}
+
+// requestChapter queues one chapter body. The cache and pending set are owned
+// by the UI goroutine; the worker only sends the result back through the
+// channel.
+func (r *readerScreen) requestChapter(voice, key string, title catalog.Title) {
+	if r.source == nil || key == "" {
+		return
+	}
+	cacheKey := readerChapterCacheKey(voice, key)
+	if _, ok := r.chapterCache[cacheKey]; ok {
+		return
+	}
+	if r.chapterPending == nil {
+		r.chapterPending = make(map[string]bool)
+	}
+	if r.chapterPending[cacheKey] {
+		return
+	}
+	r.chapterPending[cacheKey] = true
+
+	ctx := r.contentCtx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	go func() {
+		content, err := r.source.ReadChapter(ctx, title, voice, key)
+		if err != nil {
+			err = errReaderChapter.wrap(err)
+		}
+		r.chapterResults <- readerChapterResult{
+			voice:   voice,
+			key:     key,
+			content: content,
+			err:     err,
+		}
+	}()
+}
+
+// prefetchChapters keeps the current chapter and five on each side ready. The
+// previous side is useful when the user pages back; the forward side makes the
+// next click instant. Chapters outside this window are fetched only after they
+// become part of a new window.
+func (r *readerScreen) prefetchChapters() {
+	if r.source == nil || r.selectedChapter < 0 || len(r.chapters) == 0 {
+		return
+	}
+	voice := r.translationName()
+	title := r.title
+	start := max(0, r.selectedChapter-readerChapterWindow)
+	end := min(len(r.chapters)-1, r.selectedChapter+readerChapterWindow)
+	for index := start; index <= end; index++ {
+		r.requestChapter(voice, r.chapters[index], title)
+	}
+}
+
+func (r *readerScreen) applyChapterContent(content catalog.ReadingContent) {
+	r.content = content
+	r.loadErr = ""
+	r.pages = make([]readerPageState, len(content.Pages))
+	for index, page := range content.Pages {
+		r.pages[index] = readerPageState{url: page.URL}
+	}
+	r.mangaList.Position = layout.Position{}
+	r.ranobeList.Position = layout.Position{}
 }
 
 // selectTranslation changes the team and keeps the nearest saved chapter. A
@@ -342,12 +435,16 @@ func (r *readerScreen) animationsRun() bool {
 // application injects the window invalidator; tests leave it nil.
 func (r *readerScreen) requestFrame() {
 	if r.invalidate != nil {
-		r.invalidate()
+		r.requestFrame()
 	}
 }
 
 func (r *readerScreen) Close() {
 	r.cancelImages()
+	if r.contentCancel != nil {
+		r.contentCancel()
+		r.contentCancel = nil
+	}
 }
 
 func (r *readerScreen) cancelImages() {
@@ -357,29 +454,40 @@ func (r *readerScreen) cancelImages() {
 	}
 }
 
-// updateChapterResult applies a finished chapter fetch on the UI thread.
+// updateChapterResult applies finished chapter fetches on the UI thread.
+// Successful prefetches fill the session cache even when they are not the
+// visible chapter; errors only reach the header for the current request.
 func (r *readerScreen) updateChapterResult(gtx layout.Context) {
 	for {
 		select {
 		case result := <-r.chapterResults:
-			if result.generation != r.loadGeneration {
+			cacheKey := readerChapterCacheKey(result.voice, result.key)
+			delete(r.chapterPending, cacheKey)
+			current := result.voice == r.translationName() && result.key == r.currentChapterKey()
+			if result.err != nil {
+				if current {
+					r.loading = false
+					r.loadErr = userErrorText(result.err)
+					if r.onError != nil {
+						r.onError(result.err)
+					}
+					if r.animationsRun() {
+						gtx.Execute(op.InvalidateCmd{})
+					}
+				} else {
+					logger.Debug("reader prefetch failed", "slug", r.title.Slug, "translation", result.voice, "chapter", result.key, "error", result.err)
+				}
+				continue
+			}
+			if r.chapterCache == nil {
+				r.chapterCache = make(map[string]catalog.ReadingContent)
+			}
+			r.chapterCache[cacheKey] = result.content
+			if !current {
 				continue
 			}
 			r.loading = false
-			if result.err != nil {
-				r.loadErr = userErrorText(result.err)
-				if r.onError != nil {
-					r.onError(result.err)
-				}
-				gtx.Execute(op.InvalidateCmd{})
-				return
-			}
-			r.content = result.content
-			r.loadErr = ""
-			r.pages = make([]readerPageState, len(result.content.Pages))
-			for index, page := range result.content.Pages {
-				r.pages[index] = readerPageState{url: page.URL}
-			}
+			r.applyChapterContent(result.content)
 			if r.animationsRun() {
 				gtx.Execute(op.InvalidateCmd{})
 			}
