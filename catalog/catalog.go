@@ -5,17 +5,39 @@
 package catalog
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 )
 
-// Source values name the catalogue a title came from.
+// Source values name the catalogue a title came from. The LibSocial sources
+// share one API and one reader, but keep their own value so history and covers
+// can still tell the sites apart.
 const (
 	SourceAnimeLIB  = "animelib"
 	SourceKinopoisk = "kinopoisk"
+	SourceMangaLib  = "mangalib"
+	SourceYaoiLib   = "yaoilib"
+	SourceRanobeLib = "ranobelib"
+	SourceHentaiLib = "hentailib"
 )
+
+// IsReadingSource reports whether a source belongs to the manga or ranobe
+// reader rather than the anime player.
+func IsReadingSource(source string) bool {
+	switch source {
+	case SourceMangaLib, SourceYaoiLib, SourceRanobeLib, SourceHentaiLib:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsRanobeSource reports whether a source is a text novel site. The reader uses
+// it to choose paragraph rendering over the page image canvas.
+func IsRanobeSource(source string) bool {
+	return source == SourceRanobeLib
+}
 
 // Status is the display status of a title.
 type Status int
@@ -107,10 +129,84 @@ type Title struct {
 	// StatusOrder is the title's position inside its user status. The all-title
 	// order is not stored in this struct because History already returns it.
 	StatusOrder int64
+	// Chapters is the reader chapter list. It is fresh on every load and is
+	// never written to SQLite, just like anime episode lists.
+	Chapters []ReadingChapter
 }
 
 // IsKinopoisk reports whether the title came from Kinopoisk.
 func (t Title) IsKinopoisk() bool { return t.Source == SourceKinopoisk }
+
+// IsReading reports whether the title opens in the manga or ranobe reader.
+func (t Title) IsReading() bool { return IsReadingSource(t.Source) }
+
+// IsRanobe reports whether the title is a text novel.
+func (t Title) IsRanobe() bool { return IsRanobeSource(t.Source) }
+
+// ReadingChapter is one chapter of a reading title. Translation is the team
+// that published this chapter; a chapter number can exist in several teams and
+// each team has its own branch id for the content request.
+type ReadingChapter struct {
+	Key         string
+	Volume      string
+	Number      string
+	Name        string
+	Translation string
+	BranchID    int64
+}
+
+// ReadingPage is one scanned manga page returned by the chapter endpoint.
+type ReadingPage struct {
+	URL    string
+	Width  int
+	Height int
+	Ratio  string
+}
+
+// ReadingContent is a loaded manga or ranobe chapter. Pages is used by manga,
+// Paragraphs by ranobe; the two are mutually exclusive in normal responses.
+type ReadingContent struct {
+	ID         int64
+	Volume     string
+	Number     string
+	Name       string
+	Pages      []ReadingPage
+	Paragraphs []string
+}
+
+// ReadingChapterKey builds the stable chapter key used by history. Volume is
+// part of the key because several sites restart chapter numbers in every
+// volume; an empty volume is stored as "0".
+func ReadingChapterKey(volume, number string) string {
+	volume = strings.TrimSpace(volume)
+	number = strings.TrimSpace(number)
+	if volume == "" {
+		volume = "0"
+	}
+	return volume + ":" + number
+}
+
+// SplitReadingChapterKey splits a key produced by ReadingChapterKey.
+func SplitReadingChapterKey(key string) (volume, number string) {
+	key = strings.TrimSpace(key)
+	volume, number, ok := strings.Cut(key, ":")
+	if !ok {
+		return "0", key
+	}
+	if volume == "" {
+		volume = "0"
+	}
+	return volume, number
+}
+
+// ReadingChapterLabel formats a chapter key for the history row and reader.
+func ReadingChapterLabel(key string) string {
+	volume, number := SplitReadingChapterKey(key)
+	if volume == "" || volume == "0" {
+		return "Глава " + number
+	}
+	return "Том " + volume + " · Глава " + number
+}
 
 // EpisodeVoiceover is one translation team that published a new episode.
 type EpisodeVoiceover struct {
@@ -196,9 +292,4 @@ type Bounds struct {
 	Height int
 }
 
-// Errors that the UI maps to short Russian messages. The feature packages
-// return these sentinels so screens do not need to import a network client.
-var (
-	ErrRateLimited  = errors.New("animelib: rate limited")
-	ErrTokenMissing = errors.New("token file not found")
-)
+// Segment is an introdb chapter type that the player can skip.

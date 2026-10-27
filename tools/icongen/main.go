@@ -15,12 +15,16 @@ package main
 import (
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"math"
 	"os"
 	"path/filepath"
 
 	"golang.org/x/exp/shiny/iconvg"
 	"golang.org/x/image/math/f32"
+	"golang.org/x/image/vector"
 )
 
 // The assets use a unit viewBox centered on (0.5, 0.5). Utility glyph design
@@ -446,6 +450,145 @@ func main() {
 		}
 		fmt.Printf("%s (%d bytes)\n", icon.name, len(data))
 	}
+	writeSectionLogos(root)
+}
+
+// writeSectionLogos renders the header logo variants for the yomanga and
+// yoranobe libraries next to the existing anime torii. Each variant keeps the
+// rounded-square tile and swaps the torii for a glyph of its medium: a comic
+// page with a speech bubble for manga, an open book with type lines for
+// ranobe. The anime tile keeps the original artwork.
+func writeSectionLogos(root string) {
+	dir := filepath.Join(root, "ui", "assets", "images")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		fail(err)
+	}
+	writeSectionLogo(filepath.Join(dir, "app-icon-manga.png"), sectionMangaShapes)
+	writeSectionLogo(filepath.Join(dir, "app-icon-ranobe.png"), sectionRanobeShapes)
+}
+
+func writeSectionLogo(path string, build func() []logoShape) {
+	const size = 96
+	img := image.NewRGBA(image.Rect(0, 0, size, size))
+	for _, shape := range build() {
+		raster := vector.NewRasterizer(size, size)
+		raster.MoveTo(shape.points[0][0], shape.points[0][1])
+		for _, pt := range shape.points[1:] {
+			raster.LineTo(pt[0], pt[1])
+		}
+		raster.ClosePath()
+		raster.Draw(img, img.Bounds(), &image.Uniform{C: shape.color}, image.Point{})
+	}
+	if err := encodePNG(path, img); err != nil {
+		fail(err)
+	}
+	fmt.Printf("%s\n", filepath.Base(path))
+}
+
+type logoShape struct {
+	points []f32.Vec2
+	color  color.NRGBA
+}
+
+var (
+	logoWhite  = color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}
+	logoManga  = color.NRGBA{R: 0xed, G: 0x6b, B: 0x1f, A: 0xff}
+	logoRanobe = color.NRGBA{R: 0x46, G: 0x8f, B: 0xf3, A: 0xff}
+)
+
+func sectionMangaShapes() []logoShape {
+	const size = 96
+	shapes := []logoShape{
+		{points: roundedRectPath(8, 8, size-8, size-8, 24), color: logoManga},
+	}
+	// Open comic page: two white panels with a folded spine.
+	shapes = append(shapes,
+		logoShape{points: roundedRectPath(24, 30, 43, 68, 6), color: logoWhite},
+		logoShape{points: roundedRectPath(53, 30, 72, 68, 6), color: logoWhite},
+	)
+	// Ink lines suggesting panels.
+	shapes = append(shapes,
+		logoShape{points: lineQuad(32, 46, 38, 46, 2.5), color: logoManga},
+		logoShape{points: lineQuad(58, 46, 64, 46, 2.5), color: logoManga},
+	)
+	return shapes
+}
+
+func sectionRanobeShapes() []logoShape {
+	const size = 96
+	shapes := []logoShape{
+		{points: roundedRectPath(8, 8, size-8, size-8, 24), color: logoRanobe},
+		// Open book: two white halves with a vertical spine.
+		{points: quadPath(f32.Vec2{22, 34}, f32.Vec2{48, 27}, f32.Vec2{48, 63}, f32.Vec2{22, 71}), color: logoWhite},
+		{points: quadPath(f32.Vec2{48, 27}, f32.Vec2{74, 34}, f32.Vec2{74, 71}, f32.Vec2{48, 63}), color: logoWhite},
+	}
+	// Type lines: three bars on the right page, one short left line.
+	for i := 0; i < 3; i++ {
+		y := 40 + float32(i)*8
+		shapes = append(shapes, logoShape{points: lineQuad(55, y, 67, y, 2.5), color: logoRanobe})
+	}
+	shapes = append(shapes, logoShape{points: lineQuad(28, 44, 40, 44, 2.5), color: logoRanobe})
+	return shapes
+}
+
+// --- raster helpers -------------------------------------------------------
+
+func roundedRectPath(x0, y0, x1, y1 float32, radius float32) []f32.Vec2 {
+	const steps = 8
+	var out []f32.Vec2
+	add := func(points []f32.Vec2) {
+		if len(out) > 0 {
+			points = points[1:]
+		}
+		out = append(out, points...)
+	}
+	add(arcPoints(x0+radius, y0+radius, radius, -3.14/2, 0, steps))
+	add([]f32.Vec2{{x1 - radius, y0}, {x1, y0 + radius}})
+	add(arcPoints(x1-radius, y0+radius, radius, 0, 3.14/2, steps))
+	add([]f32.Vec2{{x1, y1 - radius}, {x1 - radius, y1}})
+	add(arcPoints(x1-radius, y1-radius, radius, 3.14/2, 3.14, steps))
+	add([]f32.Vec2{{x0 + radius, y1}, {x0, y1 - radius}})
+	add(arcPoints(x0+radius, y1-radius, radius, 3.14, 3.14*3/2, steps))
+	return out
+}
+
+func arcPoints(cx, cy, radius, start, end float32, steps int) []f32.Vec2 {
+	out := make([]f32.Vec2, 0, steps+1)
+	for i := 0; i <= steps; i++ {
+		t := start + (end-start)*float32(i)/float32(steps)
+		out = append(out, f32.Vec2{cx + radius*float32(math.Cos(float64(t))), cy + radius*float32(math.Sin(float64(t)))})
+	}
+	return out
+}
+
+func quadPath(a, b, c, d f32.Vec2) []f32.Vec2 {
+	return []f32.Vec2{a, b, c, d}
+}
+
+// lineQuad returns a thin quad approximating the stroke from (x0,y0) to (x1,y1)
+// with the given width, so the rasterizer handles every shape identically.
+func lineQuad(x0, y0, x1, y1, width float32) []f32.Vec2 {
+	dx, dy := x1-x0, y1-y0
+	length := float32(math.Sqrt(float64(dx*dx + dy*dy)))
+	if length == 0 {
+		return quadPath(f32.Vec2{x0, y0}, f32.Vec2{x1, y1}, f32.Vec2{x1, y1}, f32.Vec2{x0, y0})
+	}
+	nx, ny := -dy/length*width/2, dx/length*width/2
+	return quadPath(
+		f32.Vec2{x0 + nx, y0 + ny},
+		f32.Vec2{x1 + nx, y1 + ny},
+		f32.Vec2{x1 - nx, y1 - ny},
+		f32.Vec2{x0 - nx, y0 - ny},
+	)
+}
+
+func encodePNG(path string, img image.Image) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return png.Encode(f, img)
 }
 
 func repositoryRoot() (string, error) {

@@ -8,8 +8,6 @@ import (
 
 	"gioui.org/layout"
 	"gioui.org/op"
-
-	"github.com/arfush/yoanime/log"
 )
 
 // undoDeleteDuration is how long a removed title can be brought back before it
@@ -95,7 +93,7 @@ func (u *undoDeleteState) pendingIDs() map[int64]bool {
 // library while an undo countdown is still running, then applies the selected
 // status filter. A status view uses its own order; the unfiltered view keeps
 // the all-titles order.
-func (m *mainWindow) visibleHistory(items []historyTitle) []historyTitle {
+func (m *mainScreen) visibleHistory(items []historyTitle) []historyTitle {
 	hidden := m.undo.pendingIDs()
 	visible := make([]historyTitle, 0, len(items))
 	for _, item := range items {
@@ -103,6 +101,9 @@ func (m *mainWindow) visibleHistory(items []historyTitle) []historyTitle {
 			continue
 		}
 		if !m.filter.matches(item.userStatus) {
+			continue
+		}
+		if !m.section.matchesSource(item.source) {
 			continue
 		}
 		visible = append(visible, item)
@@ -117,7 +118,7 @@ func (m *mainWindow) visibleHistory(items []historyTitle) []historyTitle {
 
 // ensureAllHistory repairs the complete-history model for tests and UI state
 // created before status filtering existed.
-func (m *mainWindow) ensureAllHistory() {
+func (m *mainScreen) ensureAllHistory() {
 	if len(m.allHistory) == 0 && len(m.history) > 0 {
 		m.allHistory = append([]historyTitle(nil), m.history...)
 	}
@@ -125,7 +126,7 @@ func (m *mainWindow) ensureAllHistory() {
 
 // applyFilter rebuilds the visible rows from the complete history. Selection
 // and scroll position refer to the filtered list, so both are reset.
-func (m *mainWindow) applyFilter() {
+func (m *mainScreen) applyFilter() {
 	m.history = m.visibleHistory(m.allHistory)
 	m.rows = make([]historyRow, len(m.history))
 	m.selected = -1
@@ -135,14 +136,14 @@ func (m *mainWindow) applyFilter() {
 
 // queueHistoryDelete hides one row and starts (or extends) the undo window.
 // The database row is removed only when the countdown expires.
-func (m *mainWindow) queueHistoryDelete(index int, now time.Time) bool {
+func (m *mainScreen) queueHistoryDelete(index int, now time.Time) bool {
 	if m.loading || index < 0 || index >= len(m.history) {
 		return false
 	}
 	m.ensureAllHistory()
 
 	item := m.history[index]
-	log.Info("history row queued for deletion", "title", item.id, "name", item.title)
+	logger.Info("history row queued for deletion", "title", item.id, "name", item.title)
 	pending := pendingHistoryDelete{item: item}
 	if allIndex := historyIndexByID(m.allHistory, item.id); allIndex >= 0 {
 		if allIndex > 0 {
@@ -172,7 +173,7 @@ func (m *mainWindow) queueHistoryDelete(index int, now time.Time) bool {
 
 // queueClearHistory hides every visible row at once. Previously hidden rows
 // stay in the same undo batch, so one "Отменить" brings all of them back.
-func (m *mainWindow) queueClearHistory(now time.Time) bool {
+func (m *mainScreen) queueClearHistory(now time.Time) bool {
 	if m.loading {
 		return false
 	}
@@ -181,9 +182,15 @@ func (m *mainWindow) queueClearHistory(now time.Time) bool {
 		return false
 	}
 
-	log.Info("clearing history", "count", len(m.allHistory))
+	// Clear only the section that is on screen. The other libraries keep their
+	// rows and order even though all three share the history table.
 	pending := make([]pendingHistoryDelete, 0, len(m.allHistory))
+	keep := make([]historyTitle, 0, len(m.allHistory))
 	for index := range m.allHistory {
+		if !m.section.matchesSource(m.allHistory[index].source) {
+			keep = append(keep, m.allHistory[index])
+			continue
+		}
 		item := pendingHistoryDelete{item: m.allHistory[index]}
 		if index > 0 {
 			item.prevID = m.allHistory[index-1].id
@@ -193,10 +200,14 @@ func (m *mainWindow) queueClearHistory(now time.Time) bool {
 		}
 		pending = append(pending, item)
 	}
+	if len(pending) == 0 {
+		return false
+	}
 
-	m.allHistory = nil
-	m.history = nil
-	m.rows = nil
+	logger.Info("clearing history section", "section", m.section.key(), "count", len(pending))
+	m.allHistory = keep
+	m.history = m.visibleHistory(m.allHistory)
+	m.rows = make([]historyRow, len(m.history))
 	m.selected = -1
 	m.loadError = ""
 	m.list.Position = layout.Position{}
@@ -205,7 +216,7 @@ func (m *mainWindow) queueClearHistory(now time.Time) bool {
 	return true
 }
 
-func (m *mainWindow) pushPendingDeletes(items []pendingHistoryDelete, now time.Time) {
+func (m *mainScreen) pushPendingDeletes(items []pendingHistoryDelete, now time.Time) {
 	if len(items) == 0 {
 		return
 	}
@@ -226,7 +237,7 @@ func (m *mainWindow) pushPendingDeletes(items []pendingHistoryDelete, now time.T
 // undoHistoryDelete brings every hidden row back. Rows are reinserted from the
 // newest deletion to the oldest: the neighbours recorded at deletion time are
 // then already visible when an older row is placed.
-func (m *mainWindow) undoHistoryDelete() {
+func (m *mainScreen) undoHistoryDelete() {
 	pending := m.undo.pending
 	m.undo = undoDeleteState{}
 	if len(pending) == 0 {
@@ -238,13 +249,13 @@ func (m *mainWindow) undoHistoryDelete() {
 		at := m.restoreIndex(item)
 		m.allHistory = insertHistoryTitle(m.allHistory, at, item.item)
 	}
-	log.Info("history deletion undone", "count", len(pending))
+	logger.Info("history deletion undone", "count", len(pending))
 	m.applyFilter()
 	m.loadError = ""
 	m.persistHistoryOrder()
 }
 
-func (m *mainWindow) restoreIndex(pending pendingHistoryDelete) int {
+func (m *mainScreen) restoreIndex(pending pendingHistoryDelete) int {
 	if pending.nextID != 0 {
 		for index := range m.allHistory {
 			if m.allHistory[index].id == pending.nextID {
@@ -299,7 +310,7 @@ func insertHistoryRow(list []historyRow, index int, row historyRow) []historyRow
 
 // finalizeHistoryDeletes removes the hidden rows from the database once the
 // countdown has run out (or the application is closing).
-func (m *mainWindow) finalizeHistoryDeletes() {
+func (m *mainScreen) finalizeHistoryDeletes() {
 	pending := m.undo.pending
 	m.undo = undoDeleteState{}
 	if len(pending) == 0 || m.titles == nil {
@@ -328,7 +339,7 @@ func (m *mainWindow) finalizeHistoryDeletes() {
 // headerNotice exposes the undo countdown to the shell header. The history
 // header keeps the "Отменить" action and the filters; only the transient
 // sentence moves up.
-func (m *mainWindow) headerNotice(now time.Time) headerNotice {
+func (m *mainScreen) headerNotice(now time.Time) headerNotice {
 	remaining := m.undo.remaining(now)
 	if !m.undo.active || remaining <= 0 {
 		return headerNotice{}
@@ -341,7 +352,7 @@ func (m *mainWindow) headerNotice(now time.Time) headerNotice {
 
 // updateUndoDelete commits expired deletions and keeps repainting while the
 // countdown is visible so the seconds tick down promptly.
-func (m *mainWindow) updateUndoDelete(gtx layout.Context) {
+func (m *mainScreen) updateUndoDelete(gtx layout.Context) {
 	if !m.undo.active {
 		return
 	}

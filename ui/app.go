@@ -23,21 +23,20 @@ import (
 	"gioui.org/op"
 	"gioui.org/unit"
 
-	"github.com/arfush/yoanime/animelib"
-	"github.com/arfush/yoanime/browser"
-	"github.com/arfush/yoanime/catalog"
-	"github.com/arfush/yoanime/kinopoisk"
-	"github.com/arfush/yoanime/library"
-	"github.com/arfush/yoanime/log"
-	"github.com/arfush/yoanime/metadata"
-	"github.com/arfush/yoanime/mpv"
-	"github.com/arfush/yoanime/party"
-	"github.com/arfush/yoanime/platform/appdata"
-	"github.com/arfush/yoanime/playback"
-	"github.com/arfush/yoanime/token"
-	"github.com/arfush/yoanime/updater"
-	"github.com/arfush/yoanime/updates"
-	"github.com/arfush/yoanime/version"
+	"github.com/arfush/yo/animelib"
+	"github.com/arfush/yo/browser"
+	"github.com/arfush/yo/catalog"
+	"github.com/arfush/yo/kinopoisk"
+	"github.com/arfush/yo/library"
+	"github.com/arfush/yo/log"
+	"github.com/arfush/yo/metadata"
+	"github.com/arfush/yo/mpv"
+	"github.com/arfush/yo/party"
+	"github.com/arfush/yo/platform/appdata"
+	"github.com/arfush/yo/playback"
+	"github.com/arfush/yo/token"
+	"github.com/arfush/yo/update"
+	"github.com/arfush/yo/version"
 )
 
 const (
@@ -86,19 +85,19 @@ func Run(services Services) {
 
 		a, err := newApp(services)
 		if err != nil {
-			log.Error("application startup failed", "error", err)
+			logger.Error("application startup failed", "error", err)
 			fmt.Fprintln(os.Stderr, "yoanime:", err)
 			os.Exit(1)
 		}
-		log.Info("window attached")
+		logger.Info("window attached")
 		a.attachWindow(w)
 		if err := a.run(w); err != nil {
-			log.Error("application stopped with an error", "error", err)
+			logger.Error("application stopped with an error", "error", err)
 			a.close()
 			fmt.Fprintln(os.Stderr, "yoanime:", err)
 			os.Exit(1)
 		}
-		log.Info("application closed")
+		logger.Info("application closed")
 		a.close()
 		os.Exit(0)
 	}()
@@ -114,10 +113,10 @@ type application struct {
 	playback       *playback.Service
 	rateLimit      RateLimitState
 	party          *partyManager
-	main           *mainWindow
-	log            *logWindow
-	active         windowScreen
-	shortcuts      *shortcutsWindow
+	main           *mainScreen
+	log            *logScreen
+	active         Screen
+	shortcuts      *shortcutsScreen
 	window         *app.Window
 	icon           image.Image
 	// tray is the notification-area icon. It stays nil when the platform has no
@@ -151,12 +150,12 @@ type application struct {
 	tokenPath         string
 	browserProfileDir string
 
-	// Update state is loaded from %APPDATA%\yoanime\updates.json. The atomics
+	// Update state is loaded from %APPDATA%\yoanime\update.json. The atomics
 	// let the UI read it every frame while the background checker refreshes it.
-	updateStore      *updates.Store
+	updateStore      *update.Store
 	updateClient     *http.Client
 	downloadClient   *http.Client
-	updatesAvailable atomic.Pointer[updates.Release]
+	updatesAvailable atomic.Pointer[update.Release]
 	updateChecking   atomic.Bool
 	updatePending    atomic.Bool
 	updateWake       chan struct{}
@@ -187,7 +186,7 @@ type application struct {
 	// autoUpdateCard carries a release the UI goroutine should present as the
 	// download card. The check runs off the UI goroutine and cannot open a
 	// screen itself.
-	autoUpdateCard chan updates.Release
+	autoUpdateCard chan update.Release
 	// playbackStarting covers the network work between a Play click and the
 	// moment Service.Start registers the session; playback.Active only covers
 	// the resolve inside the service. A silent update must not quit the app in
@@ -236,15 +235,19 @@ func newApp(services Services) (*application, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load app icon: %w", err)
 	}
+	sectionIcons, err := loadSectionIcons()
+	if err != nil {
+		return nil, fmt.Errorf("load section icons: %w", err)
+	}
 	lib := services.Library
 	episodeCtx, episodeCancel := context.WithCancel(context.Background())
 	app := &application{
-		shell:             newShell(typo, icon),
+		shell:             newShell(typo, icon, sectionIcons),
 		browserManager:    services.Browser,
 		mpvManager:        services.MPV,
 		library:           lib,
 		playback:          services.Playback,
-		main:              newMainWindow(typo, lib, services.History),
+		main:              newMainScreen(typo, lib, services.History),
 		icon:              icon,
 		watchResults:      make(chan watchResult, 8),
 		qualityResults:    make(chan qualityResult, 8),
@@ -260,12 +263,17 @@ func newApp(services Services) (*application, error) {
 		downloadClient:    &http.Client{Timeout: 30 * time.Minute},
 		updateWake:        make(chan struct{}, 1),
 		autoUpdateWake:    make(chan struct{}, 1),
-		autoUpdateCard:    make(chan updates.Release, 1),
+		autoUpdateCard:    make(chan update.Release, 1),
 		currentSHA:        services.CurrentSHA,
 	}
 	app.rateLimit = services.RateLimit
 	app.main.rateLimit = services.RateLimit
 	app.shell.rateLimit.state = services.RateLimit
+	section := sectionAnime
+	if raw, ok := lib.Setting(librarySectionKey); ok {
+		section = sectionFromSetting(raw)
+	}
+	app.main.section = section
 	state := services.UpdateStore.State()
 	app.updatesAvailable.Store(state.Available)
 	app.autoUpdateStartup.Store(true)
@@ -334,10 +342,17 @@ func (a *application) attachWindow(w *app.Window) {
 	a.main.hidden = a.windowHidden
 	a.shell.hidden = a.windowHidden
 	a.main.onOpenTitle = func(item historyTitle) {
+		if item.reading() {
+			a.openReaderScreen(item)
+			return
+		}
 		a.openTitle(item)
 	}
 	a.main.onPlayHistory = func(item historyTitle) historyPlayResult {
 		return a.playFromHistory(item)
+	}
+	a.main.onSection = func(section librarySection) {
+		a.selectSection(section)
 	}
 	a.main.onUserStatus = func(item historyTitle, status library.UserStatus) error {
 		return a.setUserStatus(item, status)
@@ -536,7 +551,7 @@ func (a *application) showMain(w *app.Window) {
 // offerStartupUpdate shows the download card instead of the first main screen
 // of a launch when the cached release can be installed automatically. It
 // reports whether the card replaced the main screen.
-func (a *application) offerStartupUpdate(release *updates.Release) bool {
+func (a *application) offerStartupUpdate(release *update.Release) bool {
 	if release == nil || !a.autoUpdatesEnabled() || !a.updateAvailable(release) {
 		return false
 	}
@@ -563,7 +578,7 @@ func (a *application) openUpdate() {
 // the verified executable is ready, so the helper can replace it. auto marks the
 // card shown without a click: a failed automatic download returns to the main
 // screen instead of trapping the user on the card.
-func (a *application) showUpdateScreen(release updates.Release, auto bool) {
+func (a *application) showUpdateScreen(release update.Release, auto bool) {
 	if a.window == nil {
 		return
 	}
@@ -606,7 +621,7 @@ func (a *application) openSettings() {
 		a.party = newPartyManager(a)
 	}
 	partyCfg := a.party.Config()
-	settings := newSettingsWindow(a.shell.typo, settingsValues{
+	settings := newSettingsScreen(a.shell.typo, settingsValues{
 		Notifications: a.library.EpisodeNotificationsEnabled(),
 		AutoUpdate:    a.library.AutoUpdateEnabled(),
 		Beta:          a.library.BetaUpdatesEnabled(),
@@ -695,7 +710,7 @@ func (a *application) openParty() {
 	if a.party == nil {
 		a.party = newPartyManager(a)
 	}
-	screen := newPartyWindow(a.shell.typo, a.window, a.party)
+	screen := newPartyScreen(a.shell.typo, a.window, a.party)
 	screen.hidden = a.windowHidden
 	screen.onError = a.reportError
 	screen.onBack = func() {
@@ -762,7 +777,7 @@ func (a *application) startPartyPlayback(state party.State) error {
 	}
 }
 
-func (a *application) downloadAndApply(ctx context.Context, release updates.Release, report func(downloadProgress)) error {
+func (a *application) downloadAndApply(ctx context.Context, release update.Release, report func(downloadProgress)) error {
 	if report != nil {
 		report(downloadProgress{Preparing: true})
 	}
@@ -787,12 +802,12 @@ func (a *application) downloadAndApply(ctx context.Context, release updates.Rele
 
 // downloadRelease fetches and verifies the executable without installing it, so
 // the silent updater can wait for an idle moment between download and replace.
-func (a *application) downloadRelease(ctx context.Context, release updates.Release, report func(downloaded, total int64)) (string, error) {
+func (a *application) downloadRelease(ctx context.Context, release update.Release, report func(downloaded, total int64)) (string, error) {
 	target, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("не удалось определить файл приложения: %w", err)
 	}
-	if err := updater.CheckTarget(target); err != nil {
+	if err := update.CheckTarget(target); err != nil {
 		return "", err
 	}
 	updateDir, err := appdata.UpdateDir()
@@ -801,10 +816,10 @@ func (a *application) downloadRelease(ctx context.Context, release updates.Relea
 	}
 	name := filepath.Base(release.AssetName)
 	if name == "." || name == "" {
-		name = updates.AssetName(release.Version, runtime.GOARCH)
+		name = update.AssetName(release.Version, runtime.GOARCH)
 	}
 	destination := filepath.Join(updateDir, name)
-	return updates.Download(ctx, a.downloadClient, release, destination, report)
+	return update.Download(ctx, a.downloadClient, release, destination, report)
 }
 
 // applyDownload starts the hidden helper that replaces the executable after
@@ -822,7 +837,7 @@ func (a *application) applyDownload(source string) error {
 	if err != nil {
 		return err
 	}
-	plan, err := updater.Prepare(target, source, updateDir, logPath)
+	plan, err := update.Prepare(target, source, updateDir, logPath)
 	if err != nil {
 		return err
 	}
@@ -837,7 +852,7 @@ func (a *application) quitForUpdate() {
 }
 
 func (a *application) startUpdateLoop(w *app.Window) {
-	if updates.Repository == "" {
+	if update.Repository == "" {
 		return
 	}
 	go func() {
@@ -894,10 +909,10 @@ func (a *application) checkForUpdates(w *app.Window) time.Duration {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	release, err := updates.FetchReleaseChannel(ctx, a.updateClient, a.updateChannel())
+	release, err := update.FetchReleaseChannel(ctx, a.updateClient, a.updateChannel())
 	now := time.Now()
 	if err != nil {
-		if errors.Is(err, updates.ErrNoRelease) {
+		if errors.Is(err, update.ErrNoRelease) {
 			release = nil
 			err = nil
 		} else {
@@ -922,7 +937,7 @@ func (a *application) checkForUpdates(w *app.Window) time.Duration {
 // maybeAutoUpdate runs on the update loop goroutine. During the launch window it
 // hands the release to the UI goroutine, which presents the download card;
 // afterwards the install waits for the tray.
-func (a *application) maybeAutoUpdate(release *updates.Release) {
+func (a *application) maybeAutoUpdate(release *update.Release) {
 	if release == nil || !a.autoUpdatesEnabled() || !a.updateAvailable(release) {
 		return
 	}
@@ -976,12 +991,12 @@ func (a *application) processPartyState() {
 	// The party screen reads NeedsSecret directly. Drop the notice so it does
 	// not reopen the card after the user leaves a room that was already
 	// handled.
-	if _, ok := a.active.(*partyWindow); ok {
+	if _, ok := a.active.(*partyScreen); ok {
 		a.party.takeSecretNotice()
 	}
 }
 
-func (a *application) startAutoUpdate(release updates.Release) {
+func (a *application) startAutoUpdate(release update.Release) {
 	a.autoUpdateMu.Lock()
 	if a.autoUpdateRunning {
 		a.autoUpdateMu.Unlock()
@@ -1234,37 +1249,79 @@ func (a *application) syncFooterControls() {
 // screen and the silent updater: the release must belong to the selected
 // channel, and a re-pushed version qualifies when its published build differs
 // from the running executable.
-func (a *application) updateAvailable(release *updates.Release) bool {
+func (a *application) updateAvailable(release *update.Release) bool {
 	if release == nil {
 		return false
 	}
 	if !a.updateChannel().Accepts(release.Version) {
 		return false
 	}
-	return updates.IsUpdate(release, version.Version, a.currentSHA)
+	return update.IsUpdate(release, version.Version, a.currentSHA)
 }
 
-func (a *application) updateChannel() updates.Channel {
+func (a *application) updateChannel() update.Channel {
 	if a.library != nil && a.library.BetaUpdatesEnabled() {
-		return updates.ChannelBeta
+		return update.ChannelBeta
 	}
-	return updates.ChannelStable
+	return update.ChannelStable
 }
 
 func (a *application) autoUpdatesEnabled() bool {
 	return a.library != nil && a.library.AutoUpdateEnabled()
 }
 
+// selectSection switches the library header mode and persists the choice so the
+// next launch reopens on the same screen. The saver's auto-switch target is
+// also updated so the menu remembers the intended section even after a chain of
+// section changes.
+func (a *application) selectSection(section librarySection) {
+	a.main.setSection(section)
+	if a.library != nil {
+		a.library.SetSetting(librarySectionKey, section.key())
+	}
+	if a.shell != nil {
+		a.shell.selectSection(section)
+	}
+	if a.window != nil {
+		a.window.Invalidate()
+	}
+}
+
+// openReaderScreen opens the dedicated manga or ranobe reader for a title. For
+// a saved history row the chapter list is empty, so the reader starts in a
+// loading state and fetches the title through the library before drawing pages.
+func (a *application) openReaderScreen(item historyTitle) {
+	if a.window == nil {
+		return
+	}
+	logger.Info("reader opened", "title", item.title, "id", item.id, "slug", item.slug)
+	title := libraryTitleFromHistory(item)
+	reader := newReaderScreen(a.shell.typo, item, a.library)
+	reader.hidden = a.windowHidden
+	reader.invalidate = a.window.Invalidate
+	reader.onError = a.reportError
+	reader.onBack = func() {
+		if a.window == nil {
+			return
+		}
+		a.showWindow(a.window, a.main)
+		a.window.Invalidate()
+	}
+	reader.prefill(title)
+	a.showWindow(a.window, reader)
+	a.window.Invalidate()
+}
+
 func (a *application) openTitle(item historyTitle) {
 	if a.window == nil {
 		return
 	}
-	log.Info("title page opened", "title", item.title, "id", item.id, "slug", item.slug)
+	logger.Info("title page opened", "title", item.title, "id", item.id, "slug", item.slug)
 	preferredQuality := 1080
 	if a.library != nil {
 		preferredQuality = a.library.PreferredQuality()
 	}
-	title := newTitleWindow(a.shell.typo, item, preferredQuality)
+	title := newTitleScreen(a.shell.typo, item, preferredQuality)
 	title.hidden = a.windowHidden
 	title.onError = a.reportError
 	title.onUserStatus = func(item historyTitle, status library.UserStatus) error {
@@ -1326,6 +1383,12 @@ func (a *application) openTitle(item historyTitle) {
 // background when they are missing. The title page is only opened after mpv
 // exits, as requested.
 func (a *application) playFromHistory(item historyTitle) historyPlayResult {
+	if item.reading() {
+		// The reader has no "play" step: the history Play button falls back to
+		// the normal load flow, which opens the reader and tracks the chapter.
+		// mpv must never take over a manga or ranobe title.
+		return historyPlayFailed
+	}
 	if a.library == nil || a.playback == nil {
 		return historyPlayFailed
 	}
@@ -1559,14 +1622,14 @@ func (a *application) processQualityResults(gtx layout.Context) {
 // applyQualityResult hands a probed ladder to the title page that asked for it.
 // A stale result (the user already navigated away) is dropped.
 func (a *application) applyQualityResult(result qualityResult) {
-	title, ok := a.active.(*titleWindow)
+	title, ok := a.active.(*titleScreen)
 	if !ok || title.item.slug != result.slug {
 		return
 	}
 	if result.err != nil {
 		// The probe is a nicety: the standard quality buttons stay enabled and
 		// playback still picks the nearest available step.
-		log.Warn("Kinopoisk quality probe failed", "title", result.slug, "voice", result.voice, "error", result.err)
+		logger.Warn("Kinopoisk quality probe failed", "title", result.slug, "voice", result.voice, "error", result.err)
 		return
 	}
 	index := -1
@@ -1586,7 +1649,7 @@ func (a *application) applyQualityResult(result qualityResult) {
 // offers and disables the buttons it cannot deliver. The probe runs in the
 // background with the shared headless Chromium and never opens a window; its
 // result is cached when the user saves the title to history.
-func (a *application) probeQualities(title *titleWindow) {
+func (a *application) probeQualities(title *titleScreen) {
 	if a.library == nil || a.playback == nil || title == nil {
 		return
 	}
@@ -1676,7 +1739,7 @@ func (a *application) handleWatchResult(result watchResult) {
 			// when playback cannot start (for example, the selected voice no
 			// longer has any episodes). No mpv window is left behind.
 			a.openTitle(*result.historyItem)
-			if title, ok := a.active.(*titleWindow); ok {
+			if title, ok := a.active.(*titleScreen); ok {
 				title.setWatchError(result.err.Error())
 			}
 			return
@@ -1718,7 +1781,7 @@ func (a *application) handleWatchResult(result watchResult) {
 		return
 	}
 
-	title, ok := a.active.(*titleWindow)
+	title, ok := a.active.(*titleScreen)
 	if !ok {
 		return
 	}
@@ -1814,7 +1877,7 @@ func (a *application) updatePlaybackNow(gtx layout.Context) {
 	if session == nil {
 		return
 	}
-	title, ok := a.active.(*titleWindow)
+	title, ok := a.active.(*titleScreen)
 	if !ok {
 		return
 	}
@@ -1862,7 +1925,7 @@ func (a *application) persistWindowRects(now time.Time) {
 	}
 }
 
-func (a *application) showWindow(w *app.Window, screen windowScreen) {
+func (a *application) showWindow(w *app.Window, screen Screen) {
 	if a.active != nil && a.active != screen {
 		a.active.Close()
 	}
@@ -1878,7 +1941,7 @@ func (a *application) showWindow(w *app.Window, screen windowScreen) {
 // installScreen wires an active screen into the shell without changing its
 // state. It is used both for normal navigation and after the F1 summary closes,
 // where main.onShown must not run because it would clear the URL field.
-func (a *application) installScreen(screen windowScreen) {
+func (a *application) installScreen(screen Screen) {
 	a.shell.footer = nil
 	if fs, ok := screen.(footerScreen); ok {
 		a.shell.footer = func(gtx layout.Context) layout.Dimensions {
@@ -1921,7 +1984,7 @@ func (a *application) toggleShortcuts() {
 		return
 	}
 	a.hidePopups()
-	a.shortcuts = newShortcutsWindow(a.shell.typo, shortcutInfoFor(a.active))
+	a.shortcuts = newShortcutsScreen(a.shell.typo, shortcutInfoFor(a.active))
 	a.shortcuts.onBack = a.closeShortcuts
 	shortcuts := a.shortcuts
 	a.shell.footer = func(gtx layout.Context) layout.Dimensions {
@@ -1946,7 +2009,7 @@ func (a *application) closeShortcuts() {
 	}
 }
 
-func shortcutInfoFor(screen windowScreen) shortcutInfo {
+func shortcutInfoFor(screen Screen) shortcutInfo {
 	if source, ok := screen.(shortcutSource); ok {
 		return source.shortcutInfo()
 	}
@@ -1996,7 +2059,7 @@ func (a *application) reportError(err error) {
 	if err == nil || errors.Is(err, context.Canceled) {
 		return
 	}
-	log.Error("ui error", "error", err)
+	logger.Error("ui error", "error", err)
 	message := friendlyError(err)
 	if message == "" {
 		return
@@ -2014,7 +2077,7 @@ func (a *application) clearError() {
 // setUserStatus persists a status chosen from a pill menu and updates every
 // screen that may be showing the same title.
 func (a *application) setUserStatus(item historyTitle, status library.UserStatus) error {
-	log.Info("user status changed", "title", item.id, "status", status)
+	logger.Info("user status changed", "title", item.id, "status", status)
 	if item.id != 0 && a.library != nil {
 		if err := a.library.SetUserStatus(item.id, status); err != nil {
 			a.reportError(err)
@@ -2024,7 +2087,7 @@ func (a *application) setUserStatus(item historyTitle, status library.UserStatus
 	if a.main != nil {
 		a.main.setUserStatus(item.id, status)
 	}
-	if title, ok := a.active.(*titleWindow); ok && title.item.id == item.id {
+	if title, ok := a.active.(*titleScreen); ok && title.item.id == item.id {
 		title.setUserStatus(status)
 	}
 	a.clearError()
@@ -2038,7 +2101,7 @@ func (a *application) openLog() {
 	if a.window == nil {
 		return
 	}
-	screen := newLogWindow(a.shell.typo)
+	screen := newLogScreen(a.shell.typo)
 	screen.hidden = a.windowHidden
 	screen.onBack = func() {
 		if a.window == nil {
@@ -2134,3 +2197,5 @@ func (a *application) run(w *app.Window) error {
 func (a *application) Content(w layout.Widget) {
 	a.shell.content = w
 }
+
+var logger = log.For(log.SourceUI)

@@ -21,6 +21,7 @@ type footerButtonIcon int
 const (
 	footerButtonNoIcon footerButtonIcon = iota
 	footerButtonBackIcon
+	footerButtonForwardIcon
 	footerButtonPlayIcon
 )
 
@@ -54,6 +55,10 @@ type footerNamedButton struct {
 	icon    footerButtonIcon
 	style   footerButtonStyle
 	size    unit.Sp
+	// disabled draws the control but never reports a click. The caller sets the
+	// palette to a muted one; the reader uses it for chapter navigation at the
+	// ends of the list.
+	disabled bool
 }
 
 // layout draws the button into rect and reports a click. reserve optionally
@@ -63,15 +68,18 @@ func (b *footerNamedButton) layout(gtx layout.Context, typo *typography, rect im
 	if rect.Empty() {
 		return false
 	}
-	_, clicked := b.click.Update(gtx)
-	progress := b.hover.update(gtx, b.click.Hovered())
+	clicked := b.click.Clicked(gtx)
+	hovered := b.click.Hovered() && !b.disabled
+	progress := b.hover.update(gtx, hovered)
 
 	stack := op.Offset(rect.Min).Push(gtx.Ops)
 	defer stack.Pop()
 	cgtx := gtx
 	cgtx.Constraints = layout.Exact(rect.Size())
 	b.click.Layout(cgtx, func(gtx layout.Context) layout.Dimensions {
-		pointer.CursorPointer.Add(gtx.Ops)
+		if !b.disabled {
+			pointer.CursorPointer.Add(gtx.Ops)
+		}
 		local := image.Rect(0, 0, rect.Dx(), rect.Dy())
 		radius := gtx.Dp(unit.Dp(8))
 		fill, border, _ := b.style.palette(progress)
@@ -91,7 +99,7 @@ func (b *footerNamedButton) layout(gtx layout.Context, typo *typography, rect im
 		b.drawContent(gtx, typo, local)
 		return layout.Dimensions{Size: rect.Size()}
 	})
-	return clicked
+	return clicked && !b.disabled
 }
 
 func (b *footerNamedButton) drawContent(gtx layout.Context, typo *typography, local image.Rectangle) {
@@ -136,6 +144,8 @@ func (b *footerNamedButton) drawContent(gtx layout.Context, typo *typography, lo
 	switch b.icon {
 	case footerButtonBackIcon:
 		drawChevronLeft(gtx, iconCenter, iconSize, gtx.Dp(unit.Dp(1.5)), b.style.text)
+	case footerButtonForwardIcon:
+		drawChevronRight(gtx, iconCenter, iconSize, gtx.Dp(unit.Dp(1.5)), b.style.text)
 	case footerButtonPlayIcon:
 		drawPlay(gtx, iconCenter, iconSize, b.style.text)
 	}

@@ -12,15 +12,31 @@ import (
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
+	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yoanime/version"
+	"github.com/arfush/yo/version"
 )
 
 type shell struct {
 	typo *typography
 	cfg  app.Config
 	icon image.Image
+
+	// section is the active library mode (anime/manga/ranobe). The header name,
+	// the logo tile and the history filter follow it; the choice is persisted by
+	// the application.
+	section      librarySection
+	sectionIcons map[librarySection]image.Image
+	// sectionLogo is the clickable brand block (logo + app name) that opens the
+	// section switcher menu.
+	sectionLogo   widget.Clickable
+	sectionHover  hoverAnim
+	sectionOpen   bool
+	sectionScrim  widget.Clickable
+	sectionItems  [2]widget.Clickable
+	onSection     func(librarySection)
+	sectionAnchor image.Rectangle
 
 	minimize widget.Clickable
 	maximize widget.Clickable
@@ -85,12 +101,117 @@ type shell struct {
 	leftDown    bool
 }
 
-func newShell(typo *typography, icon image.Image) *shell {
-	return &shell{
-		typo: typo,
-		cfg:  app.Config{Mode: app.Windowed},
-		icon: icon,
+func newShell(typo *typography, icon image.Image, sectionIcons map[librarySection]image.Image) *shell {
+	if sectionIcons == nil {
+		sectionIcons = map[librarySection]image.Image{sectionAnime: icon}
 	}
+	return &shell{
+		typo:         typo,
+		cfg:          app.Config{Mode: app.Windowed},
+		icon:         icon,
+		sectionIcons: sectionIcons,
+	}
+}
+
+// sectionIcon returns the header logo tile for the active section.
+func (s *shell) sectionIcon() image.Image {
+	if img := s.sectionIcons[s.section]; img != nil {
+		return img
+	}
+	return s.icon
+}
+
+// selectSection switches the header branding and closes the menu. The
+// application is the only caller that knows persistence, so this method never
+// fires onSection by itself.
+func (s *shell) selectSection(section librarySection) {
+	s.section = section
+	s.sectionOpen = false
+}
+
+// otherSections lists the section switcher options: everything except the
+// active one, in a stable order.
+func otherSections(current librarySection) [2]librarySection {
+	var out [2]librarySection
+	index := 0
+	for _, candidate := range []librarySection{sectionAnime, sectionManga, sectionRanobe} {
+		if candidate == current {
+			continue
+		}
+		out[index] = candidate
+		index++
+	}
+	return out
+}
+
+// layoutSectionMenu paints the brand dropdown below the logo. Only the two
+// sections other than the active one are listed; selecting one switches the
+// whole library through the application callback.
+func (s *shell) layoutSectionMenu(gtx layout.Context, g geometry) {
+	bounds := image.Rectangle{Max: g.size}
+	if bounds.Empty() {
+		s.sectionOpen = false
+		return
+	}
+	options := otherSections(s.section)
+	pad := gtx.Dp(settingsProviderMenuPad)
+	itemHeight := gtx.Dp(unit.Dp(34))
+	itemGap := gtx.Dp(unit.Dp(2))
+	height := len(options)*itemHeight + (len(options)-1)*itemGap + 2*pad
+	menu := placePopupList(s.sectionAnchor, height, gtx.Dp(unit.Dp(6)), bounds)
+
+	if layoutOverlayScrim(gtx, bounds, &s.sectionScrim) {
+		s.sectionOpen = false
+		gtx.Execute(op.InvalidateCmd{})
+		return
+	}
+	drawPopupMenu(gtx, menu)
+
+	for index, section := range options {
+		item := image.Rect(
+			menu.Min.X+pad,
+			menu.Min.Y+pad+index*(itemHeight+itemGap),
+			menu.Max.X-pad,
+			menu.Min.Y+pad+index*(itemHeight+itemGap)+itemHeight,
+		)
+		if s.layoutSectionItem(gtx, item, section, &s.sectionItems[index]) {
+			s.sectionOpen = false
+			if s.onSection != nil {
+				s.onSection(section)
+			} else {
+				s.selectSection(section)
+			}
+			gtx.Execute(op.InvalidateCmd{})
+		}
+	}
+}
+
+func (s *shell) layoutSectionItem(gtx layout.Context, rect image.Rectangle, section librarySection, click *widget.Clickable) bool {
+	if rect.Empty() {
+		return false
+	}
+	clicked := layoutClickableRect(gtx, rect, click, func(gtx layout.Context, local image.Rectangle) {
+		radius := gtx.Dp(unit.Dp(6))
+		if click.Hovered() {
+			fillRounded(gtx, tokenDomainFillHover, local, radius)
+		}
+		face := font.Font{Typeface: fontFamily, Weight: font.Medium}
+		label := section.appName()
+		size := gtx.Dp(unit.Dp(18))
+		padX := gtx.Dp(unit.Dp(10))
+		tile := image.Rect(padX, (local.Dy()-size)/2, padX+size, (local.Dy()-size)/2+size)
+		drawImage(gtx, s.sectionIconFor(section), tile)
+		_, ink := s.typo.measure(gtx, label, face, settingsButtonSize)
+		s.typo.draw(gtx, label, face, settingsButtonSize, mainTextColor, image.Pt(padX+size+gtx.Dp(unit.Dp(10)), (local.Dy()-ink.Dy())/2))
+	})
+	return clicked
+}
+
+func (s *shell) sectionIconFor(section librarySection) image.Image {
+	if img := s.sectionIcons[section]; img != nil {
+		return img
+	}
+	return s.icon
 }
 
 func (s *shell) setConfig(cfg app.Config) {
@@ -160,6 +281,9 @@ func (s *shell) layout(gtx layout.Context, w *app.Window) {
 		overlayGtx := gtx
 		overlayGtx.Constraints = layout.Exact(g.size)
 		s.overlay(overlayGtx, g.contentRect().Min)
+	}
+	if s.sectionOpen {
+		s.layoutSectionMenu(gtx, g)
 	}
 	s.addWindowPressWatcher(gtx, g)
 }
@@ -276,9 +400,17 @@ func (s *shell) layoutHeader(gtx layout.Context, w *app.Window, g geometry) {
 	// The title is deliberately pinned to a common baseline between the logo
 	// and version badge, rather than being laid out as flowing text.
 	titleFace := font.Font{Typeface: fontFamily, Weight: font.Bold}
-	_, titleInk := s.typo.measure(gtx, "yoanime", titleFace, titleSize)
+	appName := s.section.appName()
+	_, titleInk := s.typo.measure(gtx, appName, titleFace, titleSize)
 	titleY := g.headerCenterY - titleInk.Dy()/2
-	s.typo.draw(gtx, "yoanime", titleFace, titleSize, titleColor, image.Pt(g.titleX, titleY))
+	s.typo.draw(gtx, appName, titleFace, titleSize, titleColor, image.Pt(g.titleX, titleY))
+
+	// A small chevron after the name marks the brand block as the section
+	// switcher. It is always visible so the affordance does not depend on a
+	// hover state.
+	chevron := gtx.Dp(unit.Dp(8))
+	chevronCenter := image.Pt(g.titleX+titleInk.Dx()+gtx.Dp(unit.Dp(10)), g.headerCenterY)
+	drawChevronDown(gtx, chevronCenter, chevron, gtx.Dp(unit.Dp(1.7)), mainMutedColor)
 
 	badgeRight := s.layoutBadge(gtx, g)
 	notice := headerNotice{}
@@ -323,7 +455,36 @@ func (s *shell) layoutHeader(gtx layout.Context, w *app.Window, g geometry) {
 }
 
 func (s *shell) layoutLogo(gtx layout.Context, g geometry) {
-	drawImage(gtx, s.icon, g.logo)
+	titleFace := font.Font{Typeface: fontFamily, Weight: font.Bold}
+	_, titleInk := s.typo.measure(gtx, s.section.appName(), titleFace, titleSize)
+	// The trigger covers the logo, the app name and the trailing chevron, so
+	// the whole brand block opens the menu.
+	trigger := image.Rect(
+		g.logo.Min.X-gtx.Dp(unit.Dp(6)),
+		0,
+		g.titleX+titleInk.Dx()+gtx.Dp(unit.Dp(20)),
+		g.headerClickEnd,
+	)
+	s.sectionAnchor = trigger
+
+	progress := s.sectionHover.update(gtx, s.sectionLogo.Hovered())
+	if s.animationsRun() && s.sectionLogo.Hovered() {
+		gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(hoverPollInterval)})
+	}
+	open := s.sectionOpen
+	if layoutClickableRect(gtx, trigger, &s.sectionLogo, func(gtx layout.Context, local image.Rectangle) {
+		if progress > 0.02 || open {
+			alpha := progress
+			if open {
+				alpha = 1
+			}
+			fillRounded(gtx, mixColor(chromeColor, controlHoverColor, alpha), local, gtx.Dp(unit.Dp(7)))
+		}
+	}) {
+		s.sectionOpen = !s.sectionOpen
+		gtx.Execute(op.InvalidateCmd{})
+	}
+	drawImage(gtx, s.sectionIcon(), g.logo)
 }
 
 // layoutBadge draws the version pill and returns its right edge so the
@@ -354,7 +515,8 @@ func (s *shell) layoutBadge(gtx layout.Context, g geometry) int {
 func (s *shell) layoutDragRegions(gtx layout.Context, g geometry) {
 	minimize, maximize, close := g.controls.minimize, g.controls.maximize, g.controls.close
 	regions := []image.Rectangle{
-		image.Rect(0, 0, minimize.Min.X, g.headerClickEnd),
+		image.Rect(0, 0, s.sectionAnchor.Min.X, g.headerClickEnd),
+		image.Rect(s.sectionAnchor.Max.X, 0, minimize.Min.X, g.headerClickEnd),
 		image.Rect(minimize.Max.X, 0, maximize.Min.X, g.headerClickEnd),
 		image.Rect(maximize.Max.X, 0, close.Min.X, g.headerClickEnd),
 		image.Rect(close.Max.X, 0, g.size.X, g.headerClickEnd),

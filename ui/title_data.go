@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/arfush/yoanime/catalog"
+	"github.com/arfush/yo/catalog"
 )
 
 type titleStatus int
@@ -61,6 +61,7 @@ type historyTitle struct {
 	coverPath       string
 	coverNeedsRetry bool
 	episodes        []string
+	chapters        []catalog.ReadingChapter
 	seasons         []titleSeason
 	// episodesTotal is the cached count used by history rows, where the episode
 	// list itself is not loaded.
@@ -80,6 +81,16 @@ type historyTitle struct {
 
 func (t historyTitle) episodeCount() int {
 	return len(t.episodes)
+}
+
+// reading reports whether the title enters the manga or ranobe reader.
+func (t historyTitle) reading() bool {
+	return catalog.IsReadingSource(t.source)
+}
+
+// ranobe reports whether the reader must render paragraphs instead of pages.
+func (t historyTitle) ranobe() bool {
+	return catalog.IsRanobeSource(t.source)
 }
 
 // totalEpisodes prefers the freshly loaded list and falls back to the cached
@@ -105,7 +116,15 @@ func (t historyTitle) progressLabel() string {
 	if t.movie {
 		return ""
 	}
-	return episodeProgressLabel(t.currentEpisodeLabel(), t.totalEpisodes())
+	key := t.currentEpisodeLabel()
+	if t.reading() {
+		label := catalog.ReadingChapterLabel(key)
+		if total := t.totalEpisodes(); total > 0 {
+			label += fmt.Sprintf(" / %d гл.", total)
+		}
+		return label
+	}
+	return episodeProgressLabel(key, t.totalEpisodes())
 }
 
 // seasonsSectionLabel names the season block. It is empty for a title with a
@@ -174,6 +193,7 @@ func titleFromLibrary(item catalog.Title) historyTitle {
 		coverPath:       item.CoverPath,
 		coverNeedsRetry: item.CoverNeedsRetry,
 		episodes:        append([]string(nil), item.Episodes...),
+		chapters:        append([]catalog.ReadingChapter(nil), item.Chapters...),
 		episodesTotal:   item.EpisodesTotal,
 		episodeLabel:    item.SelectedEpisode,
 		voices:          make([]voiceover, 0, len(item.Voiceovers)),
@@ -233,6 +253,7 @@ func libraryTitleFromHistory(item historyTitle) catalog.Title {
 		CoverPath:     item.coverPath,
 		Episodes:      append([]string(nil), item.episodes...),
 		EpisodesTotal: item.totalEpisodes(),
+		Chapters:      append([]catalog.ReadingChapter(nil), item.chapters...),
 		IMDbID:        item.imdbID,
 		Season:        item.season,
 		ResumeAt:      item.resumeAt,
