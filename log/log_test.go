@@ -60,6 +60,28 @@ func TestForTagsEveryEntryWithTheSource(t *testing.T) {
 	}
 }
 
+func TestSourceIsNotDuplicatedInExpandedDetail(t *testing.T) {
+	if err := Init(filepath.Join(t.TempDir(), "yoanime.log")); err != nil {
+		t.Fatal(err)
+	}
+	defer Close()
+
+	For(SourceStore).Info("history loaded", "count", 3)
+	entries := Recent()
+	if len(entries) != 1 {
+		t.Fatalf("recent length = %d, want 1", len(entries))
+	}
+	if entries[0].Source != SourceStore {
+		t.Fatalf("source = %q, want %q", entries[0].Source, SourceStore)
+	}
+	if strings.Contains(entries[0].Detail, "source=") {
+		t.Fatalf("detail duplicates the source column: %q", entries[0].Detail)
+	}
+	if entries[0].Detail != `count=3` {
+		t.Fatalf("detail = %q, want count=3", entries[0].Detail)
+	}
+}
+
 func TestSnapshotDoesNotIncludeOrdinaryLinesInCopy(t *testing.T) {
 	if err := Init(filepath.Join(t.TempDir(), "yoanime.log")); err != nil {
 		t.Fatal(err)

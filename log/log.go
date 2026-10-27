@@ -360,6 +360,11 @@ func formatAttrs(base []slog.Attr, groups []string, record slog.Record) (string,
 		if key == "" {
 			continue
 		}
+		// The source already has its own column in the log window. Keeping it
+		// in the structured tail duplicates it in every expanded row.
+		if key == "source" {
+			continue
+		}
 		if b.Len() > 0 {
 			b.WriteByte(' ')
 		}

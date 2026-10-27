@@ -119,12 +119,6 @@ func (w *logScreen) layoutLine(gtx layout.Context, entry applog.Entry, width, ro
 			rowFill = mixColor(rowFill, logRowHover, 0.7)
 		}
 		fill(gtx, rowFill, rowRect)
-		// Error rows keep a red accent on the left edge so the highlight reads
-		// even for a row whose level column is scrolled away.
-		if entry.Level >= slog.LevelError {
-			barWidth := max(1, gtx.Dp(unit.Dp(3)))
-			fill(gtx, logErrorRowBar, image.Rect(0, 0, barWidth, rowHeight))
-		}
 		// The divider is intentionally stronger than the fills: with softer
 		// hover colours the rows still need a visible boundary.
 		fill(gtx, logRowDivider, image.Rect(0, rowHeight-max(1, gtx.Dp(1)), width, rowHeight))

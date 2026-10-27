@@ -26,7 +26,7 @@ type voiceover struct {
 	episodes []string
 	missing  []string
 	hasKodik bool
-	// qualities is the Kinopoisk stream ladder of this voice, empty for
+	// qualities is the Filmlib stream ladder of this voice, empty for
 	// AnimeLIB and until the background probe returns.
 	qualities []int
 }
@@ -56,7 +56,7 @@ func voiceDisplayName(name string, id int) string {
 	return "Озвучка"
 }
 
-// titleSeason groups the episodes of a Kinopoisk series. AnimeLIB titles keep
+// titleSeason groups the episodes of a Filmlib series. AnimeLIB titles keep
 // their flat episode list and have no seasons at all, so the season strip is
 // only drawn when a title carries more than one season.
 type titleSeason struct {
@@ -140,13 +140,28 @@ func (t historyTitle) progressLabel() string {
 	}
 	key := t.currentEpisodeLabel()
 	if t.reading() {
-		label := readingChapterLabel(key)
-		if total := t.totalEpisodes(); total > 0 {
-			label += fmt.Sprintf(" / %d гл.", total)
-		}
-		return label
+		return readingProgressLabel(key, t.totalEpisodes())
 	}
 	return episodeProgressLabel(key, t.totalEpisodes())
+}
+
+// readingProgressLabel formats the reader progress as "1 т. · 1 / 758 гл.".
+// The volume is shown only when the source supplies one; the chapter word is
+// omitted from the numerator because the denominator already says "гл.".
+func readingProgressLabel(key string, total int) string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return ""
+	}
+	volume, number := catalog.SplitReadingChapterKey(key)
+	label := strings.TrimSpace(number)
+	if volume != "" && volume != "0" {
+		label = volume + " т. · " + label
+	}
+	if total > 0 {
+		label += fmt.Sprintf(" / %d гл.", total)
+	}
+	return label
 }
 
 // seasonsSectionLabel names the season block. It is empty for a title with a
@@ -391,7 +406,7 @@ func posterInitial(title string) string {
 	return "?"
 }
 
-// episodeDisplayLabel strips the season prefix from a Kinopoisk episode key, so
+// episodeDisplayLabel strips the season prefix from a Filmlib episode key, so
 // the grid shows the plain episode number inside its season.
 func episodeDisplayLabel(key string) string {
 	return catalog.EpisodeLabel(key)

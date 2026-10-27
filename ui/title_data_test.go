@@ -136,6 +136,25 @@ func TestHistoryTitleEpisodeProgressSource(t *testing.T) {
 	}
 }
 
+func TestReadingProgressLabel(t *testing.T) {
+	tests := []struct {
+		key   string
+		total int
+		want  string
+	}{
+		{"1:1", 758, "1 т. · 1 / 758 гл."},
+		{"0:12", 758, "12 / 758 гл."},
+		{"2:0.5", 10, "2 т. · 0.5 / 10 гл."},
+		{"1:1", 0, "1 т. · 1"},
+		{"", 758, ""},
+	}
+	for _, test := range tests {
+		if got := readingProgressLabel(test.key, test.total); got != test.want {
+			t.Fatalf("readingProgressLabel(%q, %d) = %q, want %q", test.key, test.total, got, test.want)
+		}
+	}
+}
+
 func TestMovieHidesEpisodeProgressLabel(t *testing.T) {
 	film := historyTitle{
 		movie:           true,
