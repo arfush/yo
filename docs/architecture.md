@@ -16,7 +16,7 @@
 - **`app` — композиционный корень.** Он знает про все сервисы и экраны,
   собирает их и передаёт экранам данные и команды. Экраны не создают сервисы
   сами.
-- **Пакет-фича не знает про UI.** `library`, `playback`, `store` и остальные
+- **Пакет-фича не знает про UI.** `library`, `playback`, `storage` и остальные
   возвращают данные и ошибки; показывать их — задача `ui`.
 - **`platform` — только механизм ОС.** Пути `%APPDATA%`, реестр, мьютекс
   одного экземпляра, трей и Win32-заголовок окна. Никакой продуктовой
@@ -36,7 +36,7 @@ app/                  композиционный корень: пути, се�
   ratelimit.go        адаптер состояния лимита AnimeLIB для заголовка
 catalog/              чистые типы: Title, Voice, Status, Segment, ReadingChapter
   errors.go           общие сентинелы (ErrRateLimited, ErrTokenMissing и т. п.)
-animelib/             API AnimeLIB и LibSocial: клиент, episodes, reading, rate limit
+libsocial/             API AnimeLIB и LibSocial: клиент, episodes, reading, rate limit
   reading.go          ссылки и главы MangaLib/SlashLIB/RanobeLib/HentaiLib
   errors.go           сентинелы API-клиента
 browser/              Playwright: Chromium, авторизация, headless Kodik/Filmlib
@@ -50,8 +50,11 @@ playback/             сессия mpv, очередь, прогресс, гла
 party/                протокол совместного просмотра, часы, конфигурация реле
   deploy/             Cloudflare Worker и Supabase-реле
   party.example.json  образец пользовательского party.json
-store/                SQLite: схема, история, настройки, кэши
-  errors.go           ErrCorruptDatabase: старая/битая база не поддерживается
+storage/               SQLite: схема, история, настройки, кэши
+  db.go                открытие базы, проверка схемы, Close
+  queries.go           go:embed SQL и загрузчик именованных запросов
+  sql/                 schema.sql и запросы по доменам
+  errors.go            ErrCorruptDatabase: старая/битая база не поддерживается
 token/                файл токена AnimeLIB и проверка срока
 update/               всё об обновлении: GitHub Releases, SHA-256, замена exe
 log/                  журнал на log/slog: файл, ротация, кольцевой буфер, source
@@ -109,7 +112,7 @@ token -> catalog и стандартная библиотека
 - импортировать `cmd/...` — это точки входа;
 - импортировать `ui` из чего угодно, кроме `app` и `cmd`;
 - импортировать `app` из `ui` и фич;
-- импортировать `store` из `ui`: экран получает данные через `app`;
+- импортировать `storage` из `ui`: экран получает данные через `app`;
 - импортировать фичи (`library`, `playback`, `party`, ...) из `platform`;
 - замыкать импорты в цикл.
 
@@ -138,15 +141,16 @@ GitHub, скачивает и проверяет SHA-256, а затем заме
 
 ### `token` — это файл токена AnimeLIB
 
-Пакет читает и пишет `%APPDATA%\yoanime\animelib_token.txt`: JSON-объект
+Пакет читает и пишет `%APPDATA%\yoanime\libsocial.token`: JSON-объект
 OAuth-токена (как в localStorage сайта), запечатанный пользовательским Windows
 DPAPI, плюс запасной разбор простой строки. Старый открытый файл читается и
 переписывается в DPAPI-контейнер при первом `Load`. Пакет проверяет срок с
-запасом `ExpiryMargin` в 2 минуты.
+запасом `ExpiryMargin` в 2 минуты. Имя файла и энтропия DPAPI относятся к
+LibSocial; старый `animelib_token.txt` намеренно не мигрируется.
 
 Пакет нужен двум независимым сторонам: `browser` сохраняет токен после входа,
 `library` читает его для API. Если положить токен в `browser`, то `library`
-начнёт зависеть от Playwright; если в `animelib`, то `browser` начнёт зависеть
+начнёт зависеть от Playwright; если в `libsocial`, то `browser` начнёт зависеть
 от API-клиента и его rate limiter. Отдельный маленький пакет — самый дешёвый
 способ разорвать эту связь.
 
@@ -198,13 +202,18 @@ repository variables нужно обновить. Вшитые значения 
 - [x] модуль и репозиторий переименованы: `github.com/arfush/yo`
 - [x] экраны `*_window` -> `*_screen` (main/title/reader/settings/log/…)
 - [x] `updates/` + `updater/` -> единый пакет `update/`
-- [x] `store`: старая схема без миграций; ad-hoc ALTER-миграции удалены,
+- [x] `storage`: старая схема без миграций; ad-hoc ALTER-миграции удалены,
       `prepareDatabase` штампует `PRAGMA user_version = 2` и нормализует
       известные старые source/slug напрямую; неполные базы открываются как
       повреждённые (`ErrCorruptDatabase`). Отдельный файл миграций сейчас не
       создаётся.
 - [x] сентинелы ошибок собраны в `errors.go` каждого модуля
-- [x] LibSocial: `animelib/reading.go`, `library/reading.go`, секции
+- [x] `animelib` -> `libsocial`, `store` -> `storage`; SQL вынесен в
+      `storage/sql/*.sql` и подключён через `go:embed`; `titles.source`
+      нормализуется в `libsocial` при открытии базы
+- [x] `libsocial.WebOrigin` — единственный сайтовый origin для referer
+      (`anilib.me`), API остаётся на `api.cdnlibs.org`
+- [x] LibSocial: `libsocial/reading.go`, `library/reading.go`, секции
       yoanime/yomanga/yoranobe, `ui/reader_screen.go`
 - [ ] `ui` разложен на `kit`, `controls`, `chrome`, `screen`
 - [ ] контроллер окна и комнаты вынесен из `ui` в `app`; до этого

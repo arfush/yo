@@ -20,7 +20,7 @@
 
 - `type` — один из `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`.
 - В проекте дополнительно используется тип `release` — его требует GitHub Actions (см. раздел «Релизы»).
-- `scope` опционален; используй имя пакета или подсистемы: `ui`, `playback`, `animelib`, `store`, `library`, `browser`, `kodik`, `updates`, `mpv`.
+- `scope` опционален; используй имя пакета или подсистемы: `ui`, `playback`, `libsocial`, `storage`, `library`, `browser`, `kodik`, `updates`, `mpv`.
 - Описание — краткое, в повелительном наклонении, со строчной буквы, без точки в конце. Ориентир — до 72 символов.
 - Тело коммита объясняет **почему** изменение нужно, а не пересказывает diff. Переносы строк — по 72 символа.
 - Несовместимое изменение: `feat(api)!: ...` и/или футер `BREAKING CHANGE: ...`.
@@ -33,9 +33,9 @@
 
 ```text
 feat(playback): keep the mpv playlist ordered while preloading
-fix(animelib): wait for the rate-limit window before retrying
+fix(libsocial): wait for the rate-limit window before retrying
 docs: describe the Kodik fallback in AGENTS.md
-refactor(store): extract history reordering into a transaction
+refactor(storage): extract history reordering into a transaction
 release: v1.1
 ```
 
@@ -87,7 +87,7 @@ cmd/yo/                 точка входа: только вызов app.Run
 app/                    композиционный корень: пути, сервисы, single instance, запуск ui
 catalog/                общие типы отображения: Title, Voice, Season, UserStatus, Segment, ReadingChapter
   errors.go             общие сентинелы (ErrRateLimited, ErrTokenMissing, ...)
-animelib/               клиент AnimeLIB API, эпизоды, озвучки, rate limit
+libsocial/               клиент AnimeLIB API, эпизоды, озвучки, rate limit
   reading.go            LibSocial: ссылки, метаданные, главы, страницы (MangaLib и др.)
 browser/                Playwright: установка Chromium, авторизация, headless
 kodik/                  резолв Kodik embed -> HLS через headless Chromium
@@ -100,7 +100,10 @@ metadata/               Shikimori -> MAL, AniList -> сезон и постер,
 mpv/                    поиск/установка mpv
 playback/               сессия mpv, очередь, прогресс, главы, автопропуск
   filmlib.go            резолв серии filmlib, заголовки mpv, skipTime -> главы
-store/                  SQLite-схема, история, настройки, кэши
+storage/                 SQLite-схема, история, настройки, кэши
+  db.go                   открытие, проверка схемы, Close
+  queries.go              go:embed SQL и именованные запросы
+  sql/                    schema.sql и запросы по доменам
   titles.go, history.go, covers.go, tracking.go, settings.go
 token/                  чтение/запись токена AnimeLIB, проверка срока
 update/                 всё об обновлении: GitHub Releases, SHA-256, замена exe через cmd-хелпер
@@ -147,7 +150,7 @@ docs/                   техническая документация (party.m
 1. `app.Run` инициализирует журнал, проверяет единственный экземпляр, собирает сервисы и вызывает `ui.Run`.
 2. `ui.attachWindow` проверяет токен, при необходимости устанавливает Chromium, просит авторизацию, затем устанавливает mpv и показывает главный экран.
 3. Ввод ссылки -> `mainScreen.startLoading` -> `library.Fetch` или `library.Load`. `filmlib.ParseInput` перехватывает ссылки второго источника ещё до AnimeLIB: для такого тайтла токен не нужен.
-4. `library` читает токен, вызывает `animelib.Client`, сохраняет метаданные в `store`, подтягивает обложку. Для `filmlib` вместо этого работают `filmlib.Client` (метаданные + каталог Alloha) и `library.loadFilmlib`.
+4. `library` читает токен, вызывает `libsocial.Client`, сохраняет метаданные в `storage`, подтягивает обложку. Для `filmlib` вместо этого работают `filmlib.Client` (метаданные + каталог Alloha) и `library.loadFilmlib`.
 5. Страница тайтла вызывает `library.Save` (только по кнопке «Сохранить») и `startPlayback`.
 6. `library.PlaybackPlan` строит список серий выбранной озвучки; для `filmlib` — отдельный `filmlibPlan` с ключами `S{сезон}E{серия}`.
 7. `playback.Service` резолвит текущую серию (AnimeLIB MP4, иначе Kodik HLS, для `filmlib` — headless-театр Alloha), запускает mpv и догружает соседние серии в фоне.
@@ -158,13 +161,13 @@ docs/                   техническая документация (party.m
 ### Данные
 
 - Каталог данных: `%APPDATA%\yoanime` (через `os.UserConfigDir`).
-- Файлы: `yoanime.sqlite`, `animelib_token.txt`, `browser/`, `covers/`, `mpv/`, `updates.json`, `update/`, `party.json`, `filmlib.json`, `yoanime.log`.
+- Файлы: `yoanime.sqlite`, `libsocial.token`, `browser/`, `covers/`, `mpv/`, `updates.json`, `update/`, `party.json`, `filmlib.json`, `yoanime.log`.
 - **Списки серий, озвучки, сезоны и URL обложек не кэшируются в SQLite.** Они загружаются заново при каждом открытии страницы тайтла.
 - Таблица `history` хранит только выбранную озвучку, серию, позицию и длительность.
-- `titles.source` различает источники (`animelib`/`filmlib`), `titles.external_id` хранит их идентификатор. Slug второго источника — `filmlib:{id}`, чтобы уникальность `slug` не ломалась. Старые значения `kinopoisk` и `kinopoisk:%` нормализуются при открытии базы. Не создавай под источник отдельную таблицу.
+- `titles.source` различает источники (`libsocial`/`filmlib`), `titles.external_id` хранит их идентификатор. Slug второго источника — `filmlib:{id}`, чтобы уникальность `slug` не ломалась. Старые значения `animelib`, `kinopoisk` и `kinopoisk:%` нормализуются при открытии базы. Не создавай под источник отдельную таблицу.
 - Вход по-прежнему принимает старые префиксы `kinopoisk:`, `kp:` и ссылки `kinopoisk.ru`; это совместимость ввода, а не публичное имя источника.
 - Пользовательский статус (`user_status`) хранится локально и не является статусом релиза AnimeLIB. Значения: `1` — «Смотрю», `2` — «В планах», `3` — «Обожаю», `4` — «Досмотрел», `5` — «Брошено»; по умолчанию `2`. Анонсированный тайтл может иметь только «В планах».
-- **Миграции сейчас не создаются.** Схема создаётся с нуля; `prepareDatabase` в `store/store.go` штампует `user_version = 2` и правит известные старые значения `source`/`slug` напрямую. При изменении схемы сначала обновляй `schemaSQL` и эту нормализацию; отдельный файл миграций не добавляй, пока владелец явно не попросит.
+- **Миграции сейчас не создаются.** Схема создаётся с нуля; `prepareDatabase` в `storage/db.go` штампует `user_version = 2` и правит известные старые значения `source`/`slug` напрямую. При изменении схемы сначала обновляй `storage/sql/schema.sql` и эту нормализацию; отдельный файл миграций не добавляй, пока владелец явно не попросит.
 - Токен нельзя писать в логи, базу, сообщения об ошибках или коммиты.
 
 ### Логирование
@@ -181,21 +184,21 @@ docs/                   техническая документация (party.m
 
 - Базовый URL API — `https://api.cdnlibs.org`; заголовки должны имитировать сайт (`Referer`, `Origin`, `Site-Id`, `User-Agent`).
 - Без токена защищённые запросы должны возвращать понятную пользователю ошибку на русском.
-- Лимит AnimeLIB — около 100 запросов в фиксированное 60-секундное окно. Общий rate limiter в `animelib/rate_limit.go` обязателен: не обходи его, не запускай неограниченный параллелизм и не убирай ожидание после 429.
+- Лимит AnimeLIB — около 100 запросов в фиксированное 60-секундное окно. Общий rate limiter в `libsocial/rate_limit.go` обязателен: не обходи его, не запускай неограниченный параллелизм и не убирай ожидание после 429.
 - Семафор клиента ограничивает одновременные запросы; новые тяжёлые запросы добавляй через существующий клиент.
 - `ParseInput` должен принимать и полную ссылку, и slug, и ссылки зеркал.
 
 ### Filmlib
 
-- Токен AnimeLIB для `filmlib` не нужен; запросы этого источника не должны попадать в `animelib` rate limiter.
-- Ключи серий — плоский список: `"1"` у фильма, `S{сезон}E{серия}` у сериала. Их нельзя прогонять через `animelib.NormalizeEpisodeNumber`; для отображения используй `episodeDisplayLabel`.
+- Токен AnimeLIB для `filmlib` не нужен; запросы этого источника не должны попадать в `libsocial` rate limiter.
+- Ключи серий — плоский список: `"1"` у фильма, `S{сезон}E{серия}` у сериала. Их нельзя прогонять через `libsocial.NormalizeEpisodeNumber`; для отображения используй `episodeDisplayLabel`.
 - Сезоны живут только в `Title.Seasons` и не кэшируются. У фильма сезонов нет: каталог отдаёт его как сезон 0, и фантомный сезон в UI недопустим.
 - Метаданные берутся из неофициального API (v2.2, затем v2.1); при отказе остаётся заглушка с постером `https://st.kp.yandex.net/images/film_big/{id}.jpg` и именем `#{id}`. Вшитый ключ — часть контракта: не превращай его в обязательную настройку.
 - Каталог озвучек читается без браузера: `api/players` обёртки, затем HTML театра с `fileList = JSON.parse(...)`. Хост театра берётся из ответа players, `%APPDATA%\yoanime\filmlib.json` — переопределение для форков; старый `kinopoisk.json` читается как fallback.
 - Потоки резолвит только общий headless Chromium: страница одна, вызовы сериализованы, iframe перенаправляется на нужную серию. Не заменяй это на `net/http`.
 - `hlsSource[].quality` у фильма может быть двумя зеркалами VK через `" or "`. В mpv отдавай ровно один валидный URL, а дорожку ищи сравнением со всеми зеркалами.
 - Озвучка фильма определяется по первому запросу `.m3u8`: `audioId` в `hlsSource` не равен id перевода, совпадение URL — единственный надёжный признак.
-- Заголовки mpv задаются на каждый файл через `set_property http-header-fields` (`Referer` — точный URL театра, `Origin`, `authorizations`). Для файлов AnimeLIB их обязательно возвращать к `animelibStreamHeaders`, иначе после серии `filmlib` сломается прямой плеер.
+- Заголовки mpv задаются на каждый файл через `set_property http-header-fields` (`Referer` — точный URL театра, `Origin`, `authorizations`). Для файлов LibSocial их обязательно возвращать к `libsocialStreamHeaders`, иначе после серии `filmlib` сломается прямой плеер.
 - Все `captions`-дорожки добавляются в mpv: дефолтная — `select`, остальные — `auto`, чтобы их можно было переключать из mpv.
 - `skipTime` превращается в главы через `metadata.ChapterTitle` (`Opening`/`Ending`). Произвольные и русские заголовки ломают автопропуск: `SegmentFromChapterTitle` знает только английские метки.
 - Окно предзагрузки `filmlib` меньше анимешного: 8 серий вперёд и 2 назад, потому что каждая серия стоит headless-резолва.
@@ -242,7 +245,7 @@ docs/                   техническая документация (party.m
 
 - Пользователь входит на сайте AnimeLIB сам; приложение только открывает сайт и читает сохранённый токен.
 - Профиль Chromium persistent, чтобы сессия переживала перезапуск.
-- Токен хранится в `%APPDATA%\yoanime\animelib_token.txt` в контейнере Windows DPAPI (пользовательский scope); старый открытый файл мигрирует при первом чтении. Не заменяй DPAPI на обратимое кодирование и не логируй содержимое.
+- Токен хранится в `%APPDATA%\yoanime\libsocial.token` в контейнере Windows DPAPI (пользовательский scope); старый открытый файл мигрирует при первом чтении. Старый `animelib_token.txt` намеренно не мигрируется: после переименования может потребоваться повторный вход. Не заменяй DPAPI на обратимое кодирование и не логируй содержимое.
 - Токен считается истёкшим за 2 минуты до фактического окончания (`token.ExpiryMargin`).
 - `Manager.Close` должен уметь прервать и установку, и авторизацию.
 
@@ -287,7 +290,7 @@ docs/                   техническая документация (party.m
 # Полная проверка
 go test ./...
 go vet ./...
-gofmt -l .\cmd .\app .\animelib .\browser .\catalog .\filmlib .\kodik .\library .\log .\metadata .\mpv .\party .\playback .\platform .\store .\token .\ui .\update .\version .\tools
+gofmt -l .\cmd .\app .\libsocial .\browser .\catalog .\filmlib .\kodik .\library .\log .\metadata .\mpv .\party .\playback .\platform .\storage .\token .\ui .\update .\version .\tools
 
 # Один тест
 go test ./playback -run TestName -v
