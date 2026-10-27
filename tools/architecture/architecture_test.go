@@ -16,7 +16,7 @@ import (
 	"testing"
 )
 
-const modulePath = "github.com/arfush/yonime"
+const modulePath = "github.com/arfush/yoanime"
 
 // featureDirs are packages that implement a product feature. Platform code is
 // allowed to use leaves such as log or version, but must not depend on them.

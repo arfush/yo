@@ -7,24 +7,24 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/arfush/yonime/internal/appdata"
+	"github.com/arfush/yoanime/internal/appdata"
 )
 
 // The guest input section is shipped as an mpv input.conf. It is copied to the
 // per-user mpv directory at playback start so a watch-party guest whose host
 // keeps control can still use the player without seeking or pausing.
 //
-//go:embed yonime-input.conf
+//go:embed yoanime-input.conf
 var guestInputConf []byte
 
-const guestInputConfName = "yonime-input.conf"
+const guestInputConfName = "yoanime-input.conf"
 
 // guestInputSection is enabled only while a watch-party guest cannot control
 // the timeline. Keeping the section in a real input.conf lets mpv keep every
 // other binding untouched.
-const guestInputSection = "yonime-no-timeline"
+const guestInputSection = "yoanime-no-timeline"
 
-// installInputConf writes the guest input bindings into %APPDATA%\Yonime\mpv
+// installInputConf writes the guest input bindings into %APPDATA%\yoanime\mpv
 // and returns their path. The file is only rewritten when its contents change.
 func installInputConf() (string, error) {
 	dir, err := appdata.MPVDir()
@@ -41,7 +41,7 @@ func installInputConf() (string, error) {
 	// Older builds drew their own header from a Lua script in this directory.
 	// Playback no longer loads it; drop the stale copy so it cannot be picked
 	// up by a manually started mpv from the same config directory.
-	_ = os.Remove(filepath.Join(dir, "yonime-header.lua"))
+	_ = os.Remove(filepath.Join(dir, "yoanime-header.lua"))
 	return path, nil
 }
 

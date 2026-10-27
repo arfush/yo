@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode/utf16"
 
-	"github.com/arfush/yonime/internal/library"
+	"github.com/arfush/yoanime/internal/library"
 )
 
 // NOTIFYICONDATAW stores szInfoTitle as 64 UTF-16 units and szInfo as 256.

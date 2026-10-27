@@ -68,7 +68,7 @@ func TestPresenceDetailsKeepsTheEpisodeWhenTheTitleIsLong(t *testing.T) {
 }
 
 // TestPresenceActivityKeepsTheAppNameAndHasNoArtwork locks the requested
-// shape: Discord shows the application name "Yonime", the compact status line
+// shape: Discord shows the application name "yoanime", the compact status line
 // stays on the default name, and no cover is uploaded anywhere.
 func TestPresenceActivityKeepsTheAppNameAndHasNoArtwork(t *testing.T) {
 	presence := Presence{Title: "Фрирен", Episode: "5", Total: 12}

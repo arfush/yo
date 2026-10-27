@@ -2,7 +2,7 @@
 
 package token
 
-// Yonime ships only for Windows; these stubs keep the package buildable and
+// yoanime ships only for Windows; these stubs keep the package buildable and
 // its pure parsing tests runnable on other platforms. They deliberately do not
 // pretend to encrypt anything. The Windows build uses DPAPI.
 func protect(data []byte) ([]byte, error) {

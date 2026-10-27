@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/arfush/yonime/internal/animelib"
+	"github.com/arfush/yoanime/internal/animelib"
 )
 
 func TestPickSubtitleTrackPrefersASS(t *testing.T) {

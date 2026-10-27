@@ -1,13 +1,13 @@
 param(
     [string]$Version = "",
-    [string]$Repo = "arfush/yonime",
+    [string]$Repo = "arfush/yoanime",
     [string]$Arch = "amd64",
     [string]$Output = ""
 )
 
 # Builds a stripped Windows GUI executable. The release workflow passes the
 # version, repository and architecture; local builds default to the current
-# machine's architecture and yonime.exe.
+# machine's architecture and yoanime.exe.
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
@@ -25,9 +25,9 @@ if ($Version) {
 
 if (-not $Output) {
     if ($Version) {
-        $Output = "dist\yonime_${Version}_${Arch}.exe"
+        $Output = "dist\yoanime_${Version}_${Arch}.exe"
     } else {
-        $Output = "yonime.exe"
+        $Output = "yoanime.exe"
     }
 }
 
@@ -38,17 +38,17 @@ if ($outDir) {
 
 $ldflags = "-s -w -H=windowsgui"
 if ($Version) {
-    $ldflags += " -X github.com/arfush/yonime/internal/version.Version=$Version"
+    $ldflags += " -X github.com/arfush/yoanime/internal/version.Version=$Version"
 }
 if ($Repo) {
-    $ldflags += " -X github.com/arfush/yonime/internal/updates.Repository=$Repo"
+    $ldflags += " -X github.com/arfush/yoanime/internal/updates.Repository=$Repo"
 }
 
 # The Discord application id names the activity shown in the profile. It is
 # public by design and baked into the official build; a fork can point at its
 # own application with this variable.
-if ($env:YONIME_DISCORD_APP_ID) {
-    $ldflags += " -X github.com/arfush/yonime/internal/discord.AppID=$($env:YONIME_DISCORD_APP_ID.Trim())"
+if ($env:YOANIME_DISCORD_APP_ID) {
+    $ldflags += " -X github.com/arfush/yoanime/internal/discord.AppID=$($env:YOANIME_DISCORD_APP_ID.Trim())"
 }
 
 # Party relays are deployed once and baked into the official build so the
@@ -65,9 +65,9 @@ if (Test-Path $partyFile) {
 }
 
 $partyFlags = @(
-    @{ Env = "YONIME_PARTY_CLOUDFLARE_URL"; Field = "cloudflare_url"; Symbol = "CloudflareURL" },
-    @{ Env = "YONIME_PARTY_SUPABASE_URL"; Field = "supabase_url"; Symbol = "SupabaseURL" },
-    @{ Env = "YONIME_PARTY_SUPABASE_KEY"; Field = "supabase_key"; Symbol = "SupabaseKey" }
+    @{ Env = "YOANIME_PARTY_CLOUDFLARE_URL"; Field = "cloudflare_url"; Symbol = "CloudflareURL" },
+    @{ Env = "YOANIME_PARTY_SUPABASE_URL"; Field = "supabase_url"; Symbol = "SupabaseURL" },
+    @{ Env = "YOANIME_PARTY_SUPABASE_KEY"; Field = "supabase_key"; Symbol = "SupabaseKey" }
 )
 $partyBaked = @()
 foreach ($flag in $partyFlags) {
@@ -90,7 +90,7 @@ foreach ($flag in $partyFlags) {
         Write-Warning "party: $($flag.Field) is still the party.json example, skip it"
         continue
     }
-    $ldflags += " -X github.com/arfush/yonime/party.$($flag.Symbol)=$value"
+    $ldflags += " -X github.com/arfush/yoanime/party.$($flag.Symbol)=$value"
     $partyBaked += "$($flag.Field) ($source)"
 }
 if ($partyBaked.Count -gt 0) {
@@ -101,13 +101,13 @@ $env:CGO_ENABLED = "0"
 $env:GOOS = "windows"
 $env:GOARCH = $Arch
 
-go build -trimpath -ldflags="$ldflags" -o $Output .\cmd\yonime
+go build -trimpath -ldflags="$ldflags" -o $Output .\cmd\yoanime
 
 $size = (Get-Item $Output).Length
 Write-Host ("Built {0}: {1:N1} MB" -f $Output, ($size / 1MB))
 
 # Signing is optional and controlled by environment variables documented in
 # sign.ps1, so a build without a certificate still succeeds.
-if ($env:YONIME_SIGN_PFX -or $env:YONIME_SIGN_PFX_BASE64 -or $env:YONIME_SIGN_THUMBPRINT) {
+if ($env:YOANIME_SIGN_PFX -or $env:YOANIME_SIGN_PFX_BASE64 -or $env:YOANIME_SIGN_THUMBPRINT) {
     & (Join-Path $PSScriptRoot "sign.ps1") -Path $Output
 }

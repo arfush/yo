@@ -1,6 +1,6 @@
 package playback
 
-import "github.com/arfush/yonime/internal/metadata"
+import "github.com/arfush/yoanime/internal/metadata"
 
 // autoSkipMargin keeps the target a little before the exact end of a segment.
 // mpv reports time-pos a few tenths behind the seek target, so without the

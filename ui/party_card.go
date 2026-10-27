@@ -15,7 +15,7 @@ import (
 	"gioui.org/op"
 	"gioui.org/unit"
 
-	"github.com/arfush/yonime/party"
+	"github.com/arfush/yoanime/party"
 )
 
 func (w *partyWindow) layoutCardText(gtx layout.Context, cardWidth int, px func(float32) int, title, description string) {

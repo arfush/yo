@@ -1,7 +1,7 @@
-// Package appdata resolves the per-user directory where Yonime keeps its
+// Package appdata resolves the per-user directory where yoanime keeps its
 // database, token and browser profile.
 //
-// On Windows that directory is %APPDATA%\Yonime. Keeping user data out of the
+// On Windows that directory is %APPDATA%\yoanime. Keeping user data out of the
 // executable directory means an application update or a read-only install
 // location cannot lose the library.
 package appdata
@@ -14,15 +14,15 @@ import (
 	"strings"
 )
 
-const dirName = "Yonime"
+const dirName = "yoanime"
 
 // legacyDirName is the lower-case directory used by releases before the
 // app-data rename. On a case-insensitive file system it is the same directory;
 // on a case-sensitive one it is moved to the new name on first launch.
-const legacyDirName = "yonime"
+const legacyDirName = "yoanime"
 
 const (
-	databaseName  = "yonime.sqlite"
+	databaseName  = "yoanime.sqlite"
 	tokenName     = "animelib_token.txt"
 	profileName   = "browser"
 	coversName    = "covers"
@@ -30,7 +30,7 @@ const (
 	updatesName   = "updates.json"
 	updateDirName = "update"
 	updateLogName = "update.log"
-	logName       = "yonime.log"
+	logName       = "yoanime.log"
 	// partyName is the relay configuration file. Releases before the party
 	// rename stored it as legacyPartyName; PartyConfigPath moves that file once
 	// so an existing override keeps working.
@@ -97,7 +97,7 @@ func ensureDir(base string) (string, error) {
 	return dir, nil
 }
 
-// MPVDir returns the directory where Yonime keeps its own mpv build. The
+// MPVDir returns the directory where yoanime keeps its own mpv build. The
 // directory is not created until a download starts.
 func MPVDir() (string, error) {
 	dir, err := Dir()
@@ -107,7 +107,7 @@ func MPVDir() (string, error) {
 	return filepath.Join(dir, mpvName), nil
 }
 
-// MPVPath returns the path of the mpv executable managed by Yonime.
+// MPVPath returns the path of the mpv executable managed by yoanime.
 func MPVPath() (string, error) {
 	dir, err := MPVDir()
 	if err != nil {

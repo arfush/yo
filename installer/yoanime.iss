@@ -1,9 +1,9 @@
-; Per-user Yonime installer. A per-user location (instead of Program Files)
-; keeps the in-app updater able to replace yonime.exe without an elevation
+; Per-user yoanime installer. A per-user location (instead of Program Files)
+; keeps the in-app updater able to replace yoanime.exe without an elevation
 ; prompt, while still giving the app Start menu, uninstall and Apps entries.
 
-#define AppName "Yonime"
-#define AppExe "yonime.exe"
+#define AppName "yoanime"
+#define AppExe "yoanime.exe"
 
 #ifndef VersionTag
 #define VersionTag "v0.0"
@@ -21,23 +21,23 @@ AppName={#AppName}
 AppVersion={#VersionNumber}
 AppVerName={#AppName} {#VersionTag}
 AppPublisher=arfush
-AppPublisherURL=https://github.com/arfush/yonime
-AppSupportURL=https://github.com/arfush/yonime/issues
-AppUpdatesURL=https://github.com/arfush/yonime/releases
+AppPublisherURL=https://github.com/arfush/yoanime
+AppSupportURL=https://github.com/arfush/yoanime/issues
+AppUpdatesURL=https://github.com/arfush/yoanime/releases
 DefaultDirName={localappdata}\Programs\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 AllowNoIcons=yes
 PrivilegesRequired=lowest
 OutputDir=dist
-OutputBaseFilename=yonime_{#VersionTag}_{#Arch}_setup
+OutputBaseFilename=yoanime_{#VersionTag}_{#Arch}_setup
 SetupIconFile=ui\assets\images\app-icon.ico
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
-AppMutex=Local\Yonime.SingleInstance
+AppMutex=Local\yoanime.SingleInstance
 CloseApplications=no
 SourceDir=..
 
@@ -59,7 +59,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "dist\yonime_{#VersionTag}_{#Arch}.exe"; DestDir: "{app}"; DestName: "{#AppExe}"; Flags: ignoreversion
+Source: "dist\yoanime_{#VersionTag}_{#Arch}.exe"; DestDir: "{app}"; DestName: "{#AppExe}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"

@@ -10,7 +10,7 @@ import (
 // a key from the wrong secret cannot open it, which gives an instant "wrong
 // secret" answer without asking the host. The plaintext is public knowledge on
 // purpose: knowing it does not help anyone produce a valid tag.
-const cardCheck = "yonime/party/card"
+const cardCheck = "yoanime/party/card"
 
 // ErrWrongSecret reports a secret that does not open the room.
 var ErrWrongSecret = errors.New("неверный секрет комнаты")

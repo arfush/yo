@@ -16,8 +16,8 @@ import (
 
 	"github.com/dexterlb/mpvipc"
 
-	"github.com/arfush/yonime/internal/metadata"
-	"github.com/arfush/yonime/internal/mpv"
+	"github.com/arfush/yoanime/internal/metadata"
+	"github.com/arfush/yoanime/internal/mpv"
 )
 
 type mpvEventKind int
@@ -67,7 +67,7 @@ func inputLockArgs(locked bool) []string {
 	if !locked {
 		return nil
 	}
-	// The timeline is blocked by the yonime-no-timeline input section, not by
+	// The timeline is blocked by the yoanime-no-timeline input section, not by
 	// disabling every binding. Only the OSC has to go: its buttons and seek bar
 	// would bypass the section.
 	return []string{"--osc=no"}
@@ -80,9 +80,9 @@ func startMPV(ctx context.Context, geometry, inputConfPath, title string, inputL
 	}
 	title = strings.TrimSpace(title)
 	if title == "" {
-		title = "Yonime"
+		title = "yoanime"
 	}
-	pipe := mpvPipePath("yonime-mpv-" + strconv.Itoa(os.Getpid()) + "-" + strconv.FormatInt(time.Now().UnixNano(), 36))
+	pipe := mpvPipePath("yoanime-mpv-" + strconv.Itoa(os.Getpid()) + "-" + strconv.FormatInt(time.Now().UnixNano(), 36))
 	args := []string{
 		"--input-ipc-server=" + pipe,
 		"--idle=yes",

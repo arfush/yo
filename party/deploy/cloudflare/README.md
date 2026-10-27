@@ -1,7 +1,7 @@
 # Совместный просмотр через Cloudflare
 
 Реле — Worker + Durable Object. Одна комната = один Durable Object, которому
-клиент отдаёт не ключ, а его адрес: `sha256("yonime/party/room\0" + ключ)`,
+клиент отдаёт не ключ, а его адрес: `sha256("yoanime/party/room\0" + ключ)`,
 первые 16 байт в hex (32 символа). Ключ вида `YOC4K7Q2M` (буква `C` после `YO`
 означает Cloudflare) остаётся у собеседников. Сайт `*.workers.dev` работает на
 бесплатном плане, отдельный домен не нужен.
@@ -24,13 +24,13 @@ wrangler deploy
 `wrangler deploy` напечатает адрес вида:
 
 ```text
-https://yonime-party.<ваш-аккаунт>.workers.dev
+https://yoanime-party.<ваш-аккаунт>.workers.dev
 ```
 
 Проверка, что реле живо:
 
 ```bash
-curl https://yonime-party.<ваш-аккаунт>.workers.dev/health
+curl https://yoanime-party.<ваш-аккаунт>.workers.dev/health
 # ok
 ```
 
@@ -48,7 +48,7 @@ curl https://yonime-party.<ваш-аккаунт>.workers.dev/health
 1. `wrangler deploy` — получить адрес.
 2. Проверить `/health`.
 3. Записать адрес в один из двух источников:
-   - переменная `YONIME_PARTY_CLOUDFLARE_URL` (локально — в окружении, в CI —
+   - переменная `YOANIME_PARTY_CLOUDFLARE_URL` (локально — в окружении, в CI —
      GitHub **Settings → Secrets and variables → Actions → Variables**);
    - или `cloudflare_url` в `party.json` в корне репозитория.
 4. Собрать релиз (`release: vX.Y`). `build.ps1` передаёт значение в
@@ -62,7 +62,7 @@ curl https://yonime-party.<ваш-аккаунт>.workers.dev/health
 Локальная сборка:
 
 ```powershell
-$env:YONIME_PARTY_CLOUDFLARE_URL = "https://yonime-party.<ваш-аккаунт>.workers.dev"
+$env:YOANIME_PARTY_CLOUDFLARE_URL = "https://yoanime-party.<ваш-аккаунт>.workers.dev"
 .\build.ps1 -Version 1.0 -Arch amd64
 ```
 
@@ -71,13 +71,13 @@ $env:YONIME_PARTY_CLOUDFLARE_URL = "https://yonime-party.<ваш-аккаунт>
 
 ## Подключение клиента без своей сборки
 
-Адрес можно ввести в настройках Yonime: **Совместный просмотр → Провайдер →
+Адрес можно ввести в настройках yoanime: **Совместный просмотр → Провайдер →
 Cloudflare Endpoint**. То же самое можно сделать файлом
-`%APPDATA%\Yonime\party.json`:
+`%APPDATA%\yoanime\party.json`:
 
 ```json
 {
-  "cloudflare_url": "https://yonime-party.<ваш-аккаунт>.workers.dev"
+  "cloudflare_url": "https://yoanime-party.<ваш-аккаунт>.workers.dev"
 }
 ```
 
@@ -89,7 +89,7 @@ Cloudflare Endpoint**. То же самое можно сделать файло
 Вшить адрес вручную тоже можно:
 
 ```bash
-go build -ldflags "-X github.com/arfush/yonime/party.CloudflareURL=https://yonime-party.example.workers.dev" ./cmd/yonime
+go build -ldflags "-X github.com/arfush/yoanime/party.CloudflareURL=https://yoanime-party.example.workers.dev" ./cmd/yoanime
 ```
 
 ## Что внутри

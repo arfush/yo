@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/arfush/yonime/internal/library"
+	"github.com/arfush/yoanime/internal/library"
 )
 
 type titleStatus int

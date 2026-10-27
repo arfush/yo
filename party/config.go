@@ -19,7 +19,7 @@ var (
 	SupabaseKey   = ""
 )
 
-// Config is the relay configuration stored next to the other Yonime files.
+// Config is the relay configuration stored next to the other yoanime files.
 type Config struct {
 	CloudflareURL string `json:"cloudflare_url"`
 	SupabaseURL   string `json:"supabase_url"`

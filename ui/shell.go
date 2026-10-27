@@ -15,7 +15,7 @@ import (
 	"gioui.org/op/clip"
 	"gioui.org/widget"
 
-	"github.com/arfush/yonime/internal/version"
+	"github.com/arfush/yoanime/internal/version"
 )
 
 type shell struct {
@@ -277,9 +277,9 @@ func (s *shell) layoutHeader(gtx layout.Context, w *app.Window, g geometry) {
 	// The title is deliberately pinned to a common baseline between the logo
 	// and version badge, rather than being laid out as flowing text.
 	titleFace := font.Font{Typeface: fontFamily, Weight: font.Bold}
-	_, titleInk := s.typo.measure(gtx, "Yonime", titleFace, titleSize)
+	_, titleInk := s.typo.measure(gtx, "yoanime", titleFace, titleSize)
 	titleY := g.headerCenterY - titleInk.Dy()/2
-	s.typo.draw(gtx, "Yonime", titleFace, titleSize, titleColor, image.Pt(g.titleX, titleY))
+	s.typo.draw(gtx, "yoanime", titleFace, titleSize, titleColor, image.Pt(g.titleX, titleY))
 
 	badgeRight := s.layoutBadge(gtx, g)
 	notice := headerNotice{}

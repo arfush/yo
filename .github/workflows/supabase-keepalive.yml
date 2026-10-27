@@ -5,8 +5,8 @@ name: Supabase keep-alive
 # users. Enable it by adding two repository variables (Settings -> Secrets and
 # variables -> Actions -> Variables):
 #
-#   YONIME_PARTY_SUPABASE_URL  https://<project>.supabase.co
-#   YONIME_PARTY_SUPABASE_KEY  the publishable (anon) key used by the app
+#   YOANIME_PARTY_SUPABASE_URL  https://<project>.supabase.co
+#   YOANIME_PARTY_SUPABASE_KEY  the publishable (anon) key used by the app
 #
 # The workflow only needs a public key, which is already shipped in the exe.
 # When the variables are missing (forks, local copies), the job reports a
@@ -31,11 +31,11 @@ jobs:
       - name: Check configuration
         id: config
         env:
-          YONIME_PARTY_SUPABASE_URL: ${{ vars.YONIME_PARTY_SUPABASE_URL }}
-          YONIME_PARTY_SUPABASE_KEY: ${{ vars.YONIME_PARTY_SUPABASE_KEY }}
+          YOANIME_PARTY_SUPABASE_URL: ${{ vars.YOANIME_PARTY_SUPABASE_URL }}
+          YOANIME_PARTY_SUPABASE_KEY: ${{ vars.YOANIME_PARTY_SUPABASE_KEY }}
         run: |
-          if [ -z "$YONIME_PARTY_SUPABASE_URL" ] || [ -z "$YONIME_PARTY_SUPABASE_KEY" ]; then
-            echo "::warning::Supabase keep-alive is skipped: set the YONIME_PARTY_SUPABASE_URL and YONIME_PARTY_SUPABASE_KEY repository variables to enable it."
+          if [ -z "$YOANIME_PARTY_SUPABASE_URL" ] || [ -z "$YOANIME_PARTY_SUPABASE_KEY" ]; then
+            echo "::warning::Supabase keep-alive is skipped: set the YOANIME_PARTY_SUPABASE_URL and YOANIME_PARTY_SUPABASE_KEY repository variables to enable it."
             echo "configured=false" >> "$GITHUB_OUTPUT"
           else
             echo "configured=true" >> "$GITHUB_OUTPUT"
@@ -44,14 +44,14 @@ jobs:
       - name: Ping the project
         if: steps.config.outputs.configured == 'true'
         env:
-          YONIME_PARTY_SUPABASE_URL: ${{ vars.YONIME_PARTY_SUPABASE_URL }}
-          YONIME_PARTY_SUPABASE_KEY: ${{ vars.YONIME_PARTY_SUPABASE_KEY }}
+          YOANIME_PARTY_SUPABASE_URL: ${{ vars.YOANIME_PARTY_SUPABASE_URL }}
+          YOANIME_PARTY_SUPABASE_KEY: ${{ vars.YOANIME_PARTY_SUPABASE_KEY }}
         run: |
-          url="${YONIME_PARTY_SUPABASE_URL%/}"
+          url="${YOANIME_PARTY_SUPABASE_URL%/}"
           # /rest/v1/ answers with the OpenAPI document for any valid key and
           # never touches a table, so the ping cannot mutate user data.
           curl --fail --silent --show-error --retry 3 --retry-delay 20 \
-            --header "apikey: $YONIME_PARTY_SUPABASE_KEY" \
-            --header "Authorization: Bearer $YONIME_PARTY_SUPABASE_KEY" \
+            --header "apikey: $YOANIME_PARTY_SUPABASE_KEY" \
+            --header "Authorization: Bearer $YOANIME_PARTY_SUPABASE_KEY" \
             "$url/rest/v1/" > /dev/null
           echo "Supabase answered; the free project stays awake."

@@ -1,4 +1,4 @@
-module github.com/arfush/yonime
+module github.com/arfush/yoanime
 
 go 1.26.5
 

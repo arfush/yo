@@ -3,7 +3,7 @@ package playback
 import (
 	"testing"
 
-	"github.com/arfush/yonime/internal/metadata"
+	"github.com/arfush/yoanime/internal/metadata"
 )
 
 func TestAutoSkipTargetFindsEnabledSegment(t *testing.T) {

@@ -15,7 +15,7 @@ import (
 	"gioui.org/op"
 	"gioui.org/unit"
 
-	"github.com/arfush/yonime/log"
+	"github.com/arfush/yoanime/log"
 )
 
 func TestLogWindowStartsAtNewestAndEnterJumpsToEnd(t *testing.T) {

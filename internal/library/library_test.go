@@ -14,9 +14,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/arfush/yonime/internal/animelib"
-	"github.com/arfush/yonime/internal/metadata"
-	"github.com/arfush/yonime/internal/store"
+	"github.com/arfush/yoanime/internal/animelib"
+	"github.com/arfush/yoanime/internal/metadata"
+	"github.com/arfush/yoanime/internal/store"
 )
 
 func TestChoiceFallsBackToCompleteVoiceAndEpisode(t *testing.T) {
@@ -42,7 +42,7 @@ func TestChoiceFallsBackToCompleteVoiceAndEpisode(t *testing.T) {
 // every segment starts off, and each choice is stored by segment key.
 func TestAutoSkipSegmentsOptInAndPersist(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "yonime.sqlite")
+	path := filepath.Join(dir, "yoanime.sqlite")
 	lib, err := Open(path, filepath.Join(dir, "token.txt"))
 	if err != nil {
 		t.Fatal(err)
@@ -75,7 +75,7 @@ func TestAutoSkipSegmentsOptInAndPersist(t *testing.T) {
 // their history with the host's voice and keep the progress mpv writes.
 func TestTrackViewingTracksUnseenTitles(t *testing.T) {
 	dir := t.TempDir()
-	lib, err := Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	lib, err := Open(filepath.Join(dir, "yoanime.sqlite"), filepath.Join(dir, "token.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestCoverCacheFailureIsRetriedAndThenReused(t *testing.T) {
 	defer server.Close()
 
 	dir := t.TempDir()
-	lib, err := Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	lib, err := Open(filepath.Join(dir, "yoanime.sqlite"), filepath.Join(dir, "token.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestDeleteHistoryRemovesCachedCover(t *testing.T) {
 	defer server.Close()
 
 	dir := t.TempDir()
-	lib, err := Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	lib, err := Open(filepath.Join(dir, "yoanime.sqlite"), filepath.Join(dir, "token.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ func TestDeleteHistoryRemovesCachedCover(t *testing.T) {
 // the database value, so the fresh in-memory metadata has to adopt it back.
 func TestUpsertLoadedTitleKeepsStoredUserStatus(t *testing.T) {
 	dir := t.TempDir()
-	lib, err := Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	lib, err := Open(filepath.Join(dir, "yoanime.sqlite"), filepath.Join(dir, "token.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +333,7 @@ func TestPreviewCoverIsReusedAndAdoptedOnSave(t *testing.T) {
 	defer server.Close()
 
 	dir := t.TempDir()
-	lib, err := Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	lib, err := Open(filepath.Join(dir, "yoanime.sqlite"), filepath.Join(dir, "token.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -398,7 +398,7 @@ func TestPreviewCoverIsReusedAndAdoptedOnSave(t *testing.T) {
 
 func TestSavePersistsTitleAndSelectionOnce(t *testing.T) {
 	dir := t.TempDir()
-	lib, err := Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	lib, err := Open(filepath.Join(dir, "yoanime.sqlite"), filepath.Join(dir, "token.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -469,7 +469,7 @@ func TestSavePersistsTitleAndSelectionOnce(t *testing.T) {
 
 func TestAnnouncedTitleKeepsPlannedStatus(t *testing.T) {
 	dir := t.TempDir()
-	lib, err := Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	lib, err := Open(filepath.Join(dir, "yoanime.sqlite"), filepath.Join(dir, "token.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -501,7 +501,7 @@ func TestAnnouncedTitleKeepsPlannedStatus(t *testing.T) {
 
 func TestTrackViewingPromotesPlannedTitle(t *testing.T) {
 	dir := t.TempDir()
-	lib, err := Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	lib, err := Open(filepath.Join(dir, "yoanime.sqlite"), filepath.Join(dir, "token.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -540,7 +540,7 @@ func TestTrackViewingPromotesPlannedTitle(t *testing.T) {
 
 func TestMarkCompletedOverridesUserStatus(t *testing.T) {
 	dir := t.TempDir()
-	lib, err := Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	lib, err := Open(filepath.Join(dir, "yoanime.sqlite"), filepath.Join(dir, "token.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -590,7 +590,7 @@ func TestCoverIsReplacedWhenURLFilenameChanges(t *testing.T) {
 	defer server.Close()
 
 	dir := t.TempDir()
-	lib, err := Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	lib, err := Open(filepath.Join(dir, "yoanime.sqlite"), filepath.Join(dir, "token.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}

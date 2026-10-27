@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/arfush/yonime/internal/library"
-	"github.com/arfush/yonime/internal/store"
+	"github.com/arfush/yoanime/internal/library"
+	"github.com/arfush/yoanime/internal/store"
 )
 
 func TestUserStatusFilterStatus(t *testing.T) {
@@ -130,7 +130,7 @@ func TestSetUserStatusRemovesRowFromCurrentFilter(t *testing.T) {
 
 func TestPersistHistoryOrderWritesOnlyTheActiveStatus(t *testing.T) {
 	dir := t.TempDir()
-	databasePath := filepath.Join(dir, "yonime.sqlite")
+	databasePath := filepath.Join(dir, "yoanime.sqlite")
 	db, err := store.Open(databasePath)
 	if err != nil {
 		t.Fatal(err)

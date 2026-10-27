@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arfush/yonime/log"
+	"github.com/arfush/yoanime/log"
 )
 
 type githubRelease struct {

@@ -1,4 +1,4 @@
-// Package party keeps a room of Yonime clients on the same playback
+// Package party keeps a room of yoanime clients on the same playback
 // position. A room lives on a relay the user deploys themselves; this package
 // only speaks the wire protocol and the drift correction math.
 package party
@@ -64,7 +64,7 @@ func Address(key string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256([]byte("yonime/party/room\x00" + normalized))
+	sum := sha256.Sum256([]byte("yoanime/party/room\x00" + normalized))
 	return hex.EncodeToString(sum[:addressBytes]), nil
 }
 

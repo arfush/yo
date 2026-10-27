@@ -151,7 +151,7 @@ func TestAddressPinsPartyNamespace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Address: %v", err)
 	}
-	const want = "f3170f4fcb568e94d760867684515e2e"
+	const want = "bd46a3e3b9cd4486ec6a4e75e10956b9"
 	if address != want {
 		t.Fatalf("address = %q, want %q; changing it breaks rooms across versions", address, want)
 	}

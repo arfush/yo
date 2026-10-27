@@ -9,7 +9,7 @@ import (
 )
 
 func TestLogFileAndLastErrorContext(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "yonime.log")
+	path := filepath.Join(t.TempDir(), "yoanime.log")
 	if err := Init(path); err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestLogFileAndLastErrorContext(t *testing.T) {
 }
 
 func TestSnapshotDoesNotIncludeOrdinaryLinesInCopy(t *testing.T) {
-	if err := Init(filepath.Join(t.TempDir(), "yonime.log")); err != nil {
+	if err := Init(filepath.Join(t.TempDir(), "yoanime.log")); err != nil {
 		t.Fatal(err)
 	}
 	defer Close()
@@ -52,7 +52,7 @@ func TestSnapshotDoesNotIncludeOrdinaryLinesInCopy(t *testing.T) {
 }
 
 func TestClearDropsRingButKeepsFileAndLastError(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "yonime.log")
+	path := filepath.Join(t.TempDir(), "yoanime.log")
 	if err := Init(path); err != nil {
 		t.Fatal(err)
 	}

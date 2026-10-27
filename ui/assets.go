@@ -3,7 +3,7 @@ package ui
 import (
 	"image"
 
-	"github.com/arfush/yonime/ui/assets"
+	"github.com/arfush/yoanime/ui/assets"
 )
 
 func loadAppIcon() (image.Image, error) {

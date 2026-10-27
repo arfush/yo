@@ -16,7 +16,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yonime/party"
+	"github.com/arfush/yoanime/party"
 )
 
 func (w *partyWindow) layoutKeyField(gtx layout.Context, rect image.Rectangle, value string, editable, errored bool, shake float32) bool {

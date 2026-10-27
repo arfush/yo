@@ -1,6 +1,6 @@
-APP     := yonime.exe
+APP     := yoanime.exe
 VERSION ?=
-REPO    ?= arfush/yonime
+REPO    ?= arfush/yoanime
 ARCH    ?= amd64
 
 .DEFAULT_GOAL := build

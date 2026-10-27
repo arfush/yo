@@ -10,10 +10,10 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// tokenEntropy binds the DPAPI blob to Yonime. DPAPI already ties it to the
+// tokenEntropy binds the DPAPI blob to yoanime. DPAPI already ties it to the
 // current Windows user; the extra entropy prevents another application running
 // as the same user from decrypting the file just by calling CryptUnprotectData.
-var tokenEntropy = []byte("Yonime/animelib-token/v1")
+var tokenEntropy = []byte("yoanime/animelib-token/v1")
 
 // protect encrypts the token payload with user-scoped Windows DPAPI. The
 // ciphertext can only be opened by the same Windows user on the same machine.

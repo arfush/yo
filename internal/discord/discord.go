@@ -2,7 +2,7 @@
 //
 // Discord accepts presence from native applications over a local named pipe:
 // no bot token, OAuth flow or server is involved, only a public application id.
-// The connection is best effort. Discord may be closed, start after Yonime or
+// The connection is best effort. Discord may be closed, start after yoanime or
 // restart in the middle of an episode, so the manager reconnects on its own and
 // silently does nothing when the pipe is unavailable.
 package discord
@@ -15,14 +15,14 @@ import (
 	"time"
 )
 
-// AppID is Yonime's Discord application id. It is public by design: the id only
+// AppID is yoanime's Discord application id. It is public by design: the id only
 // names the application whose name and art appear in the activity. Release
 // builds may replace it with -ldflags, so a fork can point at its own app.
 var AppID = "1563963634797912286"
 
 const (
-	// activityTypeWatching renders the card as "Смотрит Yonime" instead of
-	// "Играет в Yonime".
+	// activityTypeWatching renders the card as "Смотрит yoanime" instead of
+	// "Играет в yoanime".
 	activityTypeWatching = 3
 	// maxTextRunes is Discord's limit for details and state.
 	maxTextRunes = 128
@@ -35,7 +35,7 @@ const (
 	reconnectDelay = 10 * time.Second
 )
 
-// Presence is the text shown in the activity card. Yonime deliberately
+// Presence is the text shown in the activity card. yoanime deliberately
 // publishes no artwork: Discord renders a square image and would crop a
 // portrait poster, and sending the cover through an image proxy is not worth
 // the extra dependency. The app icon is enough.
@@ -74,7 +74,7 @@ func (p Presence) key() string {
 }
 
 // activity builds the SET_ACTIVITY payload. The application name is left to
-// Discord ("Yonime"), and the default status display type keeps the compact
+// Discord ("yoanime"), and the default status display type keeps the compact
 // line free of the "Watching" verb. Details carries the title and episode.
 func (p Presence) activity() map[string]any {
 	return map[string]any{

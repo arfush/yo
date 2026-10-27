@@ -3,20 +3,20 @@
 # The certificate comes from the environment so build.ps1 and installer.ps1 can
 # call this script without arguments:
 #
-#   YONIME_SIGN_PFX          path to a .pfx file
-#   YONIME_SIGN_PFX_BASE64   base64-encoded .pfx, for CI secrets
-#   YONIME_SIGN_PFX_PASSWORD password for the .pfx (may be empty)
-#   YONIME_SIGN_THUMBPRINT   thumbprint of a certificate already in the store
+#   YOANIME_SIGN_PFX          path to a .pfx file
+#   YOANIME_SIGN_PFX_BASE64   base64-encoded .pfx, for CI secrets
+#   YOANIME_SIGN_PFX_PASSWORD password for the .pfx (may be empty)
+#   YOANIME_SIGN_THUMBPRINT   thumbprint of a certificate already in the store
 #
 # A trusted signature requires a certificate issued by a public CA; a
 # self-signed certificate only helps on machines that trust it explicitly.
 param(
     [Parameter(Mandatory = $true, Position = 0, ValueFromRemainingArguments = $true)]
     [string[]]$Path,
-    [string]$Thumbprint = $env:YONIME_SIGN_THUMBPRINT,
-    [string]$PfxPath = $env:YONIME_SIGN_PFX,
-    [string]$PfxBase64 = $env:YONIME_SIGN_PFX_BASE64,
-    [string]$PfxPassword = $env:YONIME_SIGN_PFX_PASSWORD,
+    [string]$Thumbprint = $env:YOANIME_SIGN_THUMBPRINT,
+    [string]$PfxPath = $env:YOANIME_SIGN_PFX,
+    [string]$PfxBase64 = $env:YOANIME_SIGN_PFX_BASE64,
+    [string]$PfxPassword = $env:YOANIME_SIGN_PFX_PASSWORD,
     [string]$TimestampServer = "http://timestamp.digicert.com"
 )
 
@@ -27,7 +27,7 @@ $importedThumbprint = $null
 
 try {
     if ($PfxBase64) {
-        $tempPfx = Join-Path ([IO.Path]::GetTempPath()) ("yonime-sign-" + [guid]::NewGuid().ToString("N") + ".pfx")
+        $tempPfx = Join-Path ([IO.Path]::GetTempPath()) ("yoanime-sign-" + [guid]::NewGuid().ToString("N") + ".pfx")
         [IO.File]::WriteAllBytes($tempPfx, [Convert]::FromBase64String($PfxBase64))
         $PfxPath = $tempPfx
     }
@@ -62,7 +62,7 @@ try {
             throw "No code signing certificate with thumbprint $Thumbprint was found"
         }
     } else {
-        throw "No signing certificate configured. Set YONIME_SIGN_PFX, YONIME_SIGN_PFX_BASE64 or YONIME_SIGN_THUMBPRINT."
+        throw "No signing certificate configured. Set YOANIME_SIGN_PFX, YOANIME_SIGN_PFX_BASE64 or YOANIME_SIGN_THUMBPRINT."
     }
 
     foreach ($file in $Path) {

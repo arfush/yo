@@ -7,7 +7,7 @@ import (
 	"gioui.org/font/opentype"
 	"gioui.org/text"
 
-	"github.com/arfush/yonime/ui/assets"
+	"github.com/arfush/yoanime/ui/assets"
 )
 
 type typography struct {

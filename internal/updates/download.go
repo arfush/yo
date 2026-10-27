@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arfush/yonime/log"
+	"github.com/arfush/yoanime/log"
 )
 
 const downloadBufferSize = 64 << 10
@@ -61,7 +61,7 @@ func Download(ctx context.Context, client *http.Client, release Release, destina
 	if err != nil {
 		return "", err
 	}
-	request.Header.Set("User-Agent", "Yonime")
+	request.Header.Set("User-Agent", "yoanime")
 	request.Header.Set("Accept-Encoding", "identity")
 
 	response, err := client.Do(request)

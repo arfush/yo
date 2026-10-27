@@ -40,10 +40,10 @@ type releaseResponse struct {
 	} `json:"assets"`
 }
 
-// resolveRelease finds the latest shinchiro Windows build. YONIME_MPV_URL can
+// resolveRelease finds the latest shinchiro Windows build. YOANIME_MPV_URL can
 // override the source (used by tests and local mirrors).
 func resolveRelease(ctx context.Context, client *http.Client) (releaseAsset, error) {
-	if custom := strings.TrimSpace(os.Getenv("YONIME_MPV_URL")); custom != "" {
+	if custom := strings.TrimSpace(os.Getenv("YOANIME_MPV_URL")); custom != "" {
 		return releaseAsset{Name: path.Base(custom), URL: custom}, nil
 	}
 
@@ -52,7 +52,7 @@ func resolveRelease(ctx context.Context, client *http.Client) (releaseAsset, err
 	req, err := http.NewRequestWithContext(apiCtx, http.MethodGet, latestReleaseURL, nil)
 	if err == nil {
 		req.Header.Set("Accept", "application/vnd.github+json")
-		req.Header.Set("User-Agent", "Yonime")
+		req.Header.Set("User-Agent", "yoanime")
 		response, requestErr := client.Do(req)
 		if requestErr == nil {
 			defer response.Body.Close()
@@ -93,7 +93,7 @@ func downloadArchive(ctx context.Context, client *http.Client, asset releaseAsse
 		return err
 	}
 	req.Header.Set("Accept", "application/octet-stream")
-	req.Header.Set("User-Agent", "Yonime")
+	req.Header.Set("User-Agent", "yoanime")
 
 	response, err := client.Do(req)
 	if err != nil {

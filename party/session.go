@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arfush/yonime/log"
+	"github.com/arfush/yoanime/log"
 )
 
 const (
@@ -40,7 +40,7 @@ var (
 
 // ErrVersionMismatch reports a room whose host speaks another protocol
 // version. A guest leaves instead of applying anchors it may misread.
-var ErrVersionMismatch = errors.New("разные версии приложения — обновите Yonime")
+var ErrVersionMismatch = errors.New("разные версии приложения — обновите yoanime")
 
 // ErrRoomNotFound reports a reachable relay that has no host in the room. A
 // guest uses it before opening the waiting screen, so a mistyped key fails

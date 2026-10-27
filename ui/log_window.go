@@ -17,8 +17,8 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yonime/log"
-	"github.com/arfush/yonime/ui/widgets"
+	"github.com/arfush/yoanime/log"
+	"github.com/arfush/yoanime/ui/widgets"
 )
 
 const (

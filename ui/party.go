@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arfush/yonime/internal/appdata"
-	"github.com/arfush/yonime/internal/library"
-	"github.com/arfush/yonime/internal/playback"
-	"github.com/arfush/yonime/party"
+	"github.com/arfush/yoanime/internal/appdata"
+	"github.com/arfush/yoanime/internal/library"
+	"github.com/arfush/yoanime/internal/playback"
+	"github.com/arfush/yoanime/party"
 )
 
 const (
@@ -147,7 +147,7 @@ func loadPartyName(app *application) string {
 	}
 	name, err := party.NewName()
 	if err != nil {
-		return "yonime"
+		return "yoanime"
 	}
 	if app != nil && app.library != nil {
 		_ = app.library.SetPartyName(name)
@@ -742,7 +742,7 @@ func (m *partyManager) consume(session *party.Session, stop chan struct{}) {
 const (
 	hostClosedNotice      = "Создатель закрыл комнату"
 	hostLostNotice        = "Создатель комнаты вышел"
-	versionMismatchNotice = "Разные версии приложения — обновите Yonime"
+	versionMismatchNotice = "Разные версии приложения — обновите yoanime"
 )
 
 // hostGone tears the guest room down once the host is definitively gone. mpv

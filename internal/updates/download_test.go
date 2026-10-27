@@ -41,9 +41,9 @@ func testRelease(payload []byte, digest string) Release {
 	return Release{
 		Version:   "v1.4.0",
 		Size:      int64(len(payload)),
-		URL:       "https://github.com/arfush/yonime/releases/download/v1.4.0/yonime_v1.4.0_amd64.exe",
+		URL:       "https://github.com/arfush/yoanime/releases/download/v1.4.0/yoanime_v1.4.0_amd64.exe",
 		SHA256:    digest,
-		AssetName: "yonime_v1.4.0_amd64.exe",
+		AssetName: "yoanime_v1.4.0_amd64.exe",
 	}
 }
 
@@ -51,7 +51,7 @@ func TestDownloadVerifiesAndWritesFile(t *testing.T) {
 	payload := testPayload()
 	sum := sha256.Sum256(payload)
 	release := testRelease(payload, hex.EncodeToString(sum[:]))
-	destination := filepath.Join(t.TempDir(), "yonime.exe")
+	destination := filepath.Join(t.TempDir(), "yoanime.exe")
 	var calls atomic.Int32
 	path, err := Download(context.Background(), testClient(payload, http.StatusOK), release, destination, func(downloaded, total int64) {
 		calls.Add(1)
@@ -86,7 +86,7 @@ func TestDownloadVerifiesAndWritesFile(t *testing.T) {
 func TestDownloadRejectsBadHash(t *testing.T) {
 	payload := testPayload()
 	release := testRelease(payload, strings.Repeat("0", 64))
-	destination := filepath.Join(t.TempDir(), "yonime.exe")
+	destination := filepath.Join(t.TempDir(), "yoanime.exe")
 	_, err := Download(context.Background(), testClient(payload, http.StatusOK), release, destination, nil)
 	if err == nil || !strings.Contains(err.Error(), "SHA-256") {
 		t.Fatalf("err = %v", err)
@@ -101,7 +101,7 @@ func TestDownloadRejectsBadSize(t *testing.T) {
 	sum := sha256.Sum256(payload)
 	release := testRelease(payload, hex.EncodeToString(sum[:]))
 	release.Size += 1
-	_, err := Download(context.Background(), testClient(payload, http.StatusOK), release, filepath.Join(t.TempDir(), "yonime.exe"), nil)
+	_, err := Download(context.Background(), testClient(payload, http.StatusOK), release, filepath.Join(t.TempDir(), "yoanime.exe"), nil)
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -111,7 +111,7 @@ func TestDownloadRejectsNonExe(t *testing.T) {
 	payload := bytes.Repeat([]byte("hello"), 100)
 	sum := sha256.Sum256(payload)
 	release := testRelease(payload, hex.EncodeToString(sum[:]))
-	_, err := Download(context.Background(), testClient(payload, http.StatusOK), release, filepath.Join(t.TempDir(), "yonime.exe"), nil)
+	_, err := Download(context.Background(), testClient(payload, http.StatusOK), release, filepath.Join(t.TempDir(), "yoanime.exe"), nil)
 	if err == nil || !strings.Contains(err.Error(), "Windows") {
 		t.Fatalf("err = %v", err)
 	}
@@ -121,7 +121,7 @@ func TestDownloadRejectsHTTPError(t *testing.T) {
 	payload := testPayload()
 	sum := sha256.Sum256(payload)
 	release := testRelease(payload, hex.EncodeToString(sum[:]))
-	_, err := Download(context.Background(), testClient(payload, http.StatusNotFound), release, filepath.Join(t.TempDir(), "yonime.exe"), nil)
+	_, err := Download(context.Background(), testClient(payload, http.StatusNotFound), release, filepath.Join(t.TempDir(), "yoanime.exe"), nil)
 	if err == nil {
 		t.Fatal("expected an error")
 	}

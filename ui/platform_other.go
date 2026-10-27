@@ -7,7 +7,7 @@ import (
 
 	"gioui.org/io/event"
 
-	"github.com/arfush/yonime/internal/browser"
+	"github.com/arfush/yoanime/internal/browser"
 )
 
 func handleViewEvent(event.Event) {}

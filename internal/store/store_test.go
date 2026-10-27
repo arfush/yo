@@ -7,7 +7,7 @@ import (
 )
 
 func TestStorePersistsTitlesAndHistory(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "yonime.sqlite")
+	path := filepath.Join(t.TempDir(), "yoanime.sqlite")
 	db, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
@@ -100,7 +100,7 @@ func TestStorePersistsTitlesAndHistory(t *testing.T) {
 // saved: tracking has to create the row, and tracking it again must keep the
 // saved position while following the new voiceover.
 func TestTrackViewingKeepsProgress(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "yonime.sqlite"))
+	db, err := Open(filepath.Join(t.TempDir(), "yoanime.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestTrackViewingKeepsProgress(t *testing.T) {
 }
 
 func TestMovieFlagIsPersistedInHistory(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "yonime.sqlite"))
+	db, err := Open(filepath.Join(t.TempDir(), "yoanime.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestMovieFlagIsPersistedInHistory(t *testing.T) {
 }
 
 func TestUpdateNamesPreservesEmptyValues(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "yonime.sqlite"))
+	db, err := Open(filepath.Join(t.TempDir(), "yoanime.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +212,7 @@ func TestUpdateNamesPreservesEmptyValues(t *testing.T) {
 }
 
 func TestCoverCache(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "yonime.sqlite"))
+	db, err := Open(filepath.Join(t.TempDir(), "yoanime.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +270,7 @@ func TestCoverCache(t *testing.T) {
 }
 
 func TestEpisodeTrackingLifecycle(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "yonime.sqlite"))
+	db, err := Open(filepath.Join(t.TempDir(), "yoanime.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +357,7 @@ func TestEpisodeTrackingLifecycle(t *testing.T) {
 }
 
 func TestClearHistoryDropsEpisodeTracking(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "yonime.sqlite"))
+	db, err := Open(filepath.Join(t.TempDir(), "yoanime.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -386,7 +386,7 @@ func TestClearHistoryDropsEpisodeTracking(t *testing.T) {
 }
 
 func TestOpenClearsUserStatusesWithoutHistory(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "yonime.sqlite")
+	path := filepath.Join(t.TempDir(), "yoanime.sqlite")
 	db, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
@@ -436,7 +436,7 @@ func TestOpenClearsUserStatusesWithoutHistory(t *testing.T) {
 }
 
 func TestDeleteHistoryResetsUserStatus(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "yonime.sqlite"))
+	db, err := Open(filepath.Join(t.TempDir(), "yoanime.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -468,7 +468,7 @@ func TestDeleteHistoryResetsUserStatus(t *testing.T) {
 }
 
 func TestClearHistoryResetsUserStatuses(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "yonime.sqlite"))
+	db, err := Open(filepath.Join(t.TempDir(), "yoanime.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -500,7 +500,7 @@ func TestClearHistoryResetsUserStatuses(t *testing.T) {
 }
 
 func TestEpisodeNotificationsDefaultOnAndPersist(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "yonime.sqlite")
+	path := filepath.Join(t.TempDir(), "yoanime.sqlite")
 	db, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
@@ -535,7 +535,7 @@ func TestEpisodeNotificationsDefaultOnAndPersist(t *testing.T) {
 }
 
 func TestUpdateSettingsDefaultsAndPersist(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "yonime.sqlite")
+	path := filepath.Join(t.TempDir(), "yoanime.sqlite")
 	db, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
@@ -579,7 +579,7 @@ func TestUpdateSettingsDefaultsAndPersist(t *testing.T) {
 }
 
 func TestSharedControlDefaultsOnAndProviderPersists(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "yonime.sqlite")
+	path := filepath.Join(t.TempDir(), "yoanime.sqlite")
 	db, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
@@ -623,7 +623,7 @@ func TestSharedControlDefaultsOnAndProviderPersists(t *testing.T) {
 }
 
 func TestDiscordPresenceDefaultsOffAndPersists(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "yonime.sqlite")
+	path := filepath.Join(t.TempDir(), "yoanime.sqlite")
 	db, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
@@ -658,7 +658,7 @@ func TestDiscordPresenceDefaultsOffAndPersists(t *testing.T) {
 }
 
 func TestHistoryKeepsNewestFirst(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "yonime.sqlite"))
+	db, err := Open(filepath.Join(t.TempDir(), "yoanime.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -739,7 +739,7 @@ func TestOpenAddsEpisodesTotalToLegacyDatabase(t *testing.T) {
 }
 
 func TestHistoryTracksPerStatusOrderAndPromotion(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "yonime.sqlite"))
+	db, err := Open(filepath.Join(t.TempDir(), "yoanime.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}

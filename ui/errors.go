@@ -6,8 +6,8 @@ import (
 	"net"
 	"strings"
 
-	"github.com/arfush/yonime/internal/animelib"
-	"github.com/arfush/yonime/internal/token"
+	"github.com/arfush/yoanime/internal/animelib"
+	"github.com/arfush/yoanime/internal/token"
 )
 
 // userMessageError carries a message that is already written for the user.

@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arfush/yonime/internal/animelib"
-	"github.com/arfush/yonime/internal/metadata"
-	"github.com/arfush/yonime/internal/store"
-	"github.com/arfush/yonime/internal/token"
-	"github.com/arfush/yonime/log"
+	"github.com/arfush/yoanime/internal/animelib"
+	"github.com/arfush/yoanime/internal/metadata"
+	"github.com/arfush/yoanime/internal/store"
+	"github.com/arfush/yoanime/internal/token"
+	"github.com/arfush/yoanime/log"
 )
 
 // Status is the display status of a title.
@@ -594,12 +594,12 @@ func (l *Library) readToken() (string, error) {
 	value, err := token.Load(l.tokenPath)
 	if err != nil {
 		if errors.Is(err, token.ErrNotFound) {
-			return "", errors.New("токен AnimeLIB не найден — перезапусти Yonime, чтобы авторизоваться")
+			return "", errors.New("токен AnimeLIB не найден — перезапусти yoanime, чтобы авторизоваться")
 		}
 		return "", fmt.Errorf("не удалось прочитать токен AnimeLIB: %w", err)
 	}
 	if value.Expired(time.Now()) {
-		return "", errors.New("токен AnimeLIB истёк — перезапусти Yonime, чтобы авторизоваться")
+		return "", errors.New("токен AnimeLIB истёк — перезапусти yoanime, чтобы авторизоваться")
 	}
 	return value.AccessToken, nil
 }

@@ -45,7 +45,7 @@ func validSHA256(value string) bool {
 
 // AssetName returns the release asset name for a version and GOARCH value.
 func AssetName(version, arch string) string {
-	return "yonime_" + NormalizeVersion(version) + "_" + arch + ".exe"
+	return "yoanime_" + NormalizeVersion(version) + "_" + arch + ".exe"
 }
 
 func validReleaseURL(value string) bool {

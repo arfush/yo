@@ -1,4 +1,4 @@
-// Package updates checks GitHub Releases for new Yonime builds.
+// Package updates checks GitHub Releases for new yoanime builds.
 //
 // A release is published by the GitHub Actions workflow on a commit whose
 // message starts with "release: <version>". The workflow uploads one Windows
@@ -14,17 +14,17 @@ package updates
 
 import "errors"
 
-// Repository is the GitHub repository that publishes Yonime releases. It can
+// Repository is the GitHub repository that publishes yoanime releases. It can
 // be overridden at build time:
 //
-//	go build -ldflags "-X github.com/arfush/yonime/internal/updates.Repository=owner/repo"
-var Repository = "arfush/yonime"
+//	go build -ldflags "-X github.com/arfush/yoanime/internal/updates.Repository=owner/repo"
+var Repository = "arfush/yoanime"
 
 // apiBase is a variable so tests can point the client at a local server.
 var apiBase = "https://api.github.com"
 
 const (
-	userAgent       = "Yonime"
+	userAgent       = "yoanime"
 	maxAPIBytes     = 4 << 20
 	maxChecksumSize = 64 << 10
 	maxReleaseRaw   = 1 << 30
@@ -34,7 +34,7 @@ var (
 	// ErrNoRelease means GitHub is reachable but has no usable release for
 	// this architecture (nothing has been published yet, or the latest
 	// release has no matching asset).
-	ErrNoRelease = errors.New("no Yonime release published")
+	ErrNoRelease = errors.New("no yoanime release published")
 	// ErrNotConfigured means Repository is empty or malformed.
 	ErrNotConfigured = errors.New("update repository is not configured")
 )

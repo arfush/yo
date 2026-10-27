@@ -7,7 +7,7 @@ import (
 	"gioui.org/layout"
 	"gioui.org/unit"
 
-	"github.com/arfush/yonime/ui/draw"
+	"github.com/arfush/yoanime/ui/draw"
 )
 
 // ToggleStyle describes the palette of the shared settings switch.

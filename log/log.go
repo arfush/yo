@@ -3,7 +3,7 @@
 //
 // The log is intentionally independent from the UI: background workers,
 // network clients and the store can all call it without importing the UI. The
-// file lives next to the database, in %APPDATA%\Yonime\yonime.log.
+// file lives next to the database, in %APPDATA%\yoanime\yoanime.log.
 package log
 
 import (

@@ -12,7 +12,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/arfush/yonime/log"
+	"github.com/arfush/yoanime/log"
 )
 
 // defaultUserStatus is the schema default ("В планах"). Removing a title from
@@ -773,7 +773,7 @@ func (s *Store) SetEpisodeNotificationsEnabled(enabled bool) error {
 	return s.setBoolSetting("episode_notifications", enabled)
 }
 
-// AutoUpdateEnabled reports whether Yonime may install updates without asking.
+// AutoUpdateEnabled reports whether yoanime may install updates without asking.
 // It is on by default so a fresh install picks up the latest release; an
 // explicit "0" row still turns it off for good.
 func (s *Store) AutoUpdateEnabled() bool {
@@ -796,7 +796,7 @@ func (s *Store) SetBetaUpdatesEnabled(enabled bool) error {
 	return s.setBoolSetting("beta_updates", enabled)
 }
 
-// DiscordPresenceEnabled reports whether Yonime may publish the current episode
+// DiscordPresenceEnabled reports whether yoanime may publish the current episode
 // to Discord. It is off by default: the activity is visible to every friend, so
 // showing it has to be an explicit choice.
 func (s *Store) DiscordPresenceEnabled() bool {

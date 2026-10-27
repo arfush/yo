@@ -1,6 +1,6 @@
 package ui
 
-import "github.com/arfush/yonime/ui/draw"
+import "github.com/arfush/yoanime/ui/draw"
 
 // The root package predates the draw package. These aliases keep the screen
 // code readable while the implementation lives in ui/draw and can be shared by

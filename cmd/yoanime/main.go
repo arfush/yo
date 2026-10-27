@@ -4,18 +4,18 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/arfush/yonime/internal/appdata"
-	"github.com/arfush/yonime/internal/install"
-	"github.com/arfush/yonime/internal/singleinstance"
-	"github.com/arfush/yonime/internal/version"
-	"github.com/arfush/yonime/log"
-	"github.com/arfush/yonime/ui"
+	"github.com/arfush/yoanime/internal/appdata"
+	"github.com/arfush/yoanime/internal/install"
+	"github.com/arfush/yoanime/internal/singleinstance"
+	"github.com/arfush/yoanime/internal/version"
+	"github.com/arfush/yoanime/log"
+	"github.com/arfush/yoanime/ui"
 )
 
 func main() {
 	if logPath, err := appdata.LogPath(); err == nil {
 		if err := log.Init(logPath); err != nil {
-			fmt.Fprintln(os.Stderr, "yonime: cannot open log:", err)
+			fmt.Fprintln(os.Stderr, "yoanime: cannot open log:", err)
 		}
 		defer log.Close()
 	}

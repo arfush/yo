@@ -21,8 +21,8 @@ import (
 
 	playwright "github.com/mxschmitt/playwright-go"
 
-	"github.com/arfush/yonime/internal/browser"
-	"github.com/arfush/yonime/log"
+	"github.com/arfush/yoanime/internal/browser"
+	"github.com/arfush/yoanime/log"
 )
 
 const (

@@ -1,4 +1,4 @@
-// Command icongen turns Yonime's original painted icon geometry into IconVG
+// Command icongen turns yoanime's original painted icon geometry into IconVG
 // assets.
 //
 // The desktop UI used to rasterise these glyphs with Gio clip paths on every

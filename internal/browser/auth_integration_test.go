@@ -13,8 +13,8 @@ import (
 )
 
 func TestAuthorizeIntegration(t *testing.T) {
-	if os.Getenv("YONIME_AUTH_TEST") == "" {
-		t.Skip("set YONIME_AUTH_TEST=1 to launch Chromium")
+	if os.Getenv("YOANIME_AUTH_TEST") == "" {
+		t.Skip("set YOANIME_AUTH_TEST=1 to launch Chromium")
 	}
 
 	withToken := `<!doctype html><html><body>ok</body><script>

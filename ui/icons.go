@@ -7,7 +7,7 @@ import (
 	"gioui.org/layout"
 	"gioui.org/op"
 
-	"github.com/arfush/yonime/ui/assets"
+	"github.com/arfush/yoanime/ui/assets"
 )
 
 // drawAppIcon centers an IconVG asset in a square box. Keeping the lookup and

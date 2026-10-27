@@ -16,8 +16,8 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yonime/internal/metadata"
-	"github.com/arfush/yonime/party"
+	"github.com/arfush/yoanime/internal/metadata"
+	"github.com/arfush/yoanime/party"
 )
 
 const (
@@ -431,7 +431,7 @@ func (w *settingsWindow) layoutAutoUpdatePanel(gtx layout.Context, rect image.Re
 		gtx,
 		rect,
 		"Автообновление",
-		"Автоматически обновляет Yonime при запуске или пока оно неактивно - просмотру не повредит",
+		"Автоматически обновляет yoanime при запуске или пока оно неактивно - просмотру не повредит",
 		w.autoUpdate,
 		hover,
 		&w.autoUpdateClick,

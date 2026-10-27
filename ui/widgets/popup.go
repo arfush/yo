@@ -9,7 +9,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yonime/ui/draw"
+	"github.com/arfush/yoanime/ui/draw"
 )
 
 // PlacePopupMenu centers a popup on its anchor and flips it above when the

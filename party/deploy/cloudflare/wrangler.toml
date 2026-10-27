@@ -1,7 +1,7 @@
 # The relay is deployed with `wrangler deploy` from this directory.
 # Free plan: 100k requests/day is far more than a room needs; one room costs
 # one request for the host socket and one per guest socket.
-name = "yonime-party"
+name = "yoanime-party"
 main = "src/worker.js"
 compatibility_date = "2025-04-01"
 

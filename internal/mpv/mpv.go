@@ -1,4 +1,4 @@
-// Package mpv locates and installs the mpv executable used by Yonime.
+// Package mpv locates and installs the mpv executable used by yoanime.
 package mpv
 
 import (
@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arfush/yonime/internal/appdata"
-	"github.com/arfush/yonime/log"
+	"github.com/arfush/yoanime/internal/appdata"
+	"github.com/arfush/yoanime/log"
 )
 
 // Progress reports the overall mpv installation progress. Preparing is true
@@ -48,9 +48,9 @@ func (m *Manager) Installed() bool {
 }
 
 // Locate returns the mpv executable. PATH wins; otherwise the build managed by
-// Yonime in %APPDATA%\Yonime\mpv is used.
+// yoanime in %APPDATA%\yoanime\mpv is used.
 func Locate() (string, error) {
-	if value := strings.TrimSpace(os.Getenv("YONIME_MPV")); value != "" {
+	if value := strings.TrimSpace(os.Getenv("YOANIME_MPV")); value != "" {
 		if info, err := os.Stat(value); err == nil && !info.IsDir() && info.Size() > 0 {
 			if absolute, err := filepath.Abs(value); err == nil {
 				return absolute, nil
@@ -69,7 +69,7 @@ func Locate() (string, error) {
 	return "", errors.New("mpv не найден")
 }
 
-// Download installs mpv into %APPDATA%\Yonime\mpv. The callback is invoked
+// Download installs mpv into %APPDATA%\yoanime\mpv. The callback is invoked
 // from a background goroutine and must be safe to call repeatedly.
 func (m *Manager) Download(ctx context.Context, onProgress func(Progress)) error {
 	if m == nil {

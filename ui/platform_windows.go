@@ -12,7 +12,7 @@ import (
 	"gioui.org/io/event"
 	"golang.org/x/sys/windows"
 
-	"github.com/arfush/yonime/internal/browser"
+	"github.com/arfush/yoanime/internal/browser"
 )
 
 const (

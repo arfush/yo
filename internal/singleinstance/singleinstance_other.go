@@ -10,10 +10,10 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/arfush/yonime/internal/appdata"
+	"github.com/arfush/yoanime/internal/appdata"
 )
 
-var lockName = "yonime.lock"
+var lockName = "yoanime.lock"
 
 func acquire() (func(), bool) {
 	dir, err := appdata.Dir()

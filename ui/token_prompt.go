@@ -21,8 +21,8 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yonime/internal/browser"
-	"github.com/arfush/yonime/internal/token"
+	"github.com/arfush/yoanime/internal/browser"
+	"github.com/arfush/yoanime/internal/token"
 )
 
 const (
@@ -558,7 +558,7 @@ func logTokenError(err error) {
 	if cacheErr != nil {
 		return
 	}
-	logDir := filepath.Join(dir, "Yonime")
+	logDir := filepath.Join(dir, "yoanime")
 	if mkErr := os.MkdirAll(logDir, 0o755); mkErr != nil {
 		return
 	}

@@ -6,14 +6,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/arfush/yonime/internal/animelib"
-	"github.com/arfush/yonime/internal/store"
+	"github.com/arfush/yoanime/internal/animelib"
+	"github.com/arfush/yoanime/internal/store"
 )
 
 func openEpisodeTestLibrary(t *testing.T) *Library {
 	t.Helper()
 	dir := t.TempDir()
-	lib, err := Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	lib, err := Open(filepath.Join(dir, "yoanime.sqlite"), filepath.Join(dir, "token.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}

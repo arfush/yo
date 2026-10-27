@@ -1,4 +1,4 @@
-// Package updater replaces the running Yonime executable after a verified
+// Package updater replaces the running yoanime executable after a verified
 // release has been downloaded.
 //
 // Windows keeps the image file of a running process locked, so the application
@@ -55,7 +55,7 @@ func CheckTarget(target string) error {
 	}
 
 	directory := filepath.Dir(absolute)
-	probe, err := os.CreateTemp(directory, ".yonime-update-*")
+	probe, err := os.CreateTemp(directory, ".yoanime-update-*")
 	if err != nil {
 		return fmt.Errorf("нет прав на запись в папку приложения: %w", err)
 	}

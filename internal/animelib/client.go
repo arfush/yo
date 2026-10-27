@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arfush/yonime/log"
+	"github.com/arfush/yoanime/log"
 )
 
 const (
@@ -631,7 +631,7 @@ func (c *Client) waitPace(ctx context.Context) error {
 
 func (c *Client) get(ctx context.Context, endpoint string, siteID int) ([]byte, error) {
 	if c.token == "" {
-		return nil, errors.New("не найден токен AnimeLIB (animelib_token.txt в папке данных Yonime)")
+		return nil, errors.New("не найден токен AnimeLIB (animelib_token.txt в папке данных yoanime)")
 	}
 	for {
 		// A previous 429 parks every request (including parallel voiceover

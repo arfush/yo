@@ -8,7 +8,7 @@ import (
 
 	"gioui.org/layout"
 
-	"github.com/arfush/yonime/ui/draw"
+	"github.com/arfush/yoanime/ui/draw"
 )
 
 // DrawSpinner paints eight fading dots around center.

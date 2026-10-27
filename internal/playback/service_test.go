@@ -6,7 +6,7 @@ import (
 	"testing"
 	"unicode"
 
-	"github.com/arfush/yonime/internal/library"
+	"github.com/arfush/yoanime/internal/library"
 )
 
 func TestUnopenedErrorDescribesKodik(t *testing.T) {
@@ -38,7 +38,7 @@ func TestUnopenedErrorFallsBackToGenericText(t *testing.T) {
 
 func TestFinalEOFCompletesTitleOnlyWhenFlagged(t *testing.T) {
 	dir := t.TempDir()
-	lib, err := library.Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	lib, err := library.Open(filepath.Join(dir, "yoanime.sqlite"), filepath.Join(dir, "token.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}

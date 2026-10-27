@@ -38,7 +38,7 @@ curl "https://abcdefghijkl.supabase.co/realtime/v1/websocket?apikey=<PUBLISHABLE
 адрес Cloudflare, а Supabase в ней — резерв. Если вы всё же хотите поставлять
 своё реле, его настройки вшиваются один раз, как и у Cloudflare:
 
-1. Задайте `YONIME_PARTY_SUPABASE_URL` и `YONIME_PARTY_SUPABASE_KEY`: в окружении
+1. Задайте `YOANIME_PARTY_SUPABASE_URL` и `YOANIME_PARTY_SUPABASE_KEY`: в окружении
    при локальной сборке или в GitHub **Settings → Secrets and variables →
    Actions → Variables** для релиза. Альтернатива — `party.json` в корне
    репозитория.
@@ -53,9 +53,9 @@ curl "https://abcdefghijkl.supabase.co/realtime/v1/websocket?apikey=<PUBLISHABLE
 
 ## Подключение клиента без своей сборки
 
-URL и ключ можно ввести в настройках Yonime: **Совместный просмотр → Провайдер
+URL и ключ можно ввести в настройках yoanime: **Совместный просмотр → Провайдер
 → Supabase Endpoint / Supabase Publishable Key**. То же самое можно сделать
-файлом `%APPDATA%\Yonime\party.json`:
+файлом `%APPDATA%\yoanime\party.json`:
 
 ```json
 {
@@ -72,8 +72,8 @@ URL и ключ можно ввести в настройках Yonime: **Сов
 
 ```bash
 go build -ldflags "\
- -X github.com/arfush/yonime/party.SupabaseURL=https://abcdefghijkl.supabase.co \
- -X github.com/arfush/yonime/party.SupabaseKey=sb_publishable_..." ./cmd/yonime
+ -X github.com/arfush/yoanime/party.SupabaseURL=https://abcdefghijkl.supabase.co \
+ -X github.com/arfush/yoanime/party.SupabaseKey=sb_publishable_..." ./cmd/yoanime
 ```
 
 Publishable-ключ публичный: он и должен лежать в клиенте. Не вшивайте

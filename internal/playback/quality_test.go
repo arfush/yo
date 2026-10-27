@@ -3,7 +3,7 @@ package playback
 import (
 	"testing"
 
-	"github.com/arfush/yonime/internal/animelib"
+	"github.com/arfush/yoanime/internal/animelib"
 )
 
 func TestPickAnimelibQuality(t *testing.T) {

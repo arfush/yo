@@ -534,7 +534,7 @@ func logFirstRunError(err error) {
 	if cacheErr != nil {
 		return
 	}
-	logDir := filepath.Join(dir, "Yonime")
+	logDir := filepath.Join(dir, "yoanime")
 	if mkErr := os.MkdirAll(logDir, 0o755); mkErr != nil {
 		return
 	}

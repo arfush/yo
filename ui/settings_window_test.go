@@ -12,7 +12,7 @@ import (
 	"gioui.org/op"
 	"gioui.org/unit"
 
-	"github.com/arfush/yonime/party"
+	"github.com/arfush/yoanime/party"
 )
 
 func TestSettingsWindowLayoutDoesNotOverflow(t *testing.T) {
@@ -27,7 +27,7 @@ func TestSettingsWindowLayoutDoesNotOverflow(t *testing.T) {
 			Notifications: true,
 			SharedControl: true,
 			Provider:      party.Supabase,
-			CloudflareURL: "wss://yonime-party.example.workers.dev",
+			CloudflareURL: "wss://yoanime-party.example.workers.dev",
 			SupabaseURL:   "wss://abcdefghijkl.supabase.co",
 			SupabaseKey:   "sb_publishable_example",
 		},

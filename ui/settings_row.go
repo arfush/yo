@@ -9,7 +9,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yonime/party"
+	"github.com/arfush/yoanime/party"
 )
 
 func (w *settingsWindow) layoutToggleRow(

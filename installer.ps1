@@ -35,7 +35,7 @@ if (-not $number) {
 }
 $tag = "v$number"
 
-$exe = Join-Path $PSScriptRoot "dist\yonime_${tag}_${Arch}.exe"
+$exe = Join-Path $PSScriptRoot "dist\yoanime_${tag}_${Arch}.exe"
 if (-not (Test-Path $exe)) {
     throw "Missing $exe; run build.ps1 -Version $tag -Arch $Arch first"
 }
@@ -114,19 +114,19 @@ if (-not $compiler) {
     $compiler = Install-InnoSetup
 }
 
-& $compiler "/DVersionTag=$tag" "/DVersionNumber=$number" "/DArch=$Arch" "installer\yonime.iss"
+& $compiler "/DVersionTag=$tag" "/DVersionNumber=$number" "/DArch=$Arch" "installer\yoanime.iss"
 if ($LASTEXITCODE -ne 0) {
     throw "Inno Setup failed with exit code $LASTEXITCODE"
 }
 
-$setup = Join-Path $PSScriptRoot "dist\yonime_${tag}_${Arch}_setup.exe"
+$setup = Join-Path $PSScriptRoot "dist\yoanime_${tag}_${Arch}_setup.exe"
 if (-not (Test-Path $setup)) {
     throw "Expected installer was not produced: $setup"
 }
 
 # Code signing is optional: it only runs when a certificate is configured, so
 # the build keeps working for contributors without one.
-if ($env:YONIME_SIGN_PFX -or $env:YONIME_SIGN_PFX_BASE64 -or $env:YONIME_SIGN_THUMBPRINT) {
+if ($env:YOANIME_SIGN_PFX -or $env:YOANIME_SIGN_PFX_BASE64 -or $env:YOANIME_SIGN_THUMBPRINT) {
     & (Join-Path $PSScriptRoot "sign.ps1") -Path $setup
 }
 

@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arfush/yonime/internal/animelib"
-	"github.com/arfush/yonime/internal/library"
-	"github.com/arfush/yonime/internal/updates"
+	"github.com/arfush/yoanime/internal/animelib"
+	"github.com/arfush/yoanime/internal/library"
+	"github.com/arfush/yoanime/internal/updates"
 )
 
 func TestStartFailureResultKeepsRateLimitOnMainWindow(t *testing.T) {
@@ -42,7 +42,7 @@ func TestStartFailureResultKeepsRateLimitOnMainWindow(t *testing.T) {
 
 func TestHandleWatchResultRefreshesTitleUserStatus(t *testing.T) {
 	dir := t.TempDir()
-	lib, err := library.Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	lib, err := library.Open(filepath.Join(dir, "yoanime.sqlite"), filepath.Join(dir, "token.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestAutoUpdateSafe(t *testing.T) {
 // kept polling after the window had already gone to the tray.
 func TestWaitForAutoUpdateWakesOnTray(t *testing.T) {
 	dir := t.TempDir()
-	lib, err := library.Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	lib, err := library.Open(filepath.Join(dir, "yoanime.sqlite"), filepath.Join(dir, "token.txt"))
 	if err != nil {
 		t.Fatalf("open library: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestWaitForAutoUpdateWakesOnTray(t *testing.T) {
 // still aborts a waiting install on the next wake.
 func TestWaitForAutoUpdateStopsWhenDisabled(t *testing.T) {
 	dir := t.TempDir()
-	lib, err := library.Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	lib, err := library.Open(filepath.Join(dir, "yoanime.sqlite"), filepath.Join(dir, "token.txt"))
 	if err != nil {
 		t.Fatalf("open library: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestAutoUpdateIdleDuringPlaybackStart(t *testing.T) {
 // the tray-only path.
 func TestMaybeAutoUpdateWaitsForMain(t *testing.T) {
 	dir := t.TempDir()
-	lib, err := library.Open(filepath.Join(dir, "yonime.sqlite"), filepath.Join(dir, "token.txt"))
+	lib, err := library.Open(filepath.Join(dir, "yoanime.sqlite"), filepath.Join(dir, "token.txt"))
 	if err != nil {
 		t.Fatalf("open library: %v", err)
 	}

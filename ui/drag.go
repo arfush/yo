@@ -11,7 +11,7 @@ import (
 	"gioui.org/op/clip"
 	"gioui.org/unit"
 
-	"github.com/arfush/yonime/internal/library"
+	"github.com/arfush/yoanime/internal/library"
 )
 
 // dragState tracks a history row being reordered by its six-dot handle.

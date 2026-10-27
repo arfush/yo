@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: yonime-release-${{ github.ref }}
+  group: yoanime-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -67,9 +67,9 @@ jobs:
 
           if [[ -n "$notes" ]]; then
             {
-              echo "body<<YONIME_RELEASE_BODY"
+              echo "body<<YOANIME_RELEASE_BODY"
               printf '%s\n' "$notes"
-              echo "YONIME_RELEASE_BODY"
+              echo "YOANIME_RELEASE_BODY"
             } >> "$GITHUB_OUTPUT"
           fi
 
@@ -99,14 +99,14 @@ jobs:
       REPO: ${{ github.repository }}
       # Code signing stays optional: without the secret the build is simply
       # unsigned, exactly like a local build without a certificate.
-      SIGN_PFX_BASE64: ${{ secrets.YONIME_SIGN_PFX_BASE64 }}
-      SIGN_PFX_PASSWORD: ${{ secrets.YONIME_SIGN_PFX_PASSWORD }}
+      SIGN_PFX_BASE64: ${{ secrets.YOANIME_SIGN_PFX_BASE64 }}
+      SIGN_PFX_PASSWORD: ${{ secrets.YOANIME_SIGN_PFX_PASSWORD }}
       # Repository variables win; otherwise build.ps1 falls back to the checked-in
       # party.json, so a relay deployed once reaches every user without any
       # configuration file on their side.
-      YONIME_PARTY_CLOUDFLARE_URL: ${{ vars.YONIME_PARTY_CLOUDFLARE_URL }}
-      YONIME_PARTY_SUPABASE_URL: ${{ vars.YONIME_PARTY_SUPABASE_URL }}
-      YONIME_PARTY_SUPABASE_KEY: ${{ vars.YONIME_PARTY_SUPABASE_KEY }}
+      YOANIME_PARTY_CLOUDFLARE_URL: ${{ vars.YOANIME_PARTY_CLOUDFLARE_URL }}
+      YOANIME_PARTY_SUPABASE_URL: ${{ vars.YOANIME_PARTY_SUPABASE_URL }}
+      YOANIME_PARTY_SUPABASE_KEY: ${{ vars.YOANIME_PARTY_SUPABASE_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -117,27 +117,27 @@ jobs:
         if: env.SIGN_PFX_BASE64 != ''
         shell: pwsh
         run: |
-          "YONIME_SIGN_PFX_BASE64=$env:SIGN_PFX_BASE64" >> $env:GITHUB_ENV
-          "YONIME_SIGN_PFX_PASSWORD=$env:SIGN_PFX_PASSWORD" >> $env:GITHUB_ENV
+          "YOANIME_SIGN_PFX_BASE64=$env:SIGN_PFX_BASE64" >> $env:GITHUB_ENV
+          "YOANIME_SIGN_PFX_PASSWORD=$env:SIGN_PFX_PASSWORD" >> $env:GITHUB_ENV
       - name: Build
         shell: pwsh
         run: .\build.ps1 -Version $env:VERSION -Repo $env:REPO -Arch "${{ matrix.arch }}"
       - name: Checksum
         shell: pwsh
         run: |
-          $exe = "dist\yonime_${env:VERSION}_${{ matrix.arch }}.exe"
+          $exe = "dist\yoanime_${env:VERSION}_${{ matrix.arch }}.exe"
           $hash = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
           "$hash  $(Split-Path -Leaf $exe)" | Set-Content -NoNewline "$exe.sha256"
       - name: Build installer
         shell: pwsh
         run: |
           .\installer.ps1 -Version $env:VERSION -Arch "${{ matrix.arch }}"
-          $setup = "dist\yonime_${env:VERSION}_${{ matrix.arch }}_setup.exe"
+          $setup = "dist\yoanime_${env:VERSION}_${{ matrix.arch }}_setup.exe"
           $hash = (Get-FileHash -Algorithm SHA256 $setup).Hash.ToLower()
           "$hash  $(Split-Path -Leaf $setup)" | Set-Content -NoNewline "$setup.sha256"
       - uses: actions/upload-artifact@v4
         with:
-          name: yonime-${{ matrix.arch }}
+          name: yoanime-${{ matrix.arch }}
           path: |
             dist/*.exe
             dist/*.sha256
@@ -161,7 +161,7 @@ jobs:
           # installer. A release that lost either of them must not happen.
           missing=0
           for arch in amd64 arm64 386; do
-            for file in "dist/yonime_${VERSION}_${arch}.exe" "dist/yonime_${VERSION}_${arch}_setup.exe"; do
+            for file in "dist/yoanime_${VERSION}_${arch}.exe" "dist/yoanime_${VERSION}_${arch}_setup.exe"; do
               if [[ -f "$file" ]]; then
                 echo "ok: $(basename "$file")"
               else
@@ -174,7 +174,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.version }}
-          name: Yonime ${{ needs.prepare.outputs.version }}
+          name: yoanime ${{ needs.prepare.outputs.version }}
           body: ${{ needs.prepare.outputs.body }}
           prerelease: ${{ needs.prepare.outputs.prerelease }}
           make_latest: ${{ needs.prepare.outputs.prerelease != 'true' }}

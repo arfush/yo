@@ -1,7 +1,7 @@
 // Package token reads and writes the AnimeLIB access token.
 //
-// AnimeLIB stores an OAuth token object in its localStorage. Yonime keeps the
-// same fields in %APPDATA%\Yonime\animelib_token.txt, encrypted with user-scoped
+// AnimeLIB stores an OAuth token object in its localStorage. yoanime keeps the
+// same fields in %APPDATA%\yoanime\animelib_token.txt, encrypted with user-scoped
 // Windows DPAPI, so the expiration can be checked before the main window opens
 // and the file is useless to another user or machine. A plain-text token is
 // still accepted for compatibility with hand-written and pre-DPAPI files; Load
@@ -22,7 +22,7 @@ import (
 
 // tokenMagic marks the DPAPI container. Its presence is enough to reject a
 // plain-text file: the bytes after it are only meaningful to DPAPI.
-const tokenMagic = "YONIME-TOKEN\x01"
+const tokenMagic = "YOANIME-TOKEN\x01"
 
 // ExpiryMargin makes a token that is about to expire count as expired, so the
 // user is not sent through authorization in the middle of a session.
@@ -68,7 +68,7 @@ func Load(path string) (Token, error) {
 	return token, nil
 }
 
-// Parse accepts either Yonime's JSON format, the token object persisted by
+// Parse accepts either yoanime's JSON format, the token object persisted by
 // AnimeLIB (optionally wrapped in a "token" field), or a plain access token.
 func Parse(data []byte) (Token, error) {
 	trimmed := strings.TrimSpace(string(data))

@@ -1,4 +1,4 @@
-// Package metadata fills in the small amount of external metadata Yonime needs
+// Package metadata fills in the small amount of external metadata yoanime needs
 // for playback: IMDb ids for introdb, franchise season numbers and the poster
 // shown by Discord from AniList.
 package metadata

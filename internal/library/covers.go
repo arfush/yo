@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arfush/yonime/internal/store"
+	"github.com/arfush/yoanime/internal/store"
 )
 
 const (

@@ -9,7 +9,7 @@ import (
 	"gioui.org/layout"
 	"gioui.org/op"
 
-	"github.com/arfush/yonime/log"
+	"github.com/arfush/yoanime/log"
 )
 
 // undoDeleteDuration is how long a removed title can be brought back before it

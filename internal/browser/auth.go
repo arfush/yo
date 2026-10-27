@@ -10,8 +10,8 @@ import (
 
 	playwright "github.com/mxschmitt/playwright-go"
 
-	"github.com/arfush/yonime/internal/token"
-	"github.com/arfush/yonime/log"
+	"github.com/arfush/yoanime/internal/token"
+	"github.com/arfush/yoanime/log"
 )
 
 // DefaultDomain is the AnimeLIB domain shown in the token prompt. The browser
@@ -77,7 +77,7 @@ type WindowBounds struct {
 }
 
 // SiteURL normalizes a user-supplied project link. A bare domain opens that
-// site's home page; a link with a path is used as-is. Yonime only opens the
+// site's home page; a link with a path is used as-is. yoanime only opens the
 // site: the user starts the login flow through its own interface.
 func SiteURL(input string) (string, error) {
 	input = strings.TrimSpace(input)
@@ -130,7 +130,7 @@ func NormalizeDomain(input string) (string, error) {
 
 // Authorize opens siteURL in the installed Playwright Chromium and waits until
 // AnimeLIB stores an access token, or until ctx is canceled. The user signs in
-// on the site itself; Yonime only opens it and watches the stored token. A
+// on the site itself; yoanime only opens it and watches the stored token. A
 // persistent profile keeps an existing site session between launches.
 //
 // When bounds is non-nil, Chromium is placed over the application window. The

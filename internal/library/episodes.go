@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/arfush/yonime/internal/animelib"
-	"github.com/arfush/yonime/internal/store"
+	"github.com/arfush/yoanime/internal/animelib"
+	"github.com/arfush/yoanime/internal/store"
 )
 
 // EpisodeVoiceover is one translation team that published a new episode.

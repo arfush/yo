@@ -22,9 +22,9 @@ func TestStoreRoundTrip(t *testing.T) {
 	release := Release{
 		Version:   "v1.4.0",
 		Size:      1234,
-		URL:       "https://github.com/arfush/yonime/releases/download/v1.4.0/yonime_v1.4.0_amd64.exe",
+		URL:       "https://github.com/arfush/yoanime/releases/download/v1.4.0/yoanime_v1.4.0_amd64.exe",
 		SHA256:    testHash,
-		AssetName: "yonime_v1.4.0_amd64.exe",
+		AssetName: "yoanime_v1.4.0_amd64.exe",
 	}
 	checked := time.Now().UTC().Truncate(time.Second)
 	if err := store.RecordCheck(&release, checked); err != nil {

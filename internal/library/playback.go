@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/arfush/yonime/internal/animelib"
-	"github.com/arfush/yonime/internal/metadata"
+	"github.com/arfush/yoanime/internal/animelib"
+	"github.com/arfush/yoanime/internal/metadata"
 )
 
 // PlaybackEpisode is one episode that can be added to the mpv playlist.

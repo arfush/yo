@@ -22,20 +22,20 @@ import (
 	"gioui.org/op"
 	"gioui.org/unit"
 
-	"github.com/arfush/yonime/internal/animelib"
-	"github.com/arfush/yonime/internal/appdata"
-	"github.com/arfush/yonime/internal/browser"
-	"github.com/arfush/yonime/internal/discord"
-	"github.com/arfush/yonime/internal/library"
-	"github.com/arfush/yonime/internal/metadata"
-	"github.com/arfush/yonime/internal/mpv"
-	"github.com/arfush/yonime/internal/playback"
-	"github.com/arfush/yonime/internal/token"
-	"github.com/arfush/yonime/internal/updater"
-	"github.com/arfush/yonime/internal/updates"
-	"github.com/arfush/yonime/internal/version"
-	"github.com/arfush/yonime/log"
-	"github.com/arfush/yonime/party"
+	"github.com/arfush/yoanime/internal/animelib"
+	"github.com/arfush/yoanime/internal/appdata"
+	"github.com/arfush/yoanime/internal/browser"
+	"github.com/arfush/yoanime/internal/discord"
+	"github.com/arfush/yoanime/internal/library"
+	"github.com/arfush/yoanime/internal/metadata"
+	"github.com/arfush/yoanime/internal/mpv"
+	"github.com/arfush/yoanime/internal/playback"
+	"github.com/arfush/yoanime/internal/token"
+	"github.com/arfush/yoanime/internal/updater"
+	"github.com/arfush/yoanime/internal/updates"
+	"github.com/arfush/yoanime/internal/version"
+	"github.com/arfush/yoanime/log"
+	"github.com/arfush/yoanime/party"
 )
 
 const (
@@ -70,12 +70,12 @@ const (
 	updateRetryInterval = 5 * time.Minute
 )
 
-// Run starts the Yonime desktop application.
+// Run starts the yoanime desktop application.
 func Run() {
 	go func() {
 		w := new(app.Window)
 		w.Option(
-			app.Title("Yonime"),
+			app.Title("yoanime"),
 			app.Size(unit.Dp(initialWidth), unit.Dp(initialHeight)),
 			app.MinSize(unit.Dp(minimumWidth), unit.Dp(minimumHeight)),
 			app.Decorated(false),
@@ -84,7 +84,7 @@ func Run() {
 		a, err := newApp()
 		if err != nil {
 			log.Error("application startup failed", "error", err)
-			fmt.Fprintln(os.Stderr, "yonime:", err)
+			fmt.Fprintln(os.Stderr, "yoanime:", err)
 			os.Exit(1)
 		}
 		log.Info("window attached")
@@ -92,7 +92,7 @@ func Run() {
 		if err := a.run(w); err != nil {
 			log.Error("application stopped with an error", "error", err)
 			a.close()
-			fmt.Fprintln(os.Stderr, "yonime:", err)
+			fmt.Fprintln(os.Stderr, "yoanime:", err)
 			os.Exit(1)
 		}
 		log.Info("application closed")
@@ -149,7 +149,7 @@ type application struct {
 	tokenPath         string
 	browserProfileDir string
 
-	// Update state is loaded from %APPDATA%\Yonime\updates.json. The atomics
+	// Update state is loaded from %APPDATA%\yoanime\updates.json. The atomics
 	// let the UI read it every frame while the background checker refreshes it.
 	updateStore      *updates.Store
 	updateClient     *http.Client
@@ -248,7 +248,7 @@ func newApp() (*application, error) {
 		if digest, hashErr := updates.FileSHA256(executable); hashErr == nil {
 			currentSHA = digest
 		} else {
-			fmt.Fprintln(os.Stderr, "yonime: хеш приложения:", hashErr)
+			fmt.Fprintln(os.Stderr, "yoanime: хеш приложения:", hashErr)
 		}
 	}
 
@@ -343,7 +343,7 @@ func (a *application) startTray() {
 	}
 	icon, err := newTray(a.icon, a.restoreWindow, a.quitFromTray)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "yonime: значок в трее:", err)
+		fmt.Fprintln(os.Stderr, "yoanime: значок в трее:", err)
 		return
 	}
 	a.tray = icon
@@ -532,7 +532,7 @@ func (a *application) showUpdateScreen(release updates.Release, auto bool) {
 	screen := newFirstRun(
 		a.shell.typo,
 		a.window,
-		"Обновление Yonime",
+		"Обновление yoanime",
 		fmt.Sprintf("Скачиваем %s. Приложение перезапустится автоматически.", release.Version),
 		func(ctx context.Context, report func(downloadProgress)) error {
 			return a.downloadAndApply(ctx, release, report)
@@ -860,13 +860,13 @@ func (a *application) checkForUpdates(w *app.Window) time.Duration {
 		} else {
 			// A network failure must not hide the release cached from the last
 			// successful check.
-			fmt.Fprintln(os.Stderr, "yonime: проверка обновлений:", err)
+			fmt.Fprintln(os.Stderr, "yoanime: проверка обновлений:", err)
 			_ = a.updateStore.SaveLastCheck(now)
 			return updateRetryInterval
 		}
 	}
 	if saveErr := a.updateStore.RecordCheck(release, now); saveErr != nil {
-		fmt.Fprintln(os.Stderr, "yonime: сохранение состояния обновлений:", saveErr)
+		fmt.Fprintln(os.Stderr, "yoanime: сохранение состояния обновлений:", saveErr)
 	}
 	a.updatesAvailable.Store(release)
 	if w != nil {
@@ -966,7 +966,7 @@ func (a *application) startAutoUpdate(release updates.Release) {
 		stop()
 		if err != nil {
 			if !errors.Is(err, context.Canceled) {
-				fmt.Fprintln(os.Stderr, "yonime: автоматическое обновление:", err)
+				fmt.Fprintln(os.Stderr, "yoanime: автоматическое обновление:", err)
 			}
 			return
 		}
@@ -976,7 +976,7 @@ func (a *application) startAutoUpdate(release updates.Release) {
 			return
 		}
 		if err := a.applyDownload(source); err != nil {
-			fmt.Fprintln(os.Stderr, "yonime: автоматическое обновление:", err)
+			fmt.Fprintln(os.Stderr, "yoanime: автоматическое обновление:", err)
 			return
 		}
 		a.quitForUpdate()
@@ -1126,7 +1126,7 @@ func (a *application) backfillEpisodeTotals(w *app.Window) {
 		}
 	}
 	if err := a.library.RefreshMissingEpisodeTotals(ctx, refresh); err != nil && !errors.Is(err, context.Canceled) {
-		fmt.Fprintln(os.Stderr, "yonime: подсчёт серий:", err)
+		fmt.Fprintln(os.Stderr, "yoanime: подсчёт серий:", err)
 	}
 }
 
@@ -1146,7 +1146,7 @@ func (a *application) checkEpisodeNotifications(w *app.Window) {
 	}()
 
 	if err := a.library.CheckEpisodeNotifications(ctx, a.notifyEpisode); err != nil && !errors.Is(err, context.Canceled) {
-		fmt.Fprintln(os.Stderr, "yonime: проверка новых серий:", err)
+		fmt.Fprintln(os.Stderr, "yoanime: проверка новых серий:", err)
 	}
 	if a.main != nil {
 		// A new episode also updates the cached total shown in history.

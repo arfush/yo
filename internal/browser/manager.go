@@ -1,4 +1,4 @@
-// Package browser manages the Playwright Chromium installation used by Yonime.
+// Package browser manages the Playwright Chromium installation used by yoanime.
 //
 // The first-run screen asks Playwright to install its Chromium build. Browsers
 // are kept in Playwright's regular browser cache, so a later playwright-go
@@ -25,7 +25,7 @@ import (
 
 	playwright "github.com/mxschmitt/playwright-go"
 
-	"github.com/arfush/yonime/log"
+	"github.com/arfush/yoanime/log"
 )
 
 // removeChromiumOnExit is a development aid: it makes every application start

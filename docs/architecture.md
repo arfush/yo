@@ -1,4 +1,4 @@
-# Архитектура Yonime
+# Архитектура yoanime
 
 Документ фиксирует целевую структуру пакетов и направления зависимостей.
 Правила, которые уже можно проверить, закреплены тестом
@@ -30,7 +30,7 @@
 
 ```text
 cmd/
-  yonime/            single instance, установка обновления, запуск ui
+  yoanime/            single instance, установка обновления, запуск ui
 app/                 композиционный корень: сервисы, экраны, команды
 catalog/             чистые типы: Title, Episode, Voice, UserStatus
 animelib/            API AnimeLIB, rate limit, прямые ссылки на серии
@@ -50,7 +50,7 @@ updater/             подмена запущенного exe (фича, не �
 log/                 журнал приложения и кольцевой буфер
 version/             версия по умолчанию и форматирование
 platform/
-  appdata/           пути в %APPDATA%\Yonime
+  appdata/           пути в %APPDATA%\yoanime
   install/           проверка установки через реестр Windows
   singleinstance/    один запущенный экземпляр на пользователя
   tray/              значок и меню в системном трее
@@ -116,7 +116,7 @@ log, version, token, catalog -> только стандартная библио
 
 ### `token` — это файл токена AnimeLIB
 
-Пакет читает и пишет `%APPDATA%\Yonime\animelib_token.txt`: JSON-объект
+Пакет читает и пишет `%APPDATA%\yoanime\animelib_token.txt`: JSON-объект
 OAuth-токена (как в localStorage сайта), запечатанный пользовательским Windows
 DPAPI, плюс запасной разбор простой строки. Старый открытый файл читается и
 переписывается в DPAPI-контейнер при первом `Load`. Пакет проверяет срок с
@@ -137,19 +137,19 @@ DPAPI, плюс запасной разбор простой строки. Ст�
 ## Совместимость имён
 
 Переименование пакета не должно ломать данные и релизный процесс. Файл
-конфигурации реле теперь называется `%APPDATA%\Yonime\party.json`; старый
+конфигурации реле теперь называется `%APPDATA%\yoanime\party.json`; старый
 `watchparty.json` переносится при первом запуске. Сознательно оставлены без
 изменений только контракты, которые нельзя мигрировать автоматически:
 
 - настройки `party_provider` и `party_name` в SQLite (они уже были `party_*`).
 
-Переменные сборки переименованы в `YONIME_PARTY_CLOUDFLARE_URL`,
-`YONIME_PARTY_SUPABASE_URL` и `YONIME_PARTY_SUPABASE_KEY`; одноимённые
+Переменные сборки переименованы в `YOANIME_PARTY_CLOUDFLARE_URL`,
+`YOANIME_PARTY_SUPABASE_URL` и `YOANIME_PARTY_SUPABASE_KEY`; одноимённые
 repository variables нужно обновить. Вшитые значения по умолчанию лежат в
 корневом `party.json`.
 
 Остальные имена переведены в пространство `party`: адрес комнаты
-`sha256("yonime/party/room\x00" + ключ)`, метка карточки `yonime/party/card` и
+`sha256("yoanime/party/room\x00" + ключ)`, метка карточки `yoanime/party/card` и
 тема Supabase `realtime:party:`. Это протокол `3.0`: комната, открытая старой
 версией, новому клиенту не видна, поэтому обновлять нужно обе стороны. Реле
 перевыпускается вместе с такой сменой.

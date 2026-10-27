@@ -7,7 +7,7 @@ import (
 
 	"gioui.org/layout"
 
-	"github.com/arfush/yonime/ui/draw"
+	"github.com/arfush/yoanime/ui/draw"
 )
 
 // ProgressBarStyle describes a rounded progress track. A zero border skips

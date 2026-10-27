@@ -10,7 +10,7 @@ import (
 	"gioui.org/op"
 	"gioui.org/unit"
 
-	"github.com/arfush/yonime/party"
+	"github.com/arfush/yoanime/party"
 )
 
 func TestButtonErrorFeedbackWindow(t *testing.T) {
