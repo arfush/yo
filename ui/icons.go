@@ -29,19 +29,19 @@ func drawAppIcon(gtx layout.Context, name string, center image.Point, size int, 
 }
 
 func drawLogIcon(gtx layout.Context, center image.Point, g geometry, col color.NRGBA) {
-	drawAppIcon(gtx, "log", center, g.px(16), col)
+	drawAppIcon(gtx, "log", center, g.px(17), col)
 }
 
-func drawDownloadIcon(gtx layout.Context, center image.Point, g geometry, col color.NRGBA) {
-	drawAppIcon(gtx, "download", center, g.px(14), col)
+func drawUpdateIcon(gtx layout.Context, center image.Point, g geometry, col color.NRGBA) {
+	drawAppIcon(gtx, "update", center, g.px(22), col)
 }
 
 func drawSettingsIcon(gtx layout.Context, center image.Point, g geometry, col color.NRGBA) {
-	drawAppIcon(gtx, "settings", center, g.px(16), col)
+	drawAppIcon(gtx, "settings", center, g.px(18), col)
 }
 
-func drawPeopleIcon(gtx layout.Context, center image.Point, g geometry, _ color.NRGBA, col color.NRGBA) {
-	drawAppIcon(gtx, "people", center, g.px(16), col)
+func drawPeopleIcon(gtx layout.Context, center image.Point, g geometry, col color.NRGBA) {
+	drawAppIcon(gtx, "people", center, g.px(20), col)
 }
 
 func drawCopyIcon(gtx layout.Context, center image.Point, g geometry, col color.NRGBA) {

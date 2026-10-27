@@ -65,7 +65,6 @@ var IconNames = []string{
 	"chevron_up_thin",
 	"close",
 	"copy",
-	"download",
 	"log",
 	"maximize",
 	"minimize",
@@ -75,6 +74,7 @@ var IconNames = []string{
 	"settings",
 	"trash",
 	"undo",
+	"update",
 }
 
 var (

@@ -1193,7 +1193,7 @@ func (m *mainWindow) layoutHistoryHeader(gtx layout.Context, rect image.Rectangl
 		clearLabel = "Отменить"
 	}
 	_, clearInk := m.typo.measure(gtx, clearLabel, clearFace, mainClearSize)
-	iconSize := gtx.Dp(unit.Dp(14))
+	iconSize := gtx.Dp(unit.Dp(15))
 	clearGap := gtx.Dp(unit.Dp(6))
 	clearWidth := clearInk.Dx() + clearGap + iconSize
 	clearHeight := rect.Dy()

@@ -433,12 +433,12 @@ func (s *shell) layoutFooter(gtx layout.Context, g geometry) {
 	}
 	if s.partyVisible && !g.partyRect.Empty() {
 		active := s.partyActive
-		if s.layoutFooterControl(gtx, g, g.partyRect, &s.party, &s.partyHover, active, false, func(gtx layout.Context, local image.Rectangle, progress float32, background color.NRGBA) {
+		if s.layoutFooterControl(gtx, g, g.partyRect, &s.party, &s.partyHover, active, false, func(gtx layout.Context, local image.Rectangle, progress float32, _ color.NRGBA) {
 			icon := mixColor(footerControlIconColor, footerControlHoverIconColor, progress)
 			if active {
 				icon = mixColor(footerPartyActiveIcon, footerControlHoverIconColor, progress)
 			}
-			drawPeopleIcon(gtx, centerOf(local), g, background, icon)
+			drawPeopleIcon(gtx, centerOf(local), g, icon)
 		}) && s.onParty != nil {
 			s.onParty()
 		}
@@ -446,12 +446,7 @@ func (s *shell) layoutFooter(gtx layout.Context, g geometry) {
 	if s.updateVisible && !g.updateRect.Empty() {
 		if s.layoutFooterControl(gtx, g, g.updateRect, &s.update, &s.updateHover, false, false, func(gtx layout.Context, local image.Rectangle, progress float32, _ color.NRGBA) {
 			icon := mixColor(footerControlIconColor, footerControlHoverIconColor, progress)
-			drawDownloadIcon(
-				gtx,
-				image.Pt(local.Dx()/2, local.Dy()/2),
-				g,
-				icon,
-			)
+			drawUpdateIcon(gtx, centerOf(local), g, icon)
 		}) && s.onUpdate != nil {
 			s.onUpdate()
 		}

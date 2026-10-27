@@ -287,7 +287,7 @@ type iconSpec struct {
 
 var icons = []iconSpec{
 	{"log", buildLog},
-	{"download", buildDownload},
+	{"update", buildUpdate},
 	{"settings", buildSettings},
 	{"people", buildPeople},
 	{"copy", buildCopy},
@@ -403,22 +403,40 @@ func buildLog() []shape {
 	return out
 }
 
-func buildDownload() []shape {
-	d := design{size: 14}
-	var out []shape
-	width := d.length(1.3)
-	var arrow shape
-	arrow.strokeLine(d.pt(0, -6), d.pt(0, 3), width)
-	arrow.strokeLine(d.pt(-3.5, -1), d.pt(0, 3), width)
-	arrow.strokeLine(d.pt(3.5, -1), d.pt(0, 3), width)
-	out = append(out, arrow)
+// buildUpdate paints two circular arrows. The geometry follows the reference
+// refresh glyph: a clockwise arc on top and a counter-clockwise arc below, each
+// ending in a square arrowhead.
+func buildUpdate() []shape {
+	d := design{size: 24}
+	pt := func(x, y float64) vec {
+		return d.pt(x-12, y-12)
+	}
+	width := d.length(1.8)
+	var out shape
 
-	var tray shape
-	tray.strokeLine(d.pt(-5, 3.5), d.pt(-5, 6), width)
-	tray.strokeLine(d.pt(-5, 6), d.pt(5, 6), width)
-	tray.strokeLine(d.pt(5, 6), d.pt(5, 3.5), width)
-	out = append(out, tray)
-	return out
+	// Top arc: left edge, over the top, down to the right shoulder.
+	top := []vec{pt(3, 12)}
+	const steps = 32
+	for i := 1; i <= steps; i++ {
+		angle := math.Pi + (math.Pi-0.62)*float64(i)/steps
+		top = append(top, pt(12+9*math.Cos(angle), 12+9*math.Sin(angle)))
+	}
+	top = append(top, pt(21, 8))
+	out.strokeOpen(top, width)
+
+	// Bottom arc: right edge, under the bottom, up to the left shoulder.
+	bottom := []vec{pt(21, 12)}
+	for i := 1; i <= steps; i++ {
+		angle := (math.Pi + 0.62) * float64(i) / steps
+		bottom = append(bottom, pt(12+9*math.Cos(angle), 12+9*math.Sin(angle)))
+	}
+	bottom = append(bottom, pt(3, 16))
+	out.strokeOpen(bottom, width)
+
+	// The arrowheads are open right angles, as in the reference.
+	out.strokeOpen([]vec{pt(21, 3), pt(21, 8), pt(16, 8)}, width)
+	out.strokeOpen([]vec{pt(8, 16), pt(3, 16), pt(3, 21)}, width)
+	return []shape{out}
 }
 
 func buildSettings() []shape {
@@ -441,31 +459,51 @@ func buildSettings() []shape {
 	return out
 }
 
+// buildPeople follows the reference "users" glyph: one complete figure in front
+// and a second head and shoulder arc behind it. The earlier knockout silhouette
+// read as a single blob at footer size, so the two figures now stay separate.
 func buildPeople() []shape {
-	d := design{size: 16}
-	width := d.length(1.3)
+	d := design{size: 24}
+	pt := func(x, y float64) vec {
+		return d.pt(x-12, y-12)
+	}
+	width := d.length(2)
 	var out []shape
 
-	var back shape
-	back.strokeClosed(sampleCircle(0.5+d.length(2.6), 0.5+d.length(-3.6), d.length(1.85), 64), width)
-	// The old code knocked the back shoulders out with the front body's
-	// background fill. Clip the painted shoulder band at the front silhouette's
-	// right edge instead: the result is identical and stays transparent.
-	shoulder := mapPoints(d, sampleCubic(
-		vec{-0.6, 5.4}, vec{-0.1, 1.9}, vec{6.6, 1.9}, vec{6.6, 5.4}, 32,
-	))
-	shoulder = clipPolygonX(openStrokePolygon(shoulder, width), 0.5+d.length(0.9))
-	back.polygon(shoulder)
-	out = append(out, back)
-
 	var front shape
-	front.strokeClosed(sampleCircle(0.5+d.length(-2.4), 0.5+d.length(-2.4), d.length(2.15), 64), width)
-	// Only the shoulder curve is stroked. The old code filled the body with the
-	// control background to hide the back figure, but never outlined its sides
-	// or bottom; trimming the back shoulders above gives the same knockout.
-	body := sampleCubic(vec{-6.7, 5.4}, vec{-6.7, 2.1}, vec{0.9, 2.1}, vec{0.9, 5.4}, 32)
-	front.strokeOpen(mapPoints(d, body), width)
+	front.strokeClosed(sampleCircle(
+		0.5+d.length(9-12),
+		0.5+d.length(7-12),
+		d.length(4),
+		64,
+	), width)
+	body := []vec{pt(2, 21), pt(2, 19)}
+	body = append(body, sampleCubic(
+		pt(2, 19), pt(2, 16.79), pt(4.21, 15), pt(6, 15), 16,
+	)...)
+	body = append(body, pt(12, 15))
+	body = append(body, sampleCubic(
+		pt(12, 15), pt(13.79, 15), pt(16, 16.79), pt(16, 19), 16,
+	)...)
+	body = append(body, pt(16, 21))
+	front.strokeOpen(body, width)
 	out = append(out, front)
+
+	var back shape
+	head := make([]vec, 0, 33)
+	for i := 0; i <= 32; i++ {
+		angle := -math.Pi/2 + math.Pi*float64(i)/32
+		head = append(head, pt(16+4*math.Cos(angle), 7+4*math.Sin(angle)))
+	}
+	back.strokeOpen(head, width)
+
+	shoulder := []vec{pt(22, 21), pt(22, 19)}
+	for i := 1; i <= 16; i++ {
+		angle := -math.Pi / 2 * float64(i) / 16
+		shoulder = append(shoulder, pt(18+4*math.Cos(angle), 19+4*math.Sin(angle)))
+	}
+	back.strokeOpen(shoulder, width)
+	out = append(out, back)
 	return out
 }
 
@@ -483,25 +521,42 @@ func buildCopy() []shape {
 	return out
 }
 
+// buildPlay is an outlined play triangle followed by a vertical stop bar, like
+// the reference glyph. The old filled triangle was also visually off-centre
+// because its paint bounds only covered the right half of the view box.
 func buildPlay() []shape {
 	d := design{size: 1}
+	width := d.length(0.085)
 	var out shape
-	out.polygon([]vec{d.pt(-0.25, -0.5), d.pt(0.5, 0), d.pt(-0.25, 0.5)})
+	out.strokeClosed([]vec{
+		d.pt(-0.42, -0.38),
+		d.pt(0.20, 0),
+		d.pt(-0.42, 0.38),
+	}, width)
+	out.strokeLine(d.pt(0.42, -0.38), d.pt(0.42, 0.38), width)
 	return []shape{out}
 }
 
+// buildTrash keeps the tapered can from the original house icon, but gives the
+// handle proper stems and enlarges the drawing so it stays legible at the file
+// row's 16 dp size. The two ribs make the silhouette read as a bin rather than
+// a plain cup.
 func buildTrash() []shape {
-	d := design{size: 1}
-	// The old width is max(1, size/9) physical pixels. The clear button uses
-	// 14dp, where that resolves to one pixel; keeping that ratio preserves the
-	// look while letting IconVG scale the rest of the glyph.
-	width := 1.0 / 14.0
+	d := design{size: 16}
+	width := d.length(1.7)
 	var out shape
-	out.strokeLine(d.pt(-0.4, -0.225), d.pt(0.4, -0.225), width)
-	out.strokeLine(d.pt(-0.14, -0.36), d.pt(0.14, -0.36), width)
-	out.strokeOpen([]vec{d.pt(-0.31, -0.125), d.pt(-0.235, 0.36), d.pt(0.235, 0.36), d.pt(0.31, -0.125)}, width)
-	out.strokeLine(d.pt(-0.1, -0.01), d.pt(-0.1, 0.25), width)
-	out.strokeLine(d.pt(0.1, -0.01), d.pt(0.1, 0.25), width)
+	out.strokeLine(d.pt(-7.2, -5.2), d.pt(7.2, -5.2), width)
+	out.strokeLine(d.pt(-2.6, -6.8), d.pt(2.6, -6.8), width)
+	out.strokeLine(d.pt(-2.6, -6.8), d.pt(-2.6, -5.2), width)
+	out.strokeLine(d.pt(2.6, -6.8), d.pt(2.6, -5.2), width)
+	out.strokeOpen([]vec{
+		d.pt(-6.2, -3.6),
+		d.pt(-4.8, 6.4),
+		d.pt(4.8, 6.4),
+		d.pt(6.2, -3.6),
+	}, width)
+	out.strokeLine(d.pt(-1.8, -1.2), d.pt(-1.8, 4.8), width)
+	out.strokeLine(d.pt(1.8, -1.2), d.pt(1.8, 4.8), width)
 	return []shape{out}
 }
 
@@ -604,30 +659,6 @@ func mapPoints(d design, points []vec) []vec {
 	out := make([]vec, len(points))
 	for i, p := range points {
 		out[i] = d.pt(p.x, p.y)
-	}
-	return out
-}
-
-// clipPolygonX keeps the part of a convex or mildly concave polygon to the
-// right of x. The shoulder band is a simple polygon, so a single Sutherland-
-// Hodgman pass is enough.
-func clipPolygonX(points []vec, x float64) []vec {
-	if len(points) == 0 {
-		return nil
-	}
-	out := make([]vec, 0, len(points)+2)
-	prev := points[len(points)-1]
-	prevIn := prev.x >= x
-	for _, cur := range points {
-		curIn := cur.x >= x
-		if curIn != prevIn {
-			t := (x - prev.x) / (cur.x - prev.x)
-			out = append(out, vec{x: x, y: prev.y + (cur.y-prev.y)*t})
-		}
-		if curIn {
-			out = append(out, cur)
-		}
-		prev, prevIn = cur, curIn
 	}
 	return out
 }
