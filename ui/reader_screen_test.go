@@ -50,6 +50,25 @@ func TestReaderListsBalanceTheirOperationStacks(t *testing.T) {
 	r.layoutRanobe(gtx, image.Rect(0, 0, 500, 400))
 }
 
+func TestSplitReaderImageKeepsTexturesUnderLimit(t *testing.T) {
+	src := image.NewNRGBA(image.Rect(0, 0, 100, 9000))
+	chunks := splitReaderImage(src, readerMaxTextureSide)
+	if len(chunks) != 3 {
+		t.Fatalf("chunks = %d, want 3", len(chunks))
+	}
+	total := 0
+	for index, chunk := range chunks {
+		bounds := chunk.Bounds()
+		if bounds.Dx() != 100 || bounds.Dy() > readerMaxTextureSide {
+			t.Fatalf("chunk %d bounds = %v", index, bounds)
+		}
+		total += bounds.Dy()
+	}
+	if total != 9000 {
+		t.Fatalf("chunk heights total %d, want 9000", total)
+	}
+}
+
 func TestReaderRequestFrameCallsInvalidator(t *testing.T) {
 	calls := 0
 	r := &readerScreen{invalidate: func() { calls++ }}

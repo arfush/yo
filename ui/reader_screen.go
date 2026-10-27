@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	stddraw "image/draw"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -36,6 +37,10 @@ const (
 	readerSearchHeight  = unit.Dp(34)
 	readerHeaderHeight  = unit.Dp(48)
 	readerParaGap       = unit.Dp(12)
+	// readerMaxTextureSide keeps one GPU texture below the Direct3D limit.
+	// Webtoon pages are often 760x25000; uploading them as one texture makes
+	// Gio panic with CreateTexture2D 0x80070057 before anything is visible.
+	readerMaxTextureSide = 4096
 	// readerChapterWindow is the number of chapters kept ready on each side of
 	// the current one. Moving one chapter forward/back does not wait for the
 	// network because the next window was already requested.
@@ -63,6 +68,9 @@ type readerTranslation struct {
 type readerPageState struct {
 	url     string
 	img     image.Image
+	chunks  []image.Image
+	width   int
+	height  int
 	loading bool
 	failed  bool
 }
@@ -425,7 +433,11 @@ func (r *readerScreen) applyChapterContent(content catalog.ReadingContent) {
 	r.loadErr = ""
 	r.pages = make([]readerPageState, len(content.Pages))
 	for index, page := range content.Pages {
-		r.pages[index] = readerPageState{url: page.URL}
+		r.pages[index] = readerPageState{
+			url:    page.URL,
+			width:  page.Width,
+			height: page.Height,
+		}
 	}
 	r.mangaList.Position = layout.Position{}
 	r.ranobeList.Position = layout.Position{}
@@ -543,6 +555,11 @@ func (r *readerScreen) updateImages(gtx layout.Context) {
 				page.failed = true
 			} else {
 				page.img = result.img
+				page.chunks = splitReaderImage(result.img, readerMaxTextureSide)
+				if page.img != nil {
+					page.width = page.img.Bounds().Dx()
+					page.height = page.img.Bounds().Dy()
+				}
 				page.failed = false
 			}
 			if r.animationsRun() {
@@ -993,24 +1010,38 @@ func (r *readerScreen) layoutManga(gtx layout.Context, rect image.Rectangle) {
 	cgtx.Constraints = layout.Exact(rect.Size())
 	r.mangaList.Layout(cgtx, len(r.pages), func(gtx layout.Context, index int) layout.Dimensions {
 		page := &r.pages[index]
-		if page.img == nil {
+		if page.img == nil && len(page.chunks) == 0 {
 			r.downloadPage(index)
 		}
 		width := rect.Dx()
 		height := gtx.Dp(unit.Dp(20))
-		if page.img != nil {
+		switch {
+		case page.width > 0 && page.height > 0:
+			height = width * page.height / page.width
+		case page.img != nil:
 			b := page.img.Bounds()
 			if b.Dx() > 0 {
 				height = width * b.Dy() / b.Dx()
 			}
-		} else if page.loading {
+		case page.loading:
 			height = gtx.Dp(unit.Dp(120))
 		}
 		if height < gtx.Dp(unit.Dp(40)) {
 			height = gtx.Dp(unit.Dp(40))
 		}
 		item := image.Rect(0, 0, width, height)
-		if page.img != nil {
+		if len(page.chunks) > 0 {
+			y := 0
+			for _, chunk := range page.chunks {
+				b := chunk.Bounds()
+				if b.Dx() <= 0 || b.Dy() <= 0 {
+					continue
+				}
+				h := width * b.Dy() / b.Dx()
+				drawImage(gtx, chunk, image.Rect(0, y, width, y+h))
+				y += h
+			}
+		} else if page.img != nil {
 			drawImage(gtx, page.img, item)
 		} else if page.failed {
 			r.typo.drawCentered(gtx, "Не удалось загрузить", font.Font{Typeface: fontFamily, Weight: font.Medium}, unit.Sp(12), mainMutedColor, centerOf(item))
@@ -1021,6 +1052,41 @@ func (r *readerScreen) layoutManga(gtx layout.Context, rect image.Rectangle) {
 		}
 		return layout.Dimensions{Size: item.Size()}
 	})
+}
+
+type subImager interface {
+	SubImage(image.Rectangle) image.Image
+}
+
+// splitReaderImage cuts a tall webtoon page into GPU-safe textures. Subimages
+// keep sharing the decoded backing array, so splitting does not duplicate the
+// page in memory. A 760x25000 page becomes seven 760x4096 chunks.
+func splitReaderImage(src image.Image, maxSide int) []image.Image {
+	if src == nil || maxSide <= 0 {
+		return nil
+	}
+	bounds := src.Bounds()
+	if bounds.Dx() <= 0 || bounds.Dy() <= 0 {
+		return nil
+	}
+	if bounds.Dy() <= maxSide {
+		return []image.Image{src}
+	}
+	sub, ok := src.(subImager)
+	if !ok {
+		// Decoded PNG/JPEG/WebP images normally implement SubImage. The copy is
+		// only a fallback for a custom image type.
+		copyImage := image.NewNRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
+		stddraw.Draw(copyImage, copyImage.Bounds(), src, bounds.Min, stddraw.Src)
+		sub = copyImage
+		bounds = copyImage.Bounds()
+	}
+	chunks := make([]image.Image, 0, (bounds.Dy()+maxSide-1)/maxSide)
+	for y := bounds.Min.Y; y < bounds.Max.Y; y += maxSide {
+		end := min(y+maxSide, bounds.Max.Y)
+		chunks = append(chunks, sub.SubImage(image.Rect(bounds.Min.X, y, bounds.Max.X, end)))
+	}
+	return chunks
 }
 
 // layoutRanobe renders the paragraphs wrapped at the content width.
