@@ -832,6 +832,10 @@ func (w *logScreen) drawScrollbar(gtx layout.Context, viewport image.Point, tota
 	// interfere with the drag.
 	if maxScroll > 0 {
 		trackArea := clip.Rect(track).Push(gtx.Ops)
+		// The event target must be registered in the clipped track area;
+		// gtx.Event alone only reads an already registered target. Without this
+		// Op the thumb hovered but never received Press or Drag events.
+		event.Op(gtx.Ops, &w.scrollbarDragTag)
 		pointer.CursorPointer.Add(gtx.Ops)
 		for {
 			ev, ok := gtx.Event(pointer.Filter{
