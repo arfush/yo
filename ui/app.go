@@ -273,7 +273,12 @@ func newApp(services Services) (*application, error) {
 	if raw, ok := lib.Setting(librarySectionKey); ok {
 		section = sectionFromSetting(raw)
 	}
-	app.main.section = section
+	// Restore the palette, header name and per-section history before the first
+	// frame. Without this the saved manga/ranobe section would open with the
+	// anime history until the user switched away and back.
+	applySectionTheme(section)
+	app.main.setSection(section)
+	app.shell.selectSection(section)
 	state := services.UpdateStore.State()
 	app.updatesAvailable.Store(state.Available)
 	app.autoUpdateStartup.Store(true)
@@ -1283,6 +1288,7 @@ func (a *application) autoUpdatesEnabled() bool {
 // also updated so the menu remembers the intended section even after a chain of
 // section changes.
 func (a *application) selectSection(section librarySection) {
+	applySectionTheme(section)
 	a.main.setSection(section)
 	if a.library != nil {
 		a.library.SetSetting(librarySectionKey, section.key())

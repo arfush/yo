@@ -361,12 +361,36 @@ func (m *mainScreen) moveHistoryItem(from, to int) {
 	m.selected = reorderIndex(m.selected, from, to)
 	m.loadingTarget = reorderIndex(m.loadingTarget, from, to)
 	if m.filter == filterAll {
-		// The unfiltered view owns the all-titles order. Keep the complete
-		// order in sync so the database write and later filters see the move.
-		m.allHistory = append(m.allHistory[:0], m.history...)
+		if len(m.allHistory) == 0 {
+			// Older UI state and tests may carry only the visible slice. Seed
+			// the complete list before the section merge below.
+			m.allHistory = append([]historyTitle(nil), m.history...)
+			return
+		}
+		// The unfiltered view still shows one library section. Apply its new
+		// order to the matching slots of the complete list so rows belonging
+		// to the other sections keep both their content and their position.
+		m.syncSectionOrder()
 		return
 	}
 	m.syncVisibleStatusOrder()
+}
+
+// syncSectionOrder copies the visible section order into the slots occupied by
+// that section in the complete history. Other sections keep their rows and
+// positions, so switching libraries never loses their history.
+func (m *mainScreen) syncSectionOrder() {
+	next := 0
+	for index := range m.allHistory {
+		if !m.section.matchesSource(m.allHistory[index].source) {
+			continue
+		}
+		if next >= len(m.history) {
+			break
+		}
+		m.allHistory[index] = m.history[next]
+		next++
+	}
 }
 
 // syncVisibleStatusOrder copies the current filtered order into the per-status

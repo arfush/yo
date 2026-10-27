@@ -75,11 +75,10 @@ func (t historyTitle) section() librarySection {
 }
 
 // setSection switches the visible library without touching the other sections.
-// Selection and scroll belong to the previous list and are dropped.
+// Selection and scroll belong to the previous list and are dropped. The filter
+// is rebuilt even when the value did not change: startup restores the saved
+// section after newMainScreen has already filtered the history for anime.
 func (m *mainScreen) setSection(section librarySection) {
-	if m.section == section {
-		return
-	}
 	m.section = section
 	m.applyFilter()
 }

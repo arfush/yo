@@ -31,7 +31,6 @@ type shell struct {
 	// sectionLogo is the clickable brand block (logo + app name) that opens the
 	// section switcher menu.
 	sectionLogo   widget.Clickable
-	sectionHover  hoverAnim
 	sectionOpen   bool
 	sectionScrim  widget.Clickable
 	sectionItems  [2]widget.Clickable
@@ -158,7 +157,11 @@ func (s *shell) layoutSectionMenu(gtx layout.Context, g geometry) {
 	itemHeight := gtx.Dp(unit.Dp(34))
 	itemGap := gtx.Dp(unit.Dp(2))
 	height := len(options)*itemHeight + (len(options)-1)*itemGap + 2*pad
-	menu := placePopupList(s.sectionAnchor, height, gtx.Dp(unit.Dp(6)), bounds)
+	anchor := s.sectionAnchor
+	if minimum := gtx.Dp(unit.Dp(168)); anchor.Dx() < minimum {
+		anchor.Max.X = anchor.Min.X + minimum
+	}
+	menu := placePopupList(anchor, height, gtx.Dp(unit.Dp(6)), bounds)
 
 	if layoutOverlayScrim(gtx, bounds, &s.sectionScrim) {
 		s.sectionOpen = false
@@ -193,7 +196,7 @@ func (s *shell) layoutSectionItem(gtx layout.Context, rect image.Rectangle, sect
 	clicked := layoutClickableRect(gtx, rect, click, func(gtx layout.Context, local image.Rectangle) {
 		radius := gtx.Dp(unit.Dp(6))
 		if click.Hovered() {
-			fillRounded(gtx, tokenDomainFillHover, local, radius)
+			fillRounded(gtx, withAlpha(section.palette().accent1, 0x24), local, radius)
 		}
 		face := font.Font{Typeface: fontFamily, Weight: font.Medium}
 		label := section.appName()
@@ -395,7 +398,10 @@ func (s *shell) layoutFrame(gtx layout.Context, g geometry) {
 }
 
 func (s *shell) layoutHeader(gtx layout.Context, w *app.Window, g geometry) {
-	s.layoutLogo(gtx, g)
+	brand := s.brandLayout(gtx, g)
+	g.titleX = brand.titleX
+	g.badgeX = brand.badgeX
+	s.layoutLogo(gtx, g, brand)
 
 	// The title is deliberately pinned to a common baseline between the logo
 	// and version badge, rather than being laid out as flowing text.
@@ -405,12 +411,14 @@ func (s *shell) layoutHeader(gtx layout.Context, w *app.Window, g geometry) {
 	titleY := g.headerCenterY - titleInk.Dy()/2
 	s.typo.draw(gtx, appName, titleFace, titleSize, titleColor, image.Pt(g.titleX, titleY))
 
-	// A small chevron after the name marks the brand block as the section
-	// switcher. It is always visible so the affordance does not depend on a
-	// hover state.
+	// The chevron sits after a reserved width for the longest section name, so
+	// the badge never jumps when the active name changes.
 	chevron := gtx.Dp(unit.Dp(8))
-	chevronCenter := image.Pt(g.titleX+titleInk.Dx()+gtx.Dp(unit.Dp(10)), g.headerCenterY)
-	drawChevronDown(gtx, chevronCenter, chevron, gtx.Dp(unit.Dp(1.7)), mainMutedColor)
+	if s.sectionOpen {
+		drawChevronUp(gtx, brand.chevron, chevron, gtx.Dp(unit.Dp(1.7)), mainMutedColor)
+	} else {
+		drawChevronDown(gtx, brand.chevron, chevron, gtx.Dp(unit.Dp(1.7)), mainMutedColor)
+	}
 
 	badgeRight := s.layoutBadge(gtx, g)
 	notice := headerNotice{}
@@ -454,33 +462,51 @@ func (s *shell) layoutHeader(gtx layout.Context, w *app.Window, g geometry) {
 	s.layoutDragRegions(gtx, g)
 }
 
-func (s *shell) layoutLogo(gtx layout.Context, g geometry) {
+// brandLayout reserves the same title width for every section. The icon and
+// badge therefore stay at fixed positions while the label changes, and the
+// chevron never overlaps either neighbour.
+type brandLayout struct {
+	titleX  int
+	chevron image.Point
+	right   int
+	badgeX  int
+}
+
+func (s *shell) brandLayout(gtx layout.Context, g geometry) brandLayout {
 	titleFace := font.Font{Typeface: fontFamily, Weight: font.Bold}
-	_, titleInk := s.typo.measure(gtx, s.section.appName(), titleFace, titleSize)
+	titleWidth := 0
+	for _, section := range []librarySection{sectionAnime, sectionManga, sectionRanobe} {
+		if _, ink := s.typo.measure(gtx, section.appName(), titleFace, titleSize); ink.Dx() > titleWidth {
+			titleWidth = ink.Dx()
+		}
+	}
+	titleX := g.logo.Max.X + gtx.Dp(unit.Dp(12))
+	chevronSize := gtx.Dp(unit.Dp(8))
+	chevronGap := gtx.Dp(unit.Dp(10))
+	chevronCenter := image.Pt(titleX+titleWidth+chevronGap+chevronSize/2, g.headerCenterY)
+	right := titleX + titleWidth + chevronGap + chevronSize
+	badgeX := right + gtx.Dp(unit.Dp(14))
+	return brandLayout{
+		titleX:  titleX,
+		chevron: chevronCenter,
+		right:   right,
+		badgeX:  badgeX,
+	}
+}
+
+func (s *shell) layoutLogo(gtx layout.Context, g geometry, brand brandLayout) {
 	// The trigger covers the logo, the app name and the trailing chevron, so
-	// the whole brand block opens the menu.
+	// the whole brand block opens the menu. It deliberately paints no hover
+	// surface: only the dropdown below the header should appear when opened.
 	trigger := image.Rect(
 		g.logo.Min.X-gtx.Dp(unit.Dp(6)),
 		0,
-		g.titleX+titleInk.Dx()+gtx.Dp(unit.Dp(20)),
+		brand.right+gtx.Dp(unit.Dp(4)),
 		g.headerClickEnd,
 	)
 	s.sectionAnchor = trigger
 
-	progress := s.sectionHover.update(gtx, s.sectionLogo.Hovered())
-	if s.animationsRun() && s.sectionLogo.Hovered() {
-		gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(hoverPollInterval)})
-	}
-	open := s.sectionOpen
-	if layoutClickableRect(gtx, trigger, &s.sectionLogo, func(gtx layout.Context, local image.Rectangle) {
-		if progress > 0.02 || open {
-			alpha := progress
-			if open {
-				alpha = 1
-			}
-			fillRounded(gtx, mixColor(chromeColor, controlHoverColor, alpha), local, gtx.Dp(unit.Dp(7)))
-		}
-	}) {
+	if layoutClickableRect(gtx, trigger, &s.sectionLogo, nil) {
 		s.sectionOpen = !s.sectionOpen
 		gtx.Execute(op.InvalidateCmd{})
 	}

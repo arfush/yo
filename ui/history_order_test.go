@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/arfush/yo/catalog"
 	"github.com/arfush/yo/library"
 	"github.com/arfush/yo/store"
 )
@@ -76,6 +77,63 @@ func TestMoveFilteredHistoryUpdatesOnlyItsStatusOrder(t *testing.T) {
 	m.filter = filterAll
 	if got := historyIDs(m.visibleHistory(m.allHistory)); !equalIDs(got, []int64{1, 2, 3, 4, 5}) {
 		t.Fatalf("all-titles order changed: %v", got)
+	}
+}
+
+func TestEachSectionKeepsItsOwnHistory(t *testing.T) {
+	all := []historyTitle{
+		{id: 1, source: catalog.SourceAnimeLIB},
+		{id: 2, source: catalog.SourceMangaLib},
+		{id: 3, source: catalog.SourceRanobeLib},
+		{id: 4, source: catalog.SourceYaoiLib},
+	}
+	m := &mainScreen{
+		allHistory: append([]historyTitle(nil), all...),
+		filter:     filterAll,
+		section:    sectionManga,
+	}
+	m.applyFilter()
+	if got := historyIDs(m.history); !equalIDs(got, []int64{2, 4}) {
+		t.Fatalf("manga history = %v, want [2 4]", got)
+	}
+
+	// The same call the startup path now uses must rebuild the list even when
+	// the stored section already matches the one from newMainScreen.
+	m.setSection(sectionRanobe)
+	if got := historyIDs(m.history); !equalIDs(got, []int64{3}) {
+		t.Fatalf("ranobe history = %v, want [3]", got)
+	}
+	m.setSection(sectionAnime)
+	if got := historyIDs(m.history); !equalIDs(got, []int64{1}) {
+		t.Fatalf("anime history = %v, want [1]", got)
+	}
+}
+
+func TestMovingRowsInOneSectionPreservesOtherSections(t *testing.T) {
+	all := []historyTitle{
+		{id: 1, source: catalog.SourceAnimeLIB},
+		{id: 2, source: catalog.SourceMangaLib},
+		{id: 3, source: catalog.SourceRanobeLib},
+		{id: 4, source: catalog.SourceMangaLib},
+	}
+	m := &mainScreen{
+		allHistory: append([]historyTitle(nil), all...),
+		filter:     filterAll,
+		section:    sectionManga,
+	}
+	m.history = m.visibleHistory(m.allHistory)
+	m.moveHistoryItem(0, 1)
+
+	if got := historyIDs(m.allHistory); !equalIDs(got, []int64{1, 4, 3, 2}) {
+		t.Fatalf("complete history after drag = %v, want [1 4 3 2]", got)
+	}
+	m.setSection(sectionAnime)
+	if got := historyIDs(m.history); !equalIDs(got, []int64{1}) {
+		t.Fatalf("anime history was lost: %v", got)
+	}
+	m.setSection(sectionRanobe)
+	if got := historyIDs(m.history); !equalIDs(got, []int64{3}) {
+		t.Fatalf("ranobe history was lost: %v", got)
 	}
 }
 

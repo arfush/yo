@@ -746,7 +746,6 @@ func (r *readerScreen) layoutChapterList(gtx layout.Context, rect image.Rectangl
 		}
 		return layout.Dimensions{Size: item.Size()}
 	})
-	stack.Pop()
 }
 
 func (r *readerScreen) layoutChapterRow(gtx layout.Context, rect image.Rectangle, key string, selected bool) bool {
@@ -882,7 +881,6 @@ func (r *readerScreen) layoutManga(gtx layout.Context, rect image.Rectangle) {
 		}
 		return layout.Dimensions{Size: item.Size()}
 	})
-	stack.Pop()
 }
 
 // layoutRanobe renders the paragraphs wrapped at the content width.
@@ -915,7 +913,6 @@ func (r *readerScreen) layoutRanobe(gtx layout.Context, rect image.Rectangle) {
 		r.typo.drawWrapped(gtx, text, face, unit.Sp(14), mainTextColor, image.Pt(0, 0), width)
 		return layout.Dimensions{Size: image.Pt(width, h+gap)}
 	})
-	stack.Pop()
 }
 
 func (r *readerScreen) layoutFooter(gtx layout.Context) {
