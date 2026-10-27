@@ -27,6 +27,7 @@ const (
 	updateLogName = "update.log"
 	logName       = "yoanime.log"
 	partyName     = "party.json"
+	kinopoiskName = "kinopoisk.json"
 )
 
 // Dir returns the per-user data directory and creates it when necessary.
@@ -129,6 +130,12 @@ func TokenPath() (string, error) {
 // deploying the Worker or the Supabase project.
 func PartyConfigPath() (string, error) {
 	return path(partyName)
+}
+
+// KinopoiskConfigPath returns the optional mirror-host override. The file is
+// only needed when a mirror moves before the application ships an update.
+func KinopoiskConfigPath() (string, error) {
+	return path(kinopoiskName)
 }
 
 // BrowserProfileDir returns the persistent Chromium profile path. The profile
