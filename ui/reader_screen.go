@@ -220,7 +220,7 @@ func (r *readerScreen) refreshFiltered() {
 	for _, key := range r.chapters {
 		if query == "" ||
 			strings.Contains(strings.ToLower(key), query) ||
-			strings.Contains(strings.ToLower(catalog.ReadingChapterLabel(key)), query) {
+			strings.Contains(strings.ToLower(readingChapterLabel(key)), query) {
 			r.filtered = append(r.filtered, key)
 		}
 	}
@@ -366,7 +366,7 @@ func (r *readerScreen) updateChapterResult(gtx layout.Context) {
 			}
 			r.loading = false
 			if result.err != nil {
-				r.loadErr = result.err.Error()
+				r.loadErr = friendlyError(result.err)
 				if r.onError != nil {
 					r.onError(result.err)
 				}
@@ -616,7 +616,11 @@ func (r *readerScreen) layoutTranslationItem(gtx layout.Context, rect image.Rect
 			fillRounded(gtx, tokenDomainFillHover, local, radius)
 		}
 		face := font.Font{Typeface: fontFamily, Weight: font.Medium}
-		label := fmt.Sprintf("%s · %d", translation.name, translation.count)
+		name := translation.name
+		if name == "" {
+			name = "Без команды"
+		}
+		label := fmt.Sprintf("%s · %d", name, translation.count)
 		padX := gtx.Dp(unit.Dp(10))
 		_, ink := r.typo.measure(gtx, label, face, unit.Sp(12.5))
 		textColor := mainTextColor
@@ -772,7 +776,7 @@ func (r *readerScreen) layoutChapterRow(gtx layout.Context, rect image.Rectangle
 		if selected {
 			textColor = badgeTextColor
 		}
-		label := catalog.ReadingChapterLabel(key)
+		label := readingChapterLabel(key)
 		padX := gtx.Dp(unit.Dp(10))
 		_, ink := r.typo.measure(gtx, label, face, unit.Sp(12.5))
 		r.typo.draw(gtx, label, face, unit.Sp(12.5), textColor, image.Pt(padX, (local.Dy()-ink.Dy())/2))
@@ -796,7 +800,7 @@ func (r *readerScreen) layoutReaderArea(gtx layout.Context, rect image.Rectangle
 	// Header with the current chapter label.
 	label := ""
 	if r.selectedChapter >= 0 && r.selectedChapter < len(r.chapters) {
-		label = catalog.ReadingChapterLabel(r.chapters[r.selectedChapter])
+		label = readingChapterLabel(r.chapters[r.selectedChapter])
 	}
 	face := font.Font{Typeface: fontFamily, Weight: font.Bold}
 	r.typo.draw(gtx, label, face, unit.Sp(14), mainTextColor, image.Pt(padX, gtx.Dp(unit.Dp(10))))

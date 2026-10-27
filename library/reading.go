@@ -171,9 +171,6 @@ func titleFromReadingData(data *animelib.ReadingTitleData) Title {
 		key := catalog.ReadingChapterKey(raw.Volume, raw.Number)
 		unique[key] = true
 		translation := strings.TrimSpace(raw.Translation)
-		if translation == "" {
-			translation = "Без команды"
-		}
 		if byTranslation[translation] == nil {
 			byTranslation[translation] = make(map[string]catalog.ReadingChapter)
 		}
@@ -358,7 +355,7 @@ func (l *Library) ReadingImage(ctx context.Context, title Title, rawURL string) 
 	page, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		logger.Warn("cannot decode reading page", "url", parsed.String(), "error", err)
-		return nil, fmt.Errorf("не удалось открыть изображение: %w", err)
+		return nil, fmt.Errorf("cannot open the image: %w", err)
 	}
 	logger.Debug("reading page loaded", "url", parsed.String(), "bytes", len(data))
 	return page, nil

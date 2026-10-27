@@ -7,13 +7,13 @@ import "errors"
 var (
 	// ErrInvalidLink is returned when the user-supplied project link cannot be
 	// opened.
-	ErrInvalidLink = errors.New("некорректная ссылка")
+	ErrInvalidLink = errors.New("invalid link")
 	// ErrSiteUnreachable is returned when the site rejects or drops the
 	// navigation. The usual fix is trying another mirror.
-	ErrSiteUnreachable = errors.New("сайт не открылся")
+	ErrSiteUnreachable = errors.New("site did not open")
 	// ErrWindowClosed is returned when the authorization browser is closed
 	// before a token appears.
-	ErrWindowClosed = errors.New("окно авторизации закрыто")
+	ErrWindowClosed = errors.New("authorization window was closed")
 
 	// ErrManagerNil means the manager was not opened before use.
 	ErrManagerNil = errors.New("browser manager is nil")
@@ -22,7 +22,7 @@ var (
 	// ErrDownloadRunning means Chromium is already being installed.
 	ErrDownloadRunning = errors.New("Chromium download is already running")
 	// ErrChromiumMissing means the headless browser was never installed.
-	ErrChromiumMissing = errors.New("Chromium не установлен")
+	ErrChromiumMissing = errors.New("Chromium is not installed")
 	// ErrHeadlessNil means the shared headless browser is not running.
 	ErrHeadlessNil = errors.New("headless browser is nil")
 	// ErrHeadlessClosed means the headless browser exited while being used.

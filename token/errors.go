@@ -14,11 +14,11 @@ var (
 	ErrNotFound = catalog.ErrTokenMissing
 
 	// ErrEmptyTokenFile means the DPAPI container held no data.
-	ErrEmptyTokenFile = errors.New("файл токена пустой")
+	ErrEmptyTokenFile = errors.New("token file is empty")
 	// ErrMissingAccessToken means the JSON container has no access_token.
-	ErrMissingAccessToken = errors.New("в файле нет access_token")
+	ErrMissingAccessToken = errors.New("token file has no access_token")
 	// ErrEmptySave means a caller tried to persist an empty token.
-	ErrEmptySave = errors.New("нельзя сохранить пустой токен")
+	ErrEmptySave = errors.New("cannot save an empty token")
 	// ErrEmptyPayload means DPAPI protected an empty buffer.
 	ErrEmptyPayload = errors.New("token payload is empty")
 	// ErrEmptyDPAPIResult means Windows returned an empty ciphertext.

@@ -139,7 +139,7 @@ func (r *Resolver) resolve(ctx context.Context, embedURL string) (map[int]string
 	}
 	page, err := headless.NewPage()
 	if err != nil {
-		return nil, fmt.Errorf("открыть страницу Kodik: %w", err)
+		return nil, fmt.Errorf("cannot open the Kodik page: %w", err)
 	}
 	defer page.Close()
 
@@ -169,7 +169,7 @@ func (r *Resolver) resolve(ctx context.Context, embedURL string) (map[int]string
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return nil, fmt.Errorf("открыть Kodik: %w", err)
+		return nil, fmt.Errorf("cannot open Kodik: %w", err)
 	}
 
 	// Kodik keeps the play button hidden (it is an overlay, not a visible
@@ -318,7 +318,7 @@ type ftorResponse struct {
 func parseLinks(body string) (map[int]string, error) {
 	var response ftorResponse
 	if err := json.Unmarshal([]byte(body), &response); err != nil {
-		return nil, fmt.Errorf("некорректный ответ Kodik: %w", err)
+		return nil, fmt.Errorf("invalid Kodik response: %w", err)
 	}
 	if len(response.Links) == 0 {
 		return nil, ErrEmptyLinks

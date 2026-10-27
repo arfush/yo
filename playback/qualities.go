@@ -19,21 +19,21 @@ import (
 // playback of that quality share one cached manifest.
 func (s *Service) Qualities(ctx context.Context, plan *library.PlaybackPlan, preferred int) ([]int, error) {
 	if s == nil || plan == nil {
-		return nil, errors.New("нет плана воспроизведения")
+		return nil, errors.New("playback plan is nil")
 	}
 	if plan.Source != kinopoisk.Source || plan.Kinopoisk == nil {
-		return nil, errors.New("у озвучки нет ссылки плеера")
+		return nil, errors.New("voiceover has no player URL")
 	}
 	if s.kinopoisk == nil {
-		return nil, errors.New("браузер Kinopoisk недоступен")
+		return nil, errors.New("Kinopoisk browser is unavailable")
 	}
 	if s.Active() {
 		// The probe must never queue behind a playing session's resolves: mpv
 		// is opening and the title page is about to disappear anyway.
-		return nil, errors.New("воспроизведение уже запущено")
+		return nil, ErrAlreadyPlaying
 	}
 	if len(plan.Episodes) == 0 {
-		return nil, errors.New("в выбранной озвучке нет доступных серий")
+		return nil, errors.New("the selected voiceover has no available episodes")
 	}
 	index := plan.EpisodeIndex
 	if index < 0 || index >= len(plan.Episodes) {
@@ -41,7 +41,7 @@ func (s *Service) Qualities(ctx context.Context, plan *library.PlaybackPlan, pre
 	}
 	season, episode, ok := kinopoisk.SplitEpisodeKey(plan.Episodes[index].Number)
 	if !ok {
-		return nil, errors.New("некорректная серия")
+		return nil, ErrInvalidEpisode
 	}
 	if preferred <= 0 {
 		preferred = 1080

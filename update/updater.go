@@ -37,27 +37,27 @@ type Plan struct {
 func CheckTarget(target string) error {
 	target = strings.TrimSpace(target)
 	if target == "" {
-		return fmt.Errorf("не удалось определить путь к приложению")
+		return fmt.Errorf("cannot determine the application path")
 	}
 	absolute, err := filepath.Abs(target)
 	if err != nil {
-		return fmt.Errorf("не удалось определить путь к приложению: %w", err)
+		return fmt.Errorf("cannot determine the application path: %w", err)
 	}
 	info, err := os.Stat(absolute)
 	if err != nil {
-		return fmt.Errorf("не удалось найти файл приложения: %w", err)
+		return fmt.Errorf("cannot find the application file: %w", err)
 	}
 	if !info.Mode().IsRegular() {
-		return fmt.Errorf("файл приложения не является обычным файлом")
+		return fmt.Errorf("the application file is not a regular file")
 	}
 	if info.Mode().Perm()&0o200 == 0 {
-		return fmt.Errorf("файл приложения защищён от записи")
+		return fmt.Errorf("the application file is write-protected")
 	}
 
 	directory := filepath.Dir(absolute)
 	probe, err := os.CreateTemp(directory, ".yoanime-update-*")
 	if err != nil {
-		return fmt.Errorf("нет прав на запись в папку приложения: %w", err)
+		return fmt.Errorf("no permission to write to the application directory: %w", err)
 	}
 	name := probe.Name()
 	_ = probe.Close()
@@ -79,31 +79,31 @@ func Prepare(target, source, workDir, logPath string) (*Plan, error) {
 		return nil, err
 	}
 	if strings.EqualFold(target, source) {
-		return nil, fmt.Errorf("новый файл совпадает с запущенным приложением")
+		return nil, fmt.Errorf("the new file is the running application")
 	}
 	info, err := os.Stat(source)
 	if err != nil {
-		return nil, fmt.Errorf("не удалось найти скачанное обновление: %w", err)
+		return nil, fmt.Errorf("cannot find the downloaded update: %w", err)
 	}
 	if !info.Mode().IsRegular() || info.Size() == 0 {
-		return nil, fmt.Errorf("скачанное обновление повреждено")
+		return nil, fmt.Errorf("the downloaded update is corrupted")
 	}
 	header := make([]byte, 2)
 	file, err := os.Open(source)
 	if err != nil {
-		return nil, fmt.Errorf("не удалось открыть скачанное обновление: %w", err)
+		return nil, fmt.Errorf("cannot open the downloaded update: %w", err)
 	}
 	_, readErr := file.Read(header)
 	_ = file.Close()
 	if readErr != nil || header[0] != 'M' || header[1] != 'Z' {
-		return nil, fmt.Errorf("скачанный файл не является Windows-приложением")
+		return nil, fmt.Errorf("the downloaded file is not a Windows application")
 	}
 
 	if workDir == "" {
 		workDir = filepath.Dir(source)
 	}
 	if err := os.MkdirAll(workDir, 0o755); err != nil {
-		return nil, fmt.Errorf("не удалось создать папку обновления: %w", err)
+		return nil, fmt.Errorf("cannot create the update directory: %w", err)
 	}
 	if logPath == "" {
 		logPath = filepath.Join(workDir, logName)

@@ -1,10 +1,9 @@
 package playback
 
 import (
+	"errors"
 	"path/filepath"
-	"strings"
 	"testing"
-	"unicode"
 
 	"github.com/arfush/yo/library"
 )
@@ -14,18 +13,8 @@ func TestUnopenedErrorDescribesKodik(t *testing.T) {
 		Episode: library.PlaybackEpisode{Number: "7"},
 		Kind:    "hls",
 	}, "animelib")
-	if err == nil {
-		t.Fatal("expected an error")
-	}
-	message := err.Error()
-	if !strings.Contains(message, "Kodik") {
-		t.Fatalf("message %q should mention Kodik", message)
-	}
-	if strings.Contains(message, "серия") {
-		t.Fatalf("message %q should not carry an episode prefix", message)
-	}
-	if !unicode.IsUpper([]rune(message)[0]) {
-		t.Fatalf("message %q should start with a capital letter", message)
+	if !errors.Is(err, ErrKodikUnavailable) {
+		t.Fatalf("error = %v, want ErrKodikUnavailable", err)
 	}
 }
 
@@ -48,25 +37,15 @@ func TestUnopenedErrorDescribesKinopoiskPlayer(t *testing.T) {
 		Episode: library.PlaybackEpisode{Number: "S1E2"},
 		Kind:    "hls",
 	}, "kinopoisk")
-	if err == nil {
-		t.Fatal("expected an error")
-	}
-	message := err.Error()
-	if strings.Contains(message, "Kodik") {
-		t.Fatalf("the player error must not blame Kodik: %q", message)
-	}
-	if !strings.Contains(message, "плеера") {
-		t.Fatalf("message %q should name the player", message)
-	}
-	if !unicode.IsUpper([]rune(message)[0]) {
-		t.Fatalf("message %q should start with a capital letter", message)
+	if !errors.Is(err, ErrVideoOpen) {
+		t.Fatalf("error = %v, want ErrVideoOpen", err)
 	}
 }
 
 func TestUnopenedErrorFallsBackToGenericText(t *testing.T) {
 	err := unopenedError(nil, "")
-	if err == nil || err.Error() == "" {
-		t.Fatal("expected a non-empty error")
+	if !errors.Is(err, ErrPlaybackFailed) {
+		t.Fatalf("error = %v, want ErrPlaybackFailed", err)
 	}
 }
 

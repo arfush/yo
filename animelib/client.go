@@ -183,16 +183,16 @@ type episodeListResponse struct {
 func ParseInput(input string) (string, error) {
 	input = strings.TrimSpace(input)
 	if input == "" {
-		return "", errors.New("введите ссылку на тайтл AnimeLIB")
+		return "", fmt.Errorf("%w: empty AnimeLIB link", ErrInvalidInput)
 	}
 	if raw, ok := asURL(input); ok {
 		if slug := slugFromURL(raw); slug != "" {
 			return slug, nil
 		}
-		return "", errors.New("в ссылке нет названия тайтла")
+		return "", fmt.Errorf("%w: link has no title name", ErrInvalidInput)
 	}
 	if strings.ContainsAny(input, " /\\?#") {
-		return "", errors.New("введите ссылку AnimeLIB или slug тайтла")
+		return "", fmt.Errorf("%w: expected an AnimeLIB link or slug", ErrInvalidInput)
 	}
 	return input, nil
 }
@@ -287,7 +287,7 @@ func (c *Client) Fetch(ctx context.Context, input string) (*TitleData, error) {
 		return nil, err
 	}
 	if len(list) > 0 && len(groups) == 0 {
-		return nil, errors.New("AnimeLIB не вернул данные ни по одной озвучке")
+		return nil, errors.New("AnimeLIB returned no data for any voiceover")
 	}
 
 	data := &TitleData{
@@ -437,7 +437,7 @@ func (c *Client) fetchPlayerExists(ctx context.Context, animeID, teamID int64, p
 
 	var flags map[string]bool
 	if err := json.Unmarshal(response.Data, &flags); err != nil {
-		return nil, fmt.Errorf("некорректный ответ доступности озвучек: %w", err)
+		return nil, fmt.Errorf("invalid voiceover availability response: %w", err)
 	}
 	out := make(map[int]bool, len(flags))
 	for key, value := range flags {
@@ -563,7 +563,7 @@ func (c *Client) resolve(ctx context.Context, rawSlug string) (*Title, error) {
 				continue
 			}
 			if response.Data.SlugURL == "" {
-				failures = append(failures, fmt.Sprintf("%s (site %d): тайтл не найден", variant, siteID))
+				failures = append(failures, fmt.Sprintf("%s (site %d): title not found", variant, siteID))
 				continue
 			}
 			data := response.Data
@@ -585,20 +585,20 @@ func (c *Client) resolve(ctx context.Context, rawSlug string) (*Title, error) {
 		}
 	}
 	if len(failures) > 0 {
-		return nil, fmt.Errorf("не удалось найти тайтл: %s", failures[len(failures)-1])
+		return nil, fmt.Errorf("cannot find title: %s", failures[len(failures)-1])
 	}
-	return nil, errors.New("не удалось найти тайтл")
+	return nil, errors.New("cannot find title")
 }
 
 func (c *Client) fetchEpisodeList(ctx context.Context, slugURL string) ([]EpisodeListItem, error) {
 	endpoint := c.baseURL + "/api/episodes?anime_id=" + url.QueryEscape(slugURL)
 	body, err := c.get(ctx, endpoint, 1)
 	if err != nil {
-		return nil, fmt.Errorf("не удалось загрузить список серий: %w", err)
+		return nil, fmt.Errorf("cannot load episode list: %w", err)
 	}
 	var response episodeListResponse
 	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("некорректный ответ списка серий: %w", err)
+		return nil, fmt.Errorf("invalid episode list response: %w", err)
 	}
 	return response.Data, nil
 }

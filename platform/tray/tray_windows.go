@@ -283,7 +283,7 @@ func (t *Tray) run(icon image.Image) {
 	atom, _, registerErr := procRegisterClassExW.Call(uintptr(unsafe.Pointer(&class)))
 	if atom == 0 && registerErr != windows.ERROR_CLASS_ALREADY_EXISTS {
 		procDestroyIcon.Call(uintptr(hicon))
-		t.ready <- errors.New("не удалось зарегистрировать окно трея")
+		t.ready <- errors.New("cannot register the tray window")
 		return
 	}
 
@@ -304,7 +304,7 @@ func (t *Tray) run(icon image.Image) {
 	)
 	if hwnd == 0 {
 		procDestroyIcon.Call(uintptr(hicon))
-		t.ready <- errors.New("не удалось создать окно трея")
+		t.ready <- errors.New("cannot create the tray window")
 		return
 	}
 	t.hwnd = windows.HWND(hwnd)
@@ -312,7 +312,7 @@ func (t *Tray) run(icon image.Image) {
 	if !t.notify(notifyAdd, hicon) {
 		procDestroyWindow.Call(hwnd)
 		procDestroyIcon.Call(uintptr(hicon))
-		t.ready <- errors.New("Shell_NotifyIcon не принял значок")
+		t.ready <- errors.New("Shell_NotifyIcon rejected the icon")
 		return
 	}
 	t.ready <- nil
@@ -454,7 +454,7 @@ func (t *Tray) notify(command uint32, icon windows.Handle) bool {
 // notification center like any other application toast.
 func (t *Tray) NotifyMessage(title, body string) error {
 	if t == nil || t.hwnd == 0 {
-		return errors.New("уведомления Windows недоступны")
+		return errors.New("Windows notifications are unavailable")
 	}
 	data := notifyIconData{
 		Wnd:       t.hwnd,
@@ -480,7 +480,7 @@ func (t *Tray) NotifyMessage(title, body string) error {
 	defer t.notifyMu.Unlock()
 	ok, _, _ := procShellNotifyIconW.Call(uintptr(notifyModify), uintptr(unsafe.Pointer(&data)))
 	if ok == 0 {
-		return errors.New("Windows не принял уведомление")
+		return errors.New("Windows rejected the notification")
 	}
 	return nil
 }
@@ -490,7 +490,7 @@ func (t *Tray) NotifyMessage(title, body string) error {
 // from the 48px asset instead of being resized by the shell.
 func iconHandle(source image.Image) (windows.Handle, error) {
 	if source == nil {
-		return 0, errors.New("иконка приложения недоступна")
+		return 0, errors.New("application icon is unavailable")
 	}
 	// The tray thread does not inherit the DPI awareness of the Gio window
 	// thread, so ask for the size in the same coordinate space the shell uses.
@@ -530,7 +530,7 @@ func iconHandle(source image.Image) (windows.Handle, error) {
 		procReleaseDC.Call(0, dc)
 	}
 	if color == 0 || bits == nil {
-		return 0, errors.New("не удалось подготовить значок")
+		return 0, errors.New("cannot prepare the icon")
 	}
 
 	stride := side * 4
@@ -552,7 +552,7 @@ func iconHandle(source image.Image) (windows.Handle, error) {
 	mask, _, _ := procCreateBitmap.Call(uintptr(side), uintptr(side), 1, 1, uintptr(unsafe.Pointer(&maskBits[0])))
 	if mask == 0 {
 		procDeleteObject.Call(color)
-		return 0, errors.New("не удалось подготовить маску значка")
+		return 0, errors.New("cannot prepare the icon mask")
 	}
 
 	info := iconInfo{
@@ -565,7 +565,7 @@ func iconHandle(source image.Image) (windows.Handle, error) {
 	procDeleteObject.Call(color)
 	procDeleteObject.Call(mask)
 	if hicon == 0 {
-		return 0, errors.New("не удалось собрать значок")
+		return 0, errors.New("cannot assemble the icon")
 	}
 	return windows.Handle(hicon), nil
 }

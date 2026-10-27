@@ -40,15 +40,15 @@ var (
 
 // ErrVersionMismatch reports a room whose host speaks another protocol
 // version. A guest leaves instead of applying anchors it may misread.
-var ErrVersionMismatch = errors.New("разные версии приложения — обновите yoanime")
+var ErrVersionMismatch = errors.New("application versions differ; update yoanime")
 
 // ErrRoomNotFound reports a reachable relay that has no host in the room. A
 // guest uses it before opening the waiting screen, so a mistyped key fails
 // immediately instead of waiting for the regular host-silence timeout.
-var ErrRoomNotFound = errors.New("комната не найдена — проверьте ключ")
+var ErrRoomNotFound = errors.New("room not found; check the key")
 
 // ErrHostOnly reports a guest that tried to use a host action.
-var ErrHostOnly = errors.New("действие доступно только создателю комнаты")
+var ErrHostOnly = errors.New("only the room host can do this")
 
 // Session is one joined room. It owns the WebSocket, reconnects on its own and
 // keeps the newest host anchor plus the clock estimate.
@@ -426,7 +426,7 @@ func (s *Session) SetSource(source func() (State, bool)) {
 // matches the moment the packet leaves the process.
 func (s *Session) Publish(state State) error {
 	if s.Role != Host {
-		return errors.New("публиковать состояние может только создатель комнаты")
+		return errors.New("only the room host can publish state")
 	}
 	state.Anchor = time.Now().UnixMilli()
 	s.mu.Lock()
@@ -446,11 +446,11 @@ func (s *Session) Publish(state State) error {
 // setting lives there.
 func (s *Session) SendControl(action string, position float64) error {
 	if s.Role != Guest {
-		return errors.New("управлять воспроизведением может только гость")
+		return errors.New("only a guest can control playback")
 	}
 	control := Control{Action: action, Position: position}
 	if !control.Valid() {
-		return errors.New("неизвестное действие комнаты")
+		return errors.New("unknown room action")
 	}
 	data, err := s.sealPayload(payload{Name: s.Name(), Control: &control})
 	if err != nil {
@@ -479,7 +479,7 @@ func (s *Session) RequestRefresh() error {
 		return nil
 	}
 	if s.Role != Guest {
-		return errors.New("запрашивать обновление может только гость")
+		return errors.New("only a guest can request a refresh")
 	}
 	return s.write(frame{Type: messageHello, Role: s.Role})
 }
@@ -684,7 +684,7 @@ func (s *Session) handle(msg frame) {
 	case messageError:
 		text := msg.Error
 		if text == "" {
-			text = "ошибка комнаты"
+			text = "room error"
 		}
 		s.reportError(errors.New(text))
 	}
@@ -760,6 +760,7 @@ func (s *Session) markHostAlive() {
 	first := s.markHostLocked()
 	s.mu.Unlock()
 	if first {
+		logger.Info("party guest follows the host", "provider", s.Provider)
 		s.notify(Update{Kind: UpdateHostSeen})
 	}
 }
@@ -798,6 +799,7 @@ func (s *Session) applyWelcome(present bool) {
 	}
 	s.mu.Unlock()
 	if present && !previous {
+		logger.Info("party guest found the host", "provider", s.Provider)
 		s.notify(Update{Kind: UpdateHostSeen})
 	}
 }
@@ -834,6 +836,7 @@ func (s *Session) watchHost(ctx context.Context) {
 		}
 		s.mu.Unlock()
 		if expired {
+			logger.Warn("party guest lost the host", "provider", s.Provider)
 			s.notify(Update{Kind: UpdateHostLeft})
 		}
 	}

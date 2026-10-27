@@ -152,12 +152,12 @@ func (w *titleScreen) layoutVoiceRow(gtx layout.Context, index, width, height in
 	} else if hasKodik {
 		textRight = kodikRect.Min.X - gtx.Dp(unit.Dp(7))
 	}
-	_, textInk := w.typo.measure(gtx, voice.name, font.Font{Typeface: fontFamily, Weight: font.Medium}, titlePageVoiceSize)
+	_, textInk := w.typo.measure(gtx, voiceDisplayName(voice.name, voice.id), font.Font{Typeface: fontFamily, Weight: font.Medium}, titlePageVoiceSize)
 	textY := (height - textInk.Dy()) / 2
 	drawTruncatedText(
 		gtx,
 		w.typo,
-		voice.name,
+		voiceDisplayName(voice.name, voice.id),
 		font.Font{Typeface: fontFamily, Weight: font.Medium},
 		titlePageVoiceSize,
 		text,

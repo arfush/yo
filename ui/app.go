@@ -728,10 +728,18 @@ func (a *application) openParty() {
 // remaining difference.
 func (a *application) startPartyPlayback(state party.State) error {
 	if a.library == nil || a.playback == nil {
-		return fmt.Errorf("воспроизведение недоступно")
+		return userMessage("Воспроизведение сейчас недоступно.")
 	}
 	// The host may jump to another episode or voice while the guest is still
 	// playing. mpv can only run one session, so the old one has to go first.
+	// A duplicate party start can arrive while the first session is already
+	// opening the same episode: keep it instead of stopping the picture.
+	if current := a.playback.Current(); current != nil {
+		number, _ := current.Episode()
+		if number == state.Episode && current.Matches(state.TitleSlug, state.Voice) {
+			return nil
+		}
+	}
 	if a.playback.Active() {
 		if current := a.playback.Current(); current != nil {
 			current.Stop()
@@ -741,7 +749,7 @@ func (a *application) startPartyPlayback(state party.State) error {
 			time.Sleep(50 * time.Millisecond)
 		}
 		if a.playback.Active() {
-			return fmt.Errorf("mpv не успел завершить прошлую серию")
+			return userMessage("Плеер не успел завершить прошлую серию. Попробуйте ещё раз.")
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), playbackStartTimeout)
@@ -773,7 +781,7 @@ func (a *application) startPartyPlayback(state party.State) error {
 	case err := <-started:
 		return err
 	case <-time.After(playbackStartTimeout + 30*time.Second):
-		return fmt.Errorf("mpv не успел начать воспроизведение")
+		return userMessage("Плеер не успел начать воспроизведение. Попробуйте ещё раз.")
 	}
 }
 
@@ -805,7 +813,7 @@ func (a *application) downloadAndApply(ctx context.Context, release update.Relea
 func (a *application) downloadRelease(ctx context.Context, release update.Release, report func(downloaded, total int64)) (string, error) {
 	target, err := os.Executable()
 	if err != nil {
-		return "", fmt.Errorf("не удалось определить файл приложения: %w", err)
+		return "", fmt.Errorf("cannot determine the application path: %w", err)
 	}
 	if err := update.CheckTarget(target); err != nil {
 		return "", err
@@ -827,7 +835,7 @@ func (a *application) downloadRelease(ctx context.Context, release update.Releas
 func (a *application) applyDownload(source string) error {
 	target, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("не удалось определить файл приложения: %w", err)
+		return fmt.Errorf("cannot determine the application path: %w", err)
 	}
 	updateDir, err := appdata.UpdateDir()
 	if err != nil {
@@ -1220,7 +1228,7 @@ func (a *application) checkEpisodeNotifications(w *app.Window) {
 // temporary test button.
 func (a *application) notifyEpisode(event library.EpisodeNotification) error {
 	if a.tray == nil {
-		return fmt.Errorf("уведомления Windows недоступны")
+		return userMessage("Уведомления Windows недоступны.")
 	}
 	title, body := formatEpisodeNotification(event)
 	return a.tray.notifyMessage(title, body)
@@ -1336,7 +1344,7 @@ func (a *application) openTitle(item historyTitle) {
 	}
 	title.onSave = func(voice, episode string) error {
 		if a.library == nil {
-			return fmt.Errorf("база данных недоступна")
+			return library.ErrDatabaseUnavailable
 		}
 		// The title is persisted here, not when it is opened from the URL
 		// field: Save is the only action that adds it to history.
@@ -1370,7 +1378,7 @@ func (a *application) openTitle(item historyTitle) {
 	}
 	title.onWatch = func(voice, episode string, quality int) error {
 		if a.library == nil {
-			return fmt.Errorf("база данных недоступна")
+			return library.ErrDatabaseUnavailable
 		}
 		return a.startPlayback(libraryTitleFromHistory(title.item), voice, episode, quality, nil, false, 0)
 	}
@@ -1411,7 +1419,7 @@ func (a *application) playFromHistory(item historyTitle) historyPlayResult {
 	returnItem := item
 	err := a.startPlayback(libraryTitleFromHistory(item), voice, episode, quality, &returnItem, false, 0)
 	if err != nil {
-		a.main.loadError = err.Error()
+		a.main.loadError = friendlyError(err)
 		a.reportError(err)
 		a.main.playing = false
 		a.main.playingID = 0
@@ -1435,10 +1443,10 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 // guest uses it to keep one start in flight until the session really exists.
 func (a *application) startPlaybackNotify(title library.Title, voice, episode string, quality int, historyItem *historyTitle, partyGuest bool, startAt float64, onStart func(error)) error {
 	if a.library == nil || a.playback == nil {
-		return fmt.Errorf("воспроизведение недоступно")
+		return userMessage("Воспроизведение сейчас недоступно.")
 	}
 	if a.window == nil {
-		return fmt.Errorf("окно приложения не готово")
+		return userMessage("Окно приложения ещё не готово.")
 	}
 	window := playback.WindowRect{}
 	// mpv reopens where the user parked it last time; only a fresh install or
@@ -1552,13 +1560,13 @@ func (a *application) startPlaybackNotify(title library.Title, voice, episode st
 // act on instead of the raw context error.
 func playbackStartError(err error) error {
 	if errors.Is(err, context.DeadlineExceeded) {
-		return fmt.Errorf("не удалось начать воспроизведение за %s — попробуйте ещё раз", playbackStartTimeout)
+		return userMessage(fmt.Sprintf("Не удалось начать воспроизведение за %s — попробуйте ещё раз", playbackStartTimeout))
 	}
 	if errors.Is(err, animelib.ErrRateLimited) {
 		if remaining := animelib.RateLimitRemaining(); remaining > 0 {
-			return fmt.Errorf("AnimeLIB временно ограничил запросы — попробуйте снова через %s", rateLimitWaitLabel(remaining))
+			return userMessage(fmt.Sprintf("AnimeLIB временно ограничил запросы — попробуйте снова через %s", rateLimitWaitLabel(remaining)))
 		}
-		return errors.New("AnimeLIB временно ограничил запросы — попробуйте снова чуть позже")
+		return userMessage("AnimeLIB временно ограничил запросы — попробуйте снова чуть позже.")
 	}
 	return err
 }
@@ -1719,7 +1727,7 @@ func (a *application) handleWatchResult(result watchResult) {
 			a.main.playing = false
 			a.main.playingID = 0
 			if result.err != nil {
-				a.main.loadError = result.err.Error()
+				a.main.loadError = friendlyError(result.err)
 				a.reportError(result.err)
 			}
 		}
@@ -1732,7 +1740,7 @@ func (a *application) handleWatchResult(result watchResult) {
 		}
 		if result.err != nil && !result.finished {
 			if a.main != nil {
-				a.main.loadError = result.err.Error()
+				a.main.loadError = friendlyError(result.err)
 			}
 			a.reportError(result.err)
 			// A direct Play from history must leave the user on the title page
@@ -1740,7 +1748,7 @@ func (a *application) handleWatchResult(result watchResult) {
 			// longer has any episodes). No mpv window is left behind.
 			a.openTitle(*result.historyItem)
 			if title, ok := a.active.(*titleScreen); ok {
-				title.setWatchError(result.err.Error())
+				title.setWatchError(friendlyError(result.err))
 			}
 			return
 		}
@@ -1773,7 +1781,7 @@ func (a *application) handleWatchResult(result watchResult) {
 				}
 			}
 			if result.err != nil {
-				a.main.loadError = result.err.Error()
+				a.main.loadError = friendlyError(result.err)
 				a.reportError(result.err)
 			}
 		}
@@ -1796,7 +1804,7 @@ func (a *application) handleWatchResult(result watchResult) {
 		title.setUserStatus(a.library.UserStatus(title.item.id))
 	}
 	if result.err != nil {
-		title.setWatchError(result.err.Error())
+		title.setWatchError(friendlyError(result.err))
 		a.reportError(result.err)
 	} else if result.finished {
 		title.setWatching(false)
@@ -2059,8 +2067,11 @@ func (a *application) reportError(err error) {
 	if err == nil || errors.Is(err, context.Canceled) {
 		return
 	}
-	logger.Error("ui error", "error", err)
-	message := friendlyError(err)
+	message, expected := userFacing(err)
+	if !expected {
+		logger.Error("ui error", "error", err)
+		message = friendlyError(err)
+	}
 	if message == "" {
 		return
 	}

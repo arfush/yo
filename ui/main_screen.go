@@ -903,7 +903,7 @@ func (m *mainScreen) finishLoading(gtx layout.Context, result titleLoadResult) {
 
 	if result.err != nil {
 		if result.err != context.Canceled && !strings.Contains(result.err.Error(), "context canceled") {
-			m.loadError = result.err.Error()
+			m.loadError = friendlyError(result.err)
 			m.errorAt = gtx.Now
 			m.reportError(result.err)
 		}
@@ -980,7 +980,7 @@ func (m *mainScreen) refreshHistory(selectedID int64) {
 	}
 	history, err := m.titles.History()
 	if err != nil {
-		m.loadError = err.Error()
+		m.loadError = friendlyError(err)
 		m.reportError(err)
 		return
 	}
@@ -1057,7 +1057,7 @@ func (m *mainScreen) persistHistoryOrder() {
 		err = m.titles.ReorderStatusHistory(status, displayTitles(m.history))
 	}
 	if err != nil {
-		m.loadError = err.Error()
+		m.loadError = friendlyError(err)
 		m.reportError(err)
 	}
 }

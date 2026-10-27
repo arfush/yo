@@ -331,7 +331,7 @@ func (m *mainScreen) finalizeHistoryDeletes() {
 		forgetPoster(item.item.coverPath)
 	}
 	if firstErr != nil {
-		m.loadError = firstErr.Error()
+		m.loadError = friendlyError(firstErr)
 		m.reportError(firstErr)
 	}
 }

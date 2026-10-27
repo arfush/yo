@@ -42,7 +42,7 @@ type PlaybackPlan struct {
 	Kinopoisk *KinopoiskPlan
 	// CompleteOnFinish is true when the last episode in Episodes is the final
 	// released episode of a completed title. Playback uses it to move the title
-	// to "Досмотрел" only after that episode reaches EOF.
+	// to "Completed" only after that episode reaches EOF.
 	CompleteOnFinish bool
 }
 
@@ -54,7 +54,7 @@ func (l *Library) PlaybackPlan(ctx context.Context, title Title, voiceName, epis
 		return l.kinopoiskPlan(ctx, title, voiceName, episode)
 	}
 	if strings.TrimSpace(title.Slug) == "" {
-		return nil, fmt.Errorf("у тайтла нет ссылки AnimeLIB")
+		return nil, fmt.Errorf("title has no AnimeLIB link")
 	}
 	token, err := l.readToken()
 	if err != nil {
@@ -84,14 +84,14 @@ func (l *Library) PlaybackPlan(ctx context.Context, title Title, voiceName, epis
 
 	voice := findVoiceover(title.Voiceovers, voiceName)
 	if voice == nil {
-		return nil, fmt.Errorf("у тайтла нет озвучек")
+		return nil, fmt.Errorf("title has no voiceovers")
 	}
 	voiceSet := make(map[string]bool)
 	for _, number := range voice.Episodes {
 		voiceSet[animelib.NormalizeEpisodeNumber(number)] = true
 	}
 	if len(voiceSet) == 0 {
-		return nil, fmt.Errorf("в выбранной озвучке нет доступных серий")
+		return nil, fmt.Errorf("the selected voiceover has no available episodes")
 	}
 
 	orderedNumbers := make([]string, 0, len(voiceSet))
@@ -116,7 +116,7 @@ func (l *Library) PlaybackPlan(ctx context.Context, title Title, voiceName, epis
 		orderedNumbers = append(orderedNumbers, number)
 	}
 	if len(orderedNumbers) == 0 {
-		return nil, fmt.Errorf("в выбранной озвучке нет доступных серий")
+		return nil, fmt.Errorf("the selected voiceover has no available episodes")
 	}
 
 	episodes := make([]PlaybackEpisode, 0, len(orderedNumbers))
@@ -134,7 +134,7 @@ func (l *Library) PlaybackPlan(ctx context.Context, title Title, voiceName, epis
 		selectedIndex = nextAvailableIndex(title.Episodes, episodes, episode)
 	}
 	if selectedIndex < 0 {
-		return nil, fmt.Errorf("в выбранной озвучке нет следующей доступной серии")
+		return nil, fmt.Errorf("the selected voiceover has no next available episode")
 	}
 	chosen := episodes[selectedIndex]
 
@@ -236,7 +236,7 @@ func (l *Library) PlaybackPlan(ctx context.Context, title Title, voiceName, epis
 }
 
 // planCompletesTitle reports whether the last playable episode is the final
-// released episode. An ongoing title must stay "Смотрю" even after the user
+// released episode. An ongoing title must stay "Watching" even after the user
 // catches up with every episode that exists today, and a voiceover missing the
 // finale must not complete the title early.
 func planCompletesTitle(title Title, episodes []PlaybackEpisode) bool {

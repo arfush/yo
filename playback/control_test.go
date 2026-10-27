@@ -51,3 +51,17 @@ func TestSessionMatches(t *testing.T) {
 		t.Fatal("empty voice must not block the match")
 	}
 }
+
+func TestSessionReadyWaitsForFileLoaded(t *testing.T) {
+	if (*Session)(nil).Ready() {
+		t.Fatal("nil session must not be ready")
+	}
+	session := &Session{}
+	if session.Ready() {
+		t.Fatal("a fresh session must not claim readiness before file-loaded")
+	}
+	session.onFileLoaded(0)
+	if !session.Ready() {
+		t.Fatal("file-loaded must mark the session ready even without a matching playlist entry")
+	}
+}

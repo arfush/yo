@@ -26,6 +26,30 @@ func episodeGridColumns(width, gap, minWidth int) int {
 	return columns
 }
 
+// titleGridMaxRows caps the season and episode blocks: at most three rows of
+// buttons are visible at once, everything else is reached by scrolling the
+// block itself.
+const titleGridMaxRows = 3
+
+// gridBlockSize returns how many rows a season or episode block can show and
+// the height it occupies. The block never grows past three rows and never
+// claims more height than the panel gives it.
+func gridBlockSize(rect image.Rectangle, rows, rowHeight, gap int) (visibleRows, height int) {
+	if rows <= 0 || rowHeight <= 0 || rect.Dy() <= 0 {
+		return 0, 0
+	}
+	visibleRows = min(rows, titleGridMaxRows)
+	if fit := (rect.Dy() + gap) / (rowHeight + gap); fit < visibleRows {
+		visibleRows = fit
+	}
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+	height = visibleRows*rowHeight + (visibleRows-1)*gap
+	height = min(height, rect.Dy())
+	return visibleRows, height
+}
+
 func (w *titleScreen) layoutEpisodes(gtx layout.Context, rect image.Rectangle) {
 	if rect.Empty() || len(w.episodes) == 0 {
 		return
@@ -43,17 +67,16 @@ func (w *titleScreen) layoutEpisodes(gtx layout.Context, rect image.Rectangle) {
 	}
 	rowHeight := gtx.Dp(titlePageEpisodeHeight)
 	rows := (len(visible) + columns - 1) / columns
+	visibleRows, blockHeight := gridBlockSize(rect, rows, rowHeight, gap)
+	if blockHeight <= 0 {
+		return
+	}
 	w.episodeList.Axis = layout.Vertical
 	w.episodeList.Gap = gap
 	w.episodeColumns = columns
 
 	if !w.episodesPlaced {
 		w.episodesPlaced = true
-		stride := rowHeight + gap
-		visibleRows := 1
-		if stride > 0 {
-			visibleRows = max(1, (rect.Dy()+gap)/stride)
-		}
 		first := w.selectedVisibleRow()
 		if first+visibleRows > rows {
 			first = rows - visibleRows
@@ -66,7 +89,7 @@ func (w *titleScreen) layoutEpisodes(gtx layout.Context, rect image.Rectangle) {
 
 	stack := op.Offset(rect.Min).Push(gtx.Ops)
 	lgtx := gtx
-	lgtx.Constraints = layout.Exact(rect.Size())
+	lgtx.Constraints = layout.Exact(image.Pt(rect.Dx(), blockHeight))
 	w.episodeList.Layout(lgtx, rows, func(gtx layout.Context, row int) layout.Dimensions {
 		for column := 0; column < columns; column++ {
 			position := row*columns + column
@@ -85,8 +108,9 @@ func (w *titleScreen) layoutEpisodes(gtx layout.Context, rect image.Rectangle) {
 
 // layoutSeasons draws the season grid above the episode grid. Only a series
 // with more than one season gets it; a single-season title shows its episodes
-// directly, exactly like an AnimeLIB title. It returns the height the grid used
-// so the caller can place the episode label below it.
+// directly, exactly like an AnimeLIB title. The grid has its own scroll and
+// shows at most three rows. It returns the height the grid used so the caller
+// can place the episode label below it.
 func (w *titleScreen) layoutSeasons(gtx layout.Context, rect image.Rectangle) int {
 	if rect.Empty() || len(w.item.seasons) <= 1 {
 		return 0
@@ -100,15 +124,42 @@ func (w *titleScreen) layoutSeasons(gtx layout.Context, rect image.Rectangle) in
 	}
 	rowHeight := gtx.Dp(titlePageEpisodeHeight)
 	rows := (len(w.item.seasons) + columns - 1) / columns
-	for index := range w.item.seasons {
-		row := index / columns
-		column := index % columns
-		left := rect.Min.X + column*(width+gap)
-		top := rect.Min.Y + row*(rowHeight+gap)
-		cell := image.Rect(left, top, left+width, top+rowHeight)
-		w.layoutSeasonButton(gtx, index, cell)
+	visibleRows, blockHeight := gridBlockSize(rect, rows, rowHeight, gap)
+	if blockHeight <= 0 {
+		return 0
 	}
-	return rows*rowHeight + (rows-1)*gap
+	w.seasonList.Axis = layout.Vertical
+	w.seasonList.Gap = gap
+
+	if !w.seasonsPlaced {
+		w.seasonsPlaced = true
+		first := w.selectedSeason / columns
+		if first+visibleRows > rows {
+			first = rows - visibleRows
+		}
+		if first < 0 {
+			first = 0
+		}
+		w.seasonList.Position = layout.Position{First: first}
+	}
+
+	stack := op.Offset(rect.Min).Push(gtx.Ops)
+	lgtx := gtx
+	lgtx.Constraints = layout.Exact(image.Pt(rect.Dx(), blockHeight))
+	w.seasonList.Layout(lgtx, rows, func(gtx layout.Context, row int) layout.Dimensions {
+		for column := 0; column < columns; column++ {
+			index := row*columns + column
+			if index >= len(w.item.seasons) {
+				break
+			}
+			left := column * (width + gap)
+			cell := image.Rect(left, 0, left+width, rowHeight)
+			w.layoutSeasonButton(gtx, index, cell)
+		}
+		return layout.Dimensions{Size: image.Pt(rect.Dx(), rowHeight)}
+	})
+	stack.Pop()
+	return blockHeight
 }
 
 func (w *titleScreen) layoutSeasonButton(gtx layout.Context, index int, rect image.Rectangle) {

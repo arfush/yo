@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"errors"
 	"image"
 	"image/color"
 	"math"
@@ -199,7 +198,7 @@ func (w *settingsScreen) reportError(err error) {
 	if err == nil {
 		return
 	}
-	w.errorText = err.Error()
+	w.errorText = friendlyError(err)
 	if w.onError != nil {
 		w.onError(err)
 	}
@@ -590,7 +589,7 @@ func (w *settingsScreen) saveName() {
 	}
 	normalized, err := party.NormalizeName(w.nameEditor.Text())
 	if err != nil {
-		w.reportError(errors.New("никнейм — до 24 символов, без служебных знаков и не похож на ключ комнаты"))
+		w.reportError(userMessage("Никнейм — до 24 символов, без служебных знаков и не похож на ключ комнаты."))
 		return
 	}
 	if w.onName != nil {

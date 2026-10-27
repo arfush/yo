@@ -8,6 +8,15 @@ import (
 	"github.com/arfush/yo/library"
 )
 
+func TestReadingChapterLabel(t *testing.T) {
+	if got := readingChapterLabel("0:12"); got != "Глава 12" {
+		t.Fatalf("volume-less label = %q", got)
+	}
+	if got := readingChapterLabel("2:0.5"); got != "Том 2 · Глава 0.5" {
+		t.Fatalf("volume label = %q", got)
+	}
+}
+
 func TestVoiceMissingLabelCompressesRanges(t *testing.T) {
 	tests := []struct {
 		missing []string

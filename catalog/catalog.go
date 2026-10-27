@@ -60,7 +60,7 @@ const (
 	UserStatusDropped   UserStatus = 5
 )
 
-// NormalizeUserStatus maps an unset or unknown value to "В планах".
+// NormalizeUserStatus maps an unset or unknown value to "Planned".
 func NormalizeUserStatus(status UserStatus) UserStatus {
 	switch status {
 	case UserStatusWatching, UserStatusPlanned, UserStatusFavorite, UserStatusCompleted, UserStatusDropped:
@@ -79,6 +79,9 @@ func (s UserStatus) Valid() bool {
 // Voiceover is a translation team and the episodes it covers. HasKodik marks
 // voices with episodes that only the Kodik player carries.
 type Voiceover struct {
+	// ID is the source-specific id of the voice (Kinopoisk translations use
+	// it when two voices share an empty display name).
+	ID       int
 	Name     string
 	Episodes []string
 	Missing  []string
@@ -197,15 +200,6 @@ func SplitReadingChapterKey(key string) (volume, number string) {
 		volume = "0"
 	}
 	return volume, number
-}
-
-// ReadingChapterLabel formats a chapter key for the history row and reader.
-func ReadingChapterLabel(key string) string {
-	volume, number := SplitReadingChapterKey(key)
-	if volume == "" || volume == "0" {
-		return "Глава " + number
-	}
-	return "Том " + volume + " · Глава " + number
 }
 
 // EpisodeVoiceover is one translation team that published a new episode.

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -119,7 +118,7 @@ func readingSlugFromPath(path string) (string, error) {
 			}
 			slug, err := url.PathUnescape(parts[index+1])
 			if err != nil {
-				return "", errors.New("не удалось разобрать ссылку на тайтл")
+				return "", fmt.Errorf("%w: cannot decode the title slug", ErrInvalidInput)
 			}
 			slug = strings.TrimSpace(slug)
 			if slug != "" {
@@ -130,19 +129,19 @@ func readingSlugFromPath(path string) (string, error) {
 	if len(parts) == 1 {
 		slug, err := url.PathUnescape(parts[0])
 		if err != nil {
-			return "", errors.New("не удалось разобрать ссылку на тайтл")
+			return "", fmt.Errorf("%w: cannot decode the title slug", ErrInvalidInput)
 		}
 		slug = strings.TrimSpace(slug)
 		// A bare section keyword (like /manga/) is not a title slug.
 		switch strings.ToLower(slug) {
 		case "manga", "ranobe", "comic", "book", "ru":
-			return "", errors.New("в ссылке нет адреса тайтла")
+			return "", fmt.Errorf("%w: link has no title slug", ErrInvalidInput)
 		}
 		if slug != "" {
 			return slug, nil
 		}
 	}
-	return "", errors.New("в ссылке нет адреса тайтла")
+	return "", fmt.Errorf("%w: link has no title slug", ErrInvalidInput)
 }
 
 // SiteIDForSource maps the persisted source name back to a LibSocial site.
@@ -306,11 +305,11 @@ func (c *Client) FetchReading(ctx context.Context, slug string, siteID int) (*Re
 	endpoint := c.baseURL + "/api/manga/" + url.PathEscape(slug)
 	body, err := c.getWithRetry(ctx, endpoint, siteID, 2)
 	if err != nil {
-		return nil, fmt.Errorf("не удалось загрузить тайтл: %w", err)
+		return nil, fmt.Errorf("cannot load title: %w", err)
 	}
 	var response readingMetaResponse
 	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("некорректный ответ тайтла: %w", err)
+		return nil, fmt.Errorf("invalid title response: %w", err)
 	}
 	data := response.Data
 	if strings.TrimSpace(data.SlugURL) == "" {
@@ -344,11 +343,11 @@ func (c *Client) FetchReadingChapters(ctx context.Context, slug string, siteID i
 	endpoint := c.baseURL + "/api/manga/" + url.PathEscape(slug) + "/chapters"
 	body, err := c.getWithRetry(ctx, endpoint, siteID, 2)
 	if err != nil {
-		return nil, fmt.Errorf("не удалось загрузить список глав: %w", err)
+		return nil, fmt.Errorf("cannot load chapter list: %w", err)
 	}
 	var response readingChaptersResponse
 	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("некорректный ответ списка глав: %w", err)
+		return nil, fmt.Errorf("invalid chapter list response: %w", err)
 	}
 	out := make([]ReadingChapterData, 0, len(response.Data))
 	for _, item := range response.Data {
@@ -360,22 +359,18 @@ func (c *Client) FetchReadingChapters(ctx context.Context, slug string, siteID i
 			Name:            item.Name,
 		}
 		if len(item.Branches) == 0 {
-			base.Translation = "Без команды"
 			out = append(out, base)
 			continue
 		}
 		for _, branch := range item.Branches {
 			teams := branch.Teams
 			if len(teams) == 0 {
-				teams = []readingTeam{{Name: "Без команды"}}
+				teams = []readingTeam{{}}
 			}
 			for _, team := range teams {
 				chapter := base
 				chapter.BranchID = branch.ID
 				chapter.Translation = strings.TrimSpace(team.Name)
-				if chapter.Translation == "" {
-					chapter.Translation = "Без команды"
-				}
 				out = append(out, chapter)
 			}
 		}
@@ -398,11 +393,11 @@ func (c *Client) FetchReadingChapter(ctx context.Context, slug string, siteID in
 	endpoint := c.baseURL + "/api/manga/" + url.PathEscape(slug) + "/chapter?" + query.Encode()
 	body, err := c.getWithRetry(ctx, endpoint, siteID, 2)
 	if err != nil {
-		return nil, fmt.Errorf("не удалось загрузить главу: %w", err)
+		return nil, fmt.Errorf("cannot load chapter: %w", err)
 	}
 	var response readingChapterResponse
 	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("некорректный ответ главы: %w", err)
+		return nil, fmt.Errorf("invalid chapter response: %w", err)
 	}
 	data := response.Data
 	content := &ReadingChapterContent{

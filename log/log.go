@@ -199,7 +199,7 @@ func LastErrorContext() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.lastErr == nil {
-		return "Ошибок пока не было."
+		return ""
 	}
 	lines := make([]string, 0, len(s.lastErr.context)+2)
 	lines = append(lines, s.lastErr.context...)

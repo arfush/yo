@@ -21,7 +21,7 @@ func (p *Plan) Launch() error {
 		return fmt.Errorf("update plan is nil")
 	}
 	if err := os.WriteFile(p.Script, []byte(helperScript()), 0o644); err != nil {
-		return fmt.Errorf("не удалось создать помощник обновления: %w", err)
+		return fmt.Errorf("cannot create the update helper: %w", err)
 	}
 
 	// "call" keeps the script path as a separate argument, so spaces and
@@ -43,7 +43,7 @@ func (p *Plan) Launch() error {
 		CreationFlags: windows.CREATE_NEW_PROCESS_GROUP | createNoWindow,
 	}
 	if err := command.Start(); err != nil {
-		return fmt.Errorf("не удалось запустить помощник обновления: %w", err)
+		return fmt.Errorf("cannot start the update helper: %w", err)
 	}
 	_ = command.Process.Release()
 	return nil

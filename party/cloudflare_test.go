@@ -14,9 +14,9 @@ func TestHandshakeError(t *testing.T) {
 		status int
 		want   string
 	}{
-		{status: http.StatusBadRequest, want: "ключ"},
-		{status: http.StatusNotFound, want: "не найдена"},
-		{status: http.StatusOK, want: "не комната"},
+		{status: http.StatusBadRequest, want: "key"},
+		{status: http.StatusNotFound, want: "not found"},
+		{status: http.StatusOK, want: "does not serve a room"},
 		{status: http.StatusInternalServerError, want: "500"},
 	}
 	for _, test := range tests {

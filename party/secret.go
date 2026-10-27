@@ -13,7 +13,7 @@ import (
 const SecretLength = 10
 
 // ErrInvalidSecret reports a value that is not a room secret.
-var ErrInvalidSecret = errors.New("некорректный секрет комнаты")
+var ErrInvalidSecret = errors.New("invalid room secret")
 
 // NewSecret returns a random room secret, such as 4K7Q2M9XBT.
 func NewSecret() (string, error) {

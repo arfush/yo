@@ -87,6 +87,8 @@ var (
 
 	logScrollTrack = color.NRGBA{R: 0x20, G: 0x1e, B: 0x2b, A: 0xff}
 	logScrollThumb = color.NRGBA{R: 0x3a, G: 0x35, B: 0x48, A: 0xff}
+	// logScrollThumbActive is the thumb while it is dragged with the mouse.
+	logScrollThumbActive = color.NRGBA{R: 0x57, G: 0x50, B: 0x6b, A: 0xff}
 )
 
 var logFace = font.Font{Typeface: fontFamily, Weight: font.Normal}
@@ -114,7 +116,10 @@ func (f logLevelFilter) label() string {
 }
 
 func (f logLevelFilter) matches(level slog.Level) bool {
-	return f.all || f.level == level
+	// Standard logging ladder: picking a level shows it and everything more
+	// severe. "Trace" therefore shows the whole journal, "Debug" everything
+	// except trace, and so on.
+	return f.all || level >= f.level
 }
 
 type logScreen struct {
@@ -143,6 +148,16 @@ type logScreen struct {
 	lastFrame  time.Time
 	maxScroll  int
 	bodyHeight int
+
+	// scrollbarDrag tracks a pressed scrollbar thumb. scrollbarGrabY is the
+	// distance from the press point to the thumb top, so dragging keeps the
+	// thumb under the cursor; dragging sets the target directly instead of
+	// smoothing it.
+	scrollbarDrag    bool
+	scrollbarGrabY   float32
+	scrollbarTrackH  float32
+	scrollbarThumbH  float32
+	scrollbarDragTag struct{}
 
 	back     footerNamedButton
 	copy     footerNamedButton
@@ -809,9 +824,80 @@ func (w *logScreen) drawScrollbar(gtx layout.Context, viewport image.Point, tota
 	thumbY := track.Min.Y
 	if maxScroll > 0 && available > 0 {
 		thumbY += int(float64(available) * float64(w.scroll) / float64(maxScroll))
+		thumbY = min(thumbY, track.Min.Y+available)
 	}
 	thumb := image.Rect(track.Min.X, thumbY, track.Max.X, thumbY+thumbHeight)
-	fillRounded(gtx, logScrollThumb, thumb, radius)
+
+	// The thumb is draggable: press grabs it, move scrolls, release drops it.
+	// The pointer area is scoped to the track so clicks on the rows do not
+	// interfere with the drag.
+	if maxScroll > 0 {
+		trackArea := clip.Rect(track).Push(gtx.Ops)
+		pointer.CursorPointer.Add(gtx.Ops)
+		for {
+			ev, ok := gtx.Event(pointer.Filter{
+				Target: &w.scrollbarDragTag,
+				Kinds:  pointer.Press | pointer.Drag | pointer.Release,
+			})
+			if !ok {
+				break
+			}
+			e, ok := ev.(pointer.Event)
+			if !ok {
+				continue
+			}
+			position := float32(e.Position.Y)
+			switch e.Kind {
+			case pointer.Press:
+				w.scrollbarDrag = true
+				w.autoScroll = false
+				w.scrollbarTrackH = float32(track.Dy())
+				w.scrollbarThumbH = float32(thumbHeight)
+				w.scrollbarGrabY = position - float32(thumbY)
+				if w.scrollbarGrabY < 0 {
+					w.scrollbarGrabY = 0
+				}
+				if w.scrollbarGrabY > float32(thumbHeight) {
+					w.scrollbarGrabY = float32(thumbHeight)
+				}
+				w.setScrollFromThumb(position-float32(track.Min.Y), maxScroll)
+				w.scroll = w.target
+			case pointer.Drag, pointer.Move:
+				if w.scrollbarDrag {
+					w.setScrollFromThumb(position-float32(track.Min.Y), maxScroll)
+					w.scroll = w.target
+				}
+			case pointer.Release, pointer.Cancel:
+				w.scrollbarDrag = false
+			}
+		}
+		trackArea.Pop()
+	}
+
+	thumbColor := logScrollThumb
+	if w.scrollbarDrag {
+		thumbColor = logScrollThumbActive
+	}
+	fillRounded(gtx, thumbColor, thumb, radius)
+}
+
+// setScrollFromThumb maps a pointer Y inside the track to the scroll target.
+// scrollbarGrabY is the press offset inside the thumb, so the thumb top keeps
+// following the cursor instead of jumping to it.
+func (w *logScreen) setScrollFromThumb(pointerY float32, maxScroll int) {
+	available := w.scrollbarTrackH - w.scrollbarThumbH
+	if available <= 0 || maxScroll <= 0 {
+		w.target = 0
+		return
+	}
+	top := pointerY - w.scrollbarGrabY
+	if top < 0 {
+		top = 0
+	}
+	if top > available {
+		top = available
+	}
+	w.target = float32(maxScroll) * top / available
 }
 
 type logLevelMenu struct {
@@ -920,6 +1006,9 @@ func (w *logScreen) layoutFooter(gtx layout.Context) {
 	w.copy.label = label
 	if w.copy.layout(gtx, w.typo, copyRect) {
 		text := applog.LastErrorContext()
+		if text == "" {
+			text = "Ошибок пока не было."
+		}
 		gtx.Execute(clipboard.WriteCmd{
 			Type: "application/text",
 			Data: io.NopCloser(strings.NewReader(text)),

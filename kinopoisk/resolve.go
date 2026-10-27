@@ -171,7 +171,7 @@ func (r *Resolver) resolve(ctx context.Context, target string, request Request) 
 	defer r.setCapture(nil)
 
 	if err := r.showIframe(page, target); err != nil {
-		return Media{}, fmt.Errorf("открыть плеер: %w", err)
+		return Media{}, fmt.Errorf("cannot open the player: %w", err)
 	}
 
 	var body []byte
@@ -459,7 +459,7 @@ func (r *Resolver) ensurePage(ctx context.Context) (playwright.Page, error) {
 	}
 	page, err := headless.NewPage()
 	if err != nil {
-		return nil, fmt.Errorf("открыть страницу плеера: %w", err)
+		return nil, fmt.Errorf("cannot open the player page: %w", err)
 	}
 	if err := page.AddInitScript(playwright.Script{
 		Content: playwright.String(`Object.defineProperty(navigator, 'webdriver', {get: () => undefined});`),
@@ -518,7 +518,7 @@ func (r *Resolver) ensurePage(ctx context.Context) (playwright.Page, error) {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return nil, fmt.Errorf("открыть зеркало: %w", err)
+		return nil, fmt.Errorf("cannot open the mirror: %w", err)
 	}
 
 	r.mu.Lock()

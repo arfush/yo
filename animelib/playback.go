@@ -103,16 +103,16 @@ func (c *Client) Episodes(ctx context.Context, slugURL string) ([]EpisodeListIte
 // EpisodeDetail fetches the players and direct links for one episode.
 func (c *Client) EpisodeDetail(ctx context.Context, episodeID int) (*EpisodeDetail, error) {
 	if episodeID <= 0 {
-		return nil, fmt.Errorf("некорректный id серии")
+		return nil, fmt.Errorf("invalid episode id")
 	}
 	endpoint := c.baseURL + "/api/episodes/" + strconv.Itoa(episodeID) + "?"
 	body, err := c.getWithRetry(ctx, endpoint, 1, 3)
 	if err != nil {
-		return nil, fmt.Errorf("не удалось загрузить серию: %w", err)
+		return nil, fmt.Errorf("cannot load episode: %w", err)
 	}
 	var response episodeDetailResponse
 	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("некорректный ответ серии: %w", err)
+		return nil, fmt.Errorf("invalid episode response: %w", err)
 	}
 	data := response.Data
 	detail := &EpisodeDetail{
@@ -176,7 +176,7 @@ func (c *Client) VideoBases(ctx context.Context) ([]string, error) {
 	endpoint := c.baseURL + "/api/constants?fields%5B%5D=videoServers"
 	body, err := c.get(ctx, endpoint, 1)
 	if err != nil {
-		return nil, fmt.Errorf("не удалось получить видео-серверы: %w", err)
+		return nil, fmt.Errorf("cannot load video servers: %w", err)
 	}
 	var response struct {
 		Data struct {
@@ -186,7 +186,7 @@ func (c *Client) VideoBases(ctx context.Context) ([]string, error) {
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("некорректный ответ видео-серверов: %w", err)
+		return nil, fmt.Errorf("invalid video servers response: %w", err)
 	}
 	bases := make([]string, 0, len(response.Data.VideoServers))
 	seen := make(map[string]bool)

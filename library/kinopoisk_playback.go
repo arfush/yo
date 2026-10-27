@@ -65,7 +65,7 @@ func (l *Library) kinopoiskPlan(ctx context.Context, title Title, voiceName, epi
 		episodes = append(episodes, PlaybackEpisode{Number: key})
 	}
 	if len(episodes) == 0 {
-		return nil, fmt.Errorf("в выбранной озвучке нет доступных серий")
+		return nil, fmt.Errorf("the selected voiceover has no available episodes")
 	}
 
 	selectedIndex := kinopoiskEpisodeIndex(episodes, episode)
@@ -73,7 +73,7 @@ func (l *Library) kinopoiskPlan(ctx context.Context, title Title, voiceName, epi
 		selectedIndex = nextKinopoiskIndex(title.Episodes, episodes, episode)
 	}
 	if selectedIndex < 0 {
-		return nil, fmt.Errorf("в выбранной озвучке нет следующей доступной серии")
+		return nil, fmt.Errorf("the selected voiceover has no next available episode")
 	}
 	chosen := episodes[selectedIndex]
 

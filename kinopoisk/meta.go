@@ -37,7 +37,7 @@ type Meta struct {
 	Year   int
 	Movie  bool
 	// Completed reports whether the release is finished. It decides whether the
-	// last available episode may move the title to "Досмотрел".
+	// last available episode may move the title to "Completed".
 	Completed   bool
 	Rating      float64
 	Description string
@@ -45,7 +45,7 @@ type Meta struct {
 	IMDbID      string
 	// Partial reports that the unofficial API did not answer and only the
 	// poster and id are known. The title still opens; its name falls back to
-	// "Кинопоиск #id".
+	// "#id".
 	Partial bool
 }
 
@@ -83,7 +83,7 @@ func (c *Client) Config() Config {
 // and years; when it fails the poster and the id still let the title open.
 func (c *Client) Meta(ctx context.Context, link Link) (Meta, error) {
 	if link.ID <= 0 {
-		return Meta{}, fmt.Errorf("некорректный id Кинопоиска")
+		return Meta{}, fmt.Errorf("invalid Kinopoisk id")
 	}
 	meta := Meta{
 		ID:        link.ID,
@@ -103,7 +103,7 @@ func (c *Client) Meta(ctx context.Context, link Link) (Meta, error) {
 		logger.Warn("kinopoisk metadata request failed", "endpoint", endpoint, "title", link.ID, "error", err)
 	}
 	meta.Partial = true
-	meta.NameRu = fmt.Sprintf("Кинопоиск #%d", link.ID)
+	meta.NameRu = fmt.Sprintf("#%d", link.ID)
 	return meta, nil
 }
 
@@ -166,7 +166,7 @@ func (c *Client) fetchMeta(ctx context.Context, endpoint string, id int) (Meta, 
 		meta.NameRu = meta.NameEn
 	}
 	if meta.NameRu == "" {
-		meta.NameRu = fmt.Sprintf("Кинопоиск #%d", id)
+		meta.NameRu = fmt.Sprintf("#%d", id)
 	}
 	if meta.NameEn == meta.NameRu {
 		meta.NameEn = ""

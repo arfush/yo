@@ -13,8 +13,8 @@ var (
 	ErrTokenMissing = errors.New("token file not found")
 	// ErrChapterNotFound is returned by the reader when a chapter key does not
 	// exist for the selected translation.
-	ErrChapterNotFound = errors.New("глава не найдена")
+	ErrChapterNotFound = errors.New("chapter not found")
 	// ErrUnsupportedSource is returned when a resolver gets a title whose
 	// source it does not handle.
-	ErrUnsupportedSource = errors.New("неизвестный источник тайтла")
+	ErrUnsupportedSource = errors.New("unknown title source")
 )

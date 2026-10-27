@@ -212,8 +212,8 @@ func TestLogFilterAndSearch(t *testing.T) {
 
 	w.filter = logLevelFilter{level: slog.LevelWarn}
 	visible := w.visibleEntries()
-	if len(visible) != 1 || visible[0].Level != slog.LevelWarn {
-		t.Fatalf("warning filter returned %d entries, want 1", len(visible))
+	if len(visible) != 2 {
+		t.Fatalf("warning filter returned %d entries, want warn+error = 2", len(visible))
 	}
 
 	w.filter = logLevelFilter{all: true}
@@ -232,13 +232,13 @@ func TestLogFilterAndSearch(t *testing.T) {
 	w.search.SetText("")
 	w.filter = logLevelFilter{level: slog.LevelInfo}
 	visible = w.visibleEntries()
-	if len(visible) != 1 || visible[0].Message != "history loaded" {
-		t.Fatalf("info filter returned %d entries, want 1", len(visible))
+	if len(visible) != 3 {
+		t.Fatalf("info filter returned %d entries, want info+warn+error = 3", len(visible))
 	}
 
 	w.filter = logLevelFilter{level: applog.LevelTrace}
-	if visible := w.visibleEntries(); len(visible) != 0 {
-		t.Fatalf("trace filter returned %d entries, want 0", len(visible))
+	if visible := w.visibleEntries(); len(visible) != 4 {
+		t.Fatalf("trace filter returned %d entries, want the whole journal", len(visible))
 	}
 }
 

@@ -202,7 +202,7 @@ func (w *partyScreen) layoutWaiting(gtx layout.Context, snapshot partySnapshot) 
 		w.party.Delete()
 		w.mode = wpJoin
 		w.waitSince = time.Time{}
-		w.failJoin(party.ErrRoomNotFound.Error())
+		w.failJoin(friendlyError(party.ErrRoomNotFound))
 		return
 	}
 

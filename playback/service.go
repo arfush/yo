@@ -73,23 +73,23 @@ func New(lib *library.Library, manager *browser.Manager) *Service {
 // other episodes are resolved in the background.
 func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options StartOptions) (*Session, error) {
 	if s == nil || s.lib == nil {
-		return nil, errors.New("воспроизведение недоступно")
+		return nil, ErrUnavailable
 	}
 	if plan == nil || len(plan.Episodes) == 0 {
-		return nil, errors.New("нет серий для воспроизведения")
+		return nil, ErrNoEpisodes
 	}
 	logger.Info("playback starting", "title", plan.Russian, "slug", plan.Slug, "voice", plan.Voice, "episode_index", plan.EpisodeIndex, "episodes", len(plan.Episodes), "quality", options.Quality)
 	if plan.EpisodeIndex < 0 || plan.EpisodeIndex >= len(plan.Episodes) {
-		return nil, errors.New("некорректная серия")
+		return nil, ErrInvalidEpisode
 	}
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
-		return nil, errors.New("приложение закрывается")
+		return nil, ErrClosing
 	}
 	if s.session != nil || s.starting {
 		s.mu.Unlock()
-		return nil, errors.New("видео уже воспроизводится")
+		return nil, ErrAlreadyPlaying
 	}
 	s.starting = true
 	s.mu.Unlock()
@@ -164,7 +164,7 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 		logger.Error("cannot load the first video", "episode", entry.Episode.Number, "error", err)
 		mpv.close()
 		cancel()
-		return nil, fmt.Errorf("запустить видео: %w", err)
+		return nil, fmt.Errorf("cannot start the video: %w", err)
 	}
 	session.entries = []*playlistEntry{entry}
 	session.current = 0
@@ -178,7 +178,7 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 		s.mu.Unlock()
 		mpv.close()
 		cancel()
-		return nil, errors.New("приложение закрывается")
+		return nil, ErrClosing
 	}
 	s.session = session
 	s.starting = false
@@ -410,13 +410,18 @@ func (s *Session) eventLoop() {
 }
 
 func (s *Session) onFileLoaded(position int) {
+	// Any file-loaded event proves mpv opened a stream. Set this before the
+	// entry lookup: a stale playlist position must not make a working session
+	// look unopened and trigger the first-open retry.
+	s.mu.Lock()
+	s.loadedOnce = true
+	s.mu.Unlock()
 	entry := s.entryAt(position)
 	if entry == nil {
 		return
 	}
 	s.mu.Lock()
 	s.current = position
-	s.loadedOnce = true
 	s.currentEp = entry.EpisodeIndex
 	s.currentNumber = entry.Episode.Number
 	s.duration = 0
@@ -614,7 +619,7 @@ func (s *Session) failUnopened(event mpvEvent) {
 
 // unopenedEntryLocked finds the episode that failed to open. The first file is
 // always entries[0]; falling back to it keeps a stale playlist position from
-// turning a clear player error into the generic "не удалось воспроизвести".
+// turning a clear player error into a generic playback failure.
 func (s *Session) unopenedEntryLocked(position int) *playlistEntry {
 	entry := s.entryAtLocked(position)
 	if entry == nil {
@@ -683,18 +688,17 @@ func (s *Session) planSource() string {
 }
 
 func unopenedError(entry *playlistEntry, source string) error {
-	message := "Не удалось воспроизвести серию"
 	if entry != nil {
 		switch {
 		case entry.Kind == "hls" && source == kinopoisk.Source:
-			message = "Не удалось открыть видео из плеера, проверьте подключение"
+			return ErrVideoOpen
 		case entry.Kind == "hls":
-			message = "Сервер Kodik не отвечает, проверьте подключение"
+			return ErrKodikUnavailable
 		default:
-			message = "Не удалось воспроизвести видео"
+			return ErrPlaybackFailed
 		}
 	}
-	return errors.New(message)
+	return ErrPlaybackFailed
 }
 
 func (s *Session) onFinishProgress() {
@@ -1064,20 +1068,20 @@ func (s *Session) resolveAndAdd(index int) {
 
 func (s *Session) resolveEntry(ctx context.Context, index int) (*playlistEntry, error) {
 	if index < 0 || index >= len(s.plan.Episodes) {
-		return nil, errors.New("некорректный индекс серии")
+		return nil, ErrInvalidEpisode
 	}
 	if s.plan.Source == kinopoisk.Source {
 		return s.resolveKinopoisk(ctx, index)
 	}
 	episode := s.plan.Episodes[index]
 	if episode.ID <= 0 {
-		return nil, fmt.Errorf("у серии %s нет id", episode.Number)
+		return nil, fmt.Errorf("episode %s has no id", episode.Number)
 	}
 	resolveCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 	detail, err := s.episodeDetail(resolveCtx, episode.ID)
 	if err != nil {
-		return nil, fmt.Errorf("серия %s: %w", episode.Number, err)
+		return nil, fmt.Errorf("episode %s: %w", episode.Number, err)
 	}
 
 	animelibPlayer, kodikPlayer := selectVoicePlayers(detail.Players, s.plan.Voice)
@@ -1119,10 +1123,10 @@ func (s *Session) resolveEntry(ctx context.Context, index int) (*playlistEntry, 
 				}, nil
 			}
 		} else if resolveCtx.Err() == nil {
-			return nil, fmt.Errorf("озвучка %q для серии %s: %w", s.plan.Voice, episode.Number, resolveErr)
+			return nil, fmt.Errorf("voice %q for episode %s: %w", s.plan.Voice, episode.Number, resolveErr)
 		}
 	}
-	return nil, fmt.Errorf("озвучка %q недоступна для серии %s", s.plan.Voice, episode.Number)
+	return nil, fmt.Errorf("voice %q is unavailable for episode %s", s.plan.Voice, episode.Number)
 }
 
 func (s *Session) joinAnimelib(ctx context.Context, href, domain string) (string, error) {
@@ -1136,7 +1140,7 @@ func (s *Session) joinAnimelib(ctx context.Context, href, domain string) (string
 	if joined := animelib.JoinVideoBase(pickVideoBase(bases, domain), href); joined != "" {
 		return joined, nil
 	}
-	return "", errors.New("нет видео-серверов AnimeLIB")
+	return "", errors.New("AnimeLIB returned no video servers")
 }
 
 func (s *Session) animelibBases(ctx context.Context) ([]string, error) {

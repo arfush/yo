@@ -43,12 +43,12 @@ func dialSupabase(ctx context.Context, cfg Config, address string, role Role) (t
 	conn, resp, err := websocket.Dial(dialCtx, endpoint, nil)
 	if err != nil {
 		if resp != nil && resp.StatusCode >= 400 {
-			return nil, fmt.Errorf("Supabase отклонил подключение (%d)", resp.StatusCode)
+			return nil, fmt.Errorf("Supabase rejected the connection (%d)", resp.StatusCode)
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, ErrServerUnreachable
 		}
-		return nil, fmt.Errorf("не удалось подключиться к Supabase: %w", err)
+		return nil, fmt.Errorf("cannot connect to Supabase: %w", err)
 	}
 	t := &supabaseTransport{
 		wsTransport: newWSTransport(conn),
@@ -97,13 +97,13 @@ func (t *supabaseTransport) join(ctx context.Context) error {
 		return err
 	}
 	if err := t.writeRaw(data); err != nil {
-		return fmt.Errorf("не удалось войти в комнату Supabase")
+		return fmt.Errorf("cannot join the Supabase room")
 	}
 	for {
 		raw, err := t.read(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
-				return fmt.Errorf("Supabase не ответил на вход в комнату")
+				return fmt.Errorf("Supabase did not answer the room join")
 			}
 			return closeError(err)
 		}
@@ -112,7 +112,7 @@ func (t *supabaseTransport) join(ctx context.Context) error {
 			continue
 		}
 		if joinFrame.Status != "ok" {
-			return fmt.Errorf("Supabase отклонил комнату: %s", supabaseReason(joinFrame.Payload))
+			return fmt.Errorf("Supabase rejected the room: %s", supabaseReason(joinFrame.Payload))
 		}
 		return nil
 	}
@@ -125,7 +125,7 @@ func supabaseReason(payload json.RawMessage) string {
 	if json.Unmarshal(payload, &value) == nil && value.Reason != "" {
 		return value.Reason
 	}
-	return "неизвестная ошибка"
+	return "unknown error"
 }
 
 type phoenixFrame struct {
@@ -228,7 +228,7 @@ func (t *supabaseTransport) run(ctx context.Context, deliver func(frame)) error 
 				continue
 			}
 			if msg.Type == messageError && msg.Error == "" {
-				msg.Error = "ошибка комнаты"
+				msg.Error = "room error"
 			}
 			deliver(msg)
 		case supabaseEventError, supabaseEventClose:

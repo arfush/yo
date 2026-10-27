@@ -92,7 +92,7 @@ func (s *Store) SetUserStatus(tid int64, status int) error {
 }
 
 // SetUserStatusFrom changes a status only when it still has the expected old
-// value. It is used to promote a planned title to "Смотрю" when playback starts
+// value. It is used to promote a planned title to "Watching" when playback starts
 // without overwriting a choice the user made in the meantime.
 func (s *Store) SetUserStatusFrom(tid int64, from, to int) error {
 	_, err := s.setUserStatus(tid, to, from, true)

@@ -107,12 +107,12 @@ func (c Config) Validate() error {
 		}
 		parsed, err := url.Parse(endpoint.value)
 		if err != nil || parsed.Host == "" {
-			return fmt.Errorf("адрес %s указан неверно", endpoint.label)
+			return fmt.Errorf("invalid %s address", endpoint.label)
 		}
 		switch parsed.Scheme {
 		case "ws", "wss":
 		default:
-			return fmt.Errorf("адрес %s указан неверно", endpoint.label)
+			return fmt.Errorf("invalid %s address", endpoint.label)
 		}
 	}
 	if key := strings.ToLower(c.SupabaseKey); strings.HasPrefix(key, "sb_secret_") || strings.HasPrefix(key, "service_role") {
@@ -164,7 +164,7 @@ func (c Config) CloudflareEndpoint(address string, role Role) (string, error) {
 	}
 	parsed, err := url.Parse(c.CloudflareURL)
 	if err != nil || parsed.Host == "" {
-		return "", fmt.Errorf("адрес Cloudflare указан неверно")
+		return "", fmt.Errorf("invalid Cloudflare address")
 	}
 	parsed.Path = strings.TrimRight(parsed.Path, "/") + "/room"
 	query := parsed.Query()
@@ -181,7 +181,7 @@ func (c Config) SupabaseEndpoint() (string, error) {
 	}
 	parsed, err := url.Parse(c.SupabaseURL)
 	if err != nil || parsed.Host == "" {
-		return "", fmt.Errorf("адрес Supabase указан неверно")
+		return "", fmt.Errorf("invalid Supabase address")
 	}
 	parsed.Path = strings.TrimRight(parsed.Path, "/") + "/realtime/v1/websocket"
 	query := parsed.Query()

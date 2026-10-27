@@ -2,24 +2,24 @@ package kodik
 
 import "errors"
 
-// Sentinels returned by the Kodik resolver. They keep their Russian wording
-// because the UI shows them directly after the friendlyError mapping.
+// Sentinels returned by the Kodik resolver. Messages are technical English;
+// the UI maps them to Russian sentences.
 var (
 	// ErrEmptyLink means the embed URL was empty.
-	ErrEmptyLink = errors.New("пустая ссылка Kodik")
+	ErrEmptyLink = errors.New("empty Kodik link")
 	// ErrNoVideoLinks means the resolved page had no <video> sources.
-	ErrNoVideoLinks = errors.New("Kodik не вернул ссылки на видео")
+	ErrNoVideoLinks = errors.New("Kodik returned no video links")
 	// ErrEmptyLinks means the m3u8 fetch produced an empty list.
-	ErrEmptyLinks = errors.New("Kodik вернул пустой список ссылок")
+	ErrEmptyLinks = errors.New("Kodik returned an empty link list")
 	// ErrUnknownFormat means the quality/format object was not understood.
-	ErrUnknownFormat = errors.New("Kodik вернул ссылки в неизвестном формате")
+	ErrUnknownFormat = errors.New("Kodik returned links in an unknown format")
 	// ErrEmptySource means the link entry carried no URL.
-	ErrEmptySource = errors.New("пустая ссылка")
+	ErrEmptySource = errors.New("empty link")
 	// ErrCannotDecodeLink means the encrypted page link could not be
 	// decrypted.
-	ErrCannotDecodeLink = errors.New("не удалось декодировать ссылку Kodik")
+	ErrCannotDecodeLink = errors.New("cannot decode the Kodik link")
 	// ErrBrowserClosed means the shared browser exited mid-resolve.
-	ErrBrowserClosed = errors.New("браузер Kodik закрыт")
+	ErrBrowserClosed = errors.New("Kodik browser is closed")
 	// ErrBrowserUnavailable means the browser is busy or unresponsive.
-	ErrBrowserUnavailable = errors.New("браузер Kodik недоступен")
+	ErrBrowserUnavailable = errors.New("Kodik browser is unavailable")
 )

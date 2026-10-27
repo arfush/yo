@@ -81,10 +81,10 @@ func SiteURL(input string) (string, error) {
 		return "", fmt.Errorf("%w: %v", ErrInvalidLink, err)
 	}
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return "", fmt.Errorf("%w: поддерживаются только http и https", ErrInvalidLink)
+		return "", fmt.Errorf("%w: only http and https are supported", ErrInvalidLink)
 	}
 	if parsed.Host == "" {
-		return "", fmt.Errorf("%w: нет адреса сайта", ErrInvalidLink)
+		return "", fmt.Errorf("%w: missing site address", ErrInvalidLink)
 	}
 	if parsed.Path == "" {
 		parsed.Path = "/"
@@ -99,7 +99,7 @@ func SiteURL(input string) (string, error) {
 func NormalizeDomain(input string) (string, error) {
 	input = strings.TrimSpace(input)
 	if input == "" {
-		return "", fmt.Errorf("%w: пустой домен", ErrInvalidLink)
+		return "", fmt.Errorf("%w: empty domain", ErrInvalidLink)
 	}
 	site, err := SiteURL(input)
 	if err != nil {
@@ -111,7 +111,7 @@ func NormalizeDomain(input string) (string, error) {
 	}
 	host := strings.ToLower(parsed.Host)
 	if host == "" {
-		return "", fmt.Errorf("%w: нет адреса сайта", ErrInvalidLink)
+		return "", fmt.Errorf("%w: missing site address", ErrInvalidLink)
 	}
 	return host, nil
 }
@@ -140,7 +140,7 @@ func (m *Manager) Authorize(ctx context.Context, siteURL, profileDir string, bou
 		return token.Token{}, err
 	}
 	if strings.TrimSpace(profileDir) == "" {
-		return token.Token{}, errors.New("не указан профиль Chromium")
+		return token.Token{}, errors.New("Chromium profile is not set")
 	}
 	logger.Info("AnimeLIB authorization started", "site", siteURL)
 
@@ -171,7 +171,7 @@ func (m *Manager) Authorize(ctx context.Context, siteURL, profileDir string, bou
 	pw, err := playwright.Run(m.opts)
 	if err != nil {
 		logger.Error("cannot start Playwright", "error", err)
-		return token.Token{}, fmt.Errorf("запустить Playwright: %w", err)
+		return token.Token{}, fmt.Errorf("cannot start Playwright: %w", err)
 	}
 	defer pw.Stop()
 
@@ -197,7 +197,7 @@ func (m *Manager) Authorize(ctx context.Context, siteURL, profileDir string, bou
 			return token.Token{}, ctx.Err()
 		}
 		logger.Error("cannot start Chromium", "error", err)
-		return token.Token{}, fmt.Errorf("запустить Chromium: %w", err)
+		return token.Token{}, fmt.Errorf("cannot start Chromium: %w", err)
 	}
 	defer browserContext.Close()
 
@@ -222,7 +222,7 @@ func (m *Manager) Authorize(ctx context.Context, siteURL, profileDir string, bou
 	} else {
 		page, err = browserContext.NewPage()
 		if err != nil {
-			return token.Token{}, fmt.Errorf("открыть страницу Chromium: %w", err)
+			return token.Token{}, fmt.Errorf("cannot open the Chromium page: %w", err)
 		}
 	}
 

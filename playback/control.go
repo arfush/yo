@@ -1,17 +1,9 @@
 package playback
 
 import (
-	"errors"
 	"image"
 	"math"
 )
-
-// ErrNotRunning is returned by the control methods when mpv is gone.
-var ErrNotRunning = errors.New("mpv не запущен")
-
-// ErrEpisodeNotLoaded is returned by JumpTo when the episode is not part of
-// the already-resolved playlist, so the caller has to start a fresh session.
-var ErrEpisodeNotLoaded = errors.New("серия ещё не загружена")
 
 // Position returns the last playback position reported by mpv, in seconds.
 func (s *Session) Position() float64 {
@@ -153,6 +145,18 @@ func (s *Session) SetPaused(paused bool) error {
 	}
 	_, err := mpv.call("set_property", "pause", paused)
 	return err
+}
+
+// Ready reports whether mpv has loaded the first file. A party anchor must not
+// claim that playback is running before this becomes true: guests extrapolate
+// the position and would seek into a file that is still opening.
+func (s *Session) Ready() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.loadedOnce
 }
 
 // Matches reports whether the running session plays the given title and voice.

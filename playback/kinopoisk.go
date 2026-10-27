@@ -31,12 +31,12 @@ func headersFor(entry *playlistEntry) []string {
 // attached here and the introdb lookup is skipped for this entry.
 func (s *Session) resolveKinopoisk(ctx context.Context, index int) (*playlistEntry, error) {
 	if s.plan.Kinopoisk == nil || strings.TrimSpace(s.plan.Kinopoisk.Iframe) == "" {
-		return nil, errors.New("у озвучки нет ссылки плеера")
+		return nil, errors.New("voiceover has no player URL")
 	}
 	episode := s.plan.Episodes[index]
 	season, number, ok := kinopoisk.SplitEpisodeKey(episode.Number)
 	if !ok {
-		return nil, fmt.Errorf("некорректная серия %q", episode.Number)
+		return nil, fmt.Errorf("invalid episode %q", episode.Number)
 	}
 	quality := s.quality
 	if quality <= 0 {
@@ -62,7 +62,7 @@ func (s *Session) resolveKinopoisk(ctx context.Context, index int) (*playlistEnt
 		media, err = s.service.kinopoisk.Resolve(ctx, request)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("серия %s: %w", episode.Number, err)
+		return nil, fmt.Errorf("episode %s: %w", episode.Number, err)
 	}
 	entry := &playlistEntry{
 		EpisodeIndex:   index,

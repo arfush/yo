@@ -13,7 +13,7 @@ import (
 const NameLength = 24
 
 // ErrInvalidName reports a nickname that cannot be shown in a room.
-var ErrInvalidName = errors.New("некорректный никнейм")
+var ErrInvalidName = errors.New("invalid nickname")
 
 // The default name is a GitHub-style adjective-noun pair. Two English words are
 // short enough for the room card, easy to read in a chat and do not look like a

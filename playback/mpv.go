@@ -104,7 +104,7 @@ func startMPV(ctx context.Context, geometry, title string) (*mpvProcess, error) 
 	configureMPVCommand(cmd)
 
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("запустить mpv: %w", err)
+		return nil, fmt.Errorf("cannot start mpv: %w", err)
 	}
 	m := &mpvProcess{
 		cmd:             cmd,
@@ -140,9 +140,11 @@ func startMPV(ctx context.Context, geometry, title string) (*mpvProcess, error) 
 	if conn == nil {
 		_ = cmd.Process.Kill()
 		_, _ = cmd.Process.Wait()
-		return nil, fmt.Errorf("не удалось подключиться к mpv: %w", openErr)
+		return nil, fmt.Errorf("cannot connect to mpv: %w", openErr)
 	}
+	m.mu.Lock()
 	m.conn = conn
+	m.mu.Unlock()
 	m.events, m.stopEvents = conn.NewEventListener()
 	for id, property := range map[int64]string{
 		1: "time-pos",
@@ -256,7 +258,10 @@ func (m *mpvProcess) playlistPos() int {
 }
 
 func (m *mpvProcess) currentPlaylistPos() int {
-	if m.conn != nil {
+	m.mu.Lock()
+	conn := m.conn
+	m.mu.Unlock()
+	if conn != nil {
 		if value, err := m.call("get_property", "playlist-pos"); err == nil {
 			if number, ok := value.(float64); ok && number >= 0 {
 				position := int(number)
@@ -281,13 +286,49 @@ func (m *mpvProcess) exitError() error {
 	return m.lastErr
 }
 
+// mpvCallTimeout bounds one IPC command. mpv answers in milliseconds; a hung
+// player must not freeze the party guest loop or the UI forever.
+const mpvCallTimeout = 15 * time.Second
+
 func (m *mpvProcess) call(arguments ...interface{}) (interface{}, error) {
 	m.callMu.Lock()
 	defer m.callMu.Unlock()
-	if m.conn == nil {
-		return nil, errors.New("mpv не подключён")
+	m.mu.Lock()
+	conn := m.conn
+	m.mu.Unlock()
+	if conn == nil {
+		return nil, errors.New("mpv is not connected")
 	}
-	return m.conn.Call(arguments...)
+
+	// mpvipc.Connection.Call has no deadline of its own and waits forever if
+	// mpv stops replying. Run it aside so the caller can fail and close the
+	// pipe; every other caller then fails fast instead of queueing behind a
+	// command that will never be answered.
+	type reply struct {
+		value interface{}
+		err   error
+	}
+	done := make(chan reply, 1)
+	go func() {
+		value, err := conn.Call(arguments...)
+		done <- reply{value: value, err: err}
+	}()
+	select {
+	case result := <-done:
+		return result.value, result.err
+	case <-time.After(mpvCallTimeout):
+		// A player that ignores IPC for this long is unusable: close the pipe
+		// and stop the process so the session finishes and can be retried.
+		_ = conn.Close()
+		if m.cmd != nil && m.cmd.Process != nil {
+			_ = m.cmd.Process.Kill()
+		}
+		command := ""
+		if len(arguments) > 0 {
+			command = fmt.Sprint(arguments[0])
+		}
+		return nil, fmt.Errorf("mpv command %q timed out after %s", command, mpvCallTimeout)
+	}
 }
 
 // streamOptions builds the per-file options of one playlist entry. Passing the
@@ -387,8 +428,11 @@ func (m *mpvProcess) close() {
 		}
 		<-m.done
 	}
-	if m.conn != nil {
-		_ = m.conn.Close()
+	m.mu.Lock()
+	conn := m.conn
+	m.mu.Unlock()
+	if conn != nil {
+		_ = conn.Close()
 	}
 }
 

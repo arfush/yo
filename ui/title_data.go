@@ -21,6 +21,7 @@ const (
 )
 
 type voiceover struct {
+	id       int
 	name     string
 	episodes []string
 	missing  []string
@@ -32,6 +33,27 @@ type voiceover struct {
 
 func (v voiceover) complete() bool {
 	return len(v.missing) == 0
+}
+
+// readingChapterLabel formats a chapter key for the history row and reader.
+func readingChapterLabel(key string) string {
+	volume, number := catalog.SplitReadingChapterKey(key)
+	if volume == "" || volume == "0" {
+		return "Глава " + number
+	}
+	return "Том " + volume + " · Глава " + number
+}
+
+// voiceDisplayName renders a voice that the source did not name. The fallback
+// lives in the UI so the model keeps no localized text.
+func voiceDisplayName(name string, id int) string {
+	if name = strings.TrimSpace(name); name != "" {
+		return name
+	}
+	if id > 0 {
+		return fmt.Sprintf("Озвучка %d", id)
+	}
+	return "Озвучка"
 }
 
 // titleSeason groups the episodes of a Kinopoisk series. AnimeLIB titles keep
@@ -118,7 +140,7 @@ func (t historyTitle) progressLabel() string {
 	}
 	key := t.currentEpisodeLabel()
 	if t.reading() {
-		label := catalog.ReadingChapterLabel(key)
+		label := readingChapterLabel(key)
 		if total := t.totalEpisodes(); total > 0 {
 			label += fmt.Sprintf(" / %d гл.", total)
 		}
@@ -212,6 +234,7 @@ func titleFromLibrary(item catalog.Title) historyTitle {
 	}
 	for _, voice := range item.Voiceovers {
 		title.voices = append(title.voices, voiceover{
+			id:        voice.ID,
 			name:      voice.Name,
 			episodes:  append([]string(nil), voice.Episodes...),
 			missing:   append([]string(nil), voice.Missing...),
@@ -268,6 +291,7 @@ func libraryTitleFromHistory(item historyTitle) catalog.Title {
 	}
 	for _, voice := range item.voices {
 		title.Voiceovers = append(title.Voiceovers, catalog.Voiceover{
+			ID:        voice.id,
 			Name:      voice.name,
 			Episodes:  append([]string(nil), voice.episodes...),
 			Missing:   append([]string(nil), voice.missing...),

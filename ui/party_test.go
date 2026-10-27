@@ -414,7 +414,7 @@ func TestWrongSecretShakesAndClearsTheField(t *testing.T) {
 	if screen.mode != wpSecret {
 		t.Fatalf("mode = %d, want the secret form", screen.mode)
 	}
-	if screen.errorText != party.ErrWrongSecret.Error() {
+	if screen.errorText != friendlyError(party.ErrWrongSecret) {
 		t.Fatalf("error = %q, want the wrong-secret reason", screen.errorText)
 	}
 	if !screen.joinFeedback {

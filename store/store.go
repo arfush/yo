@@ -18,7 +18,7 @@ import (
 	"github.com/arfush/yo/log"
 )
 
-// defaultUserStatus is the schema default ("В планах"). Removing a title from
+// defaultUserStatus is the schema default ("Planned"). Removing a title from
 // the library must clear its status so a later re-add starts from scratch.
 const defaultUserStatus = 2
 

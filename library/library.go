@@ -41,7 +41,7 @@ const (
 	UserStatusDropped   = catalog.UserStatusDropped
 )
 
-// NormalizeUserStatus maps an unset or unknown value to "В планах".
+// NormalizeUserStatus maps an unset or unknown value to "Planned".
 func NormalizeUserStatus(status UserStatus) UserStatus {
 	return catalog.NormalizeUserStatus(status)
 }
@@ -158,7 +158,7 @@ func (l *Library) Load(ctx context.Context, input string) (Title, error) {
 func (l *Library) upsertLoadedTitle(stored store.Title) (store.Title, error) {
 	id, err := l.store.UpsertTitle(stored)
 	if err != nil {
-		return store.Title{}, fmt.Errorf("не удалось сохранить тайтл: %w", err)
+		return store.Title{}, fmt.Errorf("cannot save title: %w", err)
 	}
 	persisted, err := l.store.GetTitleByID(id)
 	if err != nil {
@@ -242,7 +242,7 @@ func (l *Library) Save(title Title, voice, episode string) (Title, error) {
 	id, err := l.store.UpsertTitle(stored)
 	if err != nil {
 		logger.Error("cannot save title", "slug", title.Slug, "error", err)
-		return Title{}, fmt.Errorf("не удалось сохранить тайтл: %w", err)
+		return Title{}, fmt.Errorf("cannot save title: %w", err)
 	}
 	stored.ID = id
 	if data := encodeVoiceQualities(title.Voiceovers); data != "" {
@@ -304,7 +304,7 @@ func (l *Library) TrackViewing(title Title, voice, episode string) (int64, error
 	stored := storedTitleFromLibrary(title)
 	id, err := l.store.UpsertTitle(stored)
 	if err != nil {
-		return 0, fmt.Errorf("не удалось сохранить тайтл: %w", err)
+		return 0, fmt.Errorf("cannot save title: %w", err)
 	}
 	if err := l.store.TrackViewing(id, episode, voice); err != nil {
 		logger.Error("cannot track viewing", "title", id, "episode", episode, "error", err)
@@ -322,7 +322,7 @@ func (l *Library) SaveSelection(tid int64, voice, episode string) error {
 }
 
 // SetUserStatus stores the local library status. Announced titles can only be
-// planned: their episodes do not exist yet, so "Смотрю" would be misleading.
+// planned: their episodes do not exist yet, so "Watching" would be misleading.
 func (l *Library) SetUserStatus(tid int64, status UserStatus) error {
 	if !status.Valid() {
 		return ErrUnknownUserStatus
@@ -339,7 +339,7 @@ func (l *Library) SetUserStatus(tid int64, status UserStatus) error {
 	return l.store.SetUserStatus(tid, int(status))
 }
 
-// promoteWatching moves a planned title to "Смотрю" when playback starts. It
+// promoteWatching moves a planned title to "Watching" when playback starts. It
 // deliberately leaves every other status alone.
 func (l *Library) promoteWatching(tid int64) {
 	if tid == 0 || l.store == nil {
@@ -352,7 +352,7 @@ func (l *Library) promoteWatching(tid int64) {
 }
 
 // UserStatus returns the stored local status for a title. A missing row or a
-// read failure falls back to the default "В планах"; the UI only needs this to
+// read failure falls back to the default "Planned"; the UI only needs this to
 // refresh a pill after playback.
 func (l *Library) UserStatus(tid int64) UserStatus {
 	if tid == 0 || l.store == nil {
@@ -369,7 +369,7 @@ func (l *Library) UserStatus(tid int64) UserStatus {
 	return NormalizeUserStatus(UserStatus(title.UserStatus))
 }
 
-// MarkCompleted moves a title to "Досмотрел" after the final episode finishes.
+// MarkCompleted moves a title to "Completed" after the final episode finishes.
 // Unlike SetUserStatus it is unconditional: reaching the end is a stronger
 // signal than the status the user picked earlier.
 func (l *Library) MarkCompleted(tid int64) error {
@@ -584,7 +584,7 @@ func (l *Library) readToken() (string, error) {
 		if errors.Is(err, token.ErrNotFound) {
 			return "", ErrTokenMissing
 		}
-		return "", fmt.Errorf("не удалось прочитать токен AnimeLIB: %w", err)
+		return "", fmt.Errorf("cannot read the AnimeLIB token: %w", err)
 	}
 	if value.Expired(time.Now()) {
 		return "", ErrTokenExpired

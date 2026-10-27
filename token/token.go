@@ -82,7 +82,7 @@ func Parse(data []byte) (Token, error) {
 
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(trimmed), &fields); err != nil {
-		return Token{}, fmt.Errorf("некорректный JSON: %w", err)
+		return Token{}, fmt.Errorf("invalid token JSON: %w", err)
 	}
 	if nested, ok := fields["token"]; ok {
 		var inner map[string]json.RawMessage

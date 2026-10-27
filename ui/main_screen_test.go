@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"errors"
 	"image"
 	"testing"
 	"time"
@@ -244,10 +243,10 @@ func TestEmptyLinkStartsRedErrorFeedback(t *testing.T) {
 func TestLoadFailureStartsAndSuccessClearsRedErrorFeedback(t *testing.T) {
 	gtx := layout.Context{Ops: new(op.Ops), Now: time.Unix(700, 0)}
 	m := &mainScreen{loading: true}
-	m.finishLoading(gtx, titleLoadResult{err: errors.New("boom")})
+	m.finishLoading(gtx, titleLoadResult{err: userMessage("Не удалось загрузить тайтл")})
 
-	if m.loadError != "boom" {
-		t.Fatalf("load error = %q, want %q", m.loadError, "boom")
+	if m.loadError != "Не удалось загрузить тайтл" {
+		t.Fatalf("load error = %q, want %q", m.loadError, "Не удалось загрузить тайтл")
 	}
 	if m.errorAt != gtx.Now {
 		t.Fatalf("error timestamp = %v, want %v", m.errorAt, gtx.Now)

@@ -106,9 +106,9 @@ func loadKinopoiskCatalog(ctx context.Context, client *kinopoisk.Client, voices 
 		}
 	}
 	if lastErr == nil {
-		lastErr = fmt.Errorf("плеер вернул пустой список серий")
+		lastErr = fmt.Errorf("player returned an empty episode list")
 	}
-	return kinopoisk.Catalog{}, fmt.Errorf("не удалось прочитать серии: %w", lastErr)
+	return kinopoisk.Catalog{}, fmt.Errorf("cannot read episodes: %w", lastErr)
 }
 
 // kinopoiskTitle converts the catalogue into the same model the AnimeLIB path
@@ -154,30 +154,32 @@ func kinopoiskTitle(meta kinopoisk.Meta, catalog kinopoisk.Catalog, voices []kin
 	}
 
 	// Voices with the same display name are indistinguishable in the UI, so the
-	// one that covers more episodes wins.
+	// one that covers more episodes wins. A nameless voice is keyed by its id.
 	position := make(map[string]int)
 	for _, voice := range voices {
 		name := strings.TrimSpace(voice.Name)
-		if name == "" {
-			name = fmt.Sprintf("Озвучка %d", voice.ID)
+		key := name
+		if key == "" {
+			key = fmt.Sprintf("#%d", voice.ID)
 		}
 		episodes := catalog.Available[voice.ID]
 		if len(episodes) == 0 {
 			continue
 		}
 		voiceover := Voiceover{
+			ID:       voice.ID,
 			Name:     name,
 			Episodes: append([]string(nil), episodes...),
 			Missing:  missingEpisodes(catalog.Episodes, episodes),
 		}
-		if index, ok := position[name]; ok {
+		if index, ok := position[key]; ok {
 			if len(title.Voiceovers[index].Episodes) >= len(voiceover.Episodes) {
 				continue
 			}
 			title.Voiceovers[index] = voiceover
 			continue
 		}
-		position[name] = len(title.Voiceovers)
+		position[key] = len(title.Voiceovers)
 		title.Voiceovers = append(title.Voiceovers, voiceover)
 	}
 	return title
@@ -237,8 +239,8 @@ func applyStoredKinopoisk(title *Title, stored store.Title) {
 }
 
 // hasRealKinopoiskName reports whether the metadata request returned a name
-// instead of the "Кинопоиск #id" placeholder.
+// instead of the "#id" placeholder.
 func hasRealKinopoiskName(title Title) bool {
 	name := strings.TrimSpace(title.Russian)
-	return name != "" && !strings.HasPrefix(name, "Кинопоиск #")
+	return name != "" && !strings.HasPrefix(name, "#")
 }

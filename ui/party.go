@@ -64,6 +64,10 @@ const (
 	// resolved. Keep the guest's player alive through that gap; an intentionally
 	// closed host session still stops the guest after this grace period.
 	partyGuestStopGrace = 10 * time.Second
+	// A guest whose player failed to open the stream retries the same media
+	// after this pause. Waiting longer than a heartbeat lets the host move on
+	// without the guest spawning a fresh resolve on every anchor.
+	partyGuestRetry = 15 * time.Second
 )
 
 // partySnapshot is a consistent copy of the room state for the UI.
@@ -129,10 +133,14 @@ type partyManager struct {
 
 	guestRunning  party.State
 	guestStarting bool
-	guestDone     party.State
-	guestDoneAt   time.Time
-	guestStop     chan struct{}
-	consumeStop   chan struct{}
+	// guestStartID increments for every start attempt. A slow attempt may
+	// return after a newer one has begun; only the newest may clear the
+	// starting flag and record a retry.
+	guestStartID uint64
+	guestDone    party.State
+	guestDoneAt  time.Time
+	guestStop    chan struct{}
+	consumeStop  chan struct{}
 }
 
 func newPartyManager(app *application) *partyManager {
@@ -211,7 +219,7 @@ func (m *partyManager) Config() party.Config {
 // to the next room. An already open room keeps the config it dialled with.
 func (m *partyManager) SetRelayConfig(cfg party.Config) error {
 	if m == nil {
-		return errors.New("совместный просмотр недоступен")
+		return userMessage("Совместный просмотр недоступен.")
 	}
 	cfg = cfg.Normalized()
 	if err := cfg.Validate(); err != nil {
@@ -299,7 +307,7 @@ func (m *partyManager) Name() string {
 // keeps it for the next one.
 func (m *partyManager) SetName(name string) error {
 	if m == nil {
-		return errors.New("совместный просмотр недоступен")
+		return userMessage("Совместный просмотр недоступен.")
 	}
 	normalized, err := party.NormalizeName(name)
 	if err != nil {
@@ -323,17 +331,17 @@ func (m *partyManager) SetName(name string) error {
 // Create opens a fresh room and returns its key.
 func (m *partyManager) Create(provider party.Provider) (string, error) {
 	if m == nil {
-		return "", errors.New("совместный просмотр недоступен")
+		return "", userMessage("Совместный просмотр недоступен.")
 	}
 	cfg := m.Config()
 	if !cfg.Configured(provider) {
-		return "", fmt.Errorf("%s не настроен", provider.Label())
+		return "", userMessage(fmt.Sprintf("Совместный просмотр через %s не настроен.", provider.Label()))
 	}
 	m.mu.Lock()
 	busy := m.session != nil
 	m.mu.Unlock()
 	if busy {
-		return "", errors.New("комната уже создана")
+		return "", userMessage("Комната уже создана.")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), partyCreateTimeout)
@@ -351,7 +359,7 @@ func (m *partyManager) Create(provider party.Provider) (string, error) {
 // backend and a guest must reach the same one.
 func (m *partyManager) Join(key string) error {
 	if m == nil {
-		return errors.New("совместный просмотр недоступен")
+		return userMessage("Совместный просмотр недоступен.")
 	}
 	normalized, err := party.NormalizeKey(key)
 	if err != nil {
@@ -363,7 +371,7 @@ func (m *partyManager) Join(key string) error {
 	}
 	cfg := m.Config()
 	if !cfg.Configured(provider) {
-		return fmt.Errorf("для этого ключа нужен %s — он не настроен в этой сборке", provider.Label())
+		return userMessage(fmt.Sprintf("Для этого ключа нужен %s — он не настроен в этой сборке.", provider.Label()))
 	}
 	m.mu.Lock()
 	busy := m.session != nil
@@ -438,13 +446,13 @@ func (m *partyManager) UnlockRoom() error {
 // anchor. A wrong value is refused locally by the room card.
 func (m *partyManager) SubmitSecret(secret string) error {
 	if m == nil {
-		return errors.New("комната не создана")
+		return userMessage("Комната ещё не создана.")
 	}
 	m.mu.Lock()
 	room := m.session
 	m.mu.Unlock()
 	if room == nil || room.Role != party.Guest {
-		return errors.New("секрет вводит только гость комнаты")
+		return userMessage("Секрет вводит только гость комнаты.")
 	}
 	if err := room.SubmitSecret(secret); err != nil {
 		return err
@@ -459,7 +467,7 @@ func (m *partyManager) SubmitSecret(secret string) error {
 // hostRoom returns the open room if this client is its creator.
 func (m *partyManager) hostRoom() (*party.Session, error) {
 	if m == nil {
-		return nil, errors.New("комната не создана")
+		return nil, userMessage("Комната ещё не создана.")
 	}
 	m.mu.Lock()
 	room := m.session
@@ -503,6 +511,8 @@ func (m *partyManager) Delete() {
 	// keep them so a room created later can publish the current episode.
 	m.guestRunning = party.State{}
 	m.guestDone = party.State{}
+	m.guestStarting = false
+	m.guestStartID++
 	hostStop := m.hostStop
 	m.hostStop = nil
 	guestStop := m.guestStop
@@ -605,6 +615,7 @@ func (m *partyManager) adopt(session *party.Session) {
 	m.guestRunning = party.State{}
 	m.guestDone = party.State{}
 	m.guestStarting = false
+	m.guestStartID++
 	stop := make(chan struct{})
 	m.guestStop = stop
 	m.hostStop = nil
@@ -707,7 +718,7 @@ func (m *partyManager) consume(session *party.Session, stop chan struct{}) {
 						goneNotice = versionMismatchNotice
 					}
 				} else {
-					m.notice = update.Err.Error()
+					m.notice = friendlyError(update.Err)
 				}
 			}
 		}
@@ -875,38 +886,49 @@ func (m *partyManager) startGuest(state party.State) {
 		return
 	}
 	// guestDone means the local player already finished this media. A failure is
-	// retried after a pause; a player the guest closed on purpose stays closed
-	// until the host switches to another episode or title.
+	// retried after a short pause; a player the guest closed on purpose stays
+	// closed until the host switches to another episode or title.
 	if state.SamePlayback(m.guestDone) {
-		if m.guestDoneAt.IsZero() || time.Since(m.guestDoneAt) < 45*time.Second {
+		if m.guestDoneAt.IsZero() || time.Since(m.guestDoneAt) < partyGuestRetry {
 			m.mu.Unlock()
 			return
 		}
 	}
 	m.guestStarting = true
 	m.guestRunning = state
+	m.guestStartID++
+	startID := m.guestStartID
 	m.mu.Unlock()
 	logger.Info("party guest starting playback", "slug", state.TitleSlug, "voice", state.Voice, "episode", state.Episode, "position", state.Position)
 
-	go func() {
-		err := m.app.startPartyPlayback(state)
+	go func(id uint64, wanted party.State) {
+		err := m.app.startPartyPlayback(wanted)
 		m.mu.Lock()
+		if id != m.guestStartID {
+			// A newer start owns the guest state now; ignoring this result
+			// keeps an old failure from cancelling the fresh session.
+			m.mu.Unlock()
+			return
+		}
 		m.guestStarting = false
 		if err != nil {
 			// Keep the retry backoff consistent with a failure reported through
 			// the playback result channel: by the time the UI drains that
 			// result, guestRunning would already be empty and the failed media
 			// would be retried on the very next heartbeat.
-			if m.guestRunning.Started() {
-				m.guestDone = m.guestRunning
+			if _, expected := userFacing(err); !expected {
+				logger.Warn("party guest playback failed", "slug", wanted.TitleSlug, "episode", wanted.Episode, "error", err)
+			}
+			if wanted.Started() {
+				m.guestDone = wanted
 				m.guestDoneAt = time.Now()
 			}
 			m.guestRunning = party.State{}
-			m.notice = err.Error()
+			m.notice = friendlyError(err)
 		}
 		m.mu.Unlock()
 		m.invalidate()
-	}()
+	}(startID, state)
 }
 
 // guestFailed is called when mpv could not start for a guest.
@@ -922,7 +944,10 @@ func (m *partyManager) guestFailed(err error) {
 	m.guestRunning = party.State{}
 	m.guestStarting = false
 	if err != nil {
-		m.notice = err.Error()
+		if _, expected := userFacing(err); !expected {
+			logger.Warn("party guest player failed", "error", err)
+		}
+		m.notice = friendlyError(err)
 	}
 	m.mu.Unlock()
 	m.invalidate()
@@ -943,6 +968,9 @@ func (m *partyManager) guestFinished(err error) {
 		}
 		m.Delete()
 		return
+	}
+	if _, expected := userFacing(err); !expected {
+		logger.Warn("party guest player exited", "error", err)
 	}
 	m.mu.Lock()
 	if m.guestRunning.Started() {
@@ -1237,7 +1265,7 @@ func (m *partyManager) hostState() (party.State, bool) {
 		Voice:          meta.Voice,
 		Episode:        number,
 		EpisodeIndex:   index,
-		Playing:        !session.Paused(),
+		Playing:        !session.Paused() && session.Ready(),
 		Position:       session.LivePosition(),
 		ControlEnabled: &control,
 	}, true

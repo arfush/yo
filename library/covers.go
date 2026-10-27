@@ -303,7 +303,7 @@ func (c *coverManager) fetch(ctx context.Context, sourceURL string) ([]byte, str
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, "", fmt.Errorf("обложка: HTTP %d", response.StatusCode)
+		return nil, "", fmt.Errorf("cover: HTTP %d", response.StatusCode)
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, maxCoverBytes+1))
 	if err != nil {
@@ -315,11 +315,11 @@ func (c *coverManager) fetch(ctx context.Context, sourceURL string) ([]byte, str
 
 	_, format, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
-		return nil, "", fmt.Errorf("обложка: повреждённое изображение: %w", err)
+		return nil, "", fmt.Errorf("cover: corrupted image: %w", err)
 	}
 	ext := coverExtension(format)
 	if ext == "" {
-		return nil, "", fmt.Errorf("обложка: неподдерживаемый формат %q", format)
+		return nil, "", fmt.Errorf("cover: unsupported format %q", format)
 	}
 	return data, ext, nil
 }

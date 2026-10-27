@@ -18,7 +18,7 @@ func New(image.Image, func(), func()) (*Tray, error) { return nil, nil }
 func (t *Tray) Close() {}
 
 func (t *Tray) NotifyMessage(string, string) error {
-	return errors.New("уведомления Windows недоступны")
+	return errors.New("Windows notifications are unavailable")
 }
 
 // ActivateRunningInstance has nothing to talk to outside Windows: the instance

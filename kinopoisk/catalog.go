@@ -63,7 +63,7 @@ func (c *Client) Voices(ctx context.Context, id int) ([]Voice, error) {
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil, fmt.Errorf("некорректный ответ плеера: %w", err)
+		return nil, fmt.Errorf("invalid player response: %w", err)
 	}
 	var voices []Voice
 	seen := make(map[int]bool)
@@ -114,7 +114,7 @@ func (c *Client) fetchPlayers(ctx context.Context, id int) ([]byte, string, erro
 	if lastErr == nil {
 		lastErr = ErrNoMirrors
 	}
-	return nil, "", fmt.Errorf("каталог плеера недоступен: %w", lastErr)
+	return nil, "", fmt.Errorf("player catalogue is unavailable: %w", lastErr)
 }
 
 // playersURLs returns the configured endpoint first, then the endpoints derived
@@ -151,7 +151,7 @@ func (c *Client) Catalog(ctx context.Context, voice Voice) (Catalog, error) {
 	}
 	body, err := c.get(ctx, iframe, c.config.referer())
 	if err != nil {
-		return Catalog{}, fmt.Errorf("не удалось открыть плеер: %w", err)
+		return Catalog{}, fmt.Errorf("cannot open the player: %w", err)
 	}
 	raw, err := extractFileList(body)
 	if err != nil {
@@ -186,7 +186,7 @@ func (c *Client) get(ctx context.Context, rawURL, referer string) ([]byte, error
 		return nil, err
 	}
 	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("статус %d", response.StatusCode)
+		return nil, fmt.Errorf("status %d", response.StatusCode)
 	}
 	return body, nil
 }
@@ -282,7 +282,7 @@ func parseFileList(raw []byte) (Catalog, error) {
 		All  json.RawMessage `json:"all"`
 	}
 	if err := json.Unmarshal(raw, &list); err != nil {
-		return Catalog{}, fmt.Errorf("некорректный список серий: %w", err)
+		return Catalog{}, fmt.Errorf("invalid episode list: %w", err)
 	}
 	if strings.EqualFold(list.Type, "movie") {
 		return parseMovieList(list.All)
@@ -294,7 +294,7 @@ func parseFileList(raw []byte) (Catalog, error) {
 func parseSerialList(raw json.RawMessage) (Catalog, error) {
 	var seasons map[string]map[string]map[string]fileEntry
 	if err := json.Unmarshal(raw, &seasons); err != nil {
-		return Catalog{}, fmt.Errorf("некорректные сезоны: %w", err)
+		return Catalog{}, fmt.Errorf("invalid seasons: %w", err)
 	}
 	catalog := Catalog{Available: make(map[int][]string)}
 	numbers := make([]int, 0, len(seasons))
@@ -350,7 +350,7 @@ func parseSerialList(raw json.RawMessage) (Catalog, error) {
 func parseMovieList(raw json.RawMessage) (Catalog, error) {
 	var sections map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &sections); err != nil {
-		return Catalog{}, fmt.Errorf("некорректный список файлов: %w", err)
+		return Catalog{}, fmt.Errorf("invalid file list: %w", err)
 	}
 	catalog := Catalog{Movie: true, Available: make(map[int][]string)}
 	for _, section := range []string{"theatrical", "directors"} {

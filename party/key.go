@@ -42,7 +42,7 @@ const keyAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 func NewKey(provider Provider) (string, error) {
 	code, ok := providerKeyCode(provider)
 	if !ok {
-		return "", fmt.Errorf("неизвестный провайдер %q", provider)
+		return "", fmt.Errorf("unknown provider %q", provider)
 	}
 	buf := make([]byte, keySuffixLength)
 	if _, err := rand.Read(buf); err != nil {

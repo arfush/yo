@@ -41,7 +41,7 @@ func (m *Manager) NewHeadless(ctx context.Context) (*Headless, error) {
 
 	pw, err := playwright.Run(m.opts)
 	if err != nil {
-		return nil, fmt.Errorf("запустить Playwright: %w", err)
+		return nil, fmt.Errorf("cannot start Playwright: %w", err)
 	}
 	headless := true
 	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
@@ -54,7 +54,7 @@ func (m *Manager) NewHeadless(ctx context.Context) (*Headless, error) {
 	})
 	if err != nil {
 		_ = pw.Stop()
-		return nil, fmt.Errorf("запустить headless Chromium: %w", err)
+		return nil, fmt.Errorf("cannot start headless Chromium: %w", err)
 	}
 	locale := "ru-RU"
 	context, err := browser.NewContext(playwright.BrowserNewContextOptions{
@@ -64,7 +64,7 @@ func (m *Manager) NewHeadless(ctx context.Context) (*Headless, error) {
 	if err != nil {
 		_ = browser.Close()
 		_ = pw.Stop()
-		return nil, fmt.Errorf("создать контекст Chromium: %w", err)
+		return nil, fmt.Errorf("cannot create a Chromium context: %w", err)
 	}
 	return &Headless{pw: pw, browser: browser, context: context}, nil
 }

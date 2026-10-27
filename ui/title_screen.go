@@ -34,6 +34,7 @@ const (
 	titlePageEpisodeHeight   = unit.Dp(42)
 	titlePageEpisodeGap      = unit.Dp(6)
 	titlePageQualityHeight   = unit.Dp(34)
+	titlePageQualityMinWidth = unit.Dp(56)
 	titlePageButtonHeight    = unit.Dp(34)
 	titlePageFooterButtonGap = unit.Dp(12)
 )
@@ -226,6 +227,8 @@ type titleScreen struct {
 
 	voiceList   layout.List
 	episodeList layout.List
+	seasonList  layout.List
+	qualityList layout.List
 	voices      []titleVoiceRow
 	episodes    []widget.Clickable
 	seasons     []widget.Clickable
@@ -237,6 +240,7 @@ type titleScreen struct {
 
 	voicesPlaced   bool
 	episodesPlaced bool
+	seasonsPlaced  bool
 	episodeColumns int
 
 	selectedVoice   int
@@ -1021,7 +1025,7 @@ func (w *titleScreen) save(gtx layout.Context) {
 	w.savedUntil = time.Time{}
 	if w.onSave != nil {
 		if err := w.onSave(w.selectedVoiceName(), w.selectedEpisodeLabel()); err != nil {
-			w.saveError = err.Error()
+			w.saveError = friendlyError(err)
 			if w.onError != nil {
 				w.onError(err)
 			}
@@ -1044,7 +1048,7 @@ func (w *titleScreen) watch(gtx layout.Context) {
 	}
 	w.watchError = ""
 	if err := w.onWatch(w.selectedVoiceName(), w.selectedEpisodeLabel(), w.selectedQualityValue()); err != nil {
-		w.watchError = err.Error()
+		w.watchError = friendlyError(err)
 		if w.onError != nil {
 			w.onError(err)
 		}

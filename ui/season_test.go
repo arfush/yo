@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"image"
 	"reflect"
 	"testing"
 )
@@ -49,6 +50,24 @@ func TestEpisodeGridColumnsKeepEpisodeShape(t *testing.T) {
 	}
 	if got := episodeGridColumns(40, 6, 44); got != 1 {
 		t.Fatalf("tiny grid columns = %d", got)
+	}
+}
+
+func TestGridBlockSizeCapsAtThreeRows(t *testing.T) {
+	tall := image.Rect(0, 0, 500, 1000)
+	if rows, height := gridBlockSize(tall, 10, 42, 6); rows != titleGridMaxRows || height != 3*42+2*6 {
+		t.Fatalf("tall block = %d rows, %d px; want %d rows, 138 px", rows, height, titleGridMaxRows)
+	}
+	if rows, height := gridBlockSize(tall, 2, 42, 6); rows != 2 || height != 2*42+6 {
+		t.Fatalf("short block = %d rows, %d px; want 2 rows, 90 px", rows, height)
+	}
+	medium := image.Rect(0, 0, 500, 100)
+	if rows, height := gridBlockSize(medium, 10, 42, 6); rows != 2 || height != 90 {
+		t.Fatalf("medium block = %d rows, %d px; want 2 rows, 90 px", rows, height)
+	}
+	tiny := image.Rect(0, 0, 500, 20)
+	if rows, height := gridBlockSize(tiny, 10, 42, 6); rows != 1 || height != 20 {
+		t.Fatalf("tiny block = %d rows, %d px; want 1 clipped row, 20 px", rows, height)
 	}
 }
 

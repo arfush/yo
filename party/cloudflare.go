@@ -28,7 +28,7 @@ func dialCloudflare(ctx context.Context, cfg Config, address string, role Role) 
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, ErrServerUnreachable
 		}
-		return nil, fmt.Errorf("не удалось подключиться к комнате: %w", err)
+		return nil, fmt.Errorf("cannot connect to the room: %w", err)
 	}
 	return &cloudflareTransport{wsTransport: newWSTransport(conn)}, nil
 }
@@ -39,13 +39,13 @@ func dialCloudflare(ctx context.Context, cfg Config, address string, role Role) 
 func handshakeError(status int) error {
 	switch status {
 	case http.StatusBadRequest:
-		return fmt.Errorf("сервер отклонил ключ комнаты")
+		return fmt.Errorf("%w: server rejected the key", ErrWrongSecret)
 	case http.StatusNotFound:
-		return fmt.Errorf("комната не найдена")
+		return ErrRoomNotFound
 	case http.StatusOK:
-		return fmt.Errorf("по адресу реле работает не комната (ответ 200)")
+		return fmt.Errorf("%w: the relay URL does not serve a room (HTTP 200)", ErrRoomNotFound)
 	}
-	return fmt.Errorf("сервер комнаты ответил %d", status)
+	return fmt.Errorf("room server answered %d", status)
 }
 
 type cloudflareTransport struct {
@@ -66,7 +66,7 @@ func (t *cloudflareTransport) run(ctx context.Context, deliver func(frame)) erro
 			continue
 		}
 		if msg.Type == messageError && msg.Error == "" {
-			msg.Error = "ошибка комнаты"
+			msg.Error = "room error"
 		}
 		deliver(msg)
 	}

@@ -5,7 +5,7 @@ import "errors"
 // Sentinels returned by the mpv manager and installer.
 var (
 	// ErrNotFound means mpv.exe was not found in the expected directory.
-	ErrNotFound = errors.New("mpv не найден")
+	ErrNotFound = errors.New("mpv not found")
 	// ErrManagerNil means the manager was not opened before use.
 	ErrManagerNil = errors.New("mpv manager is nil")
 	// ErrDownloadRunning means a download is already in flight.
