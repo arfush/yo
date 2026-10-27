@@ -57,9 +57,13 @@ type SkipRange struct {
 
 // Media is a resolved stream with everything mpv needs to open it.
 type Media struct {
-	URL       string
-	Headers   []string
-	Quality   int
+	URL     string
+	Headers []string
+	Quality int
+	// Qualities lists every quality the chosen audio track offers, ascending.
+	// The title page uses it to grey out the buttons the voice cannot deliver;
+	// mpv only needs Quality.
+	Qualities []int
 	Subtitles []Subtitle
 	Skip      []SkipRange
 }
@@ -210,6 +214,7 @@ func (r *Resolver) resolve(ctx context.Context, target string, request Request) 
 	media := Media{
 		URL:       streamURL,
 		Quality:   quality,
+		Qualities: sourceQualities(manifest.Sources[sourceIndex]),
 		Headers:   streamHeaders(target, bearer),
 		Subtitles: manifest.subtitles(),
 		Skip:      manifest.skipRanges(),
@@ -387,18 +392,10 @@ func pickQuality(source manifestSource, preferred int) (string, int) {
 	if streamURL := normalizeStreamURL(source.Quality[strconv.Itoa(preferred)]); streamURL != "" {
 		return streamURL, preferred
 	}
-	qualities := make([]int, 0, len(source.Quality))
-	for key, raw := range source.Quality {
-		quality, err := strconv.Atoi(strings.TrimSpace(key))
-		if err != nil || normalizeStreamURL(raw) == "" {
-			continue
-		}
-		qualities = append(qualities, quality)
-	}
+	qualities := sourceQualities(source)
 	if len(qualities) == 0 {
 		return "", 0
 	}
-	sort.Ints(qualities)
 	lower := 0
 	for _, quality := range qualities {
 		if quality < preferred {
@@ -411,6 +408,25 @@ func pickQuality(source manifestSource, preferred int) (string, int) {
 		lower = qualities[0]
 	}
 	return normalizeStreamURL(source.Quality[strconv.Itoa(lower)]), lower
+}
+
+// sourceQualities returns the playable quality steps of one audio track in
+// ascending order. Entries whose URLs cannot be opened by mpv are skipped, so
+// the UI never offers a button the resolver would have to ignore.
+func sourceQualities(source manifestSource) []int {
+	if len(source.Quality) == 0 {
+		return nil
+	}
+	qualities := make([]int, 0, len(source.Quality))
+	for key, raw := range source.Quality {
+		quality, err := strconv.Atoi(strings.TrimSpace(key))
+		if err != nil || quality <= 0 || normalizeStreamURL(raw) == "" {
+			continue
+		}
+		qualities = append(qualities, quality)
+	}
+	sort.Ints(qualities)
+	return qualities
 }
 
 func (r *Resolver) ensurePage(ctx context.Context) (playwright.Page, error) {

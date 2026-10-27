@@ -234,6 +234,16 @@ func TestMatchSourceAndQuality(t *testing.T) {
 	if url != "https://cdn/2-720.m3u8" || quality != 720 {
 		t.Fatalf("lowest available = %q, %d", url, quality)
 	}
+	// The quality block is built from the same set: ascending, with broken
+	// entries dropped instead of rendered as dead buttons.
+	sources[1].Quality["480"] = "not a url"
+	sources[1].Quality["2160"] = "https://cdn/2-2160.m3u8"
+	if got := sourceQualities(sources[1]); len(got) != 3 || got[0] != 720 || got[1] != 1080 || got[2] != 2160 {
+		t.Fatalf("sourceQualities = %v", got)
+	}
+	if got := sourceQualities(manifestSource{}); got != nil {
+		t.Fatalf("empty source qualities = %v", got)
+	}
 }
 
 // A film mirrors every quality on two CDN hosts and joins them with " or ".
