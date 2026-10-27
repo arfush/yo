@@ -227,13 +227,13 @@ func (m *mainWindow) drawHistoryRowCard(gtx layout.Context, rect image.Rectangle
 		fill := mixColor(mainControlFill, mainPlayButtonFill, vis.playHover)
 		stroke := mixColor(mainControlBorder, mainPlayButtonBorder, vis.playHover)
 		drawIconButtonSurface(gtx, geom.play, iconButtonStyle{Fill: fill, Border: stroke, Radius: mainControlRadius}, 0)
-		drawPlay(gtx, centerOf(geom.play), gtx.Dp(unit.Dp(17)), buttonTextColor)
+		drawPlay(gtx, centerOf(geom.play), gtx.Dp(unit.Dp(11)), buttonTextColor)
 	}
 
 	trashFill := mixColor(mainControlFill, mainTrashButtonFill, vis.trashHover)
 	trashBorder := mixColor(mainControlBorder, mainTrashButtonBorder, vis.trashHover)
 	drawIconButtonSurface(gtx, geom.trash, iconButtonStyle{Fill: trashFill, Border: trashBorder, Radius: mainControlRadius}, 0)
-	drawTrash(gtx, centerOf(geom.trash), gtx.Dp(unit.Dp(16)), mainControlColor)
+	drawTrash(gtx, centerOf(geom.trash), gtx.Dp(unit.Dp(14)), mainControlColor)
 }
 
 func (m *mainWindow) layoutHistoryRow(gtx layout.Context, index, width, height int) {
