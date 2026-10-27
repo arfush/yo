@@ -51,8 +51,9 @@ const (
 	swShow    = 5
 	swRestore = 9
 
-	swpNoZOrder   = 0x0004
-	swpNoActivate = 0x0010
+	swpNoZOrder       = 0x0004
+	swpNoActivate     = 0x0010
+	swpAsyncWindowPos = 0x4000
 )
 
 const vkLeftButton = 0x01
@@ -125,7 +126,15 @@ func handleViewEvent(e event.Event) {
 
 	hwnd := windows.HWND(view.HWND)
 	windowHandle.Store(view.HWND)
-	applyRememberedWindowRect(hwnd)
+	// SetWindowPos sends WM_WINDOWPOSCHANGED to the window thread, and that
+	// thread waits for this goroutine to return to Window.Event() while it
+	// delivers the resulting ConfigEvent. Calling it inline deadlocks both
+	// threads, which is the "window is not responding" hang on every launch
+	// with a remembered rectangle. Claim the rectangle here and move the
+	// window from a separate goroutine, like hideToTray does with ShowWindow.
+	if rect, ok := takeRememberedWindowRect(); ok {
+		go setAppWindowRect(hwnd, rect)
+	}
 
 	dark := int32(1)
 	_ = windows.DwmSetWindowAttribute(
@@ -225,15 +234,21 @@ func rememberAppWindowRect(rect windowRect) {
 	pendingAppRectSet = true
 }
 
-// applyRememberedWindowRect moves the freshly created window to the spot the
-// user kept it in during the previous session. The frame is placed unchanged
-// and left inactive, so the first launch does not steal focus from itself.
-func applyRememberedWindowRect(hwnd windows.HWND) {
+// takeRememberedWindowRect claims the stored rectangle exactly once. Claiming it
+// on the UI goroutine keeps repeated view events from scheduling the move twice.
+func takeRememberedWindowRect() (windowRect, bool) {
 	if !pendingAppRectSet {
-		return
+		return windowRect{}, false
 	}
 	pendingAppRectSet = false
-	rect := pendingAppRect
+	return pendingAppRect, true
+}
+
+// setAppWindowRect moves the freshly created window to the spot the user kept
+// it in during the previous session. The frame is placed unchanged and left
+// inactive, so the first launch does not steal focus from itself. It must run
+// off the UI goroutine; see handleViewEvent.
+func setAppWindowRect(hwnd windows.HWND, rect windowRect) {
 	if rect.Width <= 0 || rect.Height <= 0 {
 		return
 	}
@@ -247,7 +262,9 @@ func applyRememberedWindowRect(hwnd windows.HWND) {
 		uintptr(int32(rect.Y)),
 		uintptr(int32(rect.Width)),
 		uintptr(int32(rect.Height)),
-		swpNoZOrder|swpNoActivate,
+		// SWP_ASYNCWINDOWPOS posts the move to the window thread instead of
+		// waiting for it, so a busy message loop can never wedge this goroutine.
+		swpNoZOrder|swpNoActivate|swpAsyncWindowPos,
 	)
 }
 

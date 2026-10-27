@@ -316,6 +316,10 @@ func newApp() (*application, error) {
 	app.mpvRect, app.mpvRectOK = loadStoredRect(lib, "mpv_rect")
 	if rect, ok := loadStoredRect(lib, "window_rect"); ok {
 		app.appRectCur = rect
+		// The move happens on the first view event, slightly after this point.
+		// Delay persistence so the not-yet-moved default rectangle is not
+		// written over the remembered one in the meantime.
+		app.appRectAt = time.Now()
 		rememberAppWindowRect(rect)
 	}
 	return app, nil
