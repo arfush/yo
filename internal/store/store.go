@@ -23,6 +23,8 @@ const schemaSQL = `
 CREATE TABLE IF NOT EXISTS titles (
     id             INTEGER PRIMARY KEY,
     slug           TEXT    UNIQUE NOT NULL,
+    source         TEXT    NOT NULL DEFAULT 'animelib',
+    external_id    TEXT    NOT NULL DEFAULT '',
     eng_name       TEXT    NOT NULL DEFAULT '',
     rus_name       TEXT    NOT NULL DEFAULT '',
     imdb_id        TEXT    NOT NULL DEFAULT '',
@@ -74,13 +76,20 @@ CREATE TABLE IF NOT EXISTS episode_tracking (
 // number of episodes so history rows can draw a progress bar without a network
 // request. IsMovie keeps films from showing an episode counter in history.
 type Title struct {
-	ID      int64
-	Slug    string
-	EngName string
-	RusName string
-	IMDbID  string
-	Season  int64
-	Status  int
+	ID int64
+	// Source names the catalogue the title came from ("animelib" or
+	// "kinopoisk"). It decides which resolver may open the title and which
+	// background checks apply to it.
+	Source string
+	// ExternalID is the id inside Source: the AnimeLIB slug or the Kinopoisk
+	// film id.
+	ExternalID string
+	Slug       string
+	EngName    string
+	RusName    string
+	IMDbID     string
+	Season     int64
+	Status     int
 	// UserStatus is the local library status chosen by the user. It is kept
 	// separately from Status, which mirrors AnimeLIB's release state.
 	UserStatus    int
@@ -247,6 +256,19 @@ func ensureTitleColumns(db *sql.DB) error {
 			return err
 		}
 	}
+	if !columns["source"] {
+		// Every title stored before sources existed came from AnimeLIB.
+		log.Info("migrating database: adding source")
+		if _, err := db.Exec("ALTER TABLE titles ADD COLUMN source TEXT NOT NULL DEFAULT 'animelib'"); err != nil {
+			return err
+		}
+	}
+	if !columns["external_id"] {
+		log.Info("migrating database: adding external_id")
+		if _, err := db.Exec("ALTER TABLE titles ADD COLUMN external_id TEXT NOT NULL DEFAULT ''"); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -311,9 +333,11 @@ func (s *Store) UpsertTitle(title Title) (int64, error) {
 		userStatus = 2
 	}
 	_, err := s.db.Exec(`
-        INSERT INTO titles (slug, eng_name, rus_name, imdb_id, season, status, user_status, episodes_total, is_movie, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO titles (slug, source, external_id, eng_name, rus_name, imdb_id, season, status, user_status, episodes_total, is_movie, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(slug) DO UPDATE SET
+            source         = excluded.source,
+            external_id    = excluded.external_id,
             eng_name       = CASE WHEN excluded.eng_name != '' THEN excluded.eng_name ELSE titles.eng_name END,
             rus_name       = CASE WHEN excluded.rus_name != '' THEN excluded.rus_name ELSE titles.rus_name END,
             imdb_id        = CASE WHEN excluded.imdb_id != '' THEN excluded.imdb_id ELSE titles.imdb_id END,
@@ -323,7 +347,7 @@ func (s *Store) UpsertTitle(title Title) (int64, error) {
             episodes_total = CASE WHEN excluded.episodes_total > 0 THEN excluded.episodes_total ELSE titles.episodes_total END,
             is_movie       = excluded.is_movie,
             updated_at     = excluded.updated_at
-    `, title.Slug, title.EngName, title.RusName, title.IMDbID, title.Season, title.Status, userStatus, title.EpisodesTotal, boolInt(title.IsMovie), title.UpdatedAt)
+    `, title.Slug, titleSource(title), title.ExternalID, title.EngName, title.RusName, title.IMDbID, title.Season, title.Status, userStatus, title.EpisodesTotal, boolInt(title.IsMovie), title.UpdatedAt)
 	if err != nil {
 		return 0, err
 	}
@@ -337,7 +361,7 @@ func (s *Store) UpsertTitle(title Title) (int64, error) {
 // GetTitle returns a cached title by slug.
 func (s *Store) GetTitle(slug string) (*Title, error) {
 	row := s.db.QueryRow(`
-        SELECT id, slug, eng_name, rus_name, imdb_id, season, status, user_status, episodes_total, is_movie, updated_at
+        SELECT id, source, external_id, slug, eng_name, rus_name, imdb_id, season, status, user_status, episodes_total, is_movie, updated_at
         FROM titles WHERE slug = ?`, slug)
 	return scanTitle(row)
 }
@@ -345,7 +369,7 @@ func (s *Store) GetTitle(slug string) (*Title, error) {
 // GetTitleByID returns a cached title by local id.
 func (s *Store) GetTitleByID(tid int64) (*Title, error) {
 	row := s.db.QueryRow(`
-        SELECT id, slug, eng_name, rus_name, imdb_id, season, status, user_status, episodes_total, is_movie, updated_at
+        SELECT id, source, external_id, slug, eng_name, rus_name, imdb_id, season, status, user_status, episodes_total, is_movie, updated_at
         FROM titles WHERE id = ?`, tid)
 	return scanTitle(row)
 }
@@ -403,7 +427,7 @@ func (s *Store) SaveCoverFailure(tid int64) error {
 // ListHistory returns titles in the user's order, newest first.
 func (s *Store) ListHistory() ([]HistoryEntry, error) {
 	rows, err := s.db.Query(`
-        SELECT t.id, t.slug, t.eng_name, t.rus_name, t.imdb_id, t.season, t.status, t.user_status, t.episodes_total, t.is_movie, t.updated_at,
+        SELECT t.id, t.source, t.external_id, t.slug, t.eng_name, t.rus_name, t.imdb_id, t.season, t.status, t.user_status, t.episodes_total, t.is_movie, t.updated_at,
                h.episode, h.resume_at, h.duration, h.voiceover, h.sort_order, h.status_order
         FROM history h
         JOIN titles t ON t.id = h.tid
@@ -417,7 +441,7 @@ func (s *Store) ListHistory() ([]HistoryEntry, error) {
 	for rows.Next() {
 		var entry HistoryEntry
 		err := rows.Scan(
-			&entry.ID, &entry.Slug, &entry.EngName, &entry.RusName, &entry.IMDbID, &entry.Season,
+			&entry.ID, &entry.Source, &entry.ExternalID, &entry.Slug, &entry.EngName, &entry.RusName, &entry.IMDbID, &entry.Season,
 			&entry.Status, &entry.UserStatus, &entry.EpisodesTotal, &entry.IsMovie, &entry.UpdatedAt,
 			&entry.Episode, &entry.ResumeAt, &entry.Duration, &entry.Voiceover, &entry.SortOrder, &entry.StatusOrder,
 		)
@@ -563,7 +587,8 @@ func (s *Store) ListEpisodeWatches() ([]EpisodeWatch, error) {
         FROM history h
         JOIN titles t ON t.id = h.tid
         LEFT JOIN episode_tracking e ON e.tid = t.id
-        ORDER BY h.sort_order ASC`)
+        WHERE t.source = ?
+        ORDER BY h.sort_order ASC`, SourceAnimeLIB)
 	if err != nil {
 		return nil, err
 	}
@@ -1059,7 +1084,7 @@ func nextStatusSortOrder(q rowQuerier, status int) (int64, error) {
 func scanTitle(row *sql.Row) (*Title, error) {
 	var title Title
 	err := row.Scan(
-		&title.ID, &title.Slug, &title.EngName, &title.RusName, &title.IMDbID, &title.Season,
+		&title.ID, &title.Source, &title.ExternalID, &title.Slug, &title.EngName, &title.RusName, &title.IMDbID, &title.Season,
 		&title.Status, &title.UserStatus, &title.EpisodesTotal, &title.IsMovie, &title.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -1068,7 +1093,24 @@ func scanTitle(row *sql.Row) (*Title, error) {
 	if err != nil {
 		return nil, err
 	}
+	if title.Source == "" {
+		title.Source = SourceAnimeLIB
+	}
 	return &title, nil
+}
+
+// Source names accepted by the titles.source column.
+const (
+	SourceAnimeLIB  = "animelib"
+	SourceKinopoisk = "kinopoisk"
+)
+
+// titleSource keeps rows written before sources existed readable.
+func titleSource(title Title) string {
+	if title.Source == "" {
+		return SourceAnimeLIB
+	}
+	return title.Source
 }
 
 // Validate checks an opened database with a cheap query.
