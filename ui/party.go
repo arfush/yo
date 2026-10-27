@@ -40,6 +40,15 @@ const (
 	partyMinRate        = 0.94
 	partyMaxRate        = 1.06
 
+	// The host publishes every four seconds while playing and every ten while
+	// paused. When neither arrives for far longer than that, the guest's socket
+	// is probably half-open (a NAT dropped the mapping with the server none the
+	// wiser): the player keeps extrapolating from the last anchor, so positions
+	// look fine while a host pause or seek never arrives. The guest then asks
+	// for a fresh anchor instead of running on the stale one.
+	partyStaleAnchor    = 15 * time.Second
+	partyRefreshBackoff = 20 * time.Second
+
 	// A guest that just asked the host for a pause or a seek must not let the
 	// drift loop undo its own input before the confirming anchor arrives.
 	partyControlHold = 1500 * time.Millisecond
@@ -962,6 +971,12 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 	var holdUntil time.Time
 	var seeded bool
 	var mismatchLogged bool
+	// anchorAt is when the last *new* host anchor arrived. A half-open socket
+	// stops delivering anchors without ever erroring; the refresh below pulls
+	// the player back into the room.
+	var anchorAt time.Time
+	var lastAnchor int64
+	var lastRefresh time.Time
 	for {
 		select {
 		case <-stop:
@@ -986,6 +1001,11 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 		if !ok || !state.Started() {
 			continue
 		}
+		now := time.Now()
+		if state.Anchor != lastAnchor {
+			lastAnchor = state.Anchor
+			anchorAt = now
+		}
 		number, _ := current.Episode()
 		if number == "" || number != state.Episode {
 			// mpv is still opening the file or the host moved on; the drift
@@ -999,7 +1019,17 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 			continue
 		}
 		mismatchLogged = false
-		now := time.Now()
+		// A playing guest that stopped hearing from the host for a long time
+		// is running on a stale anchor: the extrapolation still tracks the
+		// picture, but a pause or seek from the host can no longer arrive.
+		// Ask once, then back off — the hello makes the host republish.
+		stale := !anchorAt.IsZero() && now.Sub(anchorAt) >= partyStaleAnchor && now.Sub(lastRefresh) >= partyRefreshBackoff
+		if current != nil && !current.Paused() && stale {
+			log.Info("watch-party guest anchor feed stale, requesting a fresh anchor", "since", now.Sub(anchorAt).Round(time.Second), "episode", number)
+			if err := session.RequestRefresh(); err == nil {
+				lastRefresh = now
+			}
+		}
 		position := current.LivePosition()
 		paused := current.Paused()
 		if !seeded {

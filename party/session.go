@@ -468,6 +468,22 @@ func (s *Session) ExpectedPosition(now time.Time) (float64, State, bool) {
 	return state.PositionAt(s.clock.HostNow(now)), state, true
 }
 
+// RequestRefresh asks the host for a fresh anchor. A guest writes no other
+// periodic traffic, so a half-open socket (NAT dropped the mapping, the server
+// still has the peer) never surfaces on its own: the anchor feed dies silently
+// and the player keeps extrapolating past a host pause or seek. The guest loop
+// calls this only when no fresh anchor has arrived for a while, and the hello
+// is tiny, so the relay quota sees nothing periodic.
+func (s *Session) RequestRefresh() error {
+	if s == nil {
+		return nil
+	}
+	if s.Role != Guest {
+		return errors.New("запрашивать обновление может только гость")
+	}
+	return s.write(frame{Type: messageHello, Role: s.Role})
+}
+
 // Close leaves the room and stops reconnecting.
 func (s *Session) Close() error {
 	s.mu.Lock()

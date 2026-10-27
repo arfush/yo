@@ -588,6 +588,50 @@ func TestGuestControlReachesTheHost(t *testing.T) {
 	})
 }
 
+// RequestRefresh asks the host to republish its anchor. The guest loop uses it
+// when the anchor feed stalls while the player runs: a half-open socket never
+// surfaces on read, and without it the guest would extrapolate past a pause or
+// seek that never arrives.
+func TestGuestRequestsAFreshAnchor(t *testing.T) {
+	hub := newTestHub(t)
+	cfg := Config{CloudflareURL: hub.url}
+
+	host, err := Create(context.Background(), cfg, Cloudflare, "")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer host.Close()
+	guest, err := Join(context.Background(), cfg, host.Key, "")
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+	defer guest.Close()
+	waitFor(t, 3*time.Second, guest.HostSeen)
+
+	want := State{TitleSlug: "kinopoisk:685246", Voice: "v", Episode: "S1E1", Playing: true, Position: 30}
+	if err := host.Publish(want); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	waitFor(t, 3*time.Second, func() bool {
+		state, ok := guest.State()
+		return ok && state.TitleSlug == want.TitleSlug
+	})
+	before, ok := guest.State()
+	if !ok {
+		t.Fatal("guest has no state before the refresh")
+	}
+	// The host answers the hello with a fresh anchor, so the Anchor timestamp
+	// must move forward. Sleep past helloThrottle so the republish is allowed.
+	time.Sleep(helloThrottle + 100*time.Millisecond)
+	if err := guest.RequestRefresh(); err != nil {
+		t.Fatalf("RequestRefresh: %v", err)
+	}
+	waitFor(t, 3*time.Second, func() bool {
+		after, ok := guest.State()
+		return ok && after.Anchor != before.Anchor
+	})
+}
+
 func TestGuestNoticesASilentHost(t *testing.T) {
 	oldSilence, oldGrace, oldTick := hostSilence, hostGrace, hostWatchTick
 	hostSilence, hostGrace, hostWatchTick = 120*time.Millisecond, 150*time.Millisecond, 20*time.Millisecond
