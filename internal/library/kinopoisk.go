@@ -55,6 +55,7 @@ func (l *Library) loadKinopoisk(ctx context.Context, link kinopoisk.Link, persis
 	}
 	if existing != nil {
 		applyStoredKinopoisk(&title, *existing)
+		l.applyStoredQualities(&title)
 	} else {
 		title.UserStatus = UserStatusPlanned
 	}
@@ -65,6 +66,7 @@ func (l *Library) loadKinopoisk(ctx context.Context, link kinopoisk.Link, persis
 			return Title{}, err
 		}
 		applyStoredKinopoisk(&title, stored)
+		l.applyStoredQualities(&title)
 		if err := l.restoreSelection(&title); err != nil {
 			return Title{}, err
 		}

@@ -61,6 +61,10 @@ type Voiceover struct {
 	Episodes []string
 	Missing  []string
 	HasKodik bool
+	// Qualities is the stream ladder of a Kinopoisk voice. It is empty for
+	// AnimeLIB, where qualities belong to the episode player and not to the
+	// voice. The title page fills it from a background probe and Save caches it.
+	Qualities []int
 }
 
 // Season is one season of a series. AnimeLIB titles have no explicit seasons
@@ -297,6 +301,13 @@ func (l *Library) Save(title Title, voice, episode string) (Title, error) {
 		return Title{}, fmt.Errorf("не удалось сохранить тайтл: %w", err)
 	}
 	stored.ID = id
+	if data := encodeVoiceQualities(title.Voiceovers); data != "" {
+		// The quality ladder costs a headless resolve, so it is cached only for
+		// titles the user actually keeps in history.
+		if err := l.store.SaveTitleQualities(id, data); err != nil {
+			log.Warn("cannot cache Kinopoisk qualities", "title", id, "error", err)
+		}
+	}
 
 	// The episode list and voiceovers are not persisted. Keep the fresh data in
 	// the returned title so the open window can continue using it.
