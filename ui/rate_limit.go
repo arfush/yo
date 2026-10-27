@@ -10,8 +10,6 @@ import (
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/unit"
-
-	"github.com/arfush/yoanime/animelib"
 )
 
 // rateLimitTextSize and rateLimitTextColor style the temporary message that
@@ -47,6 +45,7 @@ var rateLimitPhrases = []string{
 
 // rateLimitBanner keeps the phrase and visibility state for the header notice.
 type rateLimitBanner struct {
+	state  RateLimitState
 	active bool
 	phrase string
 }
@@ -56,8 +55,13 @@ type rateLimitBanner struct {
 // successful answer. Letting the countdown expire hides the text even when no
 // retry was attempted, so it cannot linger after the timer reaches zero.
 func (b *rateLimitBanner) update() {
-	pending := animelib.RateLimitNoticePending()
-	if pending && animelib.RateLimitRemaining() > 0 {
+	if b.state == nil {
+		b.active = false
+		b.phrase = ""
+		return
+	}
+	pending := b.state.NoticePending()
+	if pending && b.state.Remaining() > 0 {
 		if !b.active {
 			b.active = true
 			b.phrase = rateLimitPhrases[rand.Intn(len(rateLimitPhrases))]
@@ -67,7 +71,7 @@ func (b *rateLimitBanner) update() {
 	if pending {
 		// The cool-down is over but no request has been made since; drop the
 		// stale notice now that the countdown has nothing left to show.
-		animelib.DismissRateLimitNotice()
+		b.state.Dismiss()
 	}
 	b.active = false
 	b.phrase = ""
@@ -94,8 +98,10 @@ func (b *rateLimitBanner) notice(gtx layout.Context, g geometry) (headerNotice, 
 	gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(200 * time.Millisecond)})
 
 	text := b.phrase
-	if remaining := animelib.RateLimitRemaining(); remaining > 0 {
-		text += " · " + rateLimitWaitLabel(remaining)
+	if b.state != nil {
+		if remaining := b.state.Remaining(); remaining > 0 {
+			text += " · " + rateLimitWaitLabel(remaining)
+		}
 	}
 	return headerNotice{text: text, tone: headerNoticeRate}, true
 }

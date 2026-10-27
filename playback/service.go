@@ -16,8 +16,8 @@ import (
 	"github.com/arfush/yoanime/kinopoisk"
 	"github.com/arfush/yoanime/kodik"
 	"github.com/arfush/yoanime/library"
-	"github.com/arfush/yoanime/metadata"
 	"github.com/arfush/yoanime/log"
+	"github.com/arfush/yoanime/metadata"
 )
 
 // WindowRect is the physical screen rectangle mpv should occupy. It is the

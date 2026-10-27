@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/arfush/yoanime/kinopoisk"
-	"github.com/arfush/yoanime/metadata"
 	"github.com/arfush/yoanime/log"
+	"github.com/arfush/yoanime/metadata"
 )
 
 // animelibStreamHeaders keep AnimeLIB direct files and Kodik manifests working.

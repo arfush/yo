@@ -30,9 +30,11 @@
 
 ```text
 cmd/
-  yoanime/            single instance, установка обновления, запуск ui
-app/                 композиционный корень: сервисы, экраны, команды
-catalog/             чистые типы: Title, Episode, Voice, UserStatus
+  yoanime/            единственная точка входа: app.Run
+app/                  композиционный корень: пути, сервисы, single instance, запуск ui
+  app.go              запуск процесса, сборка ui.Services
+  ratelimit.go        адаптер состояния лимита AnimeLIB для заголовка
+catalog/              чистые типы: Title, Episode, Voice, UserStatus, Segment
 animelib/            API AnimeLIB, rate limit, прямые ссылки на серии
 browser/             Playwright: Chromium, авторизация, headless Kodik
 kodik/               резолв Kodik embed -> HLS
@@ -78,13 +80,19 @@ tools/
 Стрелка `A -> B` означает «A может импортировать B».
 
 ```text
-cmd -> app, все фичи, platform
+cmd -> app
 app -> ui, все фичи, platform, log, version, catalog
-ui  -> catalog, log, version, party (типы протокола)
+ui  -> catalog, log, version, party, platform (экраны)
 фичи -> catalog, log, version, token, platform
-platform -> log, version
-log, version, token, catalog -> только стандартная библиотека
+platform -> catalog, log, version
+log, version, catalog -> только стандартная библиотека
+token -> catalog и стандартная библиотека
 ```
+
+Сейчас в `ui` ещё остаётся переходный контроллер (`app.go`, `party.go`,
+`services.go`), поэтому он временно импортирует фичи и платформенные пути.
+Новые экраны уже не должны этого делать: они получают зависимости через
+`Config`/`Services`, а не создают клиентов и не читают `%APPDATA%`.
 
 Запрещено:
 
@@ -157,11 +165,13 @@ repository variables нужно обновить. Вшитые значения 
 
 - [x] `internal/watchparty` -> `party/`
 - [x] `internal/logging` -> `log/`
-- [ ] `internal/appdata` -> `platform/appdata`
-- [ ] `internal/install` -> `platform/install`
-- [ ] `internal/singleinstance` -> `platform/singleinstance`
-- [ ] `ui/tray_*` -> `platform/tray`
-- [ ] Win32-код из `ui/platform_*` -> `platform/window`
-- [ ] остальные `internal/*` -> корень
-- [ ] `catalog/` и `app/` как отдельные пакеты
+- [x] `internal/appdata` -> `platform/appdata`
+- [x] `internal/install` -> `platform/install`
+- [x] `internal/singleinstance` -> `platform/singleinstance`
+- [x] `ui/tray_*` -> `platform/tray`
+- [x] Win32-код из `ui/platform_*` -> `platform/window`
+- [x] остальные `internal/*` -> корень
+- [x] `catalog/` и `app/` как отдельные пакеты
 - [ ] `ui` разложен на `kit`, `controls`, `chrome`, `screen`
+- [ ] контроллер окна и комнаты вынесен из `ui` в `app`; до этого
+  `ui/app.go`, `ui/party.go` и `ui/services.go` временно импортируют фичи

@@ -18,7 +18,7 @@ $innoSha256 = "9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732"
 $innoUrl = "https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-$innoVersion.exe"
 
 if (-not $Version) {
-    $versionFile = Join-Path $PSScriptRoot "internal\version\version.go"
+    $versionFile = Join-Path $PSScriptRoot "version\version.go"
     $match = [regex]::Match((Get-Content $versionFile -Raw), 'Version\s*=\s*"([^"]+)"')
     if (-not $match.Success) {
         throw "Cannot read the default version from $versionFile"

@@ -19,7 +19,6 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yoanime/animelib"
 	"github.com/arfush/yoanime/catalog"
 )
 
@@ -163,6 +162,9 @@ type titleSource interface {
 type mainWindow struct {
 	typo   *typography
 	titles titleSource
+	// rateLimit is injected by the composition root and only drives the header
+	// notice; the screen never calls the AnimeLIB client directly.
+	rateLimit RateLimitState
 
 	editor widget.Editor
 	next   widget.Clickable
@@ -911,7 +913,9 @@ func (m *mainWindow) finishLoading(gtx layout.Context, result titleLoadResult) {
 	m.clearLoadError()
 	// The title came through, so the rate-limit phrase must go immediately
 	// even if the throttle pause is technically still winding down.
-	animelib.DismissRateLimitNotice()
+	if m.rateLimit != nil {
+		m.rateLimit.Dismiss()
+	}
 	if result.history != nil {
 		m.allHistory = result.history
 		m.history = m.visibleHistory(m.allHistory)
@@ -1011,8 +1015,8 @@ func (m *mainWindow) cancelLoading(gtx layout.Context) {
 // request getting through (cancel or final error). A pause that is still
 // running keeps the notice, because the throttle is still active.
 func (m *mainWindow) dismissRateLimitNotice() {
-	if animelib.RateLimitRemaining() == 0 {
-		animelib.DismissRateLimitNotice()
+	if m.rateLimit != nil && m.rateLimit.Remaining() == 0 {
+		m.rateLimit.Dismiss()
 	}
 }
 

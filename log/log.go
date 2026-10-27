@@ -471,19 +471,19 @@ func sourceName(pc uintptr) string {
 
 func sourceFromFile(path string) string {
 	path = filepathSlash(path)
-	switch {
-	case strings.Contains(path, "/internal/"):
-		rest := path[strings.LastIndex(path, "/internal/")+len("/internal/"):]
-		if index := strings.IndexByte(rest, '/'); index >= 0 {
-			return strings.ToLower(rest[:index])
+	for _, name := range []string{
+		"animelib", "app", "browser", "catalog", "kodik", "kinopoisk",
+		"library", "log", "metadata", "mpv", "party", "playback", "store",
+		"token", "updater", "updates", "version", "ui",
+	} {
+		if strings.Contains(path, "/"+name+"/") {
+			return name
 		}
-	case strings.Contains(path, "/party/"):
-		return "party"
-	case strings.Contains(path, "/ui/"):
-		return "ui"
-	case strings.Contains(path, "/log/"):
-		return "log"
-	case strings.Contains(path, "/cmd/"):
+	}
+	if strings.Contains(path, "/platform/") {
+		return "platform"
+	}
+	if strings.Contains(path, "/cmd/") {
 		return "app"
 	}
 	return ""

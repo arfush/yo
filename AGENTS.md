@@ -49,7 +49,7 @@ release: v1.2
 
 Допускается и `release: 1.2` (workflow добавит `v`), но в этом репозитории принят вариант с `v`. Всё, что идёт после первой строки, публикуется как описание GitHub Release, поэтому тело релизного коммита должно быть готовым текстом заметок, а не служебными фразами.
 
-Кинопоиск — второй источник контента, и в заметках о релизе он не упоминается. В первой строке и теле `release:`-коммита нельзя писать «Кинопоиск», «Kinopoisk», «Alloha», `internal/kinopoisk`, а также перечислять связанные изменения: сезоны, озвучки Alloha, субтитры, автопропуск по `skipTime`, заголовки mpv. Заметки релиза описывают только изменения AnimeLIB-части; упоминание второго источника — требование владельца проекта, а не техническое ограничение.
+Кинопоиск — второй источник контента, и в заметках о релизе он не упоминается. В первой строке и теле `release:`-коммита нельзя писать «Кинопоиск», «Kinopoisk», «Alloha», `kinopoisk`, а также перечислять связанные изменения: сезоны, озвучки Alloha, субтитры, автопропуск по `skipTime`, заголовки mpv. Заметки релиза описывают только изменения AnimeLIB-части; упоминание второго источника — требование владельца проекта, а не техническое ограничение.
 
 Не переписывай историю и не делай force-push без явного указания пользователя.
 
@@ -83,43 +83,49 @@ yoanime — десктопное Windows-приложение для веден�
 ## 4. Карта репозитория
 
 ```text
-cmd/yoanime/            точка входа: single instance + ui.Run
-internal/
-  animelib/            клиент AnimeLIB API, эпизоды, озвучки, rate limit
-  appdata/             пути в %APPDATA%\yoanime
-  browser/             Playwright: установка Chromium, авторизация, headless
-  kodik/               резолв Kodik embed -> HLS через headless Chromium
-  kinopoisk/           второй источник: ссылки, метаданные, каталог Alloha, headless-резолв потоков
-  library/             связка API + SQLite, выбор озвучки/серии, план playback, обложки
-    kinopoisk.go       загрузка тайтла Кинопоиска: метаданные, сезоны, озвучки
-    kinopoisk_playback.go  план серий Кинопоиска и выбор озвучки Alloha
-  metadata/            Shikimori -> MAL, AniList -> сезон и постер, IMDb -> id, introdb -> главы
-  mpv/                 поиск/установка mpv
-  playback/            сессия mpv, очередь, прогресс, главы, автопропуск
-    kinopoisk.go       резолв серии Кинопоиска, заголовки mpv, skipTime -> главы
-  singleinstance/      один запущенный экземпляр на пользователя
-  store/               SQLite-схема, история, настройки, кэши
-  token/               чтение/запись токена AnimeLIB, проверка срока
-  updater/             подмена exe через скрытый cmd-хелпер
-  updates/             GitHub Releases, проверка версии, SHA-256
-  version/             версия по умолчанию и форматирование
-party/                 совместный просмотр: ключ комнаты, якоря, часы, реле
-log/                   журнал приложения и кольцевой буфер последних записей
-ui/                    Gio-интерфейс, шрифты, иконки, трей, экраны
-  app.go               жизненный цикл приложения и навигация между экранами
-  shell.go             общий каркас окна: заголовок, футер, перетаскивание
-  main_window.go       главный экран: ввод ссылки, история, drag&drop, undo
-  title_window.go      страница тайтла: озвучки, серии, качество, сохранение
-  token_prompt.go      экран авторизации и выбора домена
-  first_run.go         экран установки Chromium/mpv и обновления
-  party.go             менеджер комнаты: heartbeat хоста, догон гостя
-  party_window.go      экраны совместного просмотра: создать/войти/ожидание
-  platform_*.go        Win32-интеграция и заглушки для других ОС
-  *_test.go            тесты UI-логики без запуска окна
-party/deploy/          реле для Cloudflare DO и Supabase; образец — party/party.example.json
+cmd/yoanime/            точка входа: только вызов app.Run
+app/                    композиционный корень: пути, сервисы, single instance, запуск ui
+catalog/                общие типы отображения: Title, Voice, Season, UserStatus, Segment
+animelib/               клиент AnimeLIB API, эпизоды, озвучки, rate limit
+browser/                Playwright: установка Chromium, авторизация, headless
+kodik/                  резолв Kodik embed -> HLS через headless Chromium
+kinopoisk/              второй источник: ссылки, метаданные, каталог Alloha, headless-резолв потоков
+library/                связка API + SQLite, выбор озвучки/серии, план playback, обложки
+  kinopoisk.go          загрузка тайтла Кинопоиска: метаданные, сезоны, озвучки
+  kinopoisk_playback.go план серий Кинопоиска и выбор озвучки Alloha
+metadata/               Shikimori -> MAL, AniList -> сезон и постер, IMDb -> id, introdb -> главы
+mpv/                    поиск/установка mpv
+playback/               сессия mpv, очередь, прогресс, главы, автопропуск
+  kinopoisk.go          резолв серии Кинопоиска, заголовки mpv, skipTime -> главы
+store/                  SQLite-схема, история, настройки, кэши
+token/                  чтение/запись токена AnimeLIB, проверка срока
+updater/                подмена exe через скрытый cmd-хелпер
+updates/                GitHub Releases, проверка версии, SHA-256
+version/                версия по умолчанию и форматирование
+party/                  совместный просмотр: ключ комнаты, якоря, часы, реле
+log/                    журнал приложения и кольцевой буфер последних записей
+platform/
+  appdata/              пути в %APPDATA%\yoanime
+  install/              проверка установки через реестр Windows
+  singleinstance/       один запущенный экземпляр на пользователя
+  tray/                 значок и меню в системном трее
+  window/               Win32: окно приложения, DWM, DPI, позиция
+ui/                     Gio-интерфейс, шрифты, иконки, экраны
+  app.go                жизненный цикл приложения и навигация между экранами
+  services.go           объектный граф, который собирает app
+  shell.go              общий каркас окна: заголовок, футер, перетаскивание
+  main_window.go        главный экран: ввод ссылки, история, drag&drop, undo
+  title_window.go       страница тайтла: озвучки, серии, качество, сохранение
+  token_prompt.go       экран авторизации и выбора домена
+  first_run.go          экран установки Chromium/mpv и обновления
+  party.go              менеджер комнаты: heartbeat хоста, догон гостя
+  party_window.go       экраны совместного просмотра: создать/войти/ожидание
+  platform.go           адаптеры к platform/window
+  *_test.go             тесты UI-логики без запуска окна
+party/deploy/           реле для Cloudflare DO и Supabase; образец — party/party.example.json
 installer/              Inno Setup: установщик в %LOCALAPPDATA%\Programs\yoanime
-docs/                  техническая документация (party.md, architecture.md)
-.github/workflows/     релизный workflow
+docs/                   техническая документация (party.md, architecture.md)
+.github/workflows/      релизный workflow
 ```
 
 Целевое дерево и направления зависимостей описаны в `docs/architecture.md`.
@@ -128,8 +134,8 @@ docs/                  техническая документация (party.md
 
 ## 5. Поток данных
 
-1. `ui.Run` создаёт окно и `application`.
-2. `attachWindow` проверяет токен, при необходимости устанавливает Chromium, просит авторизацию, затем устанавливает mpv и показывает главный экран.
+1. `app.Run` инициализирует журнал, проверяет единственный экземпляр, собирает сервисы и вызывает `ui.Run`.
+2. `ui.attachWindow` проверяет токен, при необходимости устанавливает Chromium, просит авторизацию, затем устанавливает mpv и показывает главный экран.
 3. Ввод ссылки -> `mainWindow.startLoading` -> `library.Fetch` или `library.Load`. `kinopoisk.ParseInput` перехватывает ссылки Кинопоиска ещё до AnimeLIB: для такого тайтла токен не нужен.
 4. `library` читает токен, вызывает `animelib.Client`, сохраняет метаданные в `store`, подтягивает обложку. Для Кинопоиска вместо этого работают `kinopoisk.Client` (метаданные + каталог Alloha) и `library.loadKinopoisk`.
 5. Страница тайтла вызывает `library.Save` (только по кнопке «Сохранить») и `startPlayback`.
@@ -268,10 +274,10 @@ docs/                  техническая документация (party.md
 # Полная проверка
 go test ./...
 go vet ./...
-gofmt -l .\cmd .\internal .\ui .\party .\log .\tools
+gofmt -l .\cmd .\app .\animelib .\browser .\catalog .\kodik .\kinopoisk .\library .\log .\metadata .\mpv .\party .\playback .\platform .\store .\token .\ui .\updater .\updates .\version .\tools
 
 # Один тест
-go test ./internal/playback -run TestName -v
+go test ./playback -run TestName -v
 
 # Сборка (Windows GUI, без консоли)
 .\build.ps1 -Version 1.0 -Arch amd64
@@ -284,7 +290,7 @@ mingw32-make build VERSION=1.0 ARCH=amd64
 mingw32-make check
 ```
 
-`build.ps1` выставляет `CGO_ENABLED=0`, `GOOS=windows` и передаёт версию/репозиторий через ldflags. Без `-Version` версия берётся из `internal/version/version.go`. Если заданы переменные `YOANIME_PARTY_*`, адреса реле совместного просмотра тоже вшиваются в exe.
+`build.ps1` выставляет `CGO_ENABLED=0`, `GOOS=windows` и передаёт версию/репозиторий через ldflags. Без `-Version` версия берётся из `version/version.go`. Если заданы переменные `YOANIME_PARTY_*`, адреса реле совместного просмотра тоже вшиваются в exe.
 
 ### Подпись сборок
 
@@ -303,7 +309,7 @@ mingw32-make check
 
 ```powershell
 $env:YOANIME_AUTH_TEST = "1"
-go test ./internal/browser -run TestAuthorizeIntegration -v
+go test ./browser -run TestAuthorizeIntegration -v
 Remove-Item Env:\YOANIME_AUTH_TEST
 ```
 

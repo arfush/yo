@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arfush/yoanime/platform/appdata"
 	"github.com/arfush/yoanime/log"
+	"github.com/arfush/yoanime/platform/appdata"
 )
 
 // Progress reports the overall mpv installation progress. Preparing is true

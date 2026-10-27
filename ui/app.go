@@ -72,8 +72,9 @@ const (
 	qualitiesProbeTimeout = 90 * time.Second
 )
 
-// Run starts the yoanime desktop application.
-func Run() {
+// Run starts the yoanime desktop application with the services built by the
+// composition root.
+func Run(services Services) {
 	go func() {
 		w := new(app.Window)
 		w.Option(
@@ -83,7 +84,7 @@ func Run() {
 			app.Decorated(false),
 		)
 
-		a, err := newApp()
+		a, err := newApp(services)
 		if err != nil {
 			log.Error("application startup failed", "error", err)
 			fmt.Fprintln(os.Stderr, "yoanime:", err)
@@ -111,6 +112,7 @@ type application struct {
 	mpvManager     *mpv.Manager
 	library        *library.Library
 	playback       *playback.Service
+	rateLimit      RateLimitState
 	party          *partyManager
 	main           *mainWindow
 	log            *logWindow
@@ -225,7 +227,7 @@ type watchResult struct {
 	party bool
 }
 
-func newApp() (*application, error) {
+func newApp(services Services) (*application, error) {
 	typo, err := newTypography()
 	if err != nil {
 		return nil, err
@@ -234,61 +236,15 @@ func newApp() (*application, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load app icon: %w", err)
 	}
-	databasePath, err := appdata.DatabasePath()
-	if err != nil {
-		return nil, err
-	}
-	tokenPath, err := appdata.TokenPath()
-	if err != nil {
-		return nil, err
-	}
-	profileDir, err := appdata.BrowserProfileDir()
-	if err != nil {
-		return nil, err
-	}
-	updatesPath, err := appdata.UpdatesPath()
-	if err != nil {
-		return nil, err
-	}
-	updateStore, err := updates.Open(updatesPath)
-	if err != nil {
-		return nil, err
-	}
-	updateDir, err := appdata.UpdateDir()
-	if err != nil {
-		return nil, err
-	}
-	updater.Cleanup(updateDir)
-
-	// The executable path is hashed once so a re-pushed build with an unchanged
-	// version can still be offered.
-	currentSHA := ""
-	if executable, exeErr := os.Executable(); exeErr == nil {
-		if digest, hashErr := updates.FileSHA256(executable); hashErr == nil {
-			currentSHA = digest
-		} else {
-			fmt.Fprintln(os.Stderr, "yoanime: хеш приложения:", hashErr)
-		}
-	}
-
-	lib, err := library.Open(databasePath, tokenPath)
-	if err != nil {
-		return nil, fmt.Errorf("open database: %w", err)
-	}
-	history, err := lib.History()
-	if err != nil {
-		lib.Close()
-		return nil, fmt.Errorf("load history: %w", err)
-	}
-	manager := browser.New()
+	lib := services.Library
 	episodeCtx, episodeCancel := context.WithCancel(context.Background())
 	app := &application{
 		shell:             newShell(typo, icon),
-		browserManager:    manager,
-		mpvManager:        mpv.New(),
+		browserManager:    services.Browser,
+		mpvManager:        services.MPV,
 		library:           lib,
-		playback:          playback.New(lib, manager),
-		main:              newMainWindow(typo, lib, history),
+		playback:          services.Playback,
+		main:              newMainWindow(typo, lib, services.History),
 		icon:              icon,
 		watchResults:      make(chan watchResult, 8),
 		qualityResults:    make(chan qualityResult, 8),
@@ -297,17 +253,20 @@ func newApp() (*application, error) {
 		episodeWake:       make(chan struct{}, 1),
 		episodeStop:       make(chan struct{}),
 		episodeDone:       make(chan struct{}),
-		tokenPath:         tokenPath,
-		browserProfileDir: profileDir,
-		updateStore:       updateStore,
+		tokenPath:         services.TokenPath,
+		browserProfileDir: services.BrowserProfileDir,
+		updateStore:       services.UpdateStore,
 		updateClient:      &http.Client{Timeout: 25 * time.Second},
 		downloadClient:    &http.Client{Timeout: 30 * time.Minute},
 		updateWake:        make(chan struct{}, 1),
 		autoUpdateWake:    make(chan struct{}, 1),
 		autoUpdateCard:    make(chan updates.Release, 1),
-		currentSHA:        currentSHA,
+		currentSHA:        services.CurrentSHA,
 	}
-	state := updateStore.State()
+	app.rateLimit = services.RateLimit
+	app.main.rateLimit = services.RateLimit
+	app.shell.rateLimit.state = services.RateLimit
+	state := services.UpdateStore.State()
 	app.updatesAvailable.Store(state.Available)
 	app.autoUpdateStartup.Store(true)
 	app.party = newPartyManager(app)
@@ -368,7 +327,9 @@ func (a *application) attachWindow(w *app.Window) {
 	a.window = w
 	// A 429 must repaint the header immediately, even if the screen does not
 	// animate on its own.
-	animelib.SetRateLimitListener(w.Invalidate)
+	if a.rateLimit != nil {
+		a.rateLimit.SetListener(w.Invalidate)
+	}
 	a.main.invalidate = w.Invalidate
 	a.main.hidden = a.windowHidden
 	a.shell.hidden = a.windowHidden
