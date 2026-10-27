@@ -563,6 +563,12 @@ func TestGuestControlReachesTheHost(t *testing.T) {
 	}
 	defer guest.Close()
 	waitFor(t, 3*time.Second, guest.HostSeen)
+	// SendControl seals the payload with the room key derived from the card;
+	// without the card the guest answers "комната ещё не ответила".
+	waitFor(t, 3*time.Second, func() bool {
+		_, ok := guest.Card()
+		return ok
+	})
 
 	if err := host.SendControl(ControlPause, 0); err == nil {
 		t.Fatal("a host must not send guest controls")
