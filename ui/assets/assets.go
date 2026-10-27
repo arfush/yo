@@ -47,8 +47,7 @@ func AppIcon() (image.Image, error) {
 // IconNames lists the embedded IconVG files. It is used by tests to ensure a
 // missing asset is caught before a screen silently renders no glyph.
 var IconNames = []string{
-	"autoscroll_off",
-	"autoscroll_on",
+	"autoscroll",
 	"bell",
 	"check",
 	"chevron_down",
@@ -68,7 +67,6 @@ var IconNames = []string{
 	"chevron_up_thick",
 	"chevron_up_thin",
 	"close",
-	"close_active",
 	"copy",
 	"error",
 	"history_play",
@@ -78,14 +76,11 @@ var IconNames = []string{
 	"link",
 	"log",
 	"maximize",
-	"maximize_active",
 	"minimize",
-	"minimize_active",
 	"pause",
 	"people",
 	"play",
 	"restore",
-	"restore_active",
 	"search",
 	"settings",
 	"trash",

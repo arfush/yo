@@ -220,11 +220,14 @@ func (m *mainWindow) drawHistoryRowCard(gtx layout.Context, rect image.Rectangle
 	drawStatusPill(gtx, m.typo, geom.releaseStatus, item.status)
 	drawUserStatusPill(gtx, m.typo, geom.status, item.userStatus, true)
 
+	// The action buttons keep one quiet surface in every state. Only the glyph
+	// reacts to hover; pulling in the footer's purple hover outline made the
+	// two history controls look like a second footer inside the row.
 	actionStyle := iconButtonStyle{
 		Fill:        mainControlFill,
-		FillHover:   footerControlHoverFill,
+		FillHover:   mainControlFill,
 		Border:      mainControlBorder,
-		BorderHover: footerControlHoverBorder,
+		BorderHover: mainControlBorder,
 		Radius:      mainControlRadius,
 	}
 	if vis.itemLoading {

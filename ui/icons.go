@@ -50,15 +50,10 @@ func drawPauseIcon(gtx layout.Context, center image.Point, size int, col color.N
 	drawAppIcon(gtx, "pause", center, max(1, size), col)
 }
 
-// drawAutoscrollIcon uses the two prepared states from the sheet. The files
-// differ only in their authored tint; callers select the colour that matches
-// the current state, so the shape stays identical in both modes.
-func drawAutoscrollIcon(gtx layout.Context, center image.Point, size int, on bool, col color.NRGBA) {
-	name := "autoscroll_off"
-	if on {
-		name = "autoscroll_on"
-	}
-	drawAppIcon(gtx, name, center, max(1, size), col)
+// drawAutoscrollIcon uses one runtime-coloured glyph for both states. The
+// sheet's second box only repeats the same geometry in the active tint.
+func drawAutoscrollIcon(gtx layout.Context, center image.Point, size int, col color.NRGBA) {
+	drawAppIcon(gtx, "autoscroll", center, max(1, size), col)
 }
 
 func drawCopyIcon(gtx layout.Context, center image.Point, g geometry, col color.NRGBA) {

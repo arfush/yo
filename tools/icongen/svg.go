@@ -112,6 +112,9 @@ func loadIconSheet(path string) ([]iconSpec, error) {
 		if len(assignments[i]) == 0 {
 			return nil, fmt.Errorf("icon %q has no paths", svgIconNames[i])
 		}
+		if svgSkipIcons[svgIconNames[i]] {
+			continue
+		}
 		box := box
 		glyphs := assignments[i]
 		specs = append(specs, iconSpec{
@@ -137,6 +140,9 @@ func loadIconSheet(path string) ([]iconSpec, error) {
 	for i, frame := range svgGlyphFrames {
 		if len(frameGlyphs[i]) == 0 {
 			return nil, fmt.Errorf("icon %q has no paths", frame.name)
+		}
+		if svgSkipIcons[frame.name] {
+			continue
 		}
 		frame := frame
 		glyphs := frameGlyphs[i]
@@ -337,8 +343,20 @@ var svgIconNames = []string{
 	"keyboard",
 	"trash",
 	"pause",
-	"autoscroll_on",
+	"autoscroll",
 	"autoscroll_off",
+}
+
+// IconVG stores geometry only; the UI supplies the colour at draw time. The
+// active window-control frames and the second autoscroll box repeat the same
+// shapes with an authored tint, so the generator keeps the source boxes for
+// layout parsing but does not emit those redundant assets.
+var svgSkipIcons = map[string]bool{
+	"autoscroll_off":  true,
+	"minimize_active": true,
+	"maximize_active": true,
+	"restore_active":  true,
+	"close_active":    true,
 }
 
 // The supplied sheet leaves the window controls and the two history actions

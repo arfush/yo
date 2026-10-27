@@ -28,15 +28,15 @@ const (
 	logScreenPadX      = unit.Dp(28)
 	logScreenPadTop    = unit.Dp(14)
 	logScreenPadBottom = unit.Dp(10)
-	logFieldRadius     = unit.Dp(7)
+	logFieldRadius     = unit.Dp(8)
 	logTableRadius     = unit.Dp(8)
 
-	logToolbarHeight    = unit.Dp(30)
+	logToolbarHeight    = unit.Dp(32)
 	logToolbarGap       = unit.Dp(11)
 	logToolbarButtonGap = unit.Dp(8)
 	logFilterWidth      = unit.Dp(124)
-	logAutoWidth        = unit.Dp(30)
-	logToolbarIconWidth = unit.Dp(30)
+	logAutoWidth        = unit.Dp(32)
+	logToolbarIconWidth = unit.Dp(32)
 	logToolbarPadX      = unit.Dp(10)
 	logToolbarIconSize  = unit.Dp(18)
 	logToolbarIconGap   = unit.Dp(8)
@@ -555,7 +555,7 @@ func (w *logWindow) layoutAutoButton(gtx layout.Context, rect image.Rectangle) b
 	}
 	col = mixColor(col, logToolbarText, progress*0.4)
 	iconSize := gtx.Dp(unit.Dp(20))
-	drawAutoscrollIcon(gtx, centerOf(local), iconSize, w.autoScroll, col)
+	drawAutoscrollIcon(gtx, centerOf(local), iconSize, col)
 
 	w.autoClick.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		pointer.CursorPointer.Add(gtx.Ops)

@@ -29,12 +29,9 @@ func (s *shell) drawClose(gtx layout.Context, g geometry, progress float32) {
 }
 
 func drawWindowControlIcon(gtx layout.Context, name string, g geometry, progress float32) {
-	asset := name
-	if progress > 0.002 {
-		asset = name + "_active"
-	}
+	// IconVG is recoloured at draw time, so hover needs no second asset.
 	col := mixColor(windowControlIconColor, windowControlHoverIconColor, progress)
-	drawAppIcon(gtx, asset, g.iconCenter, g.px(24), col)
+	drawAppIcon(gtx, name, g.iconCenter, g.px(24), col)
 }
 
 func (s *shell) clickControl(gtx layout.Context, g geometry, rect image.Rectangle, control *widget.Clickable, hover *hoverAnim, hoverColor color.NRGBA, draw func(layout.Context, float32)) bool {

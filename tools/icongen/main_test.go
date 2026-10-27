@@ -29,7 +29,7 @@ func TestIconSheetProducesEveryGlyph(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := len(svgIconNames) + len(svgGlyphFrames) + 1; len(specs) != want {
+	if want := len(svgIconNames) + len(svgGlyphFrames) + 1 - len(svgSkipIcons); len(specs) != want {
 		t.Fatalf("generated %d sheet glyphs, want %d", len(specs), want)
 	}
 	names := make(map[string]bool, len(specs))
@@ -40,9 +40,14 @@ func TestIconSheetProducesEveryGlyph(t *testing.T) {
 			t.Errorf("%s bounds %+v leave the unit view box", icon.name, b)
 		}
 	}
-	for _, name := range []string{"history_play", "history_trash"} {
+	for _, name := range []string{"history_play", "history_trash", "autoscroll"} {
 		if !names[name] {
 			t.Errorf("sheet is missing %q", name)
+		}
+	}
+	for name := range svgSkipIcons {
+		if names[name] {
+			t.Errorf("generator emitted skipped icon %q", name)
 		}
 	}
 }
