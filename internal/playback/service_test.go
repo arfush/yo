@@ -29,6 +29,20 @@ func TestUnopenedErrorDescribesKodik(t *testing.T) {
 	}
 }
 
+func TestUnopenedEntryFallsBackToFirstEntry(t *testing.T) {
+	first := &playlistEntry{
+		Episode: library.PlaybackEpisode{Number: "S1E1"},
+		Kind:    "hls",
+	}
+	session := &Session{
+		entries: []*playlistEntry{first},
+		current: 7,
+	}
+	if got := session.unopenedEntryLocked(7); got != first {
+		t.Fatalf("fallback entry = %v, want the first episode", got)
+	}
+}
+
 func TestUnopenedErrorDescribesKinopoiskPlayer(t *testing.T) {
 	err := unopenedError(&playlistEntry{
 		Episode: library.PlaybackEpisode{Number: "S1E2"},

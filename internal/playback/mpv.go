@@ -37,9 +37,13 @@ type mpvEvent struct {
 	Path     string
 	Seconds  float64
 	Position int
-	Paused   bool
-	Reason   string
-	Err      error
+	// EntryID is mpv's playlist entry id for end-file. A retry replaces the
+	// first entry, so an error that still carries the old id belongs to the
+	// file that has already been abandoned and must not finish the new one.
+	EntryID int64
+	Paused  bool
+	Reason  string
+	Err     error
 }
 
 // mpvProcess owns one mpv child process and its IPC connection.
@@ -58,6 +62,12 @@ type mpvProcess struct {
 	stopping        bool
 	closeOnce       sync.Once
 	lastErr         error
+
+	// callMu serialises IPC commands. The host heartbeat, the UI, the
+	// background loader and the open retry all talk to the same connection,
+	// and mpvipc writes a JSON line in two steps: interleaved writes corrupt
+	// the command stream, especially when a retry reload races a heartbeat.
+	callMu sync.Mutex
 }
 
 // inputLockArgs disables the player's built-in controls for a guest whose host
@@ -212,7 +222,12 @@ func (m *mpvProcess) eventLoop() {
 				// are attributed to the right episode.
 				m.send(mpvEvent{Kind: mpvEventFileLoaded, Position: m.currentPlaylistPos()})
 			case "end-file":
-				m.send(mpvEvent{Kind: mpvEventEndFile, Reason: event.Reason, Position: m.playlistPos()})
+				m.send(mpvEvent{
+					Kind:     mpvEventEndFile,
+					Reason:   event.Reason,
+					Position: m.playlistPos(),
+					EntryID:  playlistEntryID(event),
+				})
 			case "property-change":
 				switch event.ID {
 				case 1:
@@ -248,6 +263,17 @@ func (m *mpvProcess) send(event mpvEvent) {
 	}
 }
 
+// playlistEntryID returns the mpv playlist entry the event belongs to. The
+// field is absent on older mpv builds, in which case zero disables the stale
+// end-file check rather than breaking playback.
+func playlistEntryID(event *mpvipc.Event) int64 {
+	if event == nil || event.ExtraData == nil {
+		return 0
+	}
+	value, _ := event.ExtraData["playlist_entry_id"].(float64)
+	return int64(value)
+}
+
 func (m *mpvProcess) playlistPos() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -256,7 +282,7 @@ func (m *mpvProcess) playlistPos() int {
 
 func (m *mpvProcess) currentPlaylistPos() int {
 	if m.conn != nil {
-		if value, err := m.conn.Call("get_property", "playlist-pos"); err == nil {
+		if value, err := m.call("get_property", "playlist-pos"); err == nil {
 			if number, ok := value.(float64); ok && number >= 0 {
 				position := int(number)
 				m.mu.Lock()
@@ -281,38 +307,46 @@ func (m *mpvProcess) exitError() error {
 }
 
 func (m *mpvProcess) call(arguments ...interface{}) (interface{}, error) {
+	m.callMu.Lock()
+	defer m.callMu.Unlock()
 	if m.conn == nil {
 		return nil, errors.New("mpv не подключён")
 	}
 	return m.conn.Call(arguments...)
 }
 
-// setHeaders replaces the HTTP headers mpv sends for the next file. mpv takes a
-// single comma-separated string, so header values must not contain commas.
-func (m *mpvProcess) setHeaders(headers []string) error {
-	if len(headers) == 0 {
-		return nil
+// streamOptions builds the per-file options of one playlist entry. Passing the
+// headers to loadfile instead of changing the global http-header-fields property
+// keeps every Kinopoisk episode's own theatre Referer and bearer token with its
+// entry: a global property would be overwritten by the next preload while the
+// current HLS file is still fetching segments.
+func streamOptions(headers []string) map[string]string {
+	options := make(map[string]string, 1)
+	if len(headers) > 0 {
+		options["http-header-fields"] = strings.Join(headers, ",")
 	}
-	_, err := m.call("set_property", "http-header-fields", strings.Join(headers, ","))
-	return err
+	return options
 }
 
 func (m *mpvProcess) load(url string, headers []string) error {
-	if err := m.setHeaders(headers); err != nil {
-		return err
-	}
-	_, err := m.call("loadfile", url, "replace")
+	// The fourth argument is per-file options; -1 is the placeholder for the
+	// insertion index that loadfile expects since mpv 0.38.
+	_, err := m.call("loadfile", url, "replace", -1, streamOptions(headers))
 	return err
 }
 
 func (m *mpvProcess) insert(index int, url string, headers []string) error {
-	if err := m.setHeaders(headers); err != nil {
-		return err
-	}
 	// playlist-insert was removed from mpv's command interface. loadfile
 	// insert-at is the supported way to add an entry at an exact position;
 	// an index at or past the end appends the entry.
-	_, err := m.call("loadfile", url, "insert-at", index)
+	_, err := m.call("loadfile", url, "insert-at", index, streamOptions(headers))
+	return err
+}
+
+// jump switches to an already-loaded playlist entry. Its per-file headers were
+// attached when the entry was inserted, so selecting the entry applies them.
+func (m *mpvProcess) jump(index int) error {
+	_, err := m.call("set_property", "playlist-pos", index)
 	return err
 }
 

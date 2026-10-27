@@ -199,7 +199,6 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 		options.OnReady()
 	}
 	go session.eventLoop()
-	go session.backgroundLoader()
 	return session, nil
 }
 
@@ -329,6 +328,11 @@ type Session struct {
 
 	loadMu   sync.Mutex
 	ensureMu sync.Mutex
+	// preloadOnce starts the behind-the-selection preload on the first
+	// file-loaded event. Filling the playlist before that is unnecessary while
+	// the first stream is still opening; with a warm Kinopoisk cache the whole
+	// window resolves in milliseconds and can compete with the initial load.
+	preloadOnce sync.Once
 
 	baseMu     sync.Mutex
 	videoBases []string
@@ -342,6 +346,10 @@ type Session struct {
 	// Kinopoisk resolve skip the manifest cache.
 	openRetried  bool
 	freshResolve bool
+	// failedEntryID is the mpv playlist entry id of the first file that could
+	// not be opened. After a retry replaces it, mpv may still emit an end-file
+	// error for the old entry; that event must not end the new attempt.
+	failedEntryID int64
 
 	chapterSem     chan struct{}
 	chaptersMu     sync.Mutex
@@ -448,7 +456,10 @@ func (s *Session) onFileLoaded(position int) {
 	// the event loop: time-pos/duration events drive progress saving.
 	go s.ensurePrevious(entry.EpisodeIndex)
 	// Keep the forward window sliding: resolving runs in the background and
-	// already-resolved episodes are skipped cheaply.
+	// already-resolved episodes are skipped cheaply. The first file-loaded also
+	// starts the behind-the-selection preload; inserting entries before the
+	// first file opens is unnecessary and can compete with the initial stream.
+	s.preloadOnce.Do(func() { go s.backgroundLoader() })
 	go s.loadForward(entry.EpisodeIndex)
 }
 
@@ -518,7 +529,7 @@ func (s *Session) onDuration(seconds float64) {
 
 func (s *Session) onEndFile(event mpvEvent) {
 	if event.Reason == "error" {
-		s.failUnopened(event.Position)
+		s.failUnopened(event)
 		return
 	}
 	if event.Reason != "eof" && event.Reason != "quit" {
@@ -575,13 +586,21 @@ func (s *Session) onEndFile(event mpvEvent) {
 // The first failure is retried with a fresh resolve: a signed CDN URL can go
 // stale between the resolve and mpv opening it (Kinopoisk especially), so a
 // second attempt often brings the same episode up instead of ending playback.
-func (s *Session) failUnopened(position int) {
+func (s *Session) failUnopened(event mpvEvent) {
 	s.mu.Lock()
 	loaded := s.loadedOnce
-	entry := s.entryAtLocked(position)
-	if entry == nil {
-		entry = s.entryAtLocked(s.current)
+	// Replacing a failed first file can make mpv report one more error for
+	// the entry that has just been discarded. Its playlist entry id is still
+	// the old one; the fresh entry gets a new id and keeps its own error.
+	if event.EntryID != 0 && s.openRetried && event.EntryID == s.failedEntryID {
+		s.mu.Unlock()
+		log.Debug("ignoring stale end-file after retry", "entry_id", event.EntryID)
+		return
 	}
+	if !s.openRetried {
+		s.failedEntryID = event.EntryID
+	}
+	entry := s.unopenedEntryLocked(event.Position)
 	mpv := s.mpv
 	s.mu.Unlock()
 	if loaded {
@@ -593,10 +612,30 @@ func (s *Session) failUnopened(position int) {
 		// end with its own end-file event.
 		return
 	}
+	// The retry can leave a stale playlist position behind (mpv reports the
+	// previous entry while the replacement is loading), so read the entry
+	// again instead of reporting the one captured before the retry.
+	s.mu.Lock()
+	entry = s.unopenedEntryLocked(s.current)
+	s.mu.Unlock()
 	s.finish(unopenedError(entry, s.planSource()))
 	if mpv != nil {
 		mpv.close()
 	}
+}
+
+// unopenedEntryLocked finds the episode that failed to open. The first file is
+// always entries[0]; falling back to it keeps a stale playlist position from
+// turning a clear player error into the generic "не удалось воспроизвести".
+func (s *Session) unopenedEntryLocked(position int) *playlistEntry {
+	entry := s.entryAtLocked(position)
+	if entry == nil {
+		entry = s.entryAtLocked(s.current)
+	}
+	if entry == nil && len(s.entries) > 0 {
+		entry = s.entries[0]
+	}
+	return entry
 }
 
 // retryOpenOnce resolves the first playlist entry again (skipping the Kinopoisk
@@ -613,6 +652,7 @@ func (s *Session) retryOpenOnce() bool {
 	s.freshResolve = true
 	mpv := s.mpv
 	index := s.entries[0].EpisodeIndex
+	number := s.entries[0].Episode.Number
 	resume := s.resumePending
 	s.mu.Unlock()
 
@@ -621,6 +661,7 @@ func (s *Session) retryOpenOnce() bool {
 		s.mu.Lock()
 		s.freshResolve = false
 		s.mu.Unlock()
+		log.Warn("cannot resolve the first video again", "episode", number, "error", err)
 		return false
 	}
 	s.mu.Lock()
@@ -633,6 +674,7 @@ func (s *Session) retryOpenOnce() bool {
 	s.freshResolve = false
 	if err != nil {
 		s.mu.Unlock()
+		log.Warn("cannot reload the first video", "episode", entry.Episode.Number, "error", err)
 		return false
 	}
 	s.entries = []*playlistEntry{entry}
@@ -761,11 +803,12 @@ func (s *Session) behind() int {
 	return preloadBehind
 }
 
-// backgroundLoader fills the initial preload window around the selected
-// episode. Previous episodes are also added on demand by ensurePrevious.
+// backgroundLoader fills the episodes before the selected one. The forward
+// window is started by onFileLoaded: resolving it earlier would put entries into
+// mpv before the first file has opened, and with a warm Kinopoisk cache the
+// whole window can resolve while the initial stream is still starting.
 func (s *Session) backgroundLoader() {
 	start := s.plan.EpisodeIndex
-	s.loadForward(start)
 	behind := s.behind()
 	for index := start - 1; index >= 0 && index >= start-behind; index-- {
 		if s.ctx.Err() != nil {

@@ -1819,7 +1819,11 @@ func (a *application) updatePlaybackNow(gtx layout.Context) {
 	if slug := session.Slug(); slug != "" && slug != title.item.slug {
 		return
 	}
-	title.applyProgress(number, session.LivePosition(), session.Duration())
+	// The event loop already receives time-pos updates; querying mpv from the
+	// layout callback would block the whole window if the player is busy. The
+	// cached value is accurate to the last time-pos event, which is enough for
+	// a once-a-second progress repaint.
+	title.applyProgress(number, session.Position(), session.Duration())
 	gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(time.Second)})
 }
 

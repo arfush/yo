@@ -181,17 +181,22 @@ func (s *Session) JumpTo(episode string) error {
 	s.mu.Lock()
 	mpv := s.mpv
 	index := resolveEntryIndex(s.entries, episode)
+	var entry *playlistEntry
+	if index >= 0 {
+		entry = s.entries[index]
+	}
 	s.mu.Unlock()
 	if mpv == nil {
 		return ErrNotRunning
 	}
-	if index < 0 {
+	if index < 0 || entry == nil {
 		return ErrEpisodeNotLoaded
 	}
 	// entries[i] always sits at playlist position i: resolveAndAdd inserts in
-	// episode order and mirrors every insert into mpv.
-	_, err := mpv.call("set_property", "playlist-pos", index)
-	return err
+	// episode order and mirrors every insert into mpv. The entry carries its
+	// own per-file headers from the loadfile that added it, so selecting it
+	// brings the Kinopoisk Referer of that episode along.
+	return mpv.jump(index)
 }
 
 // resolveEntryIndex finds the playlist index of a resolved episode, or -1.
