@@ -15,7 +15,6 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yoanime/internal/kinopoisk"
 	"github.com/arfush/yoanime/internal/library"
 )
 
@@ -206,13 +205,10 @@ func titleQualityLabel(value int) string {
 	return strconv.Itoa(value)
 }
 
-// qualitySectionLabel names the block. A Kinopoisk film has no episode list to
-// choose a "preferred" quality for; the buttons pick the quality of that film.
+// qualitySectionLabel names the block. The word "preferred" was dropped for
+// everyone: the strip is just the quality of the current voice.
 func (w *titleWindow) qualitySectionLabel() string {
-	if w.item.source == kinopoisk.Source && w.item.movie {
-		return "КАЧЕСТВО"
-	}
-	return "ПРЕДПОЧТИТЕЛЬНОЕ КАЧЕСТВО"
+	return "КАЧЕСТВО"
 }
 
 type titleVoiceRow struct {

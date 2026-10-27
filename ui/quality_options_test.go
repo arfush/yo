@@ -75,16 +75,13 @@ func TestTitleQualityLabels(t *testing.T) {
 }
 
 func TestQualitySectionLabel(t *testing.T) {
-	anime := &titleWindow{item: historyTitle{source: "animelib", movie: false}}
-	if got := anime.qualitySectionLabel(); got != "ПРЕДПОЧТИТЕЛЬНОЕ КАЧЕСТВО" {
-		t.Fatalf("anime label = %q", got)
-	}
-	kpSeries := &titleWindow{item: historyTitle{source: "kinopoisk", movie: false}}
-	if got := kpSeries.qualitySectionLabel(); got != "ПРЕДПОЧТИТЕЛЬНОЕ КАЧЕСТВО" {
-		t.Fatalf("series label = %q", got)
-	}
-	kpFilm := &titleWindow{item: historyTitle{source: "kinopoisk", movie: true}}
-	if got := kpFilm.qualitySectionLabel(); got != "КАЧЕСТВО" {
-		t.Fatalf("film label = %q", got)
+	for _, item := range []historyTitle{
+		{source: "animelib", movie: false},
+		{source: "kinopoisk", movie: false},
+		{source: "kinopoisk", movie: true},
+	} {
+		if got := (&titleWindow{item: item}).qualitySectionLabel(); got != "КАЧЕСТВО" {
+			t.Fatalf("label for %+v = %q, want КАЧЕСТВО", item, got)
+		}
 	}
 }
