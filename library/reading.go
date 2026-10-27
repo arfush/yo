@@ -31,7 +31,7 @@ func (l *Library) loadReading(ctx context.Context, link animelib.ReadingLink, pe
 	logger.Info("loading reading title", "site", link.SiteID, "slug", link.Slug, "persist", persist)
 	token, err := l.readToken()
 	if err != nil {
-		logger.Error("cannot read AnimeLIB token", "error", err)
+		logger.Error("cannot read animelib token", "error", err)
 		return Title{}, err
 	}
 	client := animelib.New(token)

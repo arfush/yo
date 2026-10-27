@@ -19,7 +19,7 @@ func (l *Library) loadFilmlib(ctx context.Context, link filmlib.Link, persist bo
 	if persist {
 		action = "loading"
 	}
-	logger.Info(action+" Filmlib title", "title", link.ID)
+	logger.Info(action+" filmlib title", "title", link.ID)
 
 	client := l.filmlib
 	if client == nil {
@@ -27,7 +27,7 @@ func (l *Library) loadFilmlib(ctx context.Context, link filmlib.Link, persist bo
 	}
 	meta, err := client.Meta(ctx, link)
 	if err != nil {
-		logger.Error("cannot load Filmlib metadata", "title", link.ID, "error", err)
+		logger.Error("cannot load filmlib metadata", "title", link.ID, "error", err)
 		return Title{}, err
 	}
 	voices, err := client.Voices(ctx, link.ID)
@@ -35,7 +35,7 @@ func (l *Library) loadFilmlib(ctx context.Context, link filmlib.Link, persist bo
 		if ctx.Err() != nil {
 			return Title{}, ctx.Err()
 		}
-		logger.Error("cannot load Filmlib voices", "title", link.ID, "error", err)
+		logger.Error("cannot load filmlib voices", "title", link.ID, "error", err)
 		return Title{}, err
 	}
 	catalog, err := loadFilmlibCatalog(ctx, client, voices)
@@ -43,7 +43,7 @@ func (l *Library) loadFilmlib(ctx context.Context, link filmlib.Link, persist bo
 		if ctx.Err() != nil {
 			return Title{}, ctx.Err()
 		}
-		logger.Error("cannot load Filmlib catalogue", "title", link.ID, "error", err)
+		logger.Error("cannot load filmlib catalogue", "title", link.ID, "error", err)
 		return Title{}, err
 	}
 
@@ -81,7 +81,7 @@ func (l *Library) loadFilmlib(ctx context.Context, link filmlib.Link, persist bo
 	}
 
 	l.ensureCover(ctx, &title)
-	logger.Info("Filmlib title ready", "title", title.Russian, "slug", title.Slug, "episodes", len(title.Episodes), "seasons", len(title.Seasons), "voices", len(title.Voiceovers))
+	logger.Info("filmlib title ready", "title", title.Russian, "slug", title.Slug, "episodes", len(title.Episodes), "seasons", len(title.Seasons), "voices", len(title.Voiceovers))
 	return title, nil
 }
 

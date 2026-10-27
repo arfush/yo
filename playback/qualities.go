@@ -46,7 +46,7 @@ func (s *Service) Qualities(ctx context.Context, plan *library.PlaybackPlan, pre
 	if preferred <= 0 {
 		preferred = 1080
 	}
-	logger.Info("probing Filmlib qualities", "title", plan.Slug, "voice", plan.Voice, "episode", plan.Episodes[index].Number)
+	logger.Info("probing filmlib qualities", "title", plan.Slug, "voice", plan.Voice, "episode", plan.Episodes[index].Number)
 	media, err := s.filmlib.Resolve(ctx, filmlib.Request{
 		Iframe:        plan.Filmlib.Iframe,
 		Season:        season,
@@ -55,9 +55,9 @@ func (s *Service) Qualities(ctx context.Context, plan *library.PlaybackPlan, pre
 		Quality:       preferred,
 	})
 	if err != nil {
-		logger.Warn("cannot probe Filmlib qualities", "title", plan.Slug, "voice", plan.Voice, "error", err)
+		logger.Warn("cannot probe filmlib qualities", "title", plan.Slug, "voice", plan.Voice, "error", err)
 		return nil, err
 	}
-	logger.Info("Filmlib qualities resolved", "title", plan.Slug, "voice", plan.Voice, "qualities", media.Qualities)
+	logger.Info("filmlib qualities resolved", "title", plan.Slug, "voice", plan.Voice, "qualities", media.Qualities)
 	return media.Qualities, nil
 }

@@ -142,7 +142,7 @@ func (m *Manager) Authorize(ctx context.Context, siteURL, profileDir string, bou
 	if strings.TrimSpace(profileDir) == "" {
 		return token.Token{}, errors.New("Chromium profile is not set")
 	}
-	logger.Info("AnimeLIB authorization started", "site", siteURL)
+	logger.Info("animelib authorization started", "site", siteURL)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -193,10 +193,10 @@ func (m *Manager) Authorize(ctx context.Context, siteURL, profileDir string, bou
 	})
 	if err != nil {
 		if ctx.Err() != nil {
-			logger.Info("AnimeLIB authorization cancelled")
+			logger.Info("animelib authorization cancelled")
 			return token.Token{}, ctx.Err()
 		}
-		logger.Error("cannot start Chromium", "error", err)
+		logger.Error("cannot start chromium", "error", err)
 		return token.Token{}, fmt.Errorf("cannot start Chromium: %w", err)
 	}
 	defer browserContext.Close()
@@ -308,7 +308,7 @@ func (m *Manager) Authorize(ctx context.Context, siteURL, profileDir string, bou
 			if err != nil || parsed.AccessToken == "" || parsed.Expired(time.Now()) {
 				continue
 			}
-			logger.Info("AnimeLIB token captured")
+			logger.Info("animelib token captured")
 			return parsed, nil
 		}
 
@@ -325,7 +325,7 @@ func (m *Manager) Authorize(ctx context.Context, siteURL, profileDir string, bou
 		// expiration. A captured Bearer token is used only if the site changed
 		// its storage layout and no structured value appeared.
 		if fallback.AccessToken != "" && time.Since(fallbackAt) > 2*time.Second {
-			logger.Info("AnimeLIB token captured from a request")
+			logger.Info("animelib token captured from a request")
 			return fallback, nil
 		}
 	}

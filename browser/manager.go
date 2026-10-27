@@ -118,7 +118,7 @@ func (m *Manager) Download(ctx context.Context, onProgress func(Progress)) error
 	if onProgress == nil {
 		onProgress = func(Progress) {}
 	}
-	logger.Info("Chromium installation started")
+	logger.Info("chromium installation started")
 
 	ctx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
@@ -157,7 +157,7 @@ func (m *Manager) Download(ctx context.Context, onProgress func(Progress)) error
 		return err
 	}
 	if m.Installed() {
-		logger.Info("Chromium is already installed")
+		logger.Info("chromium is already installed")
 		onProgress(Progress{Percent: 100})
 		return nil
 	}
@@ -228,10 +228,10 @@ func (m *Manager) Download(ctx context.Context, onProgress func(Progress)) error
 
 	if waitErr != nil {
 		if ctx.Err() != nil {
-			logger.Info("Chromium installation cancelled")
+			logger.Info("chromium installation cancelled")
 			return ctx.Err()
 		}
-		logger.Error("Chromium installation failed", "error", waitErr)
+		logger.Error("chromium installation failed", "error", waitErr)
 		detail := stripANSI(strings.TrimSpace(stderr.String()))
 		if useful := usefulOutput(stdout.String()); useful != "" {
 			if detail != "" {
@@ -249,7 +249,7 @@ func (m *Manager) Download(ctx context.Context, onProgress func(Progress)) error
 	}
 
 	tracker.finish()
-	logger.Info("Chromium installation finished")
+	logger.Info("chromium installation finished")
 	return nil
 }
 

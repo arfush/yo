@@ -45,7 +45,7 @@ func (l *Library) filmlibPlan(ctx context.Context, title Title, voiceName, episo
 			return nil, ErrNotServed
 		}
 		apiVoice = voices[0]
-		logger.Warn("Filmlib voice not found, using the first available", "voice", voice.Name, "fallback", apiVoice.Name)
+		logger.Warn("filmlib voice not found, using the first available", "voice", voice.Name, "fallback", apiVoice.Name)
 	}
 
 	available := make(map[string]bool, len(voice.Episodes))
@@ -90,7 +90,7 @@ func (l *Library) filmlibPlan(ctx context.Context, title Title, voiceName, episo
 		}
 	}
 
-	logger.Info("Filmlib plan ready", "title", title.Slug, "voice", voice.Name, "episode", chosen.Number, "episodes", len(episodes))
+	logger.Info("filmlib plan ready", "title", title.Slug, "voice", voice.Name, "episode", chosen.Number, "episodes", len(episodes))
 	return &PlaybackPlan{
 		TitleID:          title.ID,
 		Slug:             title.Slug,

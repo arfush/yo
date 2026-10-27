@@ -122,7 +122,7 @@ func (l *Library) Load(ctx context.Context, input string) (Title, error) {
 	logger.Info("loading title", "input", input)
 	token, err := l.readToken()
 	if err != nil {
-		logger.Error("cannot read AnimeLIB token", "error", err)
+		logger.Error("cannot read animelib token", "error", err)
 		return Title{}, err
 	}
 
@@ -187,7 +187,7 @@ func (l *Library) Fetch(ctx context.Context, input string) (Title, error) {
 	logger.Info("fetching title", "input", input)
 	token, err := l.readToken()
 	if err != nil {
-		logger.Error("cannot read AnimeLIB token", "error", err)
+		logger.Error("cannot read animelib token", "error", err)
 		return Title{}, err
 	}
 
@@ -249,7 +249,7 @@ func (l *Library) Save(title Title, voice, episode string) (Title, error) {
 		// The quality ladder costs a headless resolve, so it is cached only for
 		// titles the user actually keeps in history.
 		if err := l.store.SaveTitleQualities(id, data); err != nil {
-			logger.Warn("cannot cache Filmlib qualities", "title", id, "error", err)
+			logger.Warn("cannot cache filmlib qualities", "title", id, "error", err)
 		}
 	}
 

@@ -247,13 +247,13 @@ func unescapePathSegment(segment string) string {
 func (c *Client) Fetch(ctx context.Context, input string) (*TitleData, error) {
 	slug, err := ParseInput(input)
 	if err != nil {
-		logger.Warn("cannot parse AnimeLIB input", "input", input, "error", err)
+		logger.Warn("cannot parse animelib input", "input", input, "error", err)
 		return nil, err
 	}
-	logger.Debug("resolving AnimeLIB title", "slug", slug)
+	logger.Debug("resolving animelib title", "slug", slug)
 	title, err := c.resolve(ctx, slug)
 	if err != nil {
-		logger.Error("cannot resolve AnimeLIB title", "slug", slug, "error", err)
+		logger.Error("cannot resolve animelib title", "slug", slug, "error", err)
 		return nil, err
 	}
 	if announced(title) {
@@ -295,7 +295,7 @@ func (c *Client) Fetch(ctx context.Context, input string) (*TitleData, error) {
 		Episodes:   episodes,
 		Voiceovers: buildVoiceovers(episodes, groups, complete, kodik),
 	}
-	logger.Info("AnimeLIB title resolved", "title", title.RusName, "slug", title.Slug, "episodes", len(episodes), "voices", len(data.Voiceovers))
+	logger.Info("animelib title resolved", "title", title.RusName, "slug", title.Slug, "episodes", len(episodes), "voices", len(data.Voiceovers))
 	return data, nil
 }
 
@@ -652,11 +652,11 @@ func (c *Client) get(ctx context.Context, endpoint string, siteID int) ([]byte, 
 
 		sentAt := time.Now()
 		noteRequestSent(sentAt)
-		logger.Debug("AnimeLIB request", "endpoint", endpoint, "site", siteID)
+		logger.Debug("animelib request", "endpoint", endpoint, "site", siteID)
 		body, status, retryAfter, err := c.do(ctx, endpoint, siteID)
 		<-c.sem
 		if err != nil {
-			logger.Warn("AnimeLIB request failed", "endpoint", endpoint, "site", siteID, "error", err)
+			logger.Warn("animelib request failed", "endpoint", endpoint, "site", siteID, "error", err)
 			return nil, err
 		}
 		switch {
@@ -666,7 +666,7 @@ func (c *Client) get(ctx context.Context, endpoint string, siteID int) ([]byte, 
 			// until AnimeLIB answers without a rate limit. AnimeLIB usually
 			// omits Retry-After, so log the pause the client actually uses.
 			pause := noteRateLimit(sentAt, parseRetryAfter(retryAfter))
-			logger.Warn("AnimeLIB rate limit reached", "endpoint", endpoint, "retry_after", pause.Round(time.Second))
+			logger.Warn("animelib rate limit reached", "endpoint", endpoint, "retry_after", pause.Round(time.Second))
 			continue
 		case status >= http.StatusOK && status < http.StatusMultipleChoices:
 			noteRateLimitSuccess(sentAt)
@@ -676,7 +676,7 @@ func (c *Client) get(ctx context.Context, endpoint string, siteID int) ([]byte, 
 			if len(snippet) > 240 {
 				snippet = snippet[:240] + "…"
 			}
-			logger.Warn("AnimeLIB returned an error", "endpoint", endpoint, "status", status)
+			logger.Warn("animelib returned an error", "endpoint", endpoint, "status", status)
 			return nil, fmt.Errorf("HTTP %d: %s", status, snippet)
 		}
 	}

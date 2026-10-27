@@ -76,7 +76,7 @@ func (s *Session) resolveFilmlib(ctx context.Context, index int) (*playlistEntry
 		chaptersReady:  true,
 		chaptersNoData: len(media.Skip) == 0,
 	}
-	logger.Info("Filmlib episode resolved", "episode", episode.Number, "quality", media.Quality, "subtitles", len(media.Subtitles), "skip", len(media.Skip))
+	logger.Info("filmlib episode resolved", "episode", episode.Number, "quality", media.Quality, "subtitles", len(media.Subtitles), "skip", len(media.Skip))
 	return entry, nil
 }
 

@@ -365,7 +365,7 @@ func TestHTTP429IsRetriedUntilSuccess(t *testing.T) {
 	}
 	var warning *applog.Entry
 	for _, entry := range applog.Recent() {
-		if entry.Message == "AnimeLIB rate limit reached" {
+		if entry.Message == "animelib rate limit reached" {
 			entry := entry
 			warning = &entry
 		}

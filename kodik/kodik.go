@@ -66,7 +66,7 @@ func (r *Resolver) Resolve(ctx context.Context, embedURL string) (map[int]string
 		return nil, ErrEmptyLink
 	}
 	if links, ok := r.cached(embedURL); ok {
-		logger.Debug("Kodik links served from cache", "embed", embedURL)
+		logger.Debug("kodik links served from cache", "embed", embedURL)
 		return links, nil
 	}
 
@@ -78,21 +78,21 @@ func (r *Resolver) Resolve(ctx context.Context, embedURL string) (map[int]string
 	if links, ok := r.cached(embedURL); ok {
 		return links, nil
 	}
-	logger.Info("resolving Kodik embed", "embed", embedURL)
+	logger.Info("resolving kodik embed", "embed", embedURL)
 	links, err := r.resolve(ctx, embedURL)
 	if err != nil {
 		// A Chromium crash leaves the cached handle unusable. Drop it and retry
 		// once with a fresh browser.
-		logger.Warn("Kodik resolve failed, retrying with a fresh browser", "embed", embedURL, "error", err)
+		logger.Warn("kodik resolve failed, retrying with a fresh browser", "embed", embedURL, "error", err)
 		r.dropHeadless()
 		links, err = r.resolve(ctx, embedURL)
 		if err != nil {
-			logger.Error("Kodik resolve failed", "embed", embedURL, "error", err)
+			logger.Error("kodik resolve failed", "embed", embedURL, "error", err)
 			return nil, err
 		}
 	}
 	r.store(embedURL, links)
-	logger.Info("Kodik embed resolved", "embed", embedURL, "qualities", len(links))
+	logger.Info("kodik embed resolved", "embed", embedURL, "qualities", len(links))
 	return links, nil
 }
 

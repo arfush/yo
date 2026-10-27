@@ -51,22 +51,22 @@ func FetchReleaseChannel(ctx context.Context, client *http.Client, channel Chann
 		client = &http.Client{Timeout: 25 * time.Second}
 	}
 
-	logger.Debug("checking GitHub releases", "repository", repository, "channel", channel)
+	logger.Debug("checking github releases", "repository", repository, "channel", channel)
 	latest, err := fetchBestRelease(ctx, client, repository, channel)
 	if err != nil {
-		logger.Warn("GitHub release check failed", "repository", repository, "error", err)
+		logger.Warn("github release check failed", "repository", repository, "error", err)
 		return nil, err
 	}
 	if latest == nil {
-		logger.Info("no matching GitHub release", "repository", repository, "channel", channel)
+		logger.Info("no matching github release", "repository", repository, "channel", channel)
 		return nil, ErrNoRelease
 	}
 	release, err := releaseFromGitHub(ctx, client, repository, latest)
 	if err != nil {
-		logger.Warn("cannot read GitHub release", "repository", repository, "tag", latest.TagName, "error", err)
+		logger.Warn("cannot read github release", "repository", repository, "tag", latest.TagName, "error", err)
 		return nil, err
 	}
-	logger.Info("GitHub release found", "version", release.Version, "channel", channel)
+	logger.Info("github release found", "version", release.Version, "channel", channel)
 	return release, nil
 }
 
