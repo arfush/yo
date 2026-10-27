@@ -10,14 +10,12 @@ import (
 
 	"gioui.org/f32"
 	"gioui.org/font"
-	"gioui.org/io/key"
 	"gioui.org/io/pointer"
 	"gioui.org/layout"
-	"gioui.org/op"
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	applog "github.com/arfush/yoanime/log"
+	applog "github.com/arfush/yo/log"
 )
 
 const logTimeLayout = "15:04:05.000"
@@ -57,7 +55,7 @@ func logLevelColor(level slog.Level) color.NRGBA {
 
 // logRowHeight is the minimum row height. Expanded rows grow by whole text
 // lines instead of clipping the message or the structured tail.
-func (w *logWindow) logRowHeight(gtx layout.Context, entry applog.Entry, width int, expanded bool) int {
+func (w *logScreen) logRowHeight(gtx layout.Context, entry applog.Entry, width int, expanded bool) int {
 	minHeight := gtx.Dp(logRowHeightDp)
 	if !expanded {
 		return minHeight
@@ -72,7 +70,7 @@ func (w *logWindow) logRowHeight(gtx layout.Context, entry applog.Entry, width i
 	return max(minHeight, height)
 }
 
-func (w *logWindow) layoutLine(gtx layout.Context, entry applog.Entry, width, rowHeight, index int, state *logLineState) layout.Dimensions {
+func (w *logScreen) layoutLine(gtx layout.Context, entry applog.Entry, width, rowHeight, index int, state *logLineState) layout.Dimensions {
 	cols := logColumnsForWidth(gtx, width)
 	lineHeight := gtx.Dp(logLineHeight)
 	padY := gtx.Dp(logRowPadY)
@@ -81,11 +79,8 @@ func (w *logWindow) layoutLine(gtx layout.Context, entry applog.Entry, width, ro
 	truncated := collapsed != entry.Message
 	expandable := truncated || entry.Detail != ""
 
-	if (expandable || state.expanded) && state.click.Clicked(gtx) {
-		state.expanded = !state.expanded
-		gtx.Execute(key.FocusCmd{Tag: nil})
-		gtx.Execute(op.InvalidateCmd{})
-	}
+	// Expansion clicks are consumed by layoutTableBody before heights are
+	// measured, so a click never changes the row size mid-layout.
 	if state.expanded {
 		rowHeight = max(rowHeight, w.logRowHeight(gtx, entry, width, true))
 	}
@@ -114,11 +109,14 @@ func (w *logWindow) layoutLine(gtx layout.Context, entry applog.Entry, width, ro
 		case slog.LevelWarn:
 			rowFill = logWarnRowFill
 		}
+		// Hover and expand must not erase the level tint: warn/error rows stay
+		// yellow/red while they are highlighted, only slightly brighter. Every
+		// row responds to hover the same way, expandable or not.
 		switch {
 		case state.expanded:
-			rowFill = logRowExpanded
-		case hovered && expandable:
-			rowFill = logRowHover
+			rowFill = mixColor(rowFill, logRowExpanded, 0.6)
+		case hovered:
+			rowFill = mixColor(rowFill, logRowHover, 0.7)
 		}
 		fill(gtx, rowFill, rowRect)
 		// Error rows keep a red accent on the left edge so the highlight reads
