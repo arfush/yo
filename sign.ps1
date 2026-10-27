@@ -27,7 +27,7 @@ $importedThumbprint = $null
 
 try {
     if ($PfxBase64) {
-        $tempPfx = Join-Path ([IO.Path]::GetTempPath()) ("yoanime-sign-" + [guid]::NewGuid().ToString("N") + ".pfx")
+        $tempPfx = Join-Path ([IO.Path]::GetTempPath()) ("yo-sign-" + [guid]::NewGuid().ToString("N") + ".pfx")
         [IO.File]::WriteAllBytes($tempPfx, [Convert]::FromBase64String($PfxBase64))
         $PfxPath = $tempPfx
     }

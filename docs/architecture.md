@@ -30,7 +30,7 @@
 
 ```text
 cmd/
-  yoanime/            единственная точка входа: app.Run
+  yo/                 единственная точка входа: app.Run
 app/                  композиционный корень: пути, сервисы, single instance, запуск ui
   app.go              запуск процесса, сборка ui.Services, именованные логгеры
   ratelimit.go        адаптер состояния лимита AnimeLIB для заголовка
@@ -39,9 +39,9 @@ catalog/              чистые типы: Title, Voice, Status, Segment, Read
 animelib/             API AnimeLIB и LibSocial: клиент, episodes, reading, rate limit
   reading.go          ссылки и главы MangaLib/SlashLIB/RanobeLib/HentaiLib
   errors.go           сентинелы API-клиента
-browser/              Playwright: Chromium, авторизация, headless Kodik/Kinopoisk
+browser/              Playwright: Chromium, авторизация, headless Kodik/Filmlib
 kodik/                резолв Kodik embed -> HLS
-kinopoisk/            второй источник: метаданные, каталог Alloha, резолв потоков
+filmlib/              второй источник: метаданные, каталог Alloha, резолв потоков
 library/              загрузка тайтла, выбор озвучки/главы, обложки, reader-мост
   reading.go          чтение глав и страниц, source-роутинг
 metadata/             Shikimori/MAL, AniList, IMDb, introdb
@@ -50,8 +50,7 @@ playback/             сессия mpv, очередь, прогресс, гла
 party/                протокол совместного просмотра, часы, конфигурация реле
   deploy/             Cloudflare Worker и Supabase-реле
   party.example.json  образец пользовательского party.json
-store/                SQLite: схема, история, настройки, кэши, миграции
-  migrations.go       версионированные миграции (PRAGMA user_version)
+store/                SQLite: схема, история, настройки, кэши
   errors.go           ErrCorruptDatabase: старая/битая база не поддерживается
 token/                файл токена AnimeLIB и проверка срока
 update/               всё об обновлении: GitHub Releases, SHA-256, замена exe
@@ -68,6 +67,7 @@ ui/
   draw/              низкоуровневые примитивы рисования
   theme/             палитра и hover-анимация
   widgets/           переиспользуемые кнопки, панели, пилюли, прогресс
+  errors.go          UI-ошибки с русским текстом и технической причиной
   app.go, shell.go,  контроллер приложения, каркас окна, секции библиотеки
   sections.go        yoanime/yomanga/yoranobe: настройка, цвета, фильтр истории
   main_screen.go,    экраны: главный, тайтл, ридер, настройки, журнал, F1, party
@@ -167,14 +167,14 @@ DPAPI, плюс запасной разбор простой строки. Ст�
 
 ## Совместимость имён
 
-Приложение переименовано в yoanime. Старые версии не поддерживаются, поэтому
+Приложение переименовано в yo. Старые версии не поддерживаются, поэтому
 данные не мигрируются: прежний каталог `%APPDATA%\yonime` и `watchparty.json`
 игнорируются, а новый файл конфигурации реле лежит в
 `%APPDATA%\yoanime\party.json`. Настройки `party_provider` и `party_name` в
 SQLite сохранили прежние имена.
 
-Переменные сборки переименованы в `YOANIME_PARTY_CLOUDFLARE_URL`,
-`YOANIME_PARTY_SUPABASE_URL` и `YOANIME_PARTY_SUPABASE_KEY`; одноимённые
+Переменные сборки переименованы в `YO_CLOUDFLARE_ENDPOINT`,
+`YO_SUPABASE_ENDPOINT` и `YO_SUPABASE_PUBKEY`; одноимённые
 repository variables нужно обновить. Вшитые значения по умолчанию лежат в
 корневом `party.json`.
 
@@ -199,8 +199,10 @@ repository variables нужно обновить. Вшитые значения 
 - [x] экраны `*_window` -> `*_screen` (main/title/reader/settings/log/…)
 - [x] `updates/` + `updater/` -> единый пакет `update/`
 - [x] `store`: старая схема без миграций; ad-hoc ALTER-миграции удалены,
-      вместо них `store/migrations.go` на `PRAGMA user_version`; базы старых
-      версий открываются как повреждённые (`ErrCorruptDatabase`)
+      `prepareDatabase` штампует `PRAGMA user_version = 2` и нормализует
+      известные старые source/slug напрямую; неполные базы открываются как
+      повреждённые (`ErrCorruptDatabase`). Отдельный файл миграций сейчас не
+      создаётся.
 - [x] сентинелы ошибок собраны в `errors.go` каждого модуля
 - [x] LibSocial: `animelib/reading.go`, `library/reading.go`, секции
       yoanime/yomanga/yoranobe, `ui/reader_screen.go`

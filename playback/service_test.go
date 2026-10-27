@@ -32,11 +32,11 @@ func TestUnopenedEntryFallsBackToFirstEntry(t *testing.T) {
 	}
 }
 
-func TestUnopenedErrorDescribesKinopoiskPlayer(t *testing.T) {
+func TestUnopenedErrorDescribesFilmlibPlayer(t *testing.T) {
 	err := unopenedError(&playlistEntry{
 		Episode: library.PlaybackEpisode{Number: "S1E2"},
 		Kind:    "hls",
-	}, "kinopoisk")
+	}, "filmlib")
 	if !errors.Is(err, ErrVideoOpen) {
 		t.Fatalf("error = %v, want ErrVideoOpen", err)
 	}

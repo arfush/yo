@@ -7,7 +7,7 @@ import (
 
 	"github.com/arfush/yo/animelib"
 	"github.com/arfush/yo/catalog"
-	"github.com/arfush/yo/kinopoisk"
+	"github.com/arfush/yo/filmlib"
 	"github.com/arfush/yo/store"
 )
 
@@ -302,9 +302,9 @@ func (l *Library) seedEpisodeTracking(title Title) error {
 	if title.ID == 0 {
 		return nil
 	}
-	// The episode checker polls AnimeLIB only; a Kinopoisk title must not seed
+	// The episode checker polls AnimeLIB only; a Filmlib title must not seed
 	// a row it will never update.
-	if title.Source == kinopoisk.Source {
+	if title.Source == filmlib.Source {
 		return nil
 	}
 	if title.Status == StatusCompleted {

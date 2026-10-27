@@ -1,4 +1,4 @@
-// Package updates checks GitHub Releases for new yoanime builds.
+// Package updates checks GitHub Releases for new yo builds.
 //
 // A release is published by the GitHub Actions workflow on a commit whose
 // message starts with "release: <version>". The workflow uploads one Windows
@@ -14,7 +14,7 @@ package update
 
 import "github.com/arfush/yo/log"
 
-// Repository is the GitHub repository that publishes yoanime releases. It can
+// Repository is the GitHub repository that publishes yo releases. It can
 // be overridden at build time:
 //
 //	go build -ldflags "-X github.com/arfush/yo/update.Repository=owner/repo"
@@ -24,7 +24,7 @@ var Repository = "arfush/yo"
 var apiBase = "https://api.github.com"
 
 const (
-	userAgent       = "yoanime"
+	userAgent       = "yo"
 	maxAPIBytes     = 4 << 20
 	maxChecksumSize = 64 << 10
 	maxReleaseRaw   = 1 << 30

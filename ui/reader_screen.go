@@ -288,6 +288,7 @@ func (r *readerScreen) loadChapter() {
 		content, err := r.source.ReadChapter(ctx, title, voice, key)
 		if err != nil {
 			logger.Warn("reader chapter failed", "slug", title.Slug, "chapter", key, "error", err)
+			err = errReaderChapter.wrap(err)
 		}
 		r.chapterResults <- readerChapterResult{generation: generation, content: content, err: err}
 	}()
@@ -366,7 +367,7 @@ func (r *readerScreen) updateChapterResult(gtx layout.Context) {
 			}
 			r.loading = false
 			if result.err != nil {
-				r.loadErr = friendlyError(result.err)
+				r.loadErr = userErrorText(result.err)
 				if r.onError != nil {
 					r.onError(result.err)
 				}

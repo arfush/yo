@@ -1,4 +1,4 @@
-// Package singleinstance makes sure that only one copy of yoanime runs for a
+// Package singleinstance makes sure that only one copy of yo runs for a
 // user at a time, so a second launch cannot open a second window or compete for
 // the same database and browser profile.
 //

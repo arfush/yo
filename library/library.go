@@ -11,7 +11,7 @@ import (
 
 	"github.com/arfush/yo/animelib"
 	"github.com/arfush/yo/catalog"
-	"github.com/arfush/yo/kinopoisk"
+	"github.com/arfush/yo/filmlib"
 	"github.com/arfush/yo/log"
 	"github.com/arfush/yo/metadata"
 	"github.com/arfush/yo/store"
@@ -51,9 +51,9 @@ type Library struct {
 	store     *store.Store
 	tokenPath string
 	covers    *coverManager
-	// kinopoisk talks to the mirror and the metadata API. It holds no browser:
+	// filmlib talks to the mirror and the metadata API. It holds no browser:
 	// streams are resolved by the playback service.
-	kinopoisk *kinopoisk.Client
+	filmlib *filmlib.Client
 	// episodeFetcher is nil in production. Tests replace it with a local
 	// function so the notification checker never touches AnimeLIB.
 	episodeFetcher episodeFetcher
@@ -73,7 +73,7 @@ func Open(databasePath, tokenPath string) (*Library, error) {
 		store:     db,
 		tokenPath: tokenPath,
 		covers:    newCoverManager(databasePath, db),
-		kinopoisk: kinopoisk.NewClient(),
+		filmlib:   filmlib.NewClient(),
 	}, nil
 }
 
@@ -111,8 +111,8 @@ func (l *Library) History() ([]Title, error) {
 // Nothing about the episodes, voiceovers or the cover URL is reused between
 // loads: only the local metadata, saved selection and cover file are kept.
 func (l *Library) Load(ctx context.Context, input string) (Title, error) {
-	if link, ok := kinopoisk.ParseInput(input); ok {
-		return l.loadKinopoisk(ctx, link, true)
+	if link, ok := filmlib.ParseInput(input); ok {
+		return l.loadFilmlib(ctx, link, true)
 	}
 	if link, ok, err := animelib.ParseReadingInput(input); err != nil {
 		return Title{}, err
@@ -176,8 +176,8 @@ func (l *Library) upsertLoadedTitle(stored store.Title) (store.Title, error) {
 // the user presses Save in the title window, so merely opening a link must not
 // add it to history.
 func (l *Library) Fetch(ctx context.Context, input string) (Title, error) {
-	if link, ok := kinopoisk.ParseInput(input); ok {
-		return l.loadKinopoisk(ctx, link, false)
+	if link, ok := filmlib.ParseInput(input); ok {
+		return l.loadFilmlib(ctx, link, false)
 	}
 	if link, ok, err := animelib.ParseReadingInput(input); err != nil {
 		return Title{}, err
@@ -249,7 +249,7 @@ func (l *Library) Save(title Title, voice, episode string) (Title, error) {
 		// The quality ladder costs a headless resolve, so it is cached only for
 		// titles the user actually keeps in history.
 		if err := l.store.SaveTitleQualities(id, data); err != nil {
-			logger.Warn("cannot cache Kinopoisk qualities", "title", id, "error", err)
+			logger.Warn("cannot cache Filmlib qualities", "title", id, "error", err)
 		}
 	}
 

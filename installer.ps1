@@ -35,7 +35,7 @@ if (-not $number) {
 }
 $tag = "v$number"
 
-$exe = Join-Path $PSScriptRoot "dist\yoanime_${tag}_${Arch}.exe"
+$exe = Join-Path $PSScriptRoot "dist\yo_${tag}_${Arch}.exe"
 if (-not (Test-Path $exe)) {
     throw "Missing $exe; run build.ps1 -Version $tag -Arch $Arch first"
 }
@@ -114,12 +114,12 @@ if (-not $compiler) {
     $compiler = Install-InnoSetup
 }
 
-& $compiler "/DVersionTag=$tag" "/DVersionNumber=$number" "/DArch=$Arch" "installer\yoanime.iss"
+& $compiler "/DVersionTag=$tag" "/DVersionNumber=$number" "/DArch=$Arch" "installer\yo.iss"
 if ($LASTEXITCODE -ne 0) {
     throw "Inno Setup failed with exit code $LASTEXITCODE"
 }
 
-$setup = Join-Path $PSScriptRoot "dist\yoanime_${tag}_${Arch}_setup.exe"
+$setup = Join-Path $PSScriptRoot "dist\yo_${tag}_${Arch}_setup.exe"
 if (-not (Test-Path $setup)) {
     throw "Expected installer was not produced: $setup"
 }

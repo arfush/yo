@@ -59,7 +59,7 @@ func Download(ctx context.Context, client *http.Client, release Release, destina
 	if err != nil {
 		return "", err
 	}
-	request.Header.Set("User-Agent", "yoanime")
+	request.Header.Set("User-Agent", "yo")
 	request.Header.Set("Accept-Encoding", "identity")
 
 	response, err := client.Do(request)

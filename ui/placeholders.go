@@ -229,9 +229,9 @@ var animeLinkPlaceholders = []string{
 	"Тиби: ссылку на AnimeLIB, ну, не капризничай!",
 	"Ссылку на AnimeLIB из буфера, и побыстрее!",
 	"Буфер обмена: ссылка на AnimeLIB уже ждёт!",
-	"Кинопоиск или AnimeLIB — дай ссылку!",
-	"Фильм с Кинопоиска? Или ссылку на AnimeLIB!",
-	"Ссылку на AnimeLIB или Кинопоиск, бака!",
+	"Ссылку на фильм или AnimeLIB — дай!",
+	"Фильм или сериал? Дай ссылку — или на AnimeLIB!",
+	"Ссылку на AnimeLIB или фильм, бака!",
 }
 
 func randomLinkPlaceholder(exclude string) string {

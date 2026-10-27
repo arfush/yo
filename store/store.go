@@ -1,9 +1,9 @@
 // Package store persists titles, history and local settings in SQLite.
 //
-// The schema is created from scratch on first run. Older database files are
-// not supported: the versioned migration list in migrations.go is the only way
-// a future build may extend the schema, and a file whose tables miss the
-// columns of the current schema is rejected as corrupted.
+// The schema is created from scratch on first run. Until the first public
+// release there are no versioned migrations: opening a database stamps the
+// current version and rewrites the known legacy source values in place. A file
+// whose tables miss the columns of the current schema is rejected as corrupted.
 package store
 
 import (
@@ -25,17 +25,18 @@ const defaultUserStatus = 2
 // Source names accepted by the titles.source column.
 const (
 	SourceAnimeLIB  = "animelib"
-	SourceKinopoisk = "kinopoisk"
+	SourceFilmlib   = "filmlib"
 	SourceMangaLib  = "mangalib"
 	SourceYaoiLib   = "yaoilib"
 	SourceRanobeLib = "ranobelib"
 	SourceHentaiLib = "hentailib"
 )
 
-// Schema version constants. Version 1 is the initial schema; every future
-// change must add one entry to migrations in migrations.go. The pragma is
-// stored on the database header, so it survives renames of the file.
-const schemaVersion = 1
+// Schema version constants. Version 2 is the current schema. There is no
+// migration chain before the first release: prepareDatabase stamps this value
+// and normalizes old source names directly. The pragma is stored on the
+// database header, so it survives renames of the file.
+const schemaVersion = 2
 
 // Errors that Open returns for an unusable database file.
 //
@@ -125,10 +126,10 @@ var expectedColumns = map[string][]string{
 type Title struct {
 	ID int64
 	// Source names the catalogue the title came from ("animelib" or
-	// "kinopoisk" or one of the LibSocial reading sites). It decides which
+	// "filmlib" or one of the LibSocial reading sites). It decides which
 	// resolver may open the title and which background checks apply to it.
 	Source string
-	// ExternalID is the id inside Source: the AnimeLIB slug or the Kinopoisk
+	// ExternalID is the id inside Source: the AnimeLIB slug or the Filmlib
 	// film id. Reading titles use the LibSocial slug_url here.
 	ExternalID string
 	Slug       string
@@ -193,8 +194,8 @@ type Store struct {
 	db *sql.DB
 }
 
-// Open creates the database (and its directory) if needed, applies pending
-// migrations and rejects files that no longer match the current schema.
+// Open creates the database (and its directory) if needed, stamps the current
+// schema version and rejects files that no longer match the current schema.
 func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		logger.Error("cannot create database directory", "path", filepath.Dir(path), "error", err)
@@ -230,18 +231,42 @@ func Open(path string) (*Store, error) {
 		logger.Error("cannot create database schema", "path", path, "error", err)
 		return nil, err
 	}
-	if err := applyMigrations(db); err != nil {
-		db.Close()
-		logger.Error("cannot apply database migrations", "path", path, "error", err)
-		return nil, err
-	}
 	if err := verifySchema(db); err != nil {
 		db.Close()
 		logger.Error("database schema does not match this build", "path", path, "error", err)
 		return nil, fmt.Errorf("%w: %v", ErrCorruptDatabase, err)
 	}
+	if err := prepareDatabase(db); err != nil {
+		db.Close()
+		logger.Error("cannot prepare database", "path", path, "error", err)
+		return nil, err
+	}
 	logger.Info("database opened", "path", path)
 	return &Store{db: db}, nil
+}
+
+// prepareDatabase stamps the current schema version and rewrites the source
+// names used before the second content source was renamed. The statements are
+// idempotent and deliberately live outside any migration framework: until the
+// first release the schema is simply replaced in place.
+func prepareDatabase(db *sql.DB) error {
+	if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
+		return fmt.Errorf("stamp schema version: %w", err)
+	}
+	if _, err := db.Exec(`
+        UPDATE titles SET source = 'filmlib' WHERE source = 'kinopoisk'`); err != nil {
+		return fmt.Errorf("normalize title source: %w", err)
+	}
+	if _, err := db.Exec(`
+        UPDATE titles
+        SET slug = 'filmlib:' || CASE
+            WHEN external_id <> '' THEN external_id
+            ELSE substr(slug, 11)
+        END
+        WHERE slug LIKE 'kinopoisk:%'`); err != nil {
+		return fmt.Errorf("normalize title slug: %w", err)
+	}
+	return nil
 }
 
 // Close closes the underlying database.

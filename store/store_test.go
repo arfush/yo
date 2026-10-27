@@ -636,6 +636,59 @@ func TestOpenRejectsLegacyDatabaseAsCorrupt(t *testing.T) {
 	}
 }
 
+func TestOpenNormalizesLegacySourceAndStampsCurrentVersion(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy-source.sqlite")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertTitle(Title{
+		Slug:       "kinopoisk:88198",
+		Source:     "kinopoisk",
+		ExternalID: "88198",
+		RusName:    "Старое имя",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`UPDATE titles SET source = 'kinopoisk', slug = 'kinopoisk:88198'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`PRAGMA user_version = 1`); err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	var source, slug string
+	if err := reopened.db.QueryRow(`SELECT source, slug FROM titles WHERE external_id = '88198'`).Scan(&source, &slug); err != nil {
+		t.Fatal(err)
+	}
+	if source != SourceFilmlib || slug != "filmlib:88198" {
+		t.Fatalf("legacy row = (%q, %q), want (%q, %q)", source, slug, SourceFilmlib, "filmlib:88198")
+	}
+	var version int
+	if err := reopened.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if version != schemaVersion {
+		t.Fatalf("user_version = %d, want %d", version, schemaVersion)
+	}
+}
+
 func TestOpenRejectsIncompleteHistorySchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "legacy-history.sqlite")
 	raw, err := sql.Open("sqlite", path)

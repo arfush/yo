@@ -77,8 +77,8 @@ func TestTitleQualityLabels(t *testing.T) {
 func TestQualitySectionLabel(t *testing.T) {
 	for _, item := range []historyTitle{
 		{source: "animelib", movie: false},
-		{source: "kinopoisk", movie: false},
-		{source: "kinopoisk", movie: true},
+		{source: "filmlib", movie: false},
+		{source: "filmlib", movie: true},
 	} {
 		if got := (&titleScreen{item: item}).qualitySectionLabel(); got != "КАЧЕСТВО" {
 			t.Fatalf("label for %+v = %q, want КАЧЕСТВО", item, got)

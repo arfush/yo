@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// encodeVoiceQualities packs the probed Kinopoisk quality ladders into the JSON
+// encodeVoiceQualities packs the probed Filmlib quality ladders into the JSON
 // blob cached on the title row. AnimeLIB voiceovers carry no ladder, so an
 // empty result means there is nothing worth storing.
 func encodeVoiceQualities(voices []Voiceover) string {
@@ -41,7 +41,7 @@ func decodeVoiceQualities(raw string) map[string][]int {
 	}
 	var stored map[string][]int
 	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
-		logger.Warn("cannot read cached Kinopoisk qualities", "error", err)
+		logger.Warn("cannot read cached Filmlib qualities", "error", err)
 		return nil
 	}
 	ladders := make(map[string][]int, len(stored))
@@ -88,7 +88,7 @@ func (l *Library) applyStoredQualities(title *Title) {
 	}
 	raw, err := l.store.GetTitleQualities(title.ID)
 	if err != nil {
-		logger.Warn("cannot load cached Kinopoisk qualities", "title", title.ID, "error", err)
+		logger.Warn("cannot load cached Filmlib qualities", "title", title.ID, "error", err)
 		return
 	}
 	ladders := decodeVoiceQualities(raw)

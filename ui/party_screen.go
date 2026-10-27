@@ -198,7 +198,7 @@ func (w *partyScreen) reportError(err error) {
 	if err == nil {
 		return
 	}
-	w.errorText = friendlyError(err)
+	w.errorText = userErrorText(err)
 	if w.onError != nil {
 		w.onError(err)
 	}
@@ -509,9 +509,9 @@ func (w *partyScreen) handleResult(result partyResult) {
 		case partyJoined:
 			// A failed join is corrected by retyping the key, so the form clears
 			// it and uses the same red, shaking feedback for every reason.
-			w.failJoin(friendlyError(result.err))
+			w.failJoin(userErrorText(result.err))
 		case partySecret:
-			w.failSecret(friendlyError(result.err))
+			w.failSecret(userErrorText(result.err))
 		default:
 			w.reportError(result.err)
 			w.errorAt = time.Now()

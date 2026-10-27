@@ -1,4 +1,4 @@
-package kinopoisk
+package filmlib
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	// metaAPIKey is the public demo key the unofficial Kinopoisk API hands to
+	// metaAPIKey is the public demo key the unofficial Filmlib API hands to
 	// small clients. It is intentionally hardcoded: the application must work
 	// without any setup, and metadata is cached in the local database after the
 	// first successful load, so a key outage only affects new titles.
@@ -22,14 +22,14 @@ const (
 	metaEndpoint    = "https://kinopoiskapiunofficial.tech/api/v2.2/films/"
 	metaEndpointOld = "https://kinopoiskapiunofficial.tech/api/v2.1/films/"
 
-	// posterEndpoint is the public Kinopoisk image host. Unlike the API it needs
+	// posterEndpoint is the public Filmlib image host. Unlike the API it needs
 	// no key, so a title always has a poster even when metadata fails.
 	posterEndpoint = "https://st.kp.yandex.net/images/film_big/%d.jpg"
 
 	userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36"
 )
 
-// Meta is the display metadata of a Kinopoisk title.
+// Meta is the display metadata of a Filmlib title.
 type Meta struct {
 	ID     int
 	NameRu string
@@ -83,7 +83,7 @@ func (c *Client) Config() Config {
 // and years; when it fails the poster and the id still let the title open.
 func (c *Client) Meta(ctx context.Context, link Link) (Meta, error) {
 	if link.ID <= 0 {
-		return Meta{}, fmt.Errorf("invalid Kinopoisk id")
+		return Meta{}, fmt.Errorf("invalid Filmlib id")
 	}
 	meta := Meta{
 		ID:        link.ID,
@@ -100,7 +100,7 @@ func (c *Client) Meta(ctx context.Context, link Link) (Meta, error) {
 		if ctx.Err() != nil {
 			return Meta{}, ctx.Err()
 		}
-		logger.Warn("kinopoisk metadata request failed", "endpoint", endpoint, "title", link.ID, "error", err)
+		logger.Warn("filmlib metadata request failed", "endpoint", endpoint, "title", link.ID, "error", err)
 	}
 	meta.Partial = true
 	meta.NameRu = fmt.Sprintf("#%d", link.ID)
@@ -130,19 +130,19 @@ func (c *Client) fetchMeta(ctx context.Context, endpoint string, id int) (Meta, 
 	}
 
 	var payload struct {
-		KinopoiskID   int     `json:"kinopoiskId"`
-		KinopoiskIDV1 int     `json:"filmId"`
-		NameRu        string  `json:"nameRu"`
-		NameEn        string  `json:"nameEn"`
-		NameOriginal  string  `json:"nameOriginal"`
-		Year          any     `json:"year"`
-		Type          string  `json:"type"`
-		Serial        any     `json:"serial"`
-		Completed     *bool   `json:"completed"`
-		Rating        float64 `json:"ratingKinopoisk"`
-		Description   string  `json:"description"`
-		PosterURL     string  `json:"posterUrl"`
-		IMDbID        string  `json:"imdbId"`
+		FilmlibID    int     `json:"kinopoiskId"`
+		FilmlibIDV1  int     `json:"filmId"`
+		NameRu       string  `json:"nameRu"`
+		NameEn       string  `json:"nameEn"`
+		NameOriginal string  `json:"nameOriginal"`
+		Year         any     `json:"year"`
+		Type         string  `json:"type"`
+		Serial       any     `json:"serial"`
+		Completed    *bool   `json:"completed"`
+		Rating       float64 `json:"ratingKinopoisk"`
+		Description  string  `json:"description"`
+		PosterURL    string  `json:"posterUrl"`
+		IMDbID       string  `json:"imdbId"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return Meta{}, err

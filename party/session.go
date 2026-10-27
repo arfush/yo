@@ -40,7 +40,7 @@ var (
 
 // ErrVersionMismatch reports a room whose host speaks another protocol
 // version. A guest leaves instead of applying anchors it may misread.
-var ErrVersionMismatch = errors.New("application versions differ; update yoanime")
+var ErrVersionMismatch = errors.New("application versions differ; update yo")
 
 // ErrRoomNotFound reports a reachable relay that has no host in the room. A
 // guest uses it before opening the waiting screen, so a mistyped key fails

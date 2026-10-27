@@ -324,14 +324,14 @@ func (m *mainScreen) finalizeHistoryDeletes() {
 		}
 		if err := m.titles.DeleteHistory(item.item.id); err != nil {
 			if firstErr == nil {
-				firstErr = err
+				firstErr = errHistoryDelete.wrap(err)
 			}
 			continue
 		}
 		forgetPoster(item.item.coverPath)
 	}
 	if firstErr != nil {
-		m.loadError = friendlyError(firstErr)
+		m.loadError = userErrorText(firstErr)
 		m.reportError(firstErr)
 	}
 }

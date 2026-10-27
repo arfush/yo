@@ -17,17 +17,18 @@ import (
 const dirName = "yoanime"
 
 const (
-	databaseName  = "yoanime.sqlite"
-	tokenName     = "animelib_token.txt"
-	profileName   = "browser"
-	coversName    = "covers"
-	mpvName       = "mpv"
-	updatesName   = "updates.json"
-	updateDirName = "update"
-	updateLogName = "update.log"
-	logName       = "yoanime.log"
-	partyName     = "party.json"
-	kinopoiskName = "kinopoisk.json"
+	databaseName      = "yoanime.sqlite"
+	tokenName         = "animelib_token.txt"
+	profileName       = "browser"
+	coversName        = "covers"
+	mpvName           = "mpv"
+	updatesName       = "updates.json"
+	updateDirName     = "update"
+	updateLogName     = "update.log"
+	logName           = "yoanime.log"
+	partyName         = "party.json"
+	filmlibName       = "filmlib.json"
+	legacyFilmlibName = "kinopoisk.json"
 )
 
 // Dir returns the per-user data directory and creates it when necessary.
@@ -132,10 +133,16 @@ func PartyConfigPath() (string, error) {
 	return path(partyName)
 }
 
-// KinopoiskConfigPath returns the optional mirror-host override. The file is
+// FilmlibConfigPath returns the optional mirror-host override. The file is
 // only needed when a mirror moves before the application ships an update.
-func KinopoiskConfigPath() (string, error) {
-	return path(kinopoiskName)
+func FilmlibConfigPath() (string, error) {
+	return path(filmlibName)
+}
+
+// LegacyFilmlibConfigPath is the old file name kept readable for forks that
+// already created an override before the source was renamed.
+func LegacyFilmlibConfigPath() (string, error) {
+	return path(legacyFilmlibName)
 }
 
 // BrowserProfileDir returns the persistent Chromium profile path. The profile

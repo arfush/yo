@@ -19,8 +19,8 @@ func writeTestFile(t *testing.T, path string, content []byte) {
 
 func TestPrepareAcceptsWritableTarget(t *testing.T) {
 	dir := t.TempDir()
-	target := filepath.Join(dir, "yoanime.exe")
-	source := filepath.Join(t.TempDir(), "yoanime-1.4.exe")
+	target := filepath.Join(dir, "yo.exe")
+	source := filepath.Join(t.TempDir(), "yo-1.4.exe")
 	writeTestFile(t, target, []byte("MZ old"))
 	writeTestFile(t, source, []byte("MZ new"))
 
@@ -40,7 +40,7 @@ func TestPrepareAcceptsWritableTarget(t *testing.T) {
 }
 
 func TestPrepareRejectsMissingSource(t *testing.T) {
-	target := filepath.Join(t.TempDir(), "yoanime.exe")
+	target := filepath.Join(t.TempDir(), "yo.exe")
 	writeTestFile(t, target, []byte("MZ old"))
 	if _, err := Prepare(target, filepath.Join(t.TempDir(), "missing.exe"), t.TempDir(), ""); err == nil {
 		t.Fatal("expected an error")
@@ -48,7 +48,7 @@ func TestPrepareRejectsMissingSource(t *testing.T) {
 }
 
 func TestPrepareRejectsNonExeSource(t *testing.T) {
-	target := filepath.Join(t.TempDir(), "yoanime.exe")
+	target := filepath.Join(t.TempDir(), "yo.exe")
 	source := filepath.Join(t.TempDir(), "update.bin")
 	writeTestFile(t, target, []byte("MZ old"))
 	writeTestFile(t, source, []byte("plain text"))
@@ -79,7 +79,7 @@ func TestHelperScriptReplacesWithoutOldBackup(t *testing.T) {
 		}
 	}
 	if strings.Contains(script, ".old") {
-		t.Error("script must not create yoanime.exe.old")
+		t.Error("script must not create yo.exe.old")
 	}
 	if strings.Contains(script, "Обновление") {
 		t.Error("script must stay ASCII-only")

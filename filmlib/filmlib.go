@@ -1,13 +1,13 @@
-// Package kinopoisk reads Kinopoisk titles that the Alloha player mirrors.
+// Package filmlib reads Filmlib titles that the Alloha player mirrors.
 //
-// A Kinopoisk link is resolved without the Kinopoisk API for playback: the
-// public Alloha catalogue ("players" endpoint) maps a Kinopoisk id to the
+// A Filmlib link is resolved without the Filmlib API for playback: the
+// public Alloha catalogue ("players" endpoint) maps a Filmlib id to the
 // translations it carries, and the theatre page for a translation embeds the
 // complete season/episode file list. Streams are signed per page and are only
 // produced by the theatre's own JavaScript, so playback goes through a headless
 // Chromium page that mounts the theatre as an iframe, exactly like the mirror
 // site does.
-package kinopoisk
+package filmlib
 
 import (
 	"fmt"
@@ -20,16 +20,16 @@ import (
 	"github.com/arfush/yo/catalog"
 )
 
-// Source is the value stored in titles.source for Kinopoisk rows.
-const Source = catalog.SourceKinopoisk
+// Source is the value stored in titles.source for Filmlib rows.
+const Source = catalog.SourceFilmlib
 
-// SlugPrefix makes a Kinopoisk slug distinguishable from an AnimeLIB one. The
+// SlugPrefix makes a Filmlib slug distinguishable from an AnimeLIB one. The
 // local schema still uses a single unique slug column, so the prefix is what
-// keeps 88198 (a Kinopoisk id) apart from a title whose AnimeLIB slug would
+// keeps 88198 (a Filmlib id) apart from a title whose AnimeLIB slug would
 // happen to be numeric.
-const SlugPrefix = "kinopoisk:"
+const SlugPrefix = "filmlib:"
 
-// Link is a parsed Kinopoisk title reference.
+// Link is a parsed Filmlib title reference.
 type Link struct {
 	ID int
 	// IsMovie is only a hint taken from the URL; the catalogue is the source
@@ -42,12 +42,12 @@ type Link struct {
 func (l Link) Slug() string { return SlugPrefix + strconv.Itoa(l.ID) }
 
 var (
-	kinopoiskPath = regexp.MustCompile(`(?i)/(film|series)/(\d+)`)
-	numericInput  = regexp.MustCompile(`^\d{2,9}$`)
+	filmlibPath  = regexp.MustCompile(`(?i)/(film|series)/(\d+)`)
+	numericInput = regexp.MustCompile(`^\d{2,9}$`)
 )
 
-// ParseInput reports whether input addresses a Kinopoisk title. Accepted forms
-// are a Kinopoisk link in any locale or mirror, an explicit "kinopoisk:ID"
+// ParseInput reports whether input addresses a Filmlib title. Accepted forms
+// are a Filmlib link in any locale or mirror, an explicit "filmlib:ID"
 // prefix and a bare numeric id. A plain AnimeLIB slug never matches.
 func ParseInput(input string) (Link, bool) {
 	raw := strings.TrimSpace(input)
@@ -56,12 +56,12 @@ func ParseInput(input string) (Link, bool) {
 	}
 	lower := strings.ToLower(raw)
 
-	// hd.kinopoisk.ru uses a different identifier space, so its links cannot be
-	// mapped onto a Kinopoisk film id.
+	// hd.kinopoisk.ru uses a different identifier space, so its links cannot
+	// be mapped onto a Filmlib film id.
 	if strings.Contains(lower, "hd.kinopoisk.") {
 		return Link{}, false
 	}
-	for _, prefix := range []string{"kinopoisk:", "kinopoisk.ru:", "kp:", "кп:"} {
+	for _, prefix := range []string{"filmlib:", "kinopoisk:", "kinopoisk.ru:", "kp:", "кп:"} {
 		if strings.HasPrefix(lower, prefix) {
 			id, err := strconv.Atoi(strings.TrimSpace(raw[len(prefix):]))
 			if err != nil || id <= 0 {
@@ -70,8 +70,8 @@ func ParseInput(input string) (Link, bool) {
 			return Link{ID: id}, true
 		}
 	}
-	if match := kinopoiskPath.FindStringSubmatch(raw); len(match) == 3 {
-		if !isKinopoiskHost(raw) {
+	if match := filmlibPath.FindStringSubmatch(raw); len(match) == 3 {
+		if !isFilmlibHost(raw) {
 			return Link{}, false
 		}
 		id, err := strconv.Atoi(match[2])
@@ -90,9 +90,9 @@ func ParseInput(input string) (Link, bool) {
 	return Link{}, false
 }
 
-// isKinopoiskHost guards the /film/ path against AnimeLIB links that may use
+// isFilmlibHost guards the /film/ path against AnimeLIB links that may use
 // the same shape.
-func isKinopoiskHost(raw string) bool {
+func isFilmlibHost(raw string) bool {
 	lower := strings.ToLower(raw)
 	if !strings.Contains(lower, "://") {
 		// A bare "kinopoisk.ru/film/1" is still a link, not a path.
@@ -110,7 +110,7 @@ func isKinopoiskHost(raw string) bool {
 		strings.HasSuffix(host, "kinopoisk.com")
 }
 
-// AcceptsInput reports whether input looks like a Kinopoisk link. The UI uses it
+// AcceptsInput reports whether input looks like a Filmlib link. The UI uses it
 // to decide whether a pasted link needs an AnimeLIB token at all.
 func AcceptsInput(input string) bool {
 	_, ok := ParseInput(input)

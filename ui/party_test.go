@@ -406,7 +406,7 @@ func TestWrongSecretShakesAndClearsTheField(t *testing.T) {
 	screen.busy = true
 	screen.secretEditor.SetText("4K7Q2M9XBT")
 
-	screen.handleResult(partyResult{kind: partySecret, err: party.ErrWrongSecret})
+	screen.handleResult(partyResult{kind: partySecret, err: errPartySecret.wrap(party.ErrWrongSecret)})
 
 	if screen.busy {
 		t.Fatal("a failed check must clear the busy state")
@@ -414,7 +414,7 @@ func TestWrongSecretShakesAndClearsTheField(t *testing.T) {
 	if screen.mode != wpSecret {
 		t.Fatalf("mode = %d, want the secret form", screen.mode)
 	}
-	if screen.errorText != friendlyError(party.ErrWrongSecret) {
+	if screen.errorText != errPartySecret.message {
 		t.Fatalf("error = %q, want the wrong-secret reason", screen.errorText)
 	}
 	if !screen.joinFeedback {

@@ -18,11 +18,43 @@ var (
 	SupabaseKey   = ""
 )
 
-// Config is the relay configuration stored next to the other yoanime files.
+// Config is the relay configuration stored next to the other yo files.
 type Config struct {
-	CloudflareURL string `json:"cloudflare_url"`
-	SupabaseURL   string `json:"supabase_url"`
-	SupabaseKey   string `json:"supabase_key"`
+	CloudflareURL string `json:"cloudflare_endpoint"`
+	SupabaseURL   string `json:"supabase_endpoint"`
+	SupabaseKey   string `json:"supabase_pubkey"`
+}
+
+// UnmarshalJSON accepts the current party.json keys and, for an existing user
+// override written before the rename, the old keys as a fallback. Saving always
+// writes the current names.
+func (c *Config) UnmarshalJSON(data []byte) error {
+	var payload struct {
+		CloudflareEndpoint string `json:"cloudflare_endpoint"`
+		SupabaseEndpoint   string `json:"supabase_endpoint"`
+		SupabasePubkey     string `json:"supabase_pubkey"`
+		LegacyCloudflare   string `json:"cloudflare_url"`
+		LegacySupabaseURL  string `json:"supabase_url"`
+		LegacySupabaseKey  string `json:"supabase_key"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+	*c = Config{
+		CloudflareURL: payload.CloudflareEndpoint,
+		SupabaseURL:   payload.SupabaseEndpoint,
+		SupabaseKey:   payload.SupabasePubkey,
+	}
+	if c.CloudflareURL == "" {
+		c.CloudflareURL = payload.LegacyCloudflare
+	}
+	if c.SupabaseURL == "" {
+		c.SupabaseURL = payload.LegacySupabaseURL
+	}
+	if c.SupabaseKey == "" {
+		c.SupabaseKey = payload.LegacySupabaseKey
+	}
+	return nil
 }
 
 // LoadConfig reads the party configuration. A missing file is not an

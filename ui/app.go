@@ -26,7 +26,7 @@ import (
 	"github.com/arfush/yo/animelib"
 	"github.com/arfush/yo/browser"
 	"github.com/arfush/yo/catalog"
-	"github.com/arfush/yo/kinopoisk"
+	"github.com/arfush/yo/filmlib"
 	"github.com/arfush/yo/library"
 	"github.com/arfush/yo/log"
 	"github.com/arfush/yo/metadata"
@@ -66,18 +66,18 @@ const (
 	// interval would leave a visible update without a silent install.
 	updateRetryInterval = 5 * time.Minute
 	// qualitiesProbeTimeout bounds the background headless resolve that learns
-	// which qualities a Kinopoisk voice offers. A cold Chromium is slow, but a
+	// which qualities a Filmlib voice offers. A cold Chromium is slow, but a
 	// failed probe only leaves the standard buttons enabled.
 	qualitiesProbeTimeout = 90 * time.Second
 )
 
-// Run starts the yoanime desktop application with the services built by the
+// Run starts the yo desktop application with the services built by the
 // composition root.
 func Run(services Services) {
 	go func() {
 		w := new(app.Window)
 		w.Option(
-			app.Title("yoanime"),
+			app.Title("yo"),
 			app.Size(unit.Dp(initialWidth), unit.Dp(initialHeight)),
 			app.MinSize(unit.Dp(minimumWidth), unit.Dp(minimumHeight)),
 			app.Decorated(false),
@@ -86,7 +86,7 @@ func Run(services Services) {
 		a, err := newApp(services)
 		if err != nil {
 			logger.Error("application startup failed", "error", err)
-			fmt.Fprintln(os.Stderr, "yoanime:", err)
+			fmt.Fprintln(os.Stderr, "yo:", err)
 			os.Exit(1)
 		}
 		logger.Info("window attached")
@@ -94,7 +94,7 @@ func Run(services Services) {
 		if err := a.run(w); err != nil {
 			logger.Error("application stopped with an error", "error", err)
 			a.close()
-			fmt.Fprintln(os.Stderr, "yoanime:", err)
+			fmt.Fprintln(os.Stderr, "yo:", err)
 			os.Exit(1)
 		}
 		logger.Info("application closed")
@@ -130,7 +130,7 @@ type application struct {
 	quitting atomic.Bool
 
 	watchResults chan watchResult
-	// qualityResults carries the background Kinopoisk quality probe. It runs
+	// qualityResults carries the background Filmlib quality probe. It runs
 	// while the title page is open and updates the disabled buttons in place.
 	qualityResults chan qualityResult
 
@@ -150,7 +150,7 @@ type application struct {
 	tokenPath         string
 	browserProfileDir string
 
-	// Update state is loaded from %APPDATA%\yoanime\update.json. The atomics
+	// Update state is loaded from %APPDATA%\yoanime\updates.json. The atomics
 	// let the UI read it every frame while the background checker refreshes it.
 	updateStore      *update.Store
 	updateClient     *http.Client
@@ -390,7 +390,7 @@ func (a *application) startTray() {
 	}
 	icon, err := newTray(a.icon, a.restoreWindow, a.quitFromTray)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "yoanime: значок в трее:", err)
+		fmt.Fprintln(os.Stderr, "yo: значок в трее:", err)
 		return
 	}
 	a.tray = icon
@@ -464,9 +464,13 @@ func (a *application) prepare(w *app.Window) {
 		"Требуется Chromium",
 		"Для генерации API-токена требуется скачать Chromium.",
 		func(ctx context.Context, report func(downloadProgress)) error {
-			return a.browserManager.Download(ctx, func(progress browser.Progress) {
+			err := a.browserManager.Download(ctx, func(progress browser.Progress) {
 				report(downloadProgress{Percent: progress.Percent, Preparing: progress.Preparing})
 			})
+			if err != nil {
+				return errInstallBrowser.wrap(err)
+			}
+			return nil
 		},
 	)
 	preparation.onDone = func() {
@@ -494,9 +498,12 @@ func (a *application) requireToken(w *app.Window) {
 		Authorize: func(ctx context.Context, site, profileDir string, bounds *catalog.Bounds) error {
 			value, err := a.browserManager.Authorize(ctx, site, profileDir, bounds)
 			if err != nil {
-				return err
+				return errAuthorize.wrap(err)
 			}
-			return token.Save(a.tokenPath, value)
+			if err := token.Save(a.tokenPath, value); err != nil {
+				return errAuthorize.wrap(err)
+			}
+			return nil
 		},
 		Window:          w,
 		DefaultDomain:   browser.DefaultDomain,
@@ -522,9 +529,13 @@ func (a *application) requireMPV(w *app.Window) {
 		"Требуется MPV",
 		"MPV нужен для просмотра контента.",
 		func(ctx context.Context, report func(downloadProgress)) error {
-			return a.mpvManager.Download(ctx, func(progress mpv.Progress) {
+			err := a.mpvManager.Download(ctx, func(progress mpv.Progress) {
 				report(downloadProgress{Percent: progress.Percent, Preparing: progress.Preparing})
 			})
+			if err != nil {
+				return errInstallMPV.wrap(err)
+			}
+			return nil
 		},
 	)
 	preparation.onDone = func() {
@@ -590,10 +601,13 @@ func (a *application) showUpdateScreen(release update.Release, auto bool) {
 	screen := newFirstRun(
 		a.shell.typo,
 		a.window,
-		"Обновление yoanime",
+		"Обновление yo",
 		fmt.Sprintf("Скачиваем %s. Приложение перезапустится автоматически.", release.Version),
 		func(ctx context.Context, report func(downloadProgress)) error {
-			return a.downloadAndApply(ctx, release, report)
+			if err := a.downloadAndApply(ctx, release, report); err != nil {
+				return errUpdate.wrap(err)
+			}
+			return nil
 		},
 	)
 	screen.buttonText = "Скачать"
@@ -649,7 +663,7 @@ func (a *application) openSettings() {
 	}
 	settings.onToggle = func(enabled bool) error {
 		if err := a.library.SetEpisodeNotificationsEnabled(enabled); err != nil {
-			return err
+			return errSettingsSave.wrap(err)
 		}
 		if enabled {
 			a.triggerEpisodeCheck()
@@ -660,7 +674,7 @@ func (a *application) openSettings() {
 	}
 	settings.onAutoUpdate = func(enabled bool) error {
 		if err := a.library.SetAutoUpdateEnabled(enabled); err != nil {
-			return err
+			return errSettingsSave.wrap(err)
 		}
 		if enabled {
 			// A fresh check decides which release may be installed. This also
@@ -673,7 +687,7 @@ func (a *application) openSettings() {
 	}
 	settings.onBeta = func(enabled bool) error {
 		if err := a.library.SetBetaUpdatesEnabled(enabled); err != nil {
-			return err
+			return errSettingsSave.wrap(err)
 		}
 		// The channel changed, so a pending download may no longer belong to
 		// the selected channel. Refetch before starting another silent install.
@@ -683,13 +697,16 @@ func (a *application) openSettings() {
 	}
 	settings.onControl = func(enabled bool) error {
 		if err := a.library.SetSharedControlEnabled(enabled); err != nil {
-			return err
+			return errSettingsSave.wrap(err)
 		}
 		a.party.SetSharedControl(enabled)
 		return nil
 	}
 	settings.onAutoSkip = func(segment metadata.Segment, enabled bool) error {
-		return a.library.SetAutoSkipSegment(segment, enabled)
+		if err := a.library.SetAutoSkipSegment(segment, enabled); err != nil {
+			return errSettingsSave.wrap(err)
+		}
+		return nil
 	}
 	settings.onProvider = func(provider party.Provider) error {
 		// SetProvider stores the choice, so the next room and the party card
@@ -761,7 +778,7 @@ func (a *application) startPartyPlayback(state party.State) error {
 	defer cancel()
 	title, err := a.library.Load(ctx, state.TitleSlug)
 	if err != nil {
-		return err
+		return errPlaybackStart.wrap(err)
 	}
 	quality := a.library.PreferredQuality()
 	startAt := 0.0
@@ -931,13 +948,13 @@ func (a *application) checkForUpdates(w *app.Window) time.Duration {
 		} else {
 			// A network failure must not hide the release cached from the last
 			// successful check.
-			fmt.Fprintln(os.Stderr, "yoanime: проверка обновлений:", err)
+			fmt.Fprintln(os.Stderr, "yo: проверка обновлений:", err)
 			_ = a.updateStore.SaveLastCheck(now)
 			return updateRetryInterval
 		}
 	}
 	if saveErr := a.updateStore.RecordCheck(release, now); saveErr != nil {
-		fmt.Fprintln(os.Stderr, "yoanime: сохранение состояния обновлений:", saveErr)
+		fmt.Fprintln(os.Stderr, "yo: сохранение состояния обновлений:", saveErr)
 	}
 	a.updatesAvailable.Store(release)
 	if w != nil {
@@ -1037,7 +1054,7 @@ func (a *application) startAutoUpdate(release update.Release) {
 		stop()
 		if err != nil {
 			if !errors.Is(err, context.Canceled) {
-				fmt.Fprintln(os.Stderr, "yoanime: автоматическое обновление:", err)
+				fmt.Fprintln(os.Stderr, "yo: автоматическое обновление:", err)
 			}
 			return
 		}
@@ -1047,7 +1064,7 @@ func (a *application) startAutoUpdate(release update.Release) {
 			return
 		}
 		if err := a.applyDownload(source); err != nil {
-			fmt.Fprintln(os.Stderr, "yoanime: автоматическое обновление:", err)
+			fmt.Fprintln(os.Stderr, "yo: автоматическое обновление:", err)
 			return
 		}
 		a.quitForUpdate()
@@ -1197,7 +1214,7 @@ func (a *application) backfillEpisodeTotals(w *app.Window) {
 		}
 	}
 	if err := a.library.RefreshMissingEpisodeTotals(ctx, refresh); err != nil && !errors.Is(err, context.Canceled) {
-		fmt.Fprintln(os.Stderr, "yoanime: подсчёт серий:", err)
+		fmt.Fprintln(os.Stderr, "yo: подсчёт серий:", err)
 	}
 }
 
@@ -1217,7 +1234,7 @@ func (a *application) checkEpisodeNotifications(w *app.Window) {
 	}()
 
 	if err := a.library.CheckEpisodeNotifications(ctx, a.notifyEpisode); err != nil && !errors.Is(err, context.Canceled) {
-		fmt.Fprintln(os.Stderr, "yoanime: проверка новых серий:", err)
+		fmt.Fprintln(os.Stderr, "yo: проверка новых серий:", err)
 	}
 	if a.main != nil {
 		// A new episode also updates the cached total shown in history.
@@ -1356,7 +1373,7 @@ func (a *application) openTitle(item historyTitle) {
 		// field: Save is the only action that adds it to history.
 		saved, err := a.library.Save(libraryTitleFromHistory(title.item), voice, episode)
 		if err != nil {
-			return err
+			return errSaveTitle.wrap(err)
 		}
 		// Remember the assigned id so a second Save updates the same entry.
 		item.id = saved.ID
@@ -1372,12 +1389,15 @@ func (a *application) openTitle(item historyTitle) {
 		if a.library == nil {
 			return nil
 		}
-		// A Kinopoisk film chooses the quality of that film, not an app-wide
+		// A Filmlib film chooses the quality of that film, not an app-wide
 		// preference: the choice only travels to the watch button.
-		if title.item.source == kinopoisk.Source && title.item.movie {
+		if title.item.source == filmlib.Source && title.item.movie {
 			return nil
 		}
-		return a.library.SetPreferredQuality(value)
+		if err := a.library.SetPreferredQuality(value); err != nil {
+			return errSettingsSave.wrap(err)
+		}
+		return nil
 	}
 	title.onVoice = func(index int) {
 		a.probeQualities(title)
@@ -1425,7 +1445,7 @@ func (a *application) playFromHistory(item historyTitle) historyPlayResult {
 	returnItem := item
 	err := a.startPlayback(libraryTitleFromHistory(item), voice, episode, quality, &returnItem, false, 0)
 	if err != nil {
-		a.main.loadError = friendlyError(err)
+		a.main.loadError = userErrorText(err)
 		a.reportError(err)
 		a.main.playing = false
 		a.main.playingID = 0
@@ -1507,6 +1527,7 @@ func (a *application) startPlaybackNotify(title library.Title, voice, episode st
 		}
 		plan, err := a.library.PlaybackPlan(ctx, title, voice, episode)
 		if err != nil {
+			err = playbackStartError(err)
 			notifyStart(err)
 			a.deliverWatch(startFailureResult(err, historyItem, 0, partyGuest))
 			return
@@ -1546,10 +1567,14 @@ func (a *application) startPlaybackNotify(title library.Title, voice, episode st
 				}
 			},
 			OnFinish: func(err error) {
+				if err != nil {
+					err = errPlaybackFinished.wrap(err)
+				}
 				a.deliverWatch(watchResult{finished: true, err: err, historyItem: historyItem, titleID: trackedID, party: partyGuest})
 			},
 		})
 		if err != nil {
+			err = playbackStartError(err)
 			notifyStart(err)
 			a.deliverWatch(startFailureResult(err, historyItem, trackedID, partyGuest))
 			return
@@ -1565,6 +1590,9 @@ func (a *application) startPlaybackNotify(title library.Title, voice, episode st
 // playbackStartError turns the watchdog deadline into a reason the user can
 // act on instead of the raw context error.
 func playbackStartError(err error) error {
+	if err == nil || isUserError(err) {
+		return err
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return userMessage(fmt.Sprintf("Не удалось начать воспроизведение за %s — попробуйте ещё раз", playbackStartTimeout))
 	}
@@ -1574,7 +1602,7 @@ func playbackStartError(err error) error {
 		}
 		return userMessage("AnimeLIB временно ограничил запросы — попробуйте снова чуть позже.")
 	}
-	return err
+	return errPlaybackStart.wrap(err)
 }
 
 // startFailureResult turns a failed playback start into a watch result. A
@@ -1619,7 +1647,7 @@ func (a *application) processWatchResults(gtx layout.Context) {
 	}
 }
 
-// processQualityResults applies the background Kinopoisk probes that arrived
+// processQualityResults applies the background Filmlib probes that arrived
 // since the last frame.
 func (a *application) processQualityResults(gtx layout.Context) {
 	for {
@@ -1643,7 +1671,7 @@ func (a *application) applyQualityResult(result qualityResult) {
 	if result.err != nil {
 		// The probe is a nicety: the standard quality buttons stay enabled and
 		// playback still picks the nearest available step.
-		logger.Warn("Kinopoisk quality probe failed", "title", result.slug, "voice", result.voice, "error", result.err)
+		logger.Warn("Filmlib quality probe failed", "title", result.slug, "voice", result.voice, "error", result.err)
 		return
 	}
 	index := -1
@@ -1659,7 +1687,7 @@ func (a *application) applyQualityResult(result qualityResult) {
 	title.applyQualities(index, result.values)
 }
 
-// probeQualities learns which stream qualities the selected Kinopoisk voice
+// probeQualities learns which stream qualities the selected Filmlib voice
 // offers and disables the buttons it cannot deliver. The probe runs in the
 // background with the shared headless Chromium and never opens a window; its
 // result is cached when the user saves the title to history.
@@ -1667,7 +1695,7 @@ func (a *application) probeQualities(title *titleScreen) {
 	if a.library == nil || a.playback == nil || title == nil {
 		return
 	}
-	if title.item.source != kinopoisk.Source {
+	if title.item.source != filmlib.Source {
 		return
 	}
 	index := title.selectedVoice
@@ -1733,7 +1761,7 @@ func (a *application) handleWatchResult(result watchResult) {
 			a.main.playing = false
 			a.main.playingID = 0
 			if result.err != nil {
-				a.main.loadError = friendlyError(result.err)
+				a.main.loadError = userErrorText(result.err)
 				a.reportError(result.err)
 			}
 		}
@@ -1746,7 +1774,7 @@ func (a *application) handleWatchResult(result watchResult) {
 		}
 		if result.err != nil && !result.finished {
 			if a.main != nil {
-				a.main.loadError = friendlyError(result.err)
+				a.main.loadError = userErrorText(result.err)
 			}
 			a.reportError(result.err)
 			// A direct Play from history must leave the user on the title page
@@ -1754,7 +1782,7 @@ func (a *application) handleWatchResult(result watchResult) {
 			// longer has any episodes). No mpv window is left behind.
 			a.openTitle(*result.historyItem)
 			if title, ok := a.active.(*titleScreen); ok {
-				title.setWatchError(friendlyError(result.err))
+				title.setWatchError(userErrorText(result.err))
 			}
 			return
 		}
@@ -1787,7 +1815,7 @@ func (a *application) handleWatchResult(result watchResult) {
 				}
 			}
 			if result.err != nil {
-				a.main.loadError = friendlyError(result.err)
+				a.main.loadError = userErrorText(result.err)
 				a.reportError(result.err)
 			}
 		}
@@ -1810,7 +1838,7 @@ func (a *application) handleWatchResult(result watchResult) {
 		title.setUserStatus(a.library.UserStatus(title.item.id))
 	}
 	if result.err != nil {
-		title.setWatchError(friendlyError(result.err))
+		title.setWatchError(userErrorText(result.err))
 		a.reportError(result.err)
 	} else if result.finished {
 		title.setWatching(false)
@@ -2067,26 +2095,6 @@ type overlayScreen interface {
 	layoutOverlay(layout.Context, image.Point)
 }
 
-// reportError logs the technical error and shows only a friendly sentence in
-// the header. Cancellation is not a user-visible failure.
-func (a *application) reportError(err error) {
-	if err == nil || errors.Is(err, context.Canceled) {
-		return
-	}
-	message, expected := userFacing(err)
-	if !expected {
-		logger.Error("ui error", "error", err)
-		message = friendlyError(err)
-	}
-	if message == "" {
-		return
-	}
-	a.shell.setError(message, time.Now())
-	if a.window != nil {
-		a.window.Invalidate()
-	}
-}
-
 func (a *application) clearError() {
 	a.shell.clearError()
 }
@@ -2097,6 +2105,7 @@ func (a *application) setUserStatus(item historyTitle, status library.UserStatus
 	logger.Info("user status changed", "title", item.id, "status", status)
 	if item.id != 0 && a.library != nil {
 		if err := a.library.SetUserStatus(item.id, status); err != nil {
+			err = errUserStatus.wrap(err)
 			a.reportError(err)
 			return err
 		}

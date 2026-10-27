@@ -11,7 +11,7 @@ import (
 
 // The Local\ prefix scopes the mutex to the current user session: two users
 // logged into the same machine may each run their own copy.
-var mutexName = `Local\yoanime.SingleInstance`
+var mutexName = `Local\yo.SingleInstance`
 
 func acquire() (func(), bool) {
 	name, err := windows.UTF16PtrFromString(mutexName)

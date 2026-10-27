@@ -1,4 +1,4 @@
-// Package party keeps a room of yoanime clients on the same playback
+// Package party keeps a room of yo clients on the same playback
 // position. A room lives on a relay the user deploys themselves; this package
 // only speaks the wire protocol and the drift correction math.
 package party

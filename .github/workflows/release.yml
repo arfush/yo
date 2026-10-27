@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: yoanime-release-${{ github.ref }}
+  group: yo-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -67,9 +67,9 @@ jobs:
 
           if [[ -n "$notes" ]]; then
             {
-              echo "body<<YOANIME_RELEASE_BODY"
+              echo "body<<YO_RELEASE_BODY"
               printf '%s\n' "$notes"
-              echo "YOANIME_RELEASE_BODY"
+              echo "YO_RELEASE_BODY"
             } >> "$GITHUB_OUTPUT"
           fi
 
@@ -104,9 +104,9 @@ jobs:
       # Repository variables win; otherwise build.ps1 falls back to the checked-in
       # party.json, so a relay deployed once reaches every user without any
       # configuration file on their side.
-      YOANIME_PARTY_CLOUDFLARE_URL: ${{ vars.YOANIME_PARTY_CLOUDFLARE_URL }}
-      YOANIME_PARTY_SUPABASE_URL: ${{ vars.YOANIME_PARTY_SUPABASE_URL }}
-      YOANIME_PARTY_SUPABASE_KEY: ${{ vars.YOANIME_PARTY_SUPABASE_KEY }}
+      YO_CLOUDFLARE_ENDPOINT: ${{ vars.YO_CLOUDFLARE_ENDPOINT }}
+      YO_SUPABASE_ENDPOINT: ${{ vars.YO_SUPABASE_ENDPOINT }}
+      YO_SUPABASE_PUBKEY: ${{ vars.YO_SUPABASE_PUBKEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -125,19 +125,19 @@ jobs:
       - name: Checksum
         shell: pwsh
         run: |
-          $exe = "dist\yoanime_${env:VERSION}_${{ matrix.arch }}.exe"
+          $exe = "dist\yo_${env:VERSION}_${{ matrix.arch }}.exe"
           $hash = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
           "$hash  $(Split-Path -Leaf $exe)" | Set-Content -NoNewline "$exe.sha256"
       - name: Build installer
         shell: pwsh
         run: |
           .\installer.ps1 -Version $env:VERSION -Arch "${{ matrix.arch }}"
-          $setup = "dist\yoanime_${env:VERSION}_${{ matrix.arch }}_setup.exe"
+          $setup = "dist\yo_${env:VERSION}_${{ matrix.arch }}_setup.exe"
           $hash = (Get-FileHash -Algorithm SHA256 $setup).Hash.ToLower()
           "$hash  $(Split-Path -Leaf $setup)" | Set-Content -NoNewline "$setup.sha256"
       - uses: actions/upload-artifact@v4
         with:
-          name: yoanime-${{ matrix.arch }}
+          name: yo_${{ matrix.arch }}
           path: |
             dist/*.exe
             dist/*.sha256
@@ -161,7 +161,7 @@ jobs:
           # installer. A release that lost either of them must not happen.
           missing=0
           for arch in amd64 arm64 386; do
-            for file in "dist/yoanime_${VERSION}_${arch}.exe" "dist/yoanime_${VERSION}_${arch}_setup.exe"; do
+            for file in "dist/yo_${VERSION}_${arch}.exe" "dist/yo_${VERSION}_${arch}_setup.exe"; do
               if [[ -f "$file" ]]; then
                 echo "ok: $(basename "$file")"
               else
@@ -174,7 +174,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.version }}
-          name: yoanime ${{ needs.prepare.outputs.version }}
+          name: yo ${{ needs.prepare.outputs.version }}
           body: ${{ needs.prepare.outputs.body }}
           prerelease: ${{ needs.prepare.outputs.prerelease }}
           make_latest: ${{ needs.prepare.outputs.prerelease != 'true' }}

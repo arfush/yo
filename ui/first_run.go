@@ -481,6 +481,7 @@ func (fr *firstRun) download(ctx context.Context) {
 	if err != nil {
 		fr.state = firstRunError
 		fr.lastErr = err
+		fr.errorText = userErrorText(err)
 		fr.mu.Unlock()
 		logFirstRunError(err)
 		fr.window.Invalidate()
@@ -528,5 +529,9 @@ func logFirstRunError(err error) {
 	if err == nil {
 		return
 	}
-	logger.Error("first-run download failed", "error", err)
+	cause := userErrorCause(err)
+	if cause == nil {
+		return
+	}
+	logger.Error("first-run download failed", "error", cause)
 }

@@ -13,7 +13,7 @@ func TestTitleQualitiesCacheRoundTrip(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	id, err := db.UpsertTitle(Title{Slug: "kinopoisk:88198", Source: SourceKinopoisk, ExternalID: "88198"})
+	id, err := db.UpsertTitle(Title{Slug: "filmlib:88198", Source: SourceFilmlib, ExternalID: "88198"})
 	if err != nil {
 		t.Fatal(err)
 	}

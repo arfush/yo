@@ -1,4 +1,4 @@
-// yoanime watch-party relay.
+// yo watch-party relay.
 //
 // One Durable Object instance per room address keeps the host card and the last
 // host anchor in memory and forwards them to the guests. The class deliberately
@@ -33,7 +33,7 @@ export default {
     }
     if (url.pathname !== "/room") {
       return new Response(
-        "yoanime watch-party relay. Connect to /room?room=<ADDRESS>&role=host|guest",
+        "yo watch-party relay. Connect to /room?room=<ADDRESS>&role=host|guest",
         { status: 200, headers: { "content-type": "text/plain; charset=utf-8" } },
       );
     }

@@ -614,7 +614,7 @@ func TestGuestRequestsAFreshAnchor(t *testing.T) {
 	defer guest.Close()
 	waitFor(t, 3*time.Second, guest.HostSeen)
 
-	want := State{TitleSlug: "kinopoisk:685246", Voice: "v", Episode: "S1E1", Playing: true, Position: 30}
+	want := State{TitleSlug: "filmlib:685246", Voice: "v", Episode: "S1E1", Playing: true, Position: 30}
 	if err := host.Publish(want); err != nil {
 		t.Fatalf("Publish: %v", err)
 	}

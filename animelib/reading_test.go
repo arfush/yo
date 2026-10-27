@@ -88,7 +88,7 @@ func TestSiteIDForSource(t *testing.T) {
 		{"ranobelib", SiteRanobeLib, true},
 		{"hentailib", SiteHentaiLib, true},
 		{"animelib", 0, false},
-		{"kinopoisk", 0, false},
+		{"filmlib", 0, false},
 	}
 	for _, tc := range cases {
 		site, ok := SiteIDForSource(tc.source)

@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/arfush/yo/kinopoisk"
+	"github.com/arfush/yo/filmlib"
 	"github.com/arfush/yo/metadata"
 )
 
 // animelibStreamHeaders keep AnimeLIB direct files and Kodik manifests working.
-// They are set explicitly on every file because a Kinopoisk episode replaces the
+// They are set explicitly on every file because a Filmlib episode replaces the
 // same mpv property with its own headers.
 var animelibStreamHeaders = []string{
 	"Referer: https://v5.animelib.org/",
@@ -26,15 +26,15 @@ func headersFor(entry *playlistEntry) []string {
 	return animelibStreamHeaders
 }
 
-// resolveKinopoisk resolves one Alloha episode through the headless theatre.
+// resolveFilmlib resolves one Alloha episode through the headless theatre.
 // The theatre also reports its own skip ranges, so intro/outro chapters are
 // attached here and the introdb lookup is skipped for this entry.
-func (s *Session) resolveKinopoisk(ctx context.Context, index int) (*playlistEntry, error) {
-	if s.plan.Kinopoisk == nil || strings.TrimSpace(s.plan.Kinopoisk.Iframe) == "" {
+func (s *Session) resolveFilmlib(ctx context.Context, index int) (*playlistEntry, error) {
+	if s.plan.Filmlib == nil || strings.TrimSpace(s.plan.Filmlib.Iframe) == "" {
 		return nil, errors.New("voiceover has no player URL")
 	}
 	episode := s.plan.Episodes[index]
-	season, number, ok := kinopoisk.SplitEpisodeKey(episode.Number)
+	season, number, ok := filmlib.SplitEpisodeKey(episode.Number)
 	if !ok {
 		return nil, fmt.Errorf("invalid episode %q", episode.Number)
 	}
@@ -45,21 +45,21 @@ func (s *Session) resolveKinopoisk(ctx context.Context, index int) (*playlistEnt
 	s.mu.Lock()
 	fresh := s.freshResolve
 	s.mu.Unlock()
-	request := kinopoisk.Request{
-		Iframe:        s.plan.Kinopoisk.Iframe,
+	request := filmlib.Request{
+		Iframe:        s.plan.Filmlib.Iframe,
 		Season:        season,
 		Episode:       number,
-		TranslationID: s.plan.Kinopoisk.TranslationID,
+		TranslationID: s.plan.Filmlib.TranslationID,
 		Quality:       quality,
 	}
-	var media kinopoisk.Media
+	var media filmlib.Media
 	var err error
 	if fresh {
 		// The first open failed; a signed URL may have expired, so do not
 		// trust the 40-minute manifest cache for this retry.
-		media, err = s.service.kinopoisk.ResolveFresh(ctx, request)
+		media, err = s.service.filmlib.ResolveFresh(ctx, request)
 	} else {
-		media, err = s.service.kinopoisk.Resolve(ctx, request)
+		media, err = s.service.filmlib.Resolve(ctx, request)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("episode %s: %w", episode.Number, err)
@@ -72,18 +72,18 @@ func (s *Session) resolveKinopoisk(ctx context.Context, index int) (*playlistEnt
 		Quality:        media.Quality,
 		Headers:        media.Headers,
 		Subtitles:      media.Subtitles,
-		chapters:       kinopoiskChapters(media.Skip),
+		chapters:       filmlibChapters(media.Skip),
 		chaptersReady:  true,
 		chaptersNoData: len(media.Skip) == 0,
 	}
-	logger.Info("Kinopoisk episode resolved", "episode", episode.Number, "quality", media.Quality, "subtitles", len(media.Subtitles), "skip", len(media.Skip))
+	logger.Info("Filmlib episode resolved", "episode", episode.Number, "quality", media.Quality, "subtitles", len(media.Subtitles), "skip", len(media.Skip))
 	return entry, nil
 }
 
-// kinopoiskChapters converts the theatre's skip ranges into the marker chapters
+// filmlibChapters converts the theatre's skip ranges into the marker chapters
 // the auto-skip loop already understands: a segment chapter at the start of the
 // range and a plain chapter at its end.
-func kinopoiskChapters(ranges []kinopoisk.SkipRange) []metadata.Chapter {
+func filmlibChapters(ranges []filmlib.SkipRange) []metadata.Chapter {
 	if len(ranges) == 0 {
 		return nil
 	}

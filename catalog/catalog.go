@@ -15,7 +15,7 @@ import (
 // can still tell the sites apart.
 const (
 	SourceAnimeLIB  = "animelib"
-	SourceKinopoisk = "kinopoisk"
+	SourceFilmlib   = "filmlib"
 	SourceMangaLib  = "mangalib"
 	SourceYaoiLib   = "yaoilib"
 	SourceRanobeLib = "ranobelib"
@@ -79,21 +79,21 @@ func (s UserStatus) Valid() bool {
 // Voiceover is a translation team and the episodes it covers. HasKodik marks
 // voices with episodes that only the Kodik player carries.
 type Voiceover struct {
-	// ID is the source-specific id of the voice (Kinopoisk translations use
+	// ID is the source-specific id of the voice (Filmlib translations use
 	// it when two voices share an empty display name).
 	ID       int
 	Name     string
 	Episodes []string
 	Missing  []string
 	HasKodik bool
-	// Qualities is the stream ladder of a Kinopoisk voice. It is empty for
+	// Qualities is the stream ladder of a Filmlib voice. It is empty for
 	// AnimeLIB, where qualities belong to the episode player and not to the
 	// voice. The title page fills it from a background probe and Save caches it.
 	Qualities []int
 }
 
 // Season is one season of a series. AnimeLIB titles have no explicit seasons
-// (their episodes are a flat list), while a Kinopoisk series repeats episode
+// (their episodes are a flat list), while a Filmlib series repeats episode
 // numbers across seasons, so the title window groups them.
 type Season struct {
 	Number   int
@@ -103,10 +103,10 @@ type Season struct {
 // Title is everything the title window needs, plus the saved selection.
 type Title struct {
 	ID int64
-	// Source is SourceAnimeLIB or SourceKinopoisk and decides which resolver
+	// Source is SourceAnimeLIB or SourceFilmlib and decides which resolver
 	// may open the title.
 	Source string
-	// ExternalID is the id inside Source (the Kinopoisk film id).
+	// ExternalID is the id inside Source (the Filmlib film id).
 	ExternalID      string
 	AnimeID         int64
 	Slug            string
@@ -137,8 +137,8 @@ type Title struct {
 	Chapters []ReadingChapter
 }
 
-// IsKinopoisk reports whether the title came from Kinopoisk.
-func (t Title) IsKinopoisk() bool { return t.Source == SourceKinopoisk }
+// IsFilmlib reports whether the title came from Filmlib.
+func (t Title) IsFilmlib() bool { return t.Source == SourceFilmlib }
 
 // IsReading reports whether the title opens in the manga or ranobe reader.
 func (t Title) IsReading() bool { return IsReadingSource(t.Source) }

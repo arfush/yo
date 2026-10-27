@@ -28,26 +28,26 @@ func TestResolveEntryIndex(t *testing.T) {
 }
 
 func TestSessionMatches(t *testing.T) {
-	if got := (*Session)(nil).Matches("kinopoisk:685246", "HDrezka Studio. 18+"); got {
+	if got := (*Session)(nil).Matches("filmlib:685246", "HDrezka Studio. 18+"); got {
 		t.Fatal("nil session must not match anything")
 	}
 	noPlan := &Session{}
-	if got := noPlan.Matches("kinopoisk:685246", "HDrezka Studio. 18+"); got {
+	if got := noPlan.Matches("filmlib:685246", "HDrezka Studio. 18+"); got {
 		t.Fatal("session without a plan must not match")
 	}
-	session := &Session{plan: &library.PlaybackPlan{Slug: "kinopoisk:685246", Voice: "HDrezka Studio. 18+"}}
-	if !session.Matches("kinopoisk:685246", "HDrezka Studio. 18+") {
+	session := &Session{plan: &library.PlaybackPlan{Slug: "filmlib:685246", Voice: "HDrezka Studio. 18+"}}
+	if !session.Matches("filmlib:685246", "HDrezka Studio. 18+") {
 		t.Fatal("exact slug and voice must match")
 	}
-	if session.Matches("kinopoisk:88198", "HDrezka Studio. 18+") {
+	if session.Matches("filmlib:88198", "HDrezka Studio. 18+") {
 		t.Fatal("different slug must not match")
 	}
-	if session.Matches("kinopoisk:685246", "TVShows") {
+	if session.Matches("filmlib:685246", "TVShows") {
 		t.Fatal("different voice must not match")
 	}
 	// A guest that only knows the slug (no voice) is accepted so the follow
 	// jump still works when the mirror renamed the voice.
-	if !session.Matches("kinopoisk:685246", "") {
+	if !session.Matches("filmlib:685246", "") {
 		t.Fatal("empty voice must not block the match")
 	}
 }

@@ -19,7 +19,7 @@ func dialCloudflare(ctx context.Context, cfg Config, address string, role Role) 
 		return nil, err
 	}
 	conn, resp, err := websocket.Dial(ctx, endpoint, &websocket.DialOptions{
-		HTTPHeader: http.Header{"User-Agent": []string{"yoanime"}},
+		HTTPHeader: http.Header{"User-Agent": []string{"yo"}},
 	})
 	if err != nil {
 		if resp != nil {

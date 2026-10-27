@@ -40,7 +40,7 @@ func parseVersion(value string) ([]int64, bool) {
 	return numbers, true
 }
 
-// CompareVersions compares two yoanime versions. It returns -1 when left is
+// CompareVersions compares two yo versions. It returns -1 when left is
 // older, 0 when the versions are equal and 1 when left is newer. Missing
 // components count as zero, so v1.3 and v1.3.0 are equal. Invalid versions
 // compare as equal, which makes callers treat them as "not newer".

@@ -260,7 +260,7 @@ func TestFetchReleaseFallsBackToChecksumAsset(t *testing.T) {
 func TestFetchReleaseNoMatchingAsset(t *testing.T) {
 	testRepository(t)
 
-	payload := fmt.Sprintf(`[{"tag_name":"v1.4","assets":[{"name":"yoanime_v1.4_other.exe","size":1234,"browser_download_url":"https://github.com/arfush/yo/releases/download/v1.4/other.exe"}]}]`)
+	payload := fmt.Sprintf(`[{"tag_name":"v1.4","assets":[{"name":"yo_v1.4_other.exe","size":1234,"browser_download_url":"https://github.com/arfush/yo/releases/download/v1.4/other.exe"}]}]`)
 	client := githubTestClient(map[string]githubTestResponse{
 		releasesPath(): {status: http.StatusOK, body: payload},
 	})
@@ -288,7 +288,7 @@ func TestFetchReleaseRejectsUntrustedAssetURL(t *testing.T) {
 	client := githubTestClient(map[string]githubTestResponse{
 		releasesPath(): {
 			status: http.StatusOK,
-			body:   githubReleaseListJSON(githubReleaseEntry("v1.4", "https://evil.example/yoanime.exe", "sha256:"+testHash)),
+			body:   githubReleaseListJSON(githubReleaseEntry("v1.4", "https://evil.example/yo.exe", "sha256:"+testHash)),
 		},
 	})
 	_, err := FetchRelease(context.Background(), client)

@@ -10,7 +10,7 @@ import (
 
 func TestAcquireIsExclusive(t *testing.T) {
 	original := mutexName
-	mutexName = fmt.Sprintf(`Local\yoanime.SingleInstance.Test.%d`, os.Getpid())
+	mutexName = fmt.Sprintf(`Local\yo.SingleInstance.Test.%d`, os.Getpid())
 	t.Cleanup(func() { mutexName = original })
 
 	release, ok := Acquire()

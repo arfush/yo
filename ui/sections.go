@@ -8,7 +8,7 @@ import (
 )
 
 // librarySectionKey is the settings row that remembers the selected library
-// section, so yoanime reopens on the screen the user left.
+// section, so the application reopens on the screen the user left.
 const librarySectionKey = "library_section"
 
 // librarySection is the header mode of the application. Every history row and

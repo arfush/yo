@@ -1,4 +1,4 @@
-package kinopoisk
+package filmlib
 
 import (
 	"context"
@@ -40,7 +40,7 @@ type Catalog struct {
 	Available map[int][]string
 }
 
-// Voices returns the Alloha translations of a Kinopoisk title, in the order the
+// Voices returns the Alloha translations of a Filmlib title, in the order the
 // mirror lists them. Other players in the response are ignored: only Alloha
 // exposes the season/episode catalogue this package can resolve.
 func (c *Client) Voices(ctx context.Context, id int) ([]Voice, error) {
@@ -89,7 +89,7 @@ func (c *Client) Voices(ctx context.Context, id int) ([]Voice, error) {
 	if len(voices) == 0 {
 		return nil, ErrNotServed
 	}
-	logger.Debug("kinopoisk voices loaded", "title", id, "voices", len(voices), "endpoint", endpoint)
+	logger.Debug("filmlib voices loaded", "title", id, "voices", len(voices), "endpoint", endpoint)
 	return voices, nil
 }
 
@@ -161,7 +161,7 @@ func (c *Client) Catalog(ctx context.Context, voice Voice) (Catalog, error) {
 	if err != nil {
 		return Catalog{}, err
 	}
-	logger.Debug("kinopoisk catalog parsed", "voice", voice.ID, "movie", catalog.Movie, "seasons", len(catalog.Seasons), "episodes", len(catalog.Episodes))
+	logger.Debug("filmlib catalog parsed", "voice", voice.ID, "movie", catalog.Movie, "seasons", len(catalog.Seasons), "episodes", len(catalog.Episodes))
 	return catalog, nil
 }
 
@@ -436,4 +436,4 @@ func asInt(value any) int {
 	return 0
 }
 
-var logger = log.For(log.SourceKinopoisk)
+var logger = log.For(log.SourceFilmlib)

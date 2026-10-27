@@ -17,7 +17,7 @@ import (
 // and the optional secret, and routes rooms by a hash of the key. Version 3
 // moves both hashes to the "party" namespace and renames the Supabase topic;
 // a 2.x client resolves a different room address and must not be mixed with a
-// 3.x peer. The version check turns such a mix into a clear "update yoanime"
+// 3.x peer. The version check turns such a mix into a clear "update yo"
 // error instead of a silently desynchronised room.
 const ProtocolVersion = "3.0"
 

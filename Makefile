@@ -1,4 +1,4 @@
-﻿APP     := yoanime.exe
+APP     := yo.exe
 VERSION ?=
 REPO    ?= arfush/yo
 ARCH    ?= amd64

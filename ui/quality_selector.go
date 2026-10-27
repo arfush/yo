@@ -11,7 +11,7 @@ import (
 	"gioui.org/widget"
 )
 
-// layoutQualities draws the quality block. A step the selected Kinopoisk voice
+// layoutQualities draws the quality block. A step the selected Filmlib voice
 // cannot deliver is painted muted and ignores clicks instead of silently
 // falling back during playback. The row scrolls horizontally when the ladder
 // does not fit, and the wheel works on it like on a vertical list.
@@ -66,7 +66,7 @@ func (w *titleScreen) layoutQualityButton(gtx layout.Context, index int, cell im
 		w.selectedQuality = index
 		if w.onQuality != nil {
 			if err := w.onQuality(option.value); err != nil {
-				w.watchError = friendlyError(err)
+				w.watchError = userErrorText(err)
 				if w.onError != nil {
 					w.onError(err)
 				}

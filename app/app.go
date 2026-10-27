@@ -26,7 +26,7 @@ import (
 func Run() {
 	if logPath, err := appdata.LogPath(); err == nil {
 		if err := log.Init(logPath); err != nil {
-			fmt.Fprintln(os.Stderr, "yoanime: cannot open log:", err)
+			fmt.Fprintln(os.Stderr, "yo: cannot open log:", err)
 		}
 		defer log.Close()
 	}
@@ -49,7 +49,7 @@ func Run() {
 	services, err := buildServices()
 	if err != nil {
 		logger.Error("application startup failed", "error", err)
-		fmt.Fprintln(os.Stderr, "yoanime:", err)
+		fmt.Fprintln(os.Stderr, "yo:", err)
 		os.Exit(1)
 	}
 	ui.Run(services)

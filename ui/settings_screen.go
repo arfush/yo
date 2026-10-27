@@ -198,7 +198,7 @@ func (w *settingsScreen) reportError(err error) {
 	if err == nil {
 		return
 	}
-	w.errorText = friendlyError(err)
+	w.errorText = userErrorText(err)
 	if w.onError != nil {
 		w.onError(err)
 	}
@@ -420,7 +420,7 @@ func (w *settingsScreen) layoutAutoUpdatePanel(gtx layout.Context, rect image.Re
 		gtx,
 		rect,
 		"Автообновление",
-		"Автоматически обновляет yoanime при запуске или пока оно неактивно - просмотру не повредит",
+		"Автоматически обновляет yo при запуске или пока оно неактивно - просмотру не повредит",
 		w.autoUpdate,
 		hover,
 		&w.autoUpdateClick,
@@ -589,7 +589,7 @@ func (w *settingsScreen) saveName() {
 	}
 	normalized, err := party.NormalizeName(w.nameEditor.Text())
 	if err != nil {
-		w.reportError(userMessage("Никнейм — до 24 символов, без служебных знаков и не похож на ключ комнаты."))
+		w.reportError(errPartyName.wrap(err))
 		return
 	}
 	if w.onName != nil {

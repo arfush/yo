@@ -13,7 +13,7 @@ import (
 	"github.com/arfush/yo/platform/appdata"
 )
 
-var lockName = "yoanime.lock"
+var lockName = "yo.lock"
 
 func acquire() (func(), bool) {
 	dir, err := appdata.Dir()

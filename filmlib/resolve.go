@@ -1,4 +1,4 @@
-package kinopoisk
+package filmlib
 
 import (
 	"context"
@@ -27,7 +27,7 @@ const (
 	// longer than a playlist window; the Bearer is refreshed on every resolve.
 	mediaTTL = 40 * time.Minute
 
-	iframeID = "yoanime-kinopoisk"
+	iframeID = "yoanime-filmlib"
 )
 
 // Request is one episode to resolve.
@@ -139,21 +139,21 @@ func (r *Resolver) Resolve(ctx context.Context, request Request) (Media, error) 
 	}
 
 	target := IframeURL(request.Iframe, request.Season, request.Episode)
-	logger.Info("resolving Kinopoisk stream", "title", target, "season", request.Season, "episode", request.Episode, "quality", request.Quality)
+	logger.Info("resolving Filmlib stream", "title", target, "season", request.Season, "episode", request.Episode, "quality", request.Quality)
 	media, err := r.resolve(ctx, target, request)
 	if err != nil {
 		// A dropped page or a crashed Chromium leaves the cached handle
 		// unusable; retry once from a clean page before giving up.
-		logger.Warn("Kinopoisk resolve failed, retrying with a fresh page", "error", err)
+		logger.Warn("Filmlib resolve failed, retrying with a fresh page", "error", err)
 		r.dropPage()
 		media, err = r.resolve(ctx, target, request)
 		if err != nil {
-			logger.Error("Kinopoisk resolve failed", "season", request.Season, "episode", request.Episode, "error", err)
+			logger.Error("Filmlib resolve failed", "season", request.Season, "episode", request.Episode, "error", err)
 			return Media{}, err
 		}
 	}
 	r.store(key, media)
-	logger.Info("Kinopoisk stream resolved", "quality", media.Quality, "subtitles", len(media.Subtitles))
+	logger.Info("Filmlib stream resolved", "quality", media.Quality, "subtitles", len(media.Subtitles))
 	return media, nil
 }
 

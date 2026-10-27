@@ -174,7 +174,7 @@ func (s *Session) Matches(slug, voice string) bool {
 
 // JumpTo moves the running player to an episode that already sits in its
 // resolved playlist. Resolving a stream can take seconds (Kodik, and every
-// Kinopoisk episode), so when the host rolls to the next episode of the same
+// Filmlib episode), so when the host rolls to the next episode of the same
 // title the guest should jump inside its own preloaded window instead of
 // killing mpv and re-resolving. ErrEpisodeNotLoaded tells the caller to fall
 // back to a fresh session for a jump outside the window.
@@ -199,7 +199,7 @@ func (s *Session) JumpTo(episode string) error {
 	// entries[i] always sits at playlist position i: resolveAndAdd inserts in
 	// episode order and mirrors every insert into mpv. The entry carries its
 	// own per-file headers from the loadfile that added it, so selecting it
-	// brings the Kinopoisk Referer of that episode along.
+	// brings the Filmlib Referer of that episode along.
 	return mpv.jump(index)
 }
 

@@ -5,7 +5,7 @@ import "testing"
 func TestIsReadingSource(t *testing.T) {
 	for source, want := range map[string]bool{
 		SourceAnimeLIB:  false,
-		SourceKinopoisk: false,
+		SourceFilmlib:   false,
 		SourceMangaLib:  true,
 		SourceYaoiLib:   true,
 		SourceRanobeLib: true,

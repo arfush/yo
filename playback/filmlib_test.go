@@ -3,15 +3,15 @@ package playback
 import (
 	"testing"
 
-	"github.com/arfush/yo/kinopoisk"
+	"github.com/arfush/yo/filmlib"
 	"github.com/arfush/yo/metadata"
 )
 
 // The theatre reports skip ranges as plain seconds. They must become chapters
 // whose titles autoSkipTarget understands, otherwise Alloha's skipTime would be
 // silently ignored.
-func TestKinopoiskChaptersDriveAutoSkip(t *testing.T) {
-	chapters := kinopoiskChapters([]kinopoisk.SkipRange{
+func TestFilmlibChaptersDriveAutoSkip(t *testing.T) {
+	chapters := filmlibChapters([]filmlib.SkipRange{
 		{Start: 0, End: 34},
 		{Start: 1500, End: 1600},
 	})
@@ -36,7 +36,7 @@ func TestKinopoiskChaptersDriveAutoSkip(t *testing.T) {
 	}
 
 	// A film usually carries a single range, which is its opening.
-	film := kinopoiskChapters([]kinopoisk.SkipRange{{Start: 0, End: 34}})
+	film := filmlibChapters([]filmlib.SkipRange{{Start: 0, End: 34}})
 	if len(film) != 2 || film[0].Title != metadata.ChapterTitle(metadata.SegmentIntro) {
 		t.Fatalf("film chapters = %v", film)
 	}

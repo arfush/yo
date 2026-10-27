@@ -7,7 +7,7 @@ param(
 
 # Builds a stripped Windows GUI executable. The release workflow passes the
 # version, repository and architecture; local builds default to the current
-# machine's architecture and yoanime.exe.
+# machine's architecture and yo.exe.
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
@@ -25,9 +25,9 @@ if ($Version) {
 
 if (-not $Output) {
     if ($Version) {
-        $Output = "dist\yoanime_${Version}_${Arch}.exe"
+        $Output = "dist\yo_${Version}_${Arch}.exe"
     } else {
-        $Output = "yoanime.exe"
+        $Output = "yo.exe"
     }
 }
 
@@ -58,9 +58,9 @@ if (Test-Path $partyFile) {
 }
 
 $partyFlags = @(
-    @{ Env = "YOANIME_PARTY_CLOUDFLARE_URL"; Field = "cloudflare_url"; Symbol = "CloudflareURL" },
-    @{ Env = "YOANIME_PARTY_SUPABASE_URL"; Field = "supabase_url"; Symbol = "SupabaseURL" },
-    @{ Env = "YOANIME_PARTY_SUPABASE_KEY"; Field = "supabase_key"; Symbol = "SupabaseKey" }
+    @{ Env = "YO_CLOUDFLARE_ENDPOINT"; Field = "cloudflare_endpoint"; Symbol = "CloudflareURL" },
+    @{ Env = "YO_SUPABASE_ENDPOINT"; Field = "supabase_endpoint"; Symbol = "SupabaseURL" },
+    @{ Env = "YO_SUPABASE_PUBKEY"; Field = "supabase_pubkey"; Symbol = "SupabaseKey" }
 )
 $partyBaked = @()
 foreach ($flag in $partyFlags) {
@@ -94,7 +94,7 @@ $env:CGO_ENABLED = "0"
 $env:GOOS = "windows"
 $env:GOARCH = $Arch
 
-go build -trimpath -ldflags="$ldflags" -o $Output .\cmd\yoanime
+go build -trimpath -ldflags="$ldflags" -o $Output .\cmd\yo
 
 $size = (Get-Item $Output).Length
 Write-Host ("Built {0}: {1:N1} MB" -f $Output, ($size / 1MB))

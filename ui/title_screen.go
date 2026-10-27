@@ -101,7 +101,7 @@ var (
 )
 
 // titleStandardQualities are the presets the quality block has always offered.
-// A Kinopoisk title keeps them after its ladder is known so a missing step is
+// A Filmlib title keeps them after its ladder is known so a missing step is
 // visible as a blocked button, not as a silently absent one.
 var titleStandardQualities = []int{720, 1080, 1440, 2160}
 
@@ -113,7 +113,7 @@ type qualityOption struct {
 }
 
 // titleQualityOptions builds the buttons for one voice. A voice without a known
-// ladder (AnimeLIB, or a Kinopoisk title before the background probe returns)
+// ladder (AnimeLIB, or a Filmlib title before the background probe returns)
 // keeps the standard four. A known ladder keeps the standard rows and disables
 // the missing ones; a voice that offers none of them (only 360/480) switches to
 // its real steps instead of showing four dead buttons.
@@ -387,7 +387,7 @@ func newTitleScreen(typo *typography, item historyTitle, preferredQuality int) *
 }
 
 // selectedVoiceQualities returns the ladder of the current voice, or nil while
-// it is unknown (AnimeLIB, or a Kinopoisk title waiting for the probe).
+// it is unknown (AnimeLIB, or a Filmlib title waiting for the probe).
 func (w *titleScreen) selectedVoiceQualities() []int {
 	if w.selectedVoice < 0 || w.selectedVoice >= len(w.item.voices) {
 		return nil
@@ -1025,7 +1025,7 @@ func (w *titleScreen) save(gtx layout.Context) {
 	w.savedUntil = time.Time{}
 	if w.onSave != nil {
 		if err := w.onSave(w.selectedVoiceName(), w.selectedEpisodeLabel()); err != nil {
-			w.saveError = friendlyError(err)
+			w.saveError = userErrorText(err)
 			if w.onError != nil {
 				w.onError(err)
 			}
@@ -1048,7 +1048,7 @@ func (w *titleScreen) watch(gtx layout.Context) {
 	}
 	w.watchError = ""
 	if err := w.onWatch(w.selectedVoiceName(), w.selectedEpisodeLabel(), w.selectedQualityValue()); err != nil {
-		w.watchError = friendlyError(err)
+		w.watchError = userErrorText(err)
 		if w.onError != nil {
 			w.onError(err)
 		}

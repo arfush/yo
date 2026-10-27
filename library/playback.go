@@ -36,10 +36,10 @@ type PlaybackPlan struct {
 	IMDbID       string
 	ResumeAt     float64
 	Duration     float64
-	// Source names the catalogue the plan belongs to. Kinopoisk plans carry the
+	// Source names the catalogue the plan belongs to. Filmlib plans carry the
 	// iframe of the selected translation instead of AnimeLIB episode ids.
-	Source    string
-	Kinopoisk *KinopoiskPlan
+	Source  string
+	Filmlib *FilmlibPlan
 	// CompleteOnFinish is true when the last episode in Episodes is the final
 	// released episode of a completed title. Playback uses it to move the title
 	// to "Completed" only after that episode reaches EOF.
@@ -50,8 +50,8 @@ type PlaybackPlan struct {
 // external season/IMDb metadata. When the selected episode is missing from the
 // voice it picks the next available episode forward, as requested.
 func (l *Library) PlaybackPlan(ctx context.Context, title Title, voiceName, episode string) (*PlaybackPlan, error) {
-	if title.IsKinopoisk() {
-		return l.kinopoiskPlan(ctx, title, voiceName, episode)
+	if title.IsFilmlib() {
+		return l.filmlibPlan(ctx, title, voiceName, episode)
 	}
 	if strings.TrimSpace(title.Slug) == "" {
 		return nil, fmt.Errorf("title has no AnimeLIB link")

@@ -77,9 +77,9 @@ func startMPV(ctx context.Context, geometry, title string) (*mpvProcess, error) 
 	}
 	title = strings.TrimSpace(title)
 	if title == "" {
-		title = "yoanime"
+		title = "yo"
 	}
-	pipe := mpvPipePath("yoanime-mpv-" + strconv.Itoa(os.Getpid()) + "-" + strconv.FormatInt(time.Now().UnixNano(), 36))
+	pipe := mpvPipePath("yo-mpv-" + strconv.Itoa(os.Getpid()) + "-" + strconv.FormatInt(time.Now().UnixNano(), 36))
 	args := []string{
 		"--input-ipc-server=" + pipe,
 		"--idle=yes",
@@ -333,7 +333,7 @@ func (m *mpvProcess) call(arguments ...interface{}) (interface{}, error) {
 
 // streamOptions builds the per-file options of one playlist entry. Passing the
 // headers to loadfile instead of changing the global http-header-fields property
-// keeps every Kinopoisk episode's own theatre Referer and bearer token with its
+// keeps every Filmlib episode's own theatre Referer and bearer token with its
 // entry: a global property would be overwritten by the next preload while the
 // current HLS file is still fetching segments.
 func streamOptions(headers []string) map[string]string {

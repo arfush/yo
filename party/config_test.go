@@ -22,8 +22,8 @@ func TestSaveConfigRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read saved config: %v", err)
 	}
-	if !strings.Contains(string(raw), `"cloudflare_url"`) {
-		t.Fatalf("saved file has no cloudflare_url: %s", raw)
+	if !strings.Contains(string(raw), `"cloudflare_endpoint"`) {
+		t.Fatalf("saved file has no cloudflare_endpoint: %s", raw)
 	}
 
 	loaded := LoadConfig(path)
@@ -44,11 +44,25 @@ func TestConfigFileOverridesBuiltInRelay(t *testing.T) {
 	t.Cleanup(func() { CloudflareURL = oldCloudflare })
 
 	path := filepath.Join(t.TempDir(), "party.json")
-	if err := os.WriteFile(path, []byte(`{"cloudflare_url":""}`), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"cloudflare_endpoint":""}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if got := LoadConfig(path).CloudflareURL; got != "" {
 		t.Fatalf("cloudflare url = %q, want the empty file value to win", got)
+	}
+}
+
+func TestLoadConfigAcceptsLegacyRelayKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "party.json")
+	raw := `{"cloudflare_url":"https://old.example.workers.dev","supabase_url":"https://abcd.supabase.co","supabase_key":"sb_publishable_old"}`
+	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := LoadConfig(path)
+	if got.CloudflareURL != "wss://old.example.workers.dev" ||
+		got.SupabaseURL != "wss://abcd.supabase.co" ||
+		got.SupabaseKey != "sb_publishable_old" {
+		t.Fatalf("legacy config = %+v", got)
 	}
 }
 

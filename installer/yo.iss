@@ -1,9 +1,9 @@
-; Per-user yoanime installer. A per-user location (instead of Program Files)
-; keeps the in-app updater able to replace yoanime.exe without an elevation
+; Per-user yo installer. A per-user location (instead of Program Files)
+; keeps the in-app updater able to replace yo.exe without an elevation
 ; prompt, while still giving the app Start menu, uninstall and Apps entries.
 
-#define AppName "yoanime"
-#define AppExe "yoanime.exe"
+#define AppName "yo"
+#define AppExe "yo.exe"
 
 #ifndef VersionTag
 #define VersionTag "v0.0"
@@ -30,14 +30,14 @@ DisableProgramGroupPage=yes
 AllowNoIcons=yes
 PrivilegesRequired=lowest
 OutputDir=dist
-OutputBaseFilename=yoanime_{#VersionTag}_{#Arch}_setup
+OutputBaseFilename=yo_{#VersionTag}_{#Arch}_setup
 SetupIconFile=ui\assets\images\app-icon.ico
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
-AppMutex=Local\yoanime.SingleInstance
+AppMutex=Local\yo.SingleInstance
 CloseApplications=no
 SourceDir=..
 
@@ -59,7 +59,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "dist\yoanime_{#VersionTag}_{#Arch}.exe"; DestDir: "{app}"; DestName: "{#AppExe}"; Flags: ignoreversion
+Source: "dist\yo_{#VersionTag}_{#Arch}.exe"; DestDir: "{app}"; DestName: "{#AppExe}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"

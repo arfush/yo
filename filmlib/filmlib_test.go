@@ -1,4 +1,4 @@
-package kinopoisk
+package filmlib
 
 import (
 	"context"
@@ -22,7 +22,8 @@ func TestParseInput(t *testing.T) {
 		{name: "series link", input: "https://www.kinopoisk.ru/series/843389/", wantID: 843389, wantOK: true},
 		{name: "mirror zone", input: "kinopoisk.ru/film/77439/", wantID: 77439, movie: true, wantOK: true},
 		{name: "uppercase", input: "https://WWW.KINOPOISK.RU/SERIES/1100777", wantID: 1100777, wantOK: true},
-		{name: "explicit prefix", input: "kinopoisk:88198", wantID: 88198, wantOK: true},
+		{name: "explicit prefix", input: "filmlib:88198", wantID: 88198, wantOK: true},
+		{name: "legacy prefix", input: "kinopoisk:88198", wantID: 88198, wantOK: true},
 		{name: "short prefix", input: "kp: 5942378", wantID: 5942378, wantOK: true},
 		{name: "bare id", input: "88198", wantID: 88198, wantOK: true},
 		{name: "hd is unsupported", input: "https://hd.kinopoisk.ru/film/1234", wantOK: false},

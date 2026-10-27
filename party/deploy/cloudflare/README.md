@@ -24,13 +24,13 @@ wrangler deploy
 `wrangler deploy` напечатает адрес вида:
 
 ```text
-https://yoanime-party.<ваш-аккаунт>.workers.dev
+https://yo-party.<ваш-аккаунт>.workers.dev
 ```
 
 Проверка, что реле живо:
 
 ```bash
-curl https://yoanime-party.<ваш-аккаунт>.workers.dev/health
+curl https://yo-party.<ваш-аккаунт>.workers.dev/health
 # ok
 ```
 
@@ -48,9 +48,9 @@ curl https://yoanime-party.<ваш-аккаунт>.workers.dev/health
 1. `wrangler deploy` — получить адрес.
 2. Проверить `/health`.
 3. Записать адрес в один из двух источников:
-   - переменная `YOANIME_PARTY_CLOUDFLARE_URL` (локально — в окружении, в CI —
+   - переменная `YO_CLOUDFLARE_ENDPOINT` (локально — в окружении, в CI —
      GitHub **Settings → Secrets and variables → Actions → Variables**);
-   - или `cloudflare_url` в `party.json` в корне репозитория.
+   - или `cloudflare_endpoint` в `party.json` в корне репозитория.
 4. Собрать релиз (`release: vX.Y`). `build.ps1` передаёт значение в
    `-ldflags -X party.CloudflareURL`, поэтому все три архитектуры выйдут с
    уже подключённым реле.
@@ -62,7 +62,7 @@ curl https://yoanime-party.<ваш-аккаунт>.workers.dev/health
 Локальная сборка:
 
 ```powershell
-$env:YOANIME_PARTY_CLOUDFLARE_URL = "https://yoanime-party.<ваш-аккаунт>.workers.dev"
+$env:YO_CLOUDFLARE_ENDPOINT = "https://yo-party.<ваш-аккаунт>.workers.dev"
 .\build.ps1 -Version 1.0 -Arch amd64
 ```
 
@@ -71,13 +71,13 @@ $env:YOANIME_PARTY_CLOUDFLARE_URL = "https://yoanime-party.<ваш-аккаун�
 
 ## Подключение клиента без своей сборки
 
-Адрес можно ввести в настройках yoanime: **Совместный просмотр → Провайдер →
+Адрес можно ввести в настройках yo: **Совместный просмотр → Провайдер →
 Cloudflare Endpoint**. То же самое можно сделать файлом
 `%APPDATA%\yoanime\party.json`:
 
 ```json
 {
-  "cloudflare_url": "https://yoanime-party.<ваш-аккаунт>.workers.dev"
+  "cloudflare_endpoint": "https://yo-party.<ваш-аккаунт>.workers.dev"
 }
 ```
 
@@ -89,7 +89,7 @@ Cloudflare Endpoint**. То же самое можно сделать файло
 Вшить адрес вручную тоже можно:
 
 ```bash
-go build -ldflags "-X github.com/arfush/yo/party.CloudflareURL=https://yoanime-party.example.workers.dev" ./cmd/yoanime
+go build -ldflags "-X github.com/arfush/yo/party.CloudflareURL=https://yo-party.example.workers.dev" ./cmd/yo
 ```
 
 ## Что внутри

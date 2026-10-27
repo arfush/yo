@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 
-	"github.com/arfush/yo/kinopoisk"
+	"github.com/arfush/yo/filmlib"
 	"github.com/arfush/yo/library"
 )
 
-// Qualities reports which stream qualities a Kinopoisk voice actually offers.
+// Qualities reports which stream qualities a Filmlib voice actually offers.
 // The title page calls it in the background right after a film or series is
 // opened: the mirror's ladder differs per title (a BDRip film may stop at 1080,
 // a remaster reaches 2160), and the quality buttons must disable what the
@@ -21,11 +21,11 @@ func (s *Service) Qualities(ctx context.Context, plan *library.PlaybackPlan, pre
 	if s == nil || plan == nil {
 		return nil, errors.New("playback plan is nil")
 	}
-	if plan.Source != kinopoisk.Source || plan.Kinopoisk == nil {
+	if plan.Source != filmlib.Source || plan.Filmlib == nil {
 		return nil, errors.New("voiceover has no player URL")
 	}
-	if s.kinopoisk == nil {
-		return nil, errors.New("Kinopoisk browser is unavailable")
+	if s.filmlib == nil {
+		return nil, errors.New("Filmlib browser is unavailable")
 	}
 	if s.Active() {
 		// The probe must never queue behind a playing session's resolves: mpv
@@ -39,25 +39,25 @@ func (s *Service) Qualities(ctx context.Context, plan *library.PlaybackPlan, pre
 	if index < 0 || index >= len(plan.Episodes) {
 		index = 0
 	}
-	season, episode, ok := kinopoisk.SplitEpisodeKey(plan.Episodes[index].Number)
+	season, episode, ok := filmlib.SplitEpisodeKey(plan.Episodes[index].Number)
 	if !ok {
 		return nil, ErrInvalidEpisode
 	}
 	if preferred <= 0 {
 		preferred = 1080
 	}
-	logger.Info("probing Kinopoisk qualities", "title", plan.Slug, "voice", plan.Voice, "episode", plan.Episodes[index].Number)
-	media, err := s.kinopoisk.Resolve(ctx, kinopoisk.Request{
-		Iframe:        plan.Kinopoisk.Iframe,
+	logger.Info("probing Filmlib qualities", "title", plan.Slug, "voice", plan.Voice, "episode", plan.Episodes[index].Number)
+	media, err := s.filmlib.Resolve(ctx, filmlib.Request{
+		Iframe:        plan.Filmlib.Iframe,
 		Season:        season,
 		Episode:       episode,
-		TranslationID: plan.Kinopoisk.TranslationID,
+		TranslationID: plan.Filmlib.TranslationID,
 		Quality:       preferred,
 	})
 	if err != nil {
-		logger.Warn("cannot probe Kinopoisk qualities", "title", plan.Slug, "voice", plan.Voice, "error", err)
+		logger.Warn("cannot probe Filmlib qualities", "title", plan.Slug, "voice", plan.Voice, "error", err)
 		return nil, err
 	}
-	logger.Info("Kinopoisk qualities resolved", "title", plan.Slug, "voice", plan.Voice, "qualities", media.Qualities)
+	logger.Info("Filmlib qualities resolved", "title", plan.Slug, "voice", plan.Voice, "qualities", media.Qualities)
 	return media.Qualities, nil
 }

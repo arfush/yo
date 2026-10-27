@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -847,6 +848,13 @@ func (m *mainScreen) startLoading(gtx layout.Context, target int, animateRow boo
 		} else {
 			item, err = m.titles.Fetch(ctx, input)
 		}
+		if err != nil && !errors.Is(err, context.Canceled) {
+			if target >= 0 {
+				err = errOpenTitle.wrap(err)
+			} else {
+				err = errLoadTitle.wrap(err)
+			}
+		}
 		result := titleLoadResult{sequence: sequence, err: err}
 		if err == nil {
 			result.title = titleFromLibrary(item)
@@ -902,8 +910,8 @@ func (m *mainScreen) finishLoading(gtx layout.Context, result titleLoadResult) {
 	m.loadCancel = nil
 
 	if result.err != nil {
-		if result.err != context.Canceled && !strings.Contains(result.err.Error(), "context canceled") {
-			m.loadError = friendlyError(result.err)
+		if !errors.Is(result.err, context.Canceled) {
+			m.loadError = userErrorText(result.err)
 			m.errorAt = gtx.Now
 			m.reportError(result.err)
 		}
@@ -980,7 +988,8 @@ func (m *mainScreen) refreshHistory(selectedID int64) {
 	}
 	history, err := m.titles.History()
 	if err != nil {
-		m.loadError = friendlyError(err)
+		err = errHistoryLoad.wrap(err)
+		m.loadError = userErrorText(err)
 		m.reportError(err)
 		return
 	}
@@ -1057,7 +1066,8 @@ func (m *mainScreen) persistHistoryOrder() {
 		err = m.titles.ReorderStatusHistory(status, displayTitles(m.history))
 	}
 	if err != nil {
-		m.loadError = friendlyError(err)
+		err = errHistorySave.wrap(err)
+		m.loadError = userErrorText(err)
 		m.reportError(err)
 	}
 }

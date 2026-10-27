@@ -21,12 +21,12 @@ var (
 	ErrTokenMissing = errors.New("AnimeLIB token not found; restart yoanime to sign in")
 	// ErrTokenExpired means the saved token is past its expiry margin.
 	ErrTokenExpired = errors.New("AnimeLIB token expired; restart yoanime to sign in")
-	// ErrNoVoiceovers means a Kinopoisk plan request found no translations.
+	// ErrNoVoiceovers means a Filmlib plan request found no translations.
 	ErrNoVoiceovers = errors.New("title has no voiceovers")
-	// ErrNotServed re-exports the Kinopoisk sentinel wording.
+	// ErrNotServed re-exports the Filmlib sentinel wording.
 	ErrNotServed = errors.New("the provider does not serve this title")
-	// ErrNoKinopoiskID means the cached title has no Kinopoisk id.
-	ErrNoKinopoiskID = errors.New("title has no Kinopoisk id")
+	// ErrNoFilmlibID means the cached title has no Filmlib id.
+	ErrNoFilmlibID = errors.New("title has no Filmlib id")
 
 	// ErrChapterNotFound and ErrUnsupportedSource are aliases of the catalog
 	// sentinels used by the reader screen.

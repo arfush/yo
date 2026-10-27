@@ -6,28 +6,28 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/arfush/yo/kinopoisk"
+	"github.com/arfush/yo/filmlib"
 	"github.com/arfush/yo/store"
 )
 
-// loadKinopoisk builds a title from the mirror catalogue. persist mirrors the
+// loadFilmlib builds a title from the mirror catalogue. persist mirrors the
 // AnimeLIB split between Load (a title already in history) and Fetch (a link
 // typed into the URL field): Fetch returns local ids and the saved selection but
 // does not write the title or create a history row.
-func (l *Library) loadKinopoisk(ctx context.Context, link kinopoisk.Link, persist bool) (Title, error) {
+func (l *Library) loadFilmlib(ctx context.Context, link filmlib.Link, persist bool) (Title, error) {
 	action := "fetching"
 	if persist {
 		action = "loading"
 	}
-	logger.Info(action+" Kinopoisk title", "title", link.ID)
+	logger.Info(action+" Filmlib title", "title", link.ID)
 
-	client := l.kinopoisk
+	client := l.filmlib
 	if client == nil {
-		client = kinopoisk.NewClient()
+		client = filmlib.NewClient()
 	}
 	meta, err := client.Meta(ctx, link)
 	if err != nil {
-		logger.Error("cannot load Kinopoisk metadata", "title", link.ID, "error", err)
+		logger.Error("cannot load Filmlib metadata", "title", link.ID, "error", err)
 		return Title{}, err
 	}
 	voices, err := client.Voices(ctx, link.ID)
@@ -35,25 +35,25 @@ func (l *Library) loadKinopoisk(ctx context.Context, link kinopoisk.Link, persis
 		if ctx.Err() != nil {
 			return Title{}, ctx.Err()
 		}
-		logger.Error("cannot load Kinopoisk voices", "title", link.ID, "error", err)
+		logger.Error("cannot load Filmlib voices", "title", link.ID, "error", err)
 		return Title{}, err
 	}
-	catalog, err := loadKinopoiskCatalog(ctx, client, voices)
+	catalog, err := loadFilmlibCatalog(ctx, client, voices)
 	if err != nil {
 		if ctx.Err() != nil {
 			return Title{}, ctx.Err()
 		}
-		logger.Error("cannot load Kinopoisk catalogue", "title", link.ID, "error", err)
+		logger.Error("cannot load Filmlib catalogue", "title", link.ID, "error", err)
 		return Title{}, err
 	}
 
-	title := kinopoiskTitle(meta, catalog, voices)
+	title := filmlibTitle(meta, catalog, voices)
 	existing, err := l.store.GetTitle(title.Slug)
 	if err != nil {
 		return Title{}, err
 	}
 	if existing != nil {
-		applyStoredKinopoisk(&title, *existing)
+		applyStoredFilmlib(&title, *existing)
 		l.applyStoredQualities(&title)
 	} else {
 		title.UserStatus = UserStatusPlanned
@@ -64,7 +64,7 @@ func (l *Library) loadKinopoisk(ctx context.Context, link kinopoisk.Link, persis
 		if err != nil {
 			return Title{}, err
 		}
-		applyStoredKinopoisk(&title, stored)
+		applyStoredFilmlib(&title, stored)
 		l.applyStoredQualities(&title)
 		if err := l.restoreSelection(&title); err != nil {
 			return Title{}, err
@@ -81,14 +81,14 @@ func (l *Library) loadKinopoisk(ctx context.Context, link kinopoisk.Link, persis
 	}
 
 	l.ensureCover(ctx, &title)
-	logger.Info("Kinopoisk title ready", "title", title.Russian, "slug", title.Slug, "episodes", len(title.Episodes), "seasons", len(title.Seasons), "voices", len(title.Voiceovers))
+	logger.Info("Filmlib title ready", "title", title.Russian, "slug", title.Slug, "episodes", len(title.Episodes), "seasons", len(title.Seasons), "voices", len(title.Voiceovers))
 	return title, nil
 }
 
-// loadKinopoiskCatalog tries the first few translations until one returns the
+// loadFilmlibCatalog tries the first few translations until one returns the
 // file list. Every translation page embeds the whole catalogue, so one hit is
 // enough; trying more guards against a single broken player page.
-func loadKinopoiskCatalog(ctx context.Context, client *kinopoisk.Client, voices []kinopoisk.Voice) (kinopoisk.Catalog, error) {
+func loadFilmlibCatalog(ctx context.Context, client *filmlib.Client, voices []filmlib.Voice) (filmlib.Catalog, error) {
 	var lastErr error
 	for index, voice := range voices {
 		if index >= 3 {
@@ -102,22 +102,22 @@ func loadKinopoiskCatalog(ctx context.Context, client *kinopoisk.Client, voices 
 			lastErr = err
 		}
 		if ctx.Err() != nil {
-			return kinopoisk.Catalog{}, ctx.Err()
+			return filmlib.Catalog{}, ctx.Err()
 		}
 	}
 	if lastErr == nil {
 		lastErr = fmt.Errorf("player returned an empty episode list")
 	}
-	return kinopoisk.Catalog{}, fmt.Errorf("cannot read episodes: %w", lastErr)
+	return filmlib.Catalog{}, fmt.Errorf("cannot read episodes: %w", lastErr)
 }
 
-// kinopoiskTitle converts the catalogue into the same model the AnimeLIB path
+// filmlibTitle converts the catalogue into the same model the AnimeLIB path
 // produces: a flat episode list plus one voiceover per translation.
-func kinopoiskTitle(meta kinopoisk.Meta, catalog kinopoisk.Catalog, voices []kinopoisk.Voice) Title {
+func filmlibTitle(meta filmlib.Meta, catalog filmlib.Catalog, voices []filmlib.Voice) Title {
 	title := Title{
-		Source:        kinopoisk.Source,
+		Source:        filmlib.Source,
 		ExternalID:    strconv.Itoa(meta.ID),
-		Slug:          kinopoisk.SlugPrefix + strconv.Itoa(meta.ID),
+		Slug:          filmlib.SlugPrefix + strconv.Itoa(meta.ID),
 		Russian:       strings.TrimSpace(meta.NameRu),
 		Original:      strings.TrimSpace(meta.NameEn),
 		Status:        StatusCompleted,
@@ -145,7 +145,7 @@ func kinopoiskTitle(meta kinopoisk.Meta, catalog kinopoisk.Catalog, voices []kin
 		for _, season := range catalog.Seasons {
 			entry := Season{Number: season.Number}
 			for _, number := range season.Episodes {
-				entry.Episodes = append(entry.Episodes, kinopoisk.EpisodeKey(season.Number, number))
+				entry.Episodes = append(entry.Episodes, filmlib.EpisodeKey(season.Number, number))
 			}
 			if len(entry.Episodes) > 0 {
 				title.Seasons = append(title.Seasons, entry)
@@ -203,10 +203,10 @@ func missingEpisodes(all, available []string) []string {
 	return missing
 }
 
-// applyStoredKinopoisk restores the local identity and user choice that the
+// applyStoredFilmlib restores the local identity and user choice that the
 // network response cannot know. A fallback name produced after a metadata
 // outage must not replace a real stored name.
-func applyStoredKinopoisk(title *Title, stored store.Title) {
+func applyStoredFilmlib(title *Title, stored store.Title) {
 	if title == nil {
 		return
 	}
@@ -217,7 +217,7 @@ func applyStoredKinopoisk(title *Title, stored store.Title) {
 	if stored.ExternalID != "" {
 		title.ExternalID = stored.ExternalID
 	}
-	if stored.RusName != "" && !hasRealKinopoiskName(*title) {
+	if stored.RusName != "" && !hasRealFilmlibName(*title) {
 		title.Russian = stored.RusName
 	}
 	if stored.EngName != "" && stored.EngName != title.Russian {
@@ -238,9 +238,9 @@ func applyStoredKinopoisk(title *Title, stored store.Title) {
 	}
 }
 
-// hasRealKinopoiskName reports whether the metadata request returned a name
+// hasRealFilmlibName reports whether the metadata request returned a name
 // instead of the "#id" placeholder.
-func hasRealKinopoiskName(title Title) bool {
+func hasRealFilmlibName(title Title) bool {
 	name := strings.TrimSpace(title.Russian)
 	return name != "" && !strings.HasPrefix(name, "#")
 }

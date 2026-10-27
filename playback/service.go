@@ -13,7 +13,7 @@ import (
 
 	"github.com/arfush/yo/animelib"
 	"github.com/arfush/yo/browser"
-	"github.com/arfush/yo/kinopoisk"
+	"github.com/arfush/yo/filmlib"
 	"github.com/arfush/yo/kodik"
 	"github.com/arfush/yo/library"
 	"github.com/arfush/yo/log"
@@ -49,9 +49,9 @@ type StartOptions struct {
 type Service struct {
 	lib      *library.Library
 	resolver *kodik.Resolver
-	// kinopoisk resolves Alloha streams through its own headless browser. It is
-	// created with the service and never started until a Kinopoisk title plays.
-	kinopoisk *kinopoisk.Resolver
+	// filmlib resolves Alloha streams through its own headless browser. It is
+	// created with the service and never started until a Filmlib title plays.
+	filmlib *filmlib.Resolver
 
 	mu       sync.Mutex
 	session  *Session
@@ -62,9 +62,9 @@ type Service struct {
 // New returns a playback service. mpv is located lazily when Start is called.
 func New(lib *library.Library, manager *browser.Manager) *Service {
 	return &Service{
-		lib:       lib,
-		resolver:  kodik.New(manager),
-		kinopoisk: kinopoisk.NewResolver(manager),
+		lib:      lib,
+		resolver: kodik.New(manager),
+		filmlib:  filmlib.NewResolver(manager),
 	}
 }
 
@@ -108,9 +108,9 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 
 	token, err := s.lib.Token()
 	if err != nil {
-		// Kinopoisk playback has nothing to do with the AnimeLIB account, so an
+		// Filmlib playback has nothing to do with the AnimeLIB account, so an
 		// expired token must not block it.
-		if plan.Source != kinopoisk.Source {
+		if plan.Source != filmlib.Source {
 			logger.Error("cannot read token for playback", "error", err)
 			return nil, err
 		}
@@ -118,7 +118,7 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 	}
 	sessionCtx, cancel := context.WithCancel(context.Background())
 	var client *animelib.Client
-	if plan.Source != kinopoisk.Source {
+	if plan.Source != filmlib.Source {
 		client = animelib.New(token)
 	}
 	session := &Session{
@@ -237,8 +237,8 @@ func (s *Service) Close() {
 	if s.resolver != nil {
 		_ = s.resolver.Close()
 	}
-	if s.kinopoisk != nil {
-		_ = s.kinopoisk.Close()
+	if s.filmlib != nil {
+		_ = s.filmlib.Close()
 	}
 }
 
@@ -258,13 +258,13 @@ type playlistEntry struct {
 	Quality       int
 	SubtitleURL   string
 	SubtitleLabel string
-	// Headers are the per-file HTTP headers mpv must send. A Kinopoisk stream
+	// Headers are the per-file HTTP headers mpv must send. A Filmlib stream
 	// only opens with the theatre page as Referer and the session's
 	// authorizations header.
 	Headers []string
 	// Subtitles are the caption tracks the source offers. Every track is added
 	// to mpv so the player's own track menu can switch between them.
-	Subtitles []kinopoisk.Subtitle
+	Subtitles []filmlib.Subtitle
 
 	chapters        []metadata.Chapter
 	chaptersReady   bool
@@ -318,7 +318,7 @@ type Session struct {
 	ensureMu sync.Mutex
 	// preloadOnce starts the behind-the-selection preload on the first
 	// file-loaded event. Filling the playlist before that is unnecessary while
-	// the first stream is still opening; with a warm Kinopoisk cache the whole
+	// the first stream is still opening; with a warm Filmlib cache the whole
 	// window resolves in milliseconds and can compete with the initial load.
 	preloadOnce sync.Once
 
@@ -331,7 +331,7 @@ type Session struct {
 	// openRetried marks the single first-open retry: when mpv fails to open
 	// the very first file, the session re-resolves it with a fresh signed URL
 	// and loads the player again before giving up. freshResolve makes the next
-	// Kinopoisk resolve skip the manifest cache.
+	// Filmlib resolve skip the manifest cache.
 	openRetried  bool
 	freshResolve bool
 	// failedEntryID is the mpv playlist entry id of the first file that could
@@ -577,7 +577,7 @@ func (s *Session) onEndFile(event mpvEvent) {
 // screen while the application window remains hidden.
 //
 // The first failure is retried with a fresh resolve: a signed CDN URL can go
-// stale between the resolve and mpv opening it (Kinopoisk especially), so a
+// stale between the resolve and mpv opening it (Filmlib especially), so a
 // second attempt often brings the same episode up instead of ending playback.
 func (s *Session) failUnopened(event mpvEvent) {
 	s.mu.Lock()
@@ -631,7 +631,7 @@ func (s *Session) unopenedEntryLocked(position int) *playlistEntry {
 	return entry
 }
 
-// retryOpenOnce resolves the first playlist entry again (skipping the Kinopoisk
+// retryOpenOnce resolves the first playlist entry again (skipping the Filmlib
 // manifest cache) and loads it into mpv. It returns true when the load command
 // was accepted; it reports false and lets failUnopened finish the session when
 // the resolve also fails, or when the session changed underneath.
@@ -690,7 +690,7 @@ func (s *Session) planSource() string {
 func unopenedError(entry *playlistEntry, source string) error {
 	if entry != nil {
 		switch {
-		case entry.Kind == "hls" && source == kinopoisk.Source:
+		case entry.Kind == "hls" && source == filmlib.Source:
 			return ErrVideoOpen
 		case entry.Kind == "hls":
 			return ErrKodikUnavailable
@@ -771,33 +771,33 @@ const (
 	// preloadBehind is how many previous episodes stay available for seeking
 	// back without a new request.
 	preloadBehind = 5
-	// Kinopoisk episodes are resolved through a headless theatre page, one at
+	// Filmlib episodes are resolved through a headless theatre page, one at
 	// a time, so the window is much smaller than the AnimeLIB one: a handful
 	// ahead is enough to hide the resolve latency without keeping Chromium busy
 	// for minutes.
-	kinopoiskPreloadAhead  = 8
-	kinopoiskPreloadBehind = 2
+	filmlibPreloadAhead  = 8
+	filmlibPreloadBehind = 2
 )
 
 // ahead returns the forward preload window of the current plan.
 func (s *Session) ahead() int {
-	if s.plan != nil && s.plan.Source == kinopoisk.Source {
-		return kinopoiskPreloadAhead
+	if s.plan != nil && s.plan.Source == filmlib.Source {
+		return filmlibPreloadAhead
 	}
 	return preloadAhead
 }
 
 // behind returns the backward preload window of the current plan.
 func (s *Session) behind() int {
-	if s.plan != nil && s.plan.Source == kinopoisk.Source {
-		return kinopoiskPreloadBehind
+	if s.plan != nil && s.plan.Source == filmlib.Source {
+		return filmlibPreloadBehind
 	}
 	return preloadBehind
 }
 
 // backgroundLoader fills the episodes before the selected one. The forward
 // window is started by onFileLoaded: resolving it earlier would put entries into
-// mpv before the first file has opened, and with a warm Kinopoisk cache the
+// mpv before the first file has opened, and with a warm Filmlib cache the
 // whole window can resolve while the initial stream is still starting.
 func (s *Session) backgroundLoader() {
 	start := s.plan.EpisodeIndex
@@ -1070,8 +1070,8 @@ func (s *Session) resolveEntry(ctx context.Context, index int) (*playlistEntry, 
 	if index < 0 || index >= len(s.plan.Episodes) {
 		return nil, ErrInvalidEpisode
 	}
-	if s.plan.Source == kinopoisk.Source {
-		return s.resolveKinopoisk(ctx, index)
+	if s.plan.Source == filmlib.Source {
+		return s.resolveFilmlib(ctx, index)
 	}
 	episode := s.plan.Episodes[index]
 	if episode.ID <= 0 {

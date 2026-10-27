@@ -23,8 +23,8 @@ import (
 // That hidden window is also the only handle a second launch has on the running
 // process: it is the window ActivateRunningInstance posts to.
 const (
-	trayClassName = "yoanimeTrayWindow"
-	trayTip       = "yoanime"
+	trayClassName = "yoTrayWindow"
+	trayTip       = "yo"
 
 	// wmApp starts the message range the shell uses to notify the callback
 	// window; x/sys/windows does not define the WM_ constants.
@@ -370,7 +370,7 @@ func (t *Tray) buildMenu() uintptr {
 	if menu == 0 {
 		return 0
 	}
-	appendMenuItem(menu, mfString|mfDefault, menuOpen, "Открыть yoanime")
+	appendMenuItem(menu, mfString|mfDefault, menuOpen, "Открыть yo")
 	appendMenuItem(menu, mfSeparator, 0, "")
 	appendMenuItem(menu, mfString, menuExit, "Выход")
 	return menu

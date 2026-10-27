@@ -42,25 +42,25 @@ const (
 // and every entry it writes then carries `source=animelib`, without the log
 // package having to look at the call stack.
 const (
-	SourceAnimelib  = "animelib"
-	SourceApp       = "app"
-	SourceBrowser   = "browser"
-	SourceKinopoisk = "kinopoisk"
-	SourceKodik     = "kodik"
-	SourceLibrary   = "library"
-	SourceMpv       = "mpv"
-	SourceParty     = "party"
-	SourcePlayback  = "playback"
-	SourceStore     = "store"
-	SourceUI        = "ui"
-	SourceUpdate    = "update"
+	SourceAnimelib = "animelib"
+	SourceApp      = "app"
+	SourceBrowser  = "browser"
+	SourceFilmlib  = "filmlib"
+	SourceKodik    = "kodik"
+	SourceLibrary  = "library"
+	SourceMpv      = "mpv"
+	SourceParty    = "party"
+	SourcePlayback = "playback"
+	SourceStore    = "store"
+	SourceUI       = "ui"
+	SourceUpdate   = "update"
 )
 
 // Sources returns every module name in display order. The log window uses the
 // list only as an affordance; the row value always comes from the entry.
 func Sources() []string {
 	return []string{
-		SourceAnimelib, SourceApp, SourceBrowser, SourceKinopoisk, SourceKodik,
+		SourceAnimelib, SourceApp, SourceBrowser, SourceFilmlib, SourceKodik,
 		SourceLibrary, SourceMpv, SourceParty, SourcePlayback, SourceStore,
 		SourceUI, SourceUpdate,
 	}

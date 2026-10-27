@@ -559,5 +559,9 @@ func logTokenError(err error) {
 	if err == nil {
 		return
 	}
-	logger.Error("token loading failed", "error", err)
+	cause := userErrorCause(err)
+	if cause == nil {
+		return
+	}
+	logger.Error("token loading failed", "error", cause)
 }

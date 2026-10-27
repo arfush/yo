@@ -116,7 +116,7 @@ func (s *Store) SaveIntrodbCache(tid int64, episode string, chapters []byte, noD
 	return err
 }
 
-// GetTitleQualities returns the quality ladder cached for a saved Kinopoisk
+// GetTitleQualities returns the quality ladder cached for a saved Filmlib
 // title. The ladder is JSON keyed by voice name; an empty string means the
 // title page has to probe it again.
 func (s *Store) GetTitleQualities(tid int64) (string, error) {
@@ -133,7 +133,7 @@ func (s *Store) GetTitleQualities(tid int64) (string, error) {
 	return data, nil
 }
 
-// SaveTitleQualities caches the quality ladders of a saved Kinopoisk title. Only
+// SaveTitleQualities caches the quality ladders of a saved Filmlib title. Only
 // a non-empty payload is written: a failed probe must not erase the ladder the
 // previous save managed to learn.
 func (s *Store) SaveTitleQualities(tid int64, data string) error {

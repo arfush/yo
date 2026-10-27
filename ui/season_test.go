@@ -79,7 +79,7 @@ func TestEpisodeLabels(t *testing.T) {
 		t.Fatalf("plain episode label = %q", got)
 	}
 	if got := episodeRangeLabel([]string{"S1E1", "S1E2"}); got != "СЕРИИ (1-2)" {
-		t.Fatalf("kinopoisk single season range = %q", got)
+		t.Fatalf("filmlib single season range = %q", got)
 	}
 }
 

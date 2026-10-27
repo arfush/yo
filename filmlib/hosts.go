@@ -1,19 +1,20 @@
-package kinopoisk
+package filmlib
 
 import (
 	"encoding/json"
 	"errors"
-	"github.com/arfush/yo/platform/appdata"
 	"net/url"
 	"os"
 	"strings"
+
+	"github.com/arfush/yo/platform/appdata"
 )
 
 // Default mirror hosts. Only the wrapper origin is hardcoded: the players
 // endpoint is derived from it (p.<host>) and the theatre host is discovered
 // from the players response on every load. That way a theatre move needs no
 // application update at all, and a players move needs either a redirect on the
-// wrapper or an edited kinopoisk.json.
+// wrapper or an edited filmlib.json.
 const (
 	defaultWrapper = "https://linkpp.ink/"
 	defaultPlayers = "https://p.linkpp.ink/api/players"
@@ -53,27 +54,47 @@ func (c Config) withDefaults() Config {
 	return out
 }
 
-// LoadConfig reads the optional kinopoisk.json from the data directory. A
+// LoadConfig reads the optional filmlib.json from the data directory. A
 // missing or broken file is not an error: the defaults still work.
 func LoadConfig() Config {
 	var config Config
-	path, err := appdata.KinopoiskConfigPath()
+	path, err := configPath()
 	if err != nil {
 		return config.withDefaults()
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
-			logger.Warn("cannot read kinopoisk config", "error", err)
+			logger.Warn("cannot read filmlib config", "error", err)
 		}
 		return config.withDefaults()
 	}
 	if err := json.Unmarshal(raw, &config); err != nil {
-		logger.Warn("cannot parse kinopoisk config", "error", err)
+		logger.Warn("cannot parse filmlib config", "error", err)
 		return Config{}.withDefaults()
 	}
-	logger.Debug("kinopoisk config loaded", "wrapper", config.withDefaults().Wrapper)
+	logger.Debug("filmlib config loaded", "wrapper", config.withDefaults().Wrapper)
 	return config.withDefaults()
+}
+
+// configPath prefers filmlib.json and falls back to the old file name so an
+// existing fork override keeps working after the package rename.
+func configPath() (string, error) {
+	path, err := appdata.FilmlibConfigPath()
+	if err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(path); err == nil || !errors.Is(err, os.ErrNotExist) {
+		return path, nil
+	}
+	legacy, legacyErr := appdata.LegacyFilmlibConfigPath()
+	if legacyErr != nil {
+		return path, nil
+	}
+	if _, err := os.Stat(legacy); err == nil {
+		return legacy, nil
+	}
+	return path, nil
 }
 
 // playersFromWrapper derives the players endpoint from a wrapper origin, which

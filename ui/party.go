@@ -174,7 +174,7 @@ func loadPartyName(app *application) string {
 	}
 	name, err := party.NewName()
 	if err != nil {
-		return "yoanime"
+		return "yo"
 	}
 	if app != nil && app.library != nil {
 		_ = app.library.SetPartyName(name)
@@ -223,14 +223,14 @@ func (m *partyManager) SetRelayConfig(cfg party.Config) error {
 	}
 	cfg = cfg.Normalized()
 	if err := cfg.Validate(); err != nil {
-		return err
+		return errSettingsSave.wrap(err)
 	}
 	path, err := appdata.PartyConfigPath()
 	if err != nil {
-		return err
+		return errSettingsSave.wrap(err)
 	}
 	if err := party.SaveConfig(path, cfg); err != nil {
-		return err
+		return errSettingsSave.wrap(err)
 	}
 	m.mu.Lock()
 	m.cfg = cfg
@@ -311,11 +311,11 @@ func (m *partyManager) SetName(name string) error {
 	}
 	normalized, err := party.NormalizeName(name)
 	if err != nil {
-		return err
+		return errPartyName.wrap(err)
 	}
 	if m.app != nil && m.app.library != nil {
 		if err := m.app.library.SetPartyName(normalized); err != nil {
-			return err
+			return errSettingsSave.wrap(err)
 		}
 	}
 	m.mu.Lock()
@@ -348,7 +348,7 @@ func (m *partyManager) Create(provider party.Provider) (string, error) {
 	defer cancel()
 	session, err := party.Create(ctx, cfg, provider, m.Name())
 	if err != nil {
-		return "", err
+		return "", errPartyCreate.wrap(err)
 	}
 	m.adopt(session)
 	return session.Key, nil
@@ -363,11 +363,11 @@ func (m *partyManager) Join(key string) error {
 	}
 	normalized, err := party.NormalizeKey(key)
 	if err != nil {
-		return err
+		return errPartyJoin.wrap(err)
 	}
 	provider, err := party.ProviderFromKey(normalized)
 	if err != nil {
-		return err
+		return errPartyJoin.wrap(err)
 	}
 	cfg := m.Config()
 	if !cfg.Configured(provider) {
@@ -384,14 +384,14 @@ func (m *partyManager) Join(key string) error {
 	defer cancel()
 	session, err := party.Join(ctx, cfg, normalized, m.Name())
 	if err != nil {
-		return err
+		return errPartyJoin.wrap(err)
 	}
 	probeCtx, probeCancel := context.WithTimeout(ctx, partyHostWait)
 	err = session.WaitHost(probeCtx)
 	probeCancel()
 	if err != nil {
 		_ = session.Close()
-		return err
+		return errPartyJoin.wrap(err)
 	}
 	// The card tells the UI whether the room needs a secret before the first
 	// anchor arrives. Waiting for it also rejects a host from an older build,
@@ -401,7 +401,7 @@ func (m *partyManager) Join(key string) error {
 	cardCancel()
 	if err != nil {
 		_ = session.Close()
-		return err
+		return errPartyJoin.wrap(err)
 	}
 	m.adopt(session)
 	return nil
@@ -417,10 +417,10 @@ func (m *partyManager) LockRoom() (string, error) {
 	}
 	secret, err := party.NewSecret()
 	if err != nil {
-		return "", err
+		return "", errPartyRoom.wrap(err)
 	}
 	if _, err := room.Lock(secret); err != nil {
-		return "", err
+		return "", errPartyRoom.wrap(err)
 	}
 	m.mu.Lock()
 	m.secretAsked = false
@@ -436,7 +436,7 @@ func (m *partyManager) UnlockRoom() error {
 		return err
 	}
 	if err := room.Unlock(); err != nil {
-		return err
+		return errPartyRoom.wrap(err)
 	}
 	m.invalidate()
 	return nil
@@ -455,7 +455,7 @@ func (m *partyManager) SubmitSecret(secret string) error {
 		return userMessage("Секрет вводит только гость комнаты.")
 	}
 	if err := room.SubmitSecret(secret); err != nil {
-		return err
+		return errPartySecret.wrap(err)
 	}
 	m.mu.Lock()
 	m.secretAsked = false
@@ -473,7 +473,7 @@ func (m *partyManager) hostRoom() (*party.Session, error) {
 	room := m.session
 	m.mu.Unlock()
 	if room == nil || room.Role != party.Host {
-		return nil, party.ErrHostOnly
+		return nil, errPartyRoom.wrap(party.ErrHostOnly)
 	}
 	return room, nil
 }
@@ -718,7 +718,8 @@ func (m *partyManager) consume(session *party.Session, stop chan struct{}) {
 						goneNotice = versionMismatchNotice
 					}
 				} else {
-					m.notice = friendlyError(update.Err)
+					logger.Warn("party update failed", "error", update.Err)
+					m.notice = userErrorText(errRoomSync.wrap(update.Err))
 				}
 			}
 		}
@@ -753,7 +754,7 @@ func (m *partyManager) consume(session *party.Session, stop chan struct{}) {
 const (
 	hostClosedNotice      = "Создатель закрыл комнату"
 	hostLostNotice        = "Создатель комнаты вышел"
-	versionMismatchNotice = "Разные версии приложения — обновите yoanime"
+	versionMismatchNotice = "Разные версии приложения — обновите yo"
 )
 
 // hostGone tears the guest room down once the host is definitively gone. mpv
@@ -861,7 +862,7 @@ func (m *partyManager) startGuest(state party.State) {
 		}
 		// The host moved to another episode of the same title and voice. The
 		// local player already carries a resolved window of that voice (mpv
-		// resolves Kinopoisk episodes too slowly for a restart chase), so
+		// resolves Filmlib episodes too slowly for a restart chase), so
 		// follow with a playlist jump and let the drift loop find the position.
 		if current.Matches(state.TitleSlug, state.Voice) {
 			if err := current.JumpTo(state.Episode); err == nil {
@@ -916,15 +917,15 @@ func (m *partyManager) startGuest(state party.State) {
 			// the playback result channel: by the time the UI drains that
 			// result, guestRunning would already be empty and the failed media
 			// would be retried on the very next heartbeat.
-			if _, expected := userFacing(err); !expected {
-				logger.Warn("party guest playback failed", "slug", wanted.TitleSlug, "episode", wanted.Episode, "error", err)
+			if cause := userErrorCause(err); cause != nil {
+				logger.Warn("party guest playback failed", "slug", wanted.TitleSlug, "episode", wanted.Episode, "error", cause)
 			}
 			if wanted.Started() {
 				m.guestDone = wanted
 				m.guestDoneAt = time.Now()
 			}
 			m.guestRunning = party.State{}
-			m.notice = friendlyError(err)
+			m.notice = userErrorText(err)
 		}
 		m.mu.Unlock()
 		m.invalidate()
@@ -944,10 +945,10 @@ func (m *partyManager) guestFailed(err error) {
 	m.guestRunning = party.State{}
 	m.guestStarting = false
 	if err != nil {
-		if _, expected := userFacing(err); !expected {
-			logger.Warn("party guest player failed", "error", err)
+		if cause := userErrorCause(err); cause != nil {
+			logger.Warn("party guest player failed", "error", cause)
 		}
-		m.notice = friendlyError(err)
+		m.notice = userErrorText(err)
 	}
 	m.mu.Unlock()
 	m.invalidate()
@@ -969,8 +970,8 @@ func (m *partyManager) guestFinished(err error) {
 		m.Delete()
 		return
 	}
-	if _, expected := userFacing(err); !expected {
-		logger.Warn("party guest player exited", "error", err)
+	if cause := userErrorCause(err); cause != nil {
+		logger.Warn("party guest player exited", "error", cause)
 	}
 	m.mu.Lock()
 	if m.guestRunning.Started() {

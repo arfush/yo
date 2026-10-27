@@ -6,29 +6,29 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/arfush/yo/kinopoisk"
+	"github.com/arfush/yo/filmlib"
 )
 
-// KinopoiskPlan is everything the Kinopoisk resolver needs besides the episode
+// FilmlibPlan is everything the Filmlib resolver needs besides the episode
 // number. The iframe already carries the translation and the access token the
 // theatre page expects.
-type KinopoiskPlan struct {
+type FilmlibPlan struct {
 	Iframe        string
 	TranslationID int
 }
 
-// kinopoiskPlan builds the playlist for a Kinopoisk title. It is deliberately
+// filmlibPlan builds the playlist for a Filmlib title. It is deliberately
 // separate from the AnimeLIB plan: episode keys are prefixed with their season,
 // an episode id does not exist, and the voice list comes from the mirror rather
 // than from episode payloads.
-func (l *Library) kinopoiskPlan(ctx context.Context, title Title, voiceName, episode string) (*PlaybackPlan, error) {
-	id, err := kinopoiskTitleID(title)
+func (l *Library) filmlibPlan(ctx context.Context, title Title, voiceName, episode string) (*PlaybackPlan, error) {
+	id, err := filmlibTitleID(title)
 	if err != nil {
 		return nil, err
 	}
-	client := l.kinopoisk
+	client := l.filmlib
 	if client == nil {
-		client = kinopoisk.NewClient()
+		client = filmlib.NewClient()
 	}
 	voices, err := client.Voices(ctx, id)
 	if err != nil {
@@ -39,13 +39,13 @@ func (l *Library) kinopoiskPlan(ctx context.Context, title Title, voiceName, epi
 	if voice == nil {
 		return nil, ErrNoVoiceovers
 	}
-	apiVoice, ok := matchKinopoiskVoice(voices, voice.Name)
+	apiVoice, ok := matchFilmlibVoice(voices, voice.Name)
 	if !ok {
 		if len(voices) == 0 {
 			return nil, ErrNotServed
 		}
 		apiVoice = voices[0]
-		logger.Warn("Kinopoisk voice not found, using the first available", "voice", voice.Name, "fallback", apiVoice.Name)
+		logger.Warn("Filmlib voice not found, using the first available", "voice", voice.Name, "fallback", apiVoice.Name)
 	}
 
 	available := make(map[string]bool, len(voice.Episodes))
@@ -68,9 +68,9 @@ func (l *Library) kinopoiskPlan(ctx context.Context, title Title, voiceName, epi
 		return nil, fmt.Errorf("the selected voiceover has no available episodes")
 	}
 
-	selectedIndex := kinopoiskEpisodeIndex(episodes, episode)
+	selectedIndex := filmlibEpisodeIndex(episodes, episode)
 	if selectedIndex < 0 {
-		selectedIndex = nextKinopoiskIndex(title.Episodes, episodes, episode)
+		selectedIndex = nextFilmlibIndex(title.Episodes, episodes, episode)
 	}
 	if selectedIndex < 0 {
 		return nil, fmt.Errorf("the selected voiceover has no next available episode")
@@ -90,7 +90,7 @@ func (l *Library) kinopoiskPlan(ctx context.Context, title Title, voiceName, epi
 		}
 	}
 
-	logger.Info("Kinopoisk plan ready", "title", title.Slug, "voice", voice.Name, "episode", chosen.Number, "episodes", len(episodes))
+	logger.Info("Filmlib plan ready", "title", title.Slug, "voice", voice.Name, "episode", chosen.Number, "episodes", len(episodes))
 	return &PlaybackPlan{
 		TitleID:          title.ID,
 		Slug:             title.Slug,
@@ -103,28 +103,28 @@ func (l *Library) kinopoiskPlan(ctx context.Context, title Title, voiceName, epi
 		IMDbID:           title.IMDbID,
 		ResumeAt:         resumeAt,
 		Duration:         duration,
-		CompleteOnFinish: kinopoiskPlanCompletes(title, episodes),
-		Source:           kinopoisk.Source,
-		Kinopoisk: &KinopoiskPlan{
+		CompleteOnFinish: filmlibPlanCompletes(title, episodes),
+		Source:           filmlib.Source,
+		Filmlib: &FilmlibPlan{
 			Iframe:        apiVoice.Iframe,
 			TranslationID: apiVoice.ID,
 		},
 	}, nil
 }
 
-// kinopoiskTitleID reads the Kinopoisk id from the title row.
-func kinopoiskTitleID(title Title) (int, error) {
+// filmlibTitleID reads the Filmlib id from the title row.
+func filmlibTitleID(title Title) (int, error) {
 	if id, err := strconv.Atoi(strings.TrimSpace(title.ExternalID)); err == nil && id > 0 {
 		return id, nil
 	}
-	if link, ok := kinopoisk.ParseInput(title.Slug); ok {
+	if link, ok := filmlib.ParseInput(title.Slug); ok {
 		return link.ID, nil
 	}
-	return 0, ErrNoKinopoiskID
+	return 0, ErrNoFilmlibID
 }
 
-// matchKinopoiskVoice finds the mirror voice with the same display name.
-func matchKinopoiskVoice(voices []kinopoisk.Voice, name string) (kinopoisk.Voice, bool) {
+// matchFilmlibVoice finds the mirror voice with the same display name.
+func matchFilmlibVoice(voices []filmlib.Voice, name string) (filmlib.Voice, bool) {
 	name = strings.TrimSpace(name)
 	for _, voice := range voices {
 		if strings.TrimSpace(voice.Name) == name {
@@ -136,11 +136,11 @@ func matchKinopoiskVoice(voices []kinopoisk.Voice, name string) (kinopoisk.Voice
 			return voice, true
 		}
 	}
-	return kinopoisk.Voice{}, false
+	return filmlib.Voice{}, false
 }
 
-// kinopoiskEpisodeIndex finds the exact episode key in the plan.
-func kinopoiskEpisodeIndex(episodes []PlaybackEpisode, key string) int {
+// filmlibEpisodeIndex finds the exact episode key in the plan.
+func filmlibEpisodeIndex(episodes []PlaybackEpisode, key string) int {
 	key = strings.TrimSpace(key)
 	for index, episode := range episodes {
 		if episode.Number == key {
@@ -150,9 +150,9 @@ func kinopoiskEpisodeIndex(episodes []PlaybackEpisode, key string) int {
 	return -1
 }
 
-// nextKinopoiskIndex walks the displayed episode order forward from the
+// nextFilmlibIndex walks the displayed episode order forward from the
 // selected episode, exactly like the AnimeLIB plan does.
-func nextKinopoiskIndex(displayOrder []string, episodes []PlaybackEpisode, selected string) int {
+func nextFilmlibIndex(displayOrder []string, episodes []PlaybackEpisode, selected string) int {
 	selected = strings.TrimSpace(selected)
 	start := 0
 	if selected != "" {
@@ -169,16 +169,16 @@ func nextKinopoiskIndex(displayOrder []string, episodes []PlaybackEpisode, selec
 		}
 	}
 	for _, key := range displayOrder[start:] {
-		if index := kinopoiskEpisodeIndex(episodes, key); index >= 0 {
+		if index := filmlibEpisodeIndex(episodes, key); index >= 0 {
 			return index
 		}
 	}
 	return -1
 }
 
-// kinopoiskPlanCompletes reports whether the last playable episode is the final
+// filmlibPlanCompletes reports whether the last playable episode is the final
 // episode of the title.
-func kinopoiskPlanCompletes(title Title, episodes []PlaybackEpisode) bool {
+func filmlibPlanCompletes(title Title, episodes []PlaybackEpisode) bool {
 	if title.Status != StatusCompleted || len(episodes) == 0 || len(title.Episodes) == 0 {
 		return false
 	}

@@ -2,7 +2,7 @@ package ui
 
 import "gioui.org/layout"
 
-// Screen is the content of a yoanime window. The custom chrome is common
+// Screen is the content of a yo window. The custom chrome is common
 // to all windows; each screen owns only the area between the header and footer.
 type Screen interface {
 	layout(layout.Context)

@@ -1,12 +1,12 @@
-package kinopoisk
+package filmlib
 
 import "errors"
 
-// Sentinels returned by the Kinopoisk/Alloha client. Messages are technical
+// Sentinels returned by the Filmlib/Alloha client. Messages are technical
 // English; the UI maps them to Russian sentences without naming the source.
 var (
 	// ErrInvalidID means the film/series id was not a number.
-	ErrInvalidID = errors.New("invalid Kinopoisk id")
+	ErrInvalidID = errors.New("invalid Filmlib id")
 	// ErrNotServed means Alloha does not carry this title.
 	ErrNotServed = errors.New("the provider does not serve this title")
 	// ErrNoMirrors means every mirror was unreachable.
@@ -26,9 +26,9 @@ var (
 	// ErrNoMovieFile means the film has no playable file.
 	ErrNoMovieFile = errors.New("player has no movie file")
 	// ErrBrowserClosed means the shared browser exited mid-resolve.
-	ErrBrowserClosed = errors.New("Kinopoisk browser is closed")
+	ErrBrowserClosed = errors.New("Filmlib browser is closed")
 	// ErrBrowserUnavailable means the browser is busy or unresponsive.
-	ErrBrowserUnavailable = errors.New("Kinopoisk browser is unavailable")
+	ErrBrowserUnavailable = errors.New("Filmlib browser is unavailable")
 	// ErrNoVideoSources means the player page had no stream links.
 	ErrNoVideoSources = errors.New("player returned no video links")
 	// ErrNoQualityLinks means the stream response had no quality ladder.
