@@ -6,9 +6,10 @@ session.
 ## What it does
 
 - long-polls Telegram (`getUpdates`) for messages from one configured user;
-- interrupts the session that most recently issued a model request;
-- sends the Telegram text as a new prompt with a "continue where you stopped"
-  instruction;
+- interrupts the session that most recently issued a model request; if no session
+  is running, picks the most recently updated session instead of failing;
+- sends the Telegram text as a new prompt with an explicit "answer this message
+  first, then continue" preamble;
 - mirrors final assistant messages back to Telegram on `session.idle`;
 - forwards `session.error` and `session.retry.scheduled` with the retry delay.
 
