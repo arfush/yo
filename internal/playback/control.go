@@ -2,6 +2,7 @@ package playback
 
 import (
 	"errors"
+	"image"
 	"math"
 )
 
@@ -51,6 +52,31 @@ func (s *Session) Episode() (string, int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.currentNumber, s.currentEp
+}
+
+// Slug returns the slug of the running plan. The title page compares it with
+// its own title so a live playback update cannot leak into another screen.
+func (s *Session) Slug() string {
+	if s == nil || s.plan == nil {
+		return ""
+	}
+	return s.plan.Slug
+}
+
+// MpvWindowRect returns the current rectangle of the mpv window in physical
+// pixels. Playback persistence uses it to remember where the user parked the
+// player, independently of the application window.
+func (s *Session) MpvWindowRect() (image.Rectangle, bool) {
+	if s == nil {
+		return image.Rectangle{}, false
+	}
+	s.mu.Lock()
+	mpv := s.mpv
+	s.mu.Unlock()
+	if mpv == nil {
+		return image.Rectangle{}, false
+	}
+	return mpv.windowRect()
 }
 
 // LivePosition asks mpv for the current position instead of returning the last
