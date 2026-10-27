@@ -50,6 +50,15 @@ func TestReaderListsBalanceTheirOperationStacks(t *testing.T) {
 	r.layoutRanobe(gtx, image.Rect(0, 0, 500, 400))
 }
 
+func TestReaderRequestFrameCallsInvalidator(t *testing.T) {
+	calls := 0
+	r := &readerScreen{invalidate: func() { calls++ }}
+	r.requestFrame()
+	if calls != 1 {
+		t.Fatalf("invalidate calls = %d, want 1", calls)
+	}
+}
+
 type readerSourceStub struct {
 	mu    sync.Mutex
 	reads []string

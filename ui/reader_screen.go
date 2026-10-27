@@ -466,7 +466,7 @@ func (r *readerScreen) animationsRun() bool {
 // application injects the window invalidator; tests leave it nil.
 func (r *readerScreen) requestFrame() {
 	if r.invalidate != nil {
-		r.requestFrame()
+		r.invalidate()
 	}
 }
 
