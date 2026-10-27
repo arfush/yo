@@ -276,6 +276,66 @@ func sampleCircle(cx, cy, radius float64, steps int) []vec {
 	return out
 }
 
+// sampleArc returns a flattened circular arc. Angles are in degrees and grow
+// clockwise on screen because y points down.
+func sampleArc(cx, cy, radius, startDeg, endDeg float64, steps int) []vec {
+	if steps < 1 {
+		steps = 1
+	}
+	out := make([]vec, steps+1)
+	for i := range out {
+		a := (startDeg + (endDeg-startDeg)*float64(i)/float64(steps)) * math.Pi / 180
+		out[i] = vec{cx + radius*math.Cos(a), cy + radius*math.Sin(a)}
+	}
+	return out
+}
+
+// sampleRoundedPolygon replaces every corner with a quadratic-like cubic. It
+// lets small glyphs keep soft corners without hand-writing each curve.
+func sampleRoundedPolygon(points []vec, radius float64, steps int) []vec {
+	if len(points) < 3 || radius <= 0 {
+		return append([]vec(nil), points...)
+	}
+	if steps < 2 {
+		steps = 2
+	}
+	const kappa = 0.5522847498
+	out := make([]vec, 0, len(points)*(steps+1))
+	for i, p := range points {
+		prev := points[(i+len(points)-1)%len(points)]
+		next := points[(i+1)%len(points)]
+		in := prev.sub(p)
+		nextDir := next.sub(p)
+		if in.len() < 0.000001 || nextDir.len() < 0.000001 {
+			continue
+		}
+		cut := math.Min(radius, math.Min(in.len(), nextDir.len())/2)
+		a := p.add(in.unit().mul(cut))
+		b := p.add(nextDir.unit().mul(cut))
+		if len(out) == 0 {
+			out = append(out, a)
+		}
+		c1 := a.add(p.sub(a).mul(kappa))
+		c2 := b.add(p.sub(b).mul(kappa))
+		out = append(out, sampleCubic(a, c1, c2, b, steps)[1:]...)
+	}
+	if len(out) == 0 {
+		return append([]vec(nil), points...)
+	}
+	return out
+}
+
+// arrowhead builds a filled, softly rounded triangle at the end of a stroked
+// arc. dir is the tangent at the end, so the tip continues the arc's motion.
+func arrowhead(end, dir vec, length, halfWidth, radius float64) []vec {
+	dir = dir.unit()
+	normal := dir.normal()
+	base1 := end.add(normal.mul(halfWidth))
+	base2 := end.sub(normal.mul(halfWidth))
+	tip := end.add(dir.mul(length))
+	return sampleRoundedPolygon([]vec{base1, tip, base2}, radius, 5)
+}
+
 func sampleRoundedRect(x0, y0, x1, y1, radius float64) []vec {
 	const cornerSteps = 10
 	const kappa = 0.5522847498
@@ -340,6 +400,12 @@ var icons = []iconSpec{
 	{"copy", buildCopy},
 	{"play", buildPlay},
 	{"trash", buildTrash},
+	{"search", buildSearch},
+	{"pause", buildPause},
+	{"info", buildInfo},
+	{"warning", buildWarning},
+	{"error", buildError},
+	{"check", buildCheck},
 	{"chevron_left", chevronBuilder(chevronLeftPoints, chevronWidthBase)},
 	{"chevron_right", chevronBuilder(chevronRightPoints, chevronWidthBase)},
 	{"chevron_up", chevronBuilder(chevronUpPoints, chevronWidthBase)},
@@ -450,43 +516,37 @@ func buildLog() []shape {
 	return out
 }
 
-// buildUpdate follows the reference refresh glyph: two circular arrows with
-// open L-shaped heads and round caps. The coordinates below are copied from the
-// reference SVG, whose icon button is centred on (66, 20) and uses a 1.6 px
-// stroke. The 15.4-unit design box leaves a tiny margin around the painted
-// 15.1 px bounds so the antialiased edges are not clipped.
+// buildUpdate draws two circular arrows. The heads are filled, softly rounded
+// triangles that continue the arc's tangent, so the glyph reads as motion at
+// footer size instead of two open right angles.
 func buildUpdate() []shape {
-	d := design{size: 15.4}
-	pt := func(x, y float64) vec {
-		return d.pt(x-66, y-20)
-	}
-	width := d.length(1.6)
-	const steps = 10
+	d := design{size: 14.6}
+	const (
+		radius     = 6.0
+		headLength = 3.3
+		headHalf   = 1.8
+	)
+	width := d.length(1.55)
+	top := sampleArc(0, 0, radius, 190, 340, 28)
+	bottom := sampleArc(0, 0, radius, 10, 160, 28)
+
 	var out shape
-
-	// Top arc: from the left edge, over the top, down to the right shoulder.
-	top := []vec{pt(59.25, 20)}
-	top = appendCubic(top, pt(59.25, 20), pt(59.25, 18.2098), pt(59.9612, 16.4929), pt(61.227, 15.227), steps)
-	top = appendCubic(top, pt(61.227, 15.227), pt(62.4929, 13.9612), pt(64.2098, 13.25), pt(66, 13.25), steps)
-	top = appendCubic(top, pt(66, 13.25), pt(67.887, 13.2571), pt(69.6983, 13.9934), pt(71.055, 15.305), steps)
-	top = append(top, pt(72.75, 17))
-	out.strokeRoundOpen(top, width)
-
-	// Bottom arc mirrors the top one.
-	bottom := []vec{pt(72.75, 20)}
-	bottom = appendCubic(bottom, pt(72.75, 20), pt(72.75, 21.7902), pt(72.0388, 23.5071), pt(70.773, 24.773), steps)
-	bottom = appendCubic(bottom, pt(70.773, 24.773), pt(69.5071, 26.0388), pt(67.7902, 26.75), pt(66, 26.75), steps)
-	bottom = appendCubic(bottom, pt(66, 26.75), pt(64.113, 26.7429), pt(62.3017, 26.0066), pt(60.945, 24.695), steps)
-	bottom = append(bottom, pt(59.25, 23))
-	out.strokeRoundOpen(bottom, width)
-
-	// Open right-angle heads. Stroking each arm as its own round-capped line
-	// unions two round caps at the corner, which is the same shape as a round
-	// line join in the reference SVG.
-	out.strokeRoundLine(pt(69, 17), pt(72.75, 17), width)
-	out.strokeRoundLine(pt(72.75, 17), pt(72.75, 13.25), width)
-	out.strokeRoundLine(pt(59.25, 26.75), pt(59.25, 23), width)
-	out.strokeRoundLine(pt(59.25, 23), pt(63, 23), width)
+	out.strokeRoundOpen(mapPoints(d, top), width)
+	out.strokeRoundOpen(mapPoints(d, bottom), width)
+	out.polygon(mapPoints(d, arrowhead(
+		top[len(top)-1],
+		top[len(top)-1].sub(top[len(top)-2]),
+		headLength,
+		headHalf,
+		0.65,
+	)))
+	out.polygon(mapPoints(d, arrowhead(
+		bottom[len(bottom)-1],
+		bottom[len(bottom)-1].sub(bottom[len(bottom)-2]),
+		headLength,
+		headHalf,
+		0.65,
+	)))
 	return []shape{out}
 }
 
@@ -574,63 +634,120 @@ func buildCopy() []shape {
 	return out
 }
 
-// buildPlay follows the reference play glyph: a rounded outlined triangle and a
-// short vertical stop bar. The coordinates are copied from the reference SVG
-// (button centre 158, 20; 1.6 px stroke). The 15.4-unit design box keeps the
-// painted 15.1 x 13.6 px bounds just inside the view box.
+// buildPlay is a rounded outlined triangle followed by a short stop bar. The
+// triangle is about nine units wide and the bar sits one unit away, matching
+// the optical rhythm of the footer controls at 14 dp.
 func buildPlay() []shape {
-	d := design{size: 15.4}
-	pt := func(x, y float64) vec {
-		return d.pt(x-158, y-20)
-	}
-	width := d.length(1.6)
-	const steps = 8
-
-	start := pt(153.522, 14.2144)
-	triangle := []vec{start}
-	triangle = appendCubic(triangle, start, pt(153.294, 14.0778), pt(153.034, 14.0041), pt(152.769, 14.0007), steps)
-	triangle = appendCubic(triangle, pt(152.769, 14.0007), pt(152.503, 13.9974), pt(152.242, 14.0645), pt(152.011, 14.1953), steps)
-	triangle = appendCubic(triangle, pt(152.011, 14.1953), pt(151.78, 14.3261), pt(151.588, 14.5158), pt(151.454, 14.7451), steps)
-	triangle = appendCubic(triangle, pt(151.454, 14.7451), pt(151.32, 14.9744), pt(151.25, 15.2351), pt(151.25, 15.5005), steps)
-	triangle = append(triangle, pt(151.25, 24.4995))
-	triangle = appendCubic(triangle, pt(151.25, 24.4995), pt(151.25, 24.765), pt(151.32, 25.0256), pt(151.454, 25.2549), steps)
-	triangle = appendCubic(triangle, pt(151.454, 25.2549), pt(151.588, 25.4842), pt(151.78, 25.674), pt(152.011, 25.8047), steps)
-	triangle = appendCubic(triangle, pt(152.011, 25.8047), pt(152.242, 25.9355), pt(152.503, 26.0026), pt(152.769, 25.9993), steps)
-	triangle = appendCubic(triangle, pt(152.769, 25.9993), pt(153.034, 25.9959), pt(153.294, 25.9222), pt(153.522, 25.7857), steps)
-	triangle = append(triangle, pt(161.019, 21.2876))
-	triangle = appendCubic(triangle, pt(161.019, 21.2876), pt(161.242, 21.1547), pt(161.426, 20.9663), pt(161.554, 20.7408), steps)
-	triangle = appendCubic(triangle, pt(161.554, 20.7408), pt(161.682, 20.5154), pt(161.75, 20.2607), pt(161.75, 20.0014), steps)
-	triangle = appendCubic(triangle, pt(161.75, 20.0014), pt(161.75, 19.7421), pt(161.683, 19.4873), pt(161.556, 19.2616), steps)
-	triangle = appendCubic(triangle, pt(161.556, 19.2616), pt(161.428, 19.036), pt(161.244, 18.8473), pt(161.022, 18.7139), steps)
+	d := design{size: 13.6}
+	width := d.length(1.9)
+	triangle := sampleRoundedPolygon([]vec{
+		{-5.0, -4.6},
+		{2.2, 0},
+		{-5.0, 4.6},
+	}, 1.0, 6)
 
 	var out shape
-	// The centreline is smooth where it closes, so the closed stroke only needs
-	// the offset outline; no miter artifacts form on the rounded corners.
-	out.strokeClosed(triangle, width)
-	out.strokeRoundLine(pt(164.75, 14.0006), pt(164.75, 25.9994), width)
+	out.strokeClosed(mapPoints(d, triangle), width)
+	out.strokeRoundLine(d.pt(5.2, -4.6), d.pt(5.2, 4.6), d.length(2.0))
 	return []shape{out}
 }
 
-// buildTrash keeps the tapered can from the original house icon, but gives the
-// handle proper stems and enlarges the drawing so it stays legible at the file
-// row's 16 dp size. The two ribs make the silhouette read as a bin rather than
-// a plain cup.
+// buildTrash keeps the tapered can from the reference bin: a short handle, a
+// wide lid, a softly rounded body and two ribs. The lid and body are separate
+// strokes so the top edge does not read as a double line.
 func buildTrash() []shape {
-	d := design{size: 16}
-	width := d.length(1.7)
+	d := design{size: 14.6}
+	width := d.length(1.8)
 	var out shape
-	out.strokeLine(d.pt(-7.2, -5.2), d.pt(7.2, -5.2), width)
-	out.strokeLine(d.pt(-2.6, -6.8), d.pt(2.6, -6.8), width)
-	out.strokeLine(d.pt(-2.6, -6.8), d.pt(-2.6, -5.2), width)
-	out.strokeLine(d.pt(2.6, -6.8), d.pt(2.6, -5.2), width)
-	out.strokeOpen([]vec{
-		d.pt(-6.2, -3.6),
-		d.pt(-4.8, 6.4),
-		d.pt(4.8, 6.4),
-		d.pt(6.2, -3.6),
-	}, width)
-	out.strokeLine(d.pt(-1.8, -1.2), d.pt(-1.8, 4.8), width)
-	out.strokeLine(d.pt(1.8, -1.2), d.pt(1.8, 4.8), width)
+
+	out.strokeRoundLine(d.pt(-5.3, -4.3), d.pt(5.3, -4.3), width)
+	out.strokeRoundLine(d.pt(-2.2, -6.0), d.pt(2.2, -6.0), d.length(1.5))
+
+	body := []vec{d.pt(-4.5, -3.1), d.pt(-4.0, 4.2)}
+	body = appendCubic(body, d.pt(-4.0, 4.2), d.pt(-4.0, 4.9), d.pt(-3.5, 5.4), d.pt(-2.9, 5.4), 8)
+	body = append(body, d.pt(2.9, 5.4))
+	body = appendCubic(body, d.pt(2.9, 5.4), d.pt(3.5, 5.4), d.pt(4.0, 4.9), d.pt(4.0, 4.2), 8)
+	body = append(body, d.pt(4.5, -3.1))
+	out.strokeRoundOpen(body, width)
+
+	out.strokeRoundLine(d.pt(-1.55, -1.0), d.pt(-1.55, 4.0), d.length(1.15))
+	out.strokeRoundLine(d.pt(1.55, -1.0), d.pt(1.55, 4.0), d.length(1.15))
+	return []shape{out}
+}
+
+// buildSearch is the magnifier used by the log toolbar.
+func buildSearch() []shape {
+	d := design{size: 14.0}
+	width := d.length(1.5)
+	var out shape
+	out.strokeClosed(sampleCircle(
+		0.5+d.length(-1.0),
+		0.5+d.length(-1.0),
+		d.length(4.5),
+		64,
+	), width)
+	out.strokeRoundLine(d.pt(2.3, 2.3), d.pt(5.6, 5.6), d.length(1.7))
+	return []shape{out}
+}
+
+// buildPause is a pair of round-capped bars.
+func buildPause() []shape {
+	d := design{size: 12.0}
+	width := d.length(2.1)
+	var out shape
+	out.strokeRoundLine(d.pt(-2.6, -4.2), d.pt(-2.6, 4.2), width)
+	out.strokeRoundLine(d.pt(2.6, -4.2), d.pt(2.6, 4.2), width)
+	return []shape{out}
+}
+
+// buildInfo is a circled lowercase i.
+func buildInfo() []shape {
+	d := design{size: 16.0}
+	width := d.length(1.35)
+	var out shape
+	out.strokeClosed(sampleCircle(0.5, 0.5, d.length(6.8), 64), width)
+	out.circle(d.pt(0, -3.4), d.length(1.15))
+	out.strokeRoundLine(d.pt(0, -0.9), d.pt(0, 3.4), d.length(1.7))
+	return []shape{out}
+}
+
+// buildWarning is a rounded triangle with an exclamation mark.
+func buildWarning() []shape {
+	d := design{size: 15.2}
+	width := d.length(1.35)
+	triangle := sampleRoundedPolygon([]vec{
+		{0, -6.4},
+		{-6.8, 5.8},
+		{6.8, 5.8},
+	}, 1.1, 6)
+
+	var out shape
+	out.strokeClosed(mapPoints(d, triangle), width)
+	out.strokeRoundLine(d.pt(0, -2.5), d.pt(0, 1.8), d.length(1.6))
+	out.circle(d.pt(0, 4.0), d.length(1.05))
+	return []shape{out}
+}
+
+// buildError is a circled exclamation mark.
+func buildError() []shape {
+	d := design{size: 16.0}
+	width := d.length(1.35)
+	var out shape
+	out.strokeClosed(sampleCircle(0.5, 0.5, d.length(6.8), 64), width)
+	out.strokeRoundLine(d.pt(0, -3.6), d.pt(0, 1.8), d.length(1.7))
+	out.circle(d.pt(0, 4.0), d.length(1.1))
+	return []shape{out}
+}
+
+// buildCheck is the tick inside the autoscroll checkbox.
+func buildCheck() []shape {
+	d := design{size: 10.0}
+	var out shape
+	out.strokeRoundOpen(mapPoints(d, []vec{
+		{-3.8, 0.2},
+		{-1.2, 2.8},
+		{3.8, -2.8},
+	}), d.length(1.8))
 	return []shape{out}
 }
 
