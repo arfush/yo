@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
-
-	"github.com/arfush/yoanime/log"
 )
 
 // encodeVoiceQualities packs the probed Kinopoisk quality ladders into the JSON
@@ -43,7 +41,7 @@ func decodeVoiceQualities(raw string) map[string][]int {
 	}
 	var stored map[string][]int
 	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
-		log.Warn("cannot read cached Kinopoisk qualities", "error", err)
+		logger.Warn("cannot read cached Kinopoisk qualities", "error", err)
 		return nil
 	}
 	ladders := make(map[string][]int, len(stored))
@@ -90,7 +88,7 @@ func (l *Library) applyStoredQualities(title *Title) {
 	}
 	raw, err := l.store.GetTitleQualities(title.ID)
 	if err != nil {
-		log.Warn("cannot load cached Kinopoisk qualities", "title", title.ID, "error", err)
+		logger.Warn("cannot load cached Kinopoisk qualities", "title", title.ID, "error", err)
 		return
 	}
 	ladders := decodeVoiceQualities(raw)

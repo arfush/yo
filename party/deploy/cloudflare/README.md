@@ -89,7 +89,7 @@ Cloudflare Endpoint**. То же самое можно сделать файло
 Вшить адрес вручную тоже можно:
 
 ```bash
-go build -ldflags "-X github.com/arfush/yoanime/party.CloudflareURL=https://yoanime-party.example.workers.dev" ./cmd/yoanime
+go build -ldflags "-X github.com/arfush/yo/party.CloudflareURL=https://yoanime-party.example.workers.dev" ./cmd/yoanime
 ```
 
 ## Что внутри

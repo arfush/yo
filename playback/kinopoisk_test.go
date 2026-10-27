@@ -3,8 +3,8 @@ package playback
 import (
 	"testing"
 
-	"github.com/arfush/yoanime/kinopoisk"
-	"github.com/arfush/yoanime/metadata"
+	"github.com/arfush/yo/kinopoisk"
+	"github.com/arfush/yo/metadata"
 )
 
 // The theatre reports skip ranges as plain seconds. They must become chapters

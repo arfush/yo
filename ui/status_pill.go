@@ -25,7 +25,7 @@ func statusPillWidth(gtx layout.Context, typo *typography) int {
 	return 2*gtx.Dp(mainStatusPaddingX) + width
 }
 
-func (m *mainWindow) drawStatus(gtx layout.Context, rect image.Rectangle, status titleStatus) {
+func (m *mainScreen) drawStatus(gtx layout.Context, rect image.Rectangle, status titleStatus) {
 	drawStatusPill(gtx, m.typo, rect, status)
 }
 

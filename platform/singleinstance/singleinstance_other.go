@@ -10,7 +10,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/arfush/yoanime/platform/appdata"
+	"github.com/arfush/yo/platform/appdata"
 )
 
 var lockName = "yoanime.lock"

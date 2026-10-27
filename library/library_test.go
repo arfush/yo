@@ -14,9 +14,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/arfush/yoanime/animelib"
-	"github.com/arfush/yoanime/metadata"
-	"github.com/arfush/yoanime/store"
+	"github.com/arfush/yo/animelib"
+	"github.com/arfush/yo/metadata"
+	"github.com/arfush/yo/store"
 )
 
 func TestChoiceFallsBackToCompleteVoiceAndEpisode(t *testing.T) {

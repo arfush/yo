@@ -10,9 +10,8 @@ import (
 
 	playwright "github.com/mxschmitt/playwright-go"
 
-	"github.com/arfush/yoanime/catalog"
-	"github.com/arfush/yoanime/log"
-	"github.com/arfush/yoanime/token"
+	"github.com/arfush/yo/catalog"
+	"github.com/arfush/yo/token"
 )
 
 // DefaultDomain is the AnimeLIB domain shown in the token prompt. The browser
@@ -30,18 +29,6 @@ const authPollInterval = 500 * time.Millisecond
 // commits in under a second; a domain that does not answer should fail fast
 // enough for the button feedback to be useful.
 const authNavigationTimeout = 12 * time.Second
-
-var (
-	// ErrInvalidLink is returned when the user-supplied project link cannot be
-	// opened.
-	ErrInvalidLink = errors.New("некорректная ссылка")
-	// ErrSiteUnreachable is returned when the site rejects or drops the
-	// navigation. The usual fix is trying another mirror.
-	ErrSiteUnreachable = errors.New("сайт не открылся")
-	// ErrWindowClosed is returned when the authorization browser is closed
-	// before a token appears.
-	ErrWindowClosed = errors.New("окно авторизации закрыто")
-)
 
 // authTokenScript reads the token persisted by AnimeLIB's Pinia store. The
 // store key is "auth"; the token object holds access_token, refresh_token,
@@ -139,13 +126,13 @@ func NormalizeDomain(input string) (string, error) {
 // session may run at a time; Manager.Close cancels it.
 func (m *Manager) Authorize(ctx context.Context, siteURL, profileDir string, bounds *WindowBounds) (token.Token, error) {
 	if m == nil {
-		return token.Token{}, errors.New("browser manager is nil")
+		return token.Token{}, ErrManagerNil
 	}
 	if m.initErr != nil {
 		return token.Token{}, fmt.Errorf("prepare Playwright: %w", m.initErr)
 	}
 	if !m.Installed() {
-		return token.Token{}, errors.New("Chromium не установлен")
+		return token.Token{}, ErrChromiumMissing
 	}
 
 	siteURL, err := SiteURL(siteURL)
@@ -155,7 +142,7 @@ func (m *Manager) Authorize(ctx context.Context, siteURL, profileDir string, bou
 	if strings.TrimSpace(profileDir) == "" {
 		return token.Token{}, errors.New("не указан профиль Chromium")
 	}
-	log.Info("AnimeLIB authorization started", "site", siteURL)
+	logger.Info("AnimeLIB authorization started", "site", siteURL)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -163,7 +150,7 @@ func (m *Manager) Authorize(ctx context.Context, siteURL, profileDir string, bou
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
-		return token.Token{}, errors.New("application is closing")
+		return token.Token{}, ErrClosing
 	}
 	if m.authorizing {
 		m.mu.Unlock()
@@ -183,7 +170,7 @@ func (m *Manager) Authorize(ctx context.Context, siteURL, profileDir string, bou
 
 	pw, err := playwright.Run(m.opts)
 	if err != nil {
-		log.Error("cannot start Playwright", "error", err)
+		logger.Error("cannot start Playwright", "error", err)
 		return token.Token{}, fmt.Errorf("запустить Playwright: %w", err)
 	}
 	defer pw.Stop()
@@ -206,10 +193,10 @@ func (m *Manager) Authorize(ctx context.Context, siteURL, profileDir string, bou
 	})
 	if err != nil {
 		if ctx.Err() != nil {
-			log.Info("AnimeLIB authorization cancelled")
+			logger.Info("AnimeLIB authorization cancelled")
 			return token.Token{}, ctx.Err()
 		}
-		log.Error("cannot start Chromium", "error", err)
+		logger.Error("cannot start Chromium", "error", err)
 		return token.Token{}, fmt.Errorf("запустить Chromium: %w", err)
 	}
 	defer browserContext.Close()
@@ -321,7 +308,7 @@ func (m *Manager) Authorize(ctx context.Context, siteURL, profileDir string, bou
 			if err != nil || parsed.AccessToken == "" || parsed.Expired(time.Now()) {
 				continue
 			}
-			log.Info("AnimeLIB token captured")
+			logger.Info("AnimeLIB token captured")
 			return parsed, nil
 		}
 
@@ -338,7 +325,7 @@ func (m *Manager) Authorize(ctx context.Context, siteURL, profileDir string, bou
 		// expiration. A captured Bearer token is used only if the site changed
 		// its storage layout and no structured value appeared.
 		if fallback.AccessToken != "" && time.Since(fallbackAt) > 2*time.Second {
-			log.Info("AnimeLIB token captured from a request")
+			logger.Info("AnimeLIB token captured from a request")
 			return fallback, nil
 		}
 	}

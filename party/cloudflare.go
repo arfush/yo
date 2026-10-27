@@ -26,7 +26,7 @@ func dialCloudflare(ctx context.Context, cfg Config, address string, role Role) 
 			return nil, handshakeError(resp.StatusCode)
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, errors.New("реле не ответило вовремя")
+			return nil, ErrServerUnreachable
 		}
 		return nil, fmt.Errorf("не удалось подключиться к комнате: %w", err)
 	}

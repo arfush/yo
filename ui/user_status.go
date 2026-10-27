@@ -8,7 +8,7 @@ import (
 	"gioui.org/layout"
 	"gioui.org/unit"
 
-	"github.com/arfush/yoanime/catalog"
+	"github.com/arfush/yo/catalog"
 )
 
 // userStatusFilter is the history filter. The zero value shows every title.

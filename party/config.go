@@ -2,7 +2,6 @@ package party
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -117,7 +116,7 @@ func (c Config) Validate() error {
 		}
 	}
 	if key := strings.ToLower(c.SupabaseKey); strings.HasPrefix(key, "sb_secret_") || strings.HasPrefix(key, "service_role") {
-		return errors.New("для Supabase нужен publishable-ключ, а не секретный")
+		return ErrSupabaseKey
 	}
 	return nil
 }
@@ -155,7 +154,7 @@ func (c Config) Configured(p Provider) bool {
 }
 
 // ErrNotConfigured is returned when the selected provider has no endpoint.
-var ErrNotConfigured = errors.New("провайдер не настроен")
+// The sentinel itself lives in errors.go.
 
 // CloudflareEndpoint is the WebSocket URL of one room. The room parameter is
 // the hashed address, not the key the user shared.

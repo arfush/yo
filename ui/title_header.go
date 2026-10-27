@@ -8,7 +8,7 @@ import (
 	"gioui.org/unit"
 )
 
-func (w *titleWindow) layoutHeaderProgress(gtx layout.Context, rect image.Rectangle) {
+func (w *titleScreen) layoutHeaderProgress(gtx layout.Context, rect image.Rectangle) {
 	label := w.item.progressLabel()
 	barHeight := gtx.Dp(episodeProgressHeight)
 	if rect.Empty() || (!w.item.movie && label == "") {
@@ -60,7 +60,7 @@ func (w *titleWindow) layoutHeaderProgress(gtx layout.Context, rect image.Rectan
 	)
 }
 
-func (w *titleWindow) drawAnnouncement(gtx layout.Context, rect image.Rectangle) {
+func (w *titleScreen) drawAnnouncement(gtx layout.Context, rect image.Rectangle) {
 	if rect.Empty() {
 		return
 	}

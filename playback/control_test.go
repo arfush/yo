@@ -3,7 +3,7 @@ package playback
 import (
 	"testing"
 
-	"github.com/arfush/yoanime/library"
+	"github.com/arfush/yo/library"
 )
 
 func TestResolveEntryIndex(t *testing.T) {

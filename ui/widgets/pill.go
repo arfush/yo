@@ -9,7 +9,7 @@ import (
 	"gioui.org/layout"
 	"gioui.org/unit"
 
-	"github.com/arfush/yoanime/ui/draw"
+	"github.com/arfush/yo/ui/draw"
 )
 
 // PillStyle is the shared capsule used by statuses, filters, menu items and

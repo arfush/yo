@@ -26,7 +26,7 @@ func episodeGridColumns(width, gap, minWidth int) int {
 	return columns
 }
 
-func (w *titleWindow) layoutEpisodes(gtx layout.Context, rect image.Rectangle) {
+func (w *titleScreen) layoutEpisodes(gtx layout.Context, rect image.Rectangle) {
 	if rect.Empty() || len(w.episodes) == 0 {
 		return
 	}
@@ -87,7 +87,7 @@ func (w *titleWindow) layoutEpisodes(gtx layout.Context, rect image.Rectangle) {
 // with more than one season gets it; a single-season title shows its episodes
 // directly, exactly like an AnimeLIB title. It returns the height the grid used
 // so the caller can place the episode label below it.
-func (w *titleWindow) layoutSeasons(gtx layout.Context, rect image.Rectangle) int {
+func (w *titleScreen) layoutSeasons(gtx layout.Context, rect image.Rectangle) int {
 	if rect.Empty() || len(w.item.seasons) <= 1 {
 		return 0
 	}
@@ -111,7 +111,7 @@ func (w *titleWindow) layoutSeasons(gtx layout.Context, rect image.Rectangle) in
 	return rows*rowHeight + (rows-1)*gap
 }
 
-func (w *titleWindow) layoutSeasonButton(gtx layout.Context, index int, rect image.Rectangle) {
+func (w *titleScreen) layoutSeasonButton(gtx layout.Context, index int, rect image.Rectangle) {
 	if rect.Empty() || index < 0 || index >= len(w.item.seasons) || index >= len(w.seasons) {
 		return
 	}
@@ -126,7 +126,7 @@ func (w *titleWindow) layoutSeasonButton(gtx layout.Context, index int, rect ima
 	})
 }
 
-func (w *titleWindow) drawSeasonFace(gtx layout.Context, index int, local image.Rectangle, hovered bool) {
+func (w *titleScreen) drawSeasonFace(gtx layout.Context, index int, local image.Rectangle, hovered bool) {
 	if index < 0 || index >= len(w.item.seasons) || local.Empty() {
 		return
 	}
@@ -157,7 +157,7 @@ func (w *titleWindow) drawSeasonFace(gtx layout.Context, index int, local image.
 	)
 }
 
-func (w *titleWindow) layoutEpisodeButton(gtx layout.Context, index int, rect image.Rectangle) {
+func (w *titleScreen) layoutEpisodeButton(gtx layout.Context, index int, rect image.Rectangle) {
 	if rect.Empty() || index < 0 || index >= len(w.episodes) {
 		return
 	}
@@ -183,7 +183,7 @@ func (w *titleWindow) layoutEpisodeButton(gtx layout.Context, index int, rect im
 	})
 }
 
-func (w *titleWindow) drawEpisodeFace(gtx layout.Context, index int, local image.Rectangle, missing, hovered bool) {
+func (w *titleScreen) drawEpisodeFace(gtx layout.Context, index int, local image.Rectangle, missing, hovered bool) {
 	if index < 0 || index >= len(w.episodes) || index >= len(w.item.episodes) || local.Empty() {
 		return
 	}

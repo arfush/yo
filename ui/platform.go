@@ -5,8 +5,8 @@ import (
 
 	"gioui.org/io/event"
 
-	"github.com/arfush/yoanime/catalog"
-	platformwindow "github.com/arfush/yoanime/platform/window"
+	"github.com/arfush/yo/catalog"
+	platformwindow "github.com/arfush/yo/platform/window"
 )
 
 // The Win32 window primitives live in platform/window. These wrappers keep the

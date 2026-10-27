@@ -5,7 +5,7 @@ import (
 
 	"gioui.org/widget"
 
-	"github.com/arfush/yoanime/library"
+	"github.com/arfush/yo/library"
 )
 
 func TestVoiceMissingLabelCompressesRanges(t *testing.T) {
@@ -148,7 +148,7 @@ func TestMovieHidesEpisodeProgressLabel(t *testing.T) {
 }
 
 func TestTitlePageHidesUserStatusUntilTracked(t *testing.T) {
-	window := &titleWindow{item: historyTitle{}}
+	window := &titleScreen{item: historyTitle{}}
 	if window.showsUserStatus() {
 		t.Fatal("an unsaved title must not show the default user-status pill")
 	}
@@ -159,7 +159,7 @@ func TestTitlePageHidesUserStatusUntilTracked(t *testing.T) {
 }
 
 func TestTitlePageHidesEpisodeColumnsWithoutEpisodes(t *testing.T) {
-	window := &titleWindow{item: historyTitle{}}
+	window := &titleScreen{item: historyTitle{}}
 	if window.hasEpisodeColumns() {
 		t.Fatal("a title without loaded episodes must hide the voice and episode columns")
 	}

@@ -10,7 +10,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yoanime/catalog"
+	"github.com/arfush/yo/catalog"
 )
 
 type historyRow struct {
@@ -46,7 +46,7 @@ type historyRowVisual struct {
 	itemLoading bool
 }
 
-func (m *mainWindow) historyRowGeometry(gtx layout.Context, width, height int, item historyTitle) historyRowGeometry {
+func (m *mainScreen) historyRowGeometry(gtx layout.Context, width, height int, item historyTitle) historyRowGeometry {
 	posterWidth := gtx.Dp(mainPosterWidth)
 	posterHeight := gtx.Dp(mainPosterHeight)
 	controlSize := gtx.Dp(mainControlSize)
@@ -97,7 +97,7 @@ func (m *mainWindow) historyRowGeometry(gtx layout.Context, width, height int, i
 // drawHistoryRowCard paints a card at rect. The geometry rectangles are local
 // to the card, so the same code can draw both a list row and the floating drag
 // overlay.
-func (m *mainWindow) drawHistoryRowCard(gtx layout.Context, rect image.Rectangle, item historyTitle, geom historyRowGeometry, vis historyRowVisual) {
+func (m *mainScreen) drawHistoryRowCard(gtx layout.Context, rect image.Rectangle, item historyTitle, geom historyRowGeometry, vis historyRowVisual) {
 	if rect.Empty() {
 		return
 	}
@@ -250,7 +250,7 @@ func (m *mainWindow) drawHistoryRowCard(gtx layout.Context, rect image.Rectangle
 	drawHistoryTrash(gtx, centerOf(geom.trash), gtx.Dp(unit.Dp(24)), trashColor)
 }
 
-func (m *mainWindow) layoutHistoryRow(gtx layout.Context, index, width, height int) {
+func (m *mainScreen) layoutHistoryRow(gtx layout.Context, index, width, height int) {
 	if index < 0 || index >= len(m.history) || index >= len(m.rows) {
 		return
 	}

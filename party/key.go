@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"strings"
 )
@@ -38,7 +37,6 @@ const (
 const keyAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
 // ErrInvalidKey reports a value that is not a room key.
-var ErrInvalidKey = errors.New("некорректный ключ комнаты")
 
 // NewKey returns a random room key for the given relay, such as YOC4K7Q2M.
 func NewKey(provider Provider) (string, error) {

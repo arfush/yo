@@ -2,13 +2,11 @@ package library
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
-	"github.com/arfush/yoanime/kinopoisk"
-	"github.com/arfush/yoanime/log"
+	"github.com/arfush/yo/kinopoisk"
 )
 
 // KinopoiskPlan is everything the Kinopoisk resolver needs besides the episode
@@ -39,15 +37,15 @@ func (l *Library) kinopoiskPlan(ctx context.Context, title Title, voiceName, epi
 
 	voice := findVoiceover(title.Voiceovers, voiceName)
 	if voice == nil {
-		return nil, errors.New("у тайтла нет озвучек")
+		return nil, ErrNoVoiceovers
 	}
 	apiVoice, ok := matchKinopoiskVoice(voices, voice.Name)
 	if !ok {
 		if len(voices) == 0 {
-			return nil, errors.New("Alloha не раздаёт этот тайтл")
+			return nil, ErrNotServed
 		}
 		apiVoice = voices[0]
-		log.Warn("Kinopoisk voice not found, using the first available", "voice", voice.Name, "fallback", apiVoice.Name)
+		logger.Warn("Kinopoisk voice not found, using the first available", "voice", voice.Name, "fallback", apiVoice.Name)
 	}
 
 	available := make(map[string]bool, len(voice.Episodes))
@@ -92,7 +90,7 @@ func (l *Library) kinopoiskPlan(ctx context.Context, title Title, voiceName, epi
 		}
 	}
 
-	log.Info("Kinopoisk plan ready", "title", title.Slug, "voice", voice.Name, "episode", chosen.Number, "episodes", len(episodes))
+	logger.Info("Kinopoisk plan ready", "title", title.Slug, "voice", voice.Name, "episode", chosen.Number, "episodes", len(episodes))
 	return &PlaybackPlan{
 		TitleID:          title.ID,
 		Slug:             title.Slug,
@@ -122,7 +120,7 @@ func kinopoiskTitleID(title Title) (int, error) {
 	if link, ok := kinopoisk.ParseInput(title.Slug); ok {
 		return link.ID, nil
 	}
-	return 0, errors.New("у тайтла нет id Кинопоиска")
+	return 0, ErrNoKinopoiskID
 }
 
 // matchKinopoiskVoice finds the mirror voice with the same display name.

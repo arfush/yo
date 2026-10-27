@@ -3,12 +3,10 @@ package kinopoisk
 import (
 	"encoding/json"
 	"errors"
+	"github.com/arfush/yo/platform/appdata"
 	"net/url"
 	"os"
 	"strings"
-
-	"github.com/arfush/yoanime/log"
-	"github.com/arfush/yoanime/platform/appdata"
 )
 
 // Default mirror hosts. Only the wrapper origin is hardcoded: the players
@@ -66,15 +64,15 @@ func LoadConfig() Config {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
-			log.Warn("cannot read kinopoisk config", "error", err)
+			logger.Warn("cannot read kinopoisk config", "error", err)
 		}
 		return config.withDefaults()
 	}
 	if err := json.Unmarshal(raw, &config); err != nil {
-		log.Warn("cannot parse kinopoisk config", "error", err)
+		logger.Warn("cannot parse kinopoisk config", "error", err)
 		return Config{}.withDefaults()
 	}
-	log.Debug("kinopoisk config loaded", "wrapper", config.withDefaults().Wrapper)
+	logger.Debug("kinopoisk config loaded", "wrapper", config.withDefaults().Wrapper)
 	return config.withDefaults()
 }
 

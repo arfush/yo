@@ -7,7 +7,7 @@ import (
 
 	"gioui.org/io/event"
 
-	"github.com/arfush/yoanime/catalog"
+	"github.com/arfush/yo/catalog"
 )
 
 func HandleViewEvent(event.Event) {}

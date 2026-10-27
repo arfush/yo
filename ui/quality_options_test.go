@@ -80,7 +80,7 @@ func TestQualitySectionLabel(t *testing.T) {
 		{source: "kinopoisk", movie: false},
 		{source: "kinopoisk", movie: true},
 	} {
-		if got := (&titleWindow{item: item}).qualitySectionLabel(); got != "КАЧЕСТВО" {
+		if got := (&titleScreen{item: item}).qualitySectionLabel(); got != "КАЧЕСТВО" {
 			t.Fatalf("label for %+v = %q, want КАЧЕСТВО", item, got)
 		}
 	}

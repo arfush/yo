@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arfush/yoanime/log"
+	"github.com/arfush/yo/log"
 )
 
 const (
@@ -149,10 +149,10 @@ func open(ctx context.Context, cfg Config, provider Provider, key, name string, 
 		session.hasCard = true
 		session.key = contentKey
 	}
-	log.Info("opening party room", "provider", provider, "role", role)
+	logger.Info("opening party room", "provider", provider, "role", role)
 	conn, err := session.dial(ctx)
 	if err != nil {
-		log.Error("cannot open party room", "provider", provider, "role", role, "error", err)
+		logger.Error("cannot open party room", "provider", provider, "role", role, "error", err)
 		return nil, err
 	}
 	runCtx, cancel := context.WithCancel(context.Background())
@@ -253,7 +253,7 @@ func (s *Session) SubmitSecret(secret string) error {
 	s.secret = normalized
 	s.needsSecret = false
 	s.mu.Unlock()
-	log.Info("party secret accepted", "provider", s.Provider, "role", s.Role)
+	logger.Info("party secret accepted", "provider", s.Provider, "role", s.Role)
 	s.notify(Update{Kind: UpdateCard})
 	// The host may have published anchors the guest could not read; ask for one
 	// sealed with the key that was just accepted.
@@ -304,7 +304,7 @@ func (s *Session) changeSecret(secret string, locked bool) error {
 	// the new salt, and it would drop the frame instead of re-syncing.
 	s.sendCard()
 	s.notify(Update{Kind: UpdateCard})
-	log.Info("party lock changed", "provider", s.Provider, "role", s.Role, "locked", locked)
+	logger.Info("party lock changed", "provider", s.Provider, "role", s.Role, "locked", locked)
 	if has {
 		_ = s.Publish(state)
 	}
@@ -493,7 +493,7 @@ func (s *Session) Close() error {
 	}
 	conn := s.conn
 	s.mu.Unlock()
-	log.Info("closing party room", "provider", s.Provider, "role", s.Role)
+	logger.Info("closing party room", "provider", s.Provider, "role", s.Role)
 
 	if conn != nil && s.Role == Host {
 		// Only the host's departure ends the room. A guest saying bye would be
@@ -543,7 +543,7 @@ func (s *Session) run(ctx context.Context, first transport) {
 				if ctx.Err() != nil {
 					return
 				}
-				log.Warn("party reconnect failed", "provider", s.Provider, "role", s.Role, "error", err)
+				logger.Warn("party reconnect failed", "provider", s.Provider, "role", s.Role, "error", err)
 				s.reportError(err)
 				if !sleep(ctx, backoff) {
 					return
@@ -882,7 +882,7 @@ func (s *Session) write(msg frame) error {
 	closed := s.closed
 	s.mu.Unlock()
 	if closed || conn == nil {
-		return errNotConnected
+		return ErrNotConnected
 	}
 	return conn.write(msg)
 }
@@ -943,7 +943,7 @@ func (s *Session) reportError(err error) {
 	s.mu.Lock()
 	s.lastErr = err
 	s.mu.Unlock()
-	log.Warn("party relay error", "provider", s.Provider, "role", s.Role, "error", err)
+	logger.Warn("party relay error", "provider", s.Provider, "role", s.Role, "error", err)
 	s.notify(Update{Kind: UpdateError, Err: err})
 }
 
@@ -965,3 +965,5 @@ func sleep(ctx context.Context, d time.Duration) bool {
 		return true
 	}
 }
+
+var logger = log.For(log.SourceParty)

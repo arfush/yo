@@ -10,10 +10,10 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yoanime/party"
+	"github.com/arfush/yo/party"
 )
 
-func (w *settingsWindow) layoutProviderTrigger(gtx layout.Context, rect image.Rectangle) bool {
+func (w *settingsScreen) layoutProviderTrigger(gtx layout.Context, rect image.Rectangle) bool {
 	if rect.Empty() {
 		return false
 	}
@@ -50,7 +50,7 @@ func (w *settingsWindow) layoutProviderTrigger(gtx layout.Context, rect image.Re
 
 // layoutProviderMenu paints the open select. It is a plain overlay instead of
 // an inline list so the panel row keeps its single-line height.
-func (w *settingsWindow) layoutProviderMenu(gtx layout.Context, size image.Point, anchor image.Rectangle) {
+func (w *settingsScreen) layoutProviderMenu(gtx layout.Context, size image.Point, anchor image.Rectangle) {
 	if anchor.Empty() {
 		return
 	}
@@ -104,7 +104,7 @@ func providerMenuHeight(gtx layout.Context, count int) int {
 	return height
 }
 
-func (w *settingsWindow) layoutProviderItem(gtx layout.Context, rect image.Rectangle, provider party.Provider, click *widget.Clickable) bool {
+func (w *settingsScreen) layoutProviderItem(gtx layout.Context, rect image.Rectangle, provider party.Provider, click *widget.Clickable) bool {
 	if rect.Empty() {
 		return false
 	}

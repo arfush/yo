@@ -6,7 +6,7 @@ import (
 	"testing"
 	"unicode"
 
-	"github.com/arfush/yoanime/library"
+	"github.com/arfush/yo/library"
 )
 
 func TestUnopenedErrorDescribesKodik(t *testing.T) {

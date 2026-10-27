@@ -10,7 +10,7 @@ import (
 	"gioui.org/op"
 	"gioui.org/unit"
 
-	"github.com/arfush/yoanime/party"
+	"github.com/arfush/yo/party"
 )
 
 func TestButtonErrorFeedbackWindow(t *testing.T) {
@@ -49,7 +49,7 @@ func TestLabelShakeStartsAndEndsCalm(t *testing.T) {
 	if _, shake := buttonErrorFeedback(start.Add(wpShakeDuration/2), start, false); shake != 0 {
 		t.Fatal("a caller that only needs the red state must not receive a shake")
 	}
-	screen := &partyWindow{errorAt: start}
+	screen := &partyScreen{errorAt: start}
 	if !screen.shakeRunning(start) {
 		t.Fatal("the first shake frame must still request the next one")
 	}
@@ -59,7 +59,7 @@ func TestLabelShakeStartsAndEndsCalm(t *testing.T) {
 }
 
 func TestJoinFailureClearsTheKeyAndStartsRedFeedback(t *testing.T) {
-	screen := newPartyWindow(nil, nil, &partyManager{provider: party.Cloudflare})
+	screen := newPartyScreen(nil, nil, &partyManager{provider: party.Cloudflare})
 	screen.mode = wpJoin
 	screen.busy = true
 	screen.editor.SetText("YOC4K7Q2M")
@@ -84,7 +84,7 @@ func TestJoinFailureClearsTheKeyAndStartsRedFeedback(t *testing.T) {
 }
 
 func TestCreateFailureKeepsItsOwnFeedback(t *testing.T) {
-	screen := newPartyWindow(nil, nil, &partyManager{provider: party.Cloudflare})
+	screen := newPartyScreen(nil, nil, &partyManager{provider: party.Cloudflare})
 	screen.busy = true
 	screen.editor.SetText("YOC4K7Q2M")
 
@@ -103,7 +103,7 @@ func TestCreateFailureKeepsItsOwnFeedback(t *testing.T) {
 
 func TestPartyOpensOnChoiceWithoutRoom(t *testing.T) {
 	manager := &partyManager{provider: party.Cloudflare}
-	screen := newPartyWindow(nil, nil, manager)
+	screen := newPartyScreen(nil, nil, manager)
 	if screen.mode != wpChoice {
 		t.Fatalf("mode = %v, want wpChoice without a room", screen.mode)
 	}
@@ -114,7 +114,7 @@ func TestPartyReopensCreatedFormForHost(t *testing.T) {
 		provider: party.Cloudflare,
 		session:  &party.Session{Key: "YOC4K7Q2M", Provider: party.Cloudflare, Role: party.Host},
 	}
-	screen := newPartyWindow(nil, nil, manager)
+	screen := newPartyScreen(nil, nil, manager)
 	if screen.mode != wpCreated {
 		t.Fatalf("mode = %v, want wpCreated for a host", screen.mode)
 	}
@@ -129,14 +129,14 @@ func TestPartyReopensWaitingScreenWithAHat(t *testing.T) {
 		provider: party.Cloudflare,
 		session:  &party.Session{Key: "YOC4K7Q2M", Provider: party.Cloudflare, Role: party.Guest},
 	}
-	screen := newPartyWindow(nil, nil, manager)
+	screen := newPartyScreen(nil, nil, manager)
 	if screen.mode != wpWaiting {
 		t.Fatalf("mode = %v, want wpWaiting for a guest", screen.mode)
 	}
 	if screen.waitHat < 0 || screen.waitHat >= mascotHatCount {
 		t.Fatalf("first wait hat = %d, want a hat in [0, %d)", screen.waitHat, mascotHatCount)
 	}
-	reopened := newPartyWindow(nil, nil, manager)
+	reopened := newPartyScreen(nil, nil, manager)
 	if reopened.mode != wpWaiting {
 		t.Fatalf("reopened mode = %v, want wpWaiting for a guest", reopened.mode)
 	}
@@ -242,7 +242,7 @@ func TestWaitingTimeoutOnlyAppliesToUnknownHost(t *testing.T) {
 }
 
 func TestRoomClosedShowsJoinFormWithReason(t *testing.T) {
-	screen := newPartyWindow(nil, nil, &partyManager{provider: party.Cloudflare})
+	screen := newPartyScreen(nil, nil, &partyManager{provider: party.Cloudflare})
 	screen.mode = wpWaiting
 	screen.busy = true
 	screen.editor.SetText("YOC4K7Q2M")
@@ -278,11 +278,11 @@ func TestHostGoneLeavesANotice(t *testing.T) {
 	}
 }
 
-func TestPartyWindowStartsWithTheHostLeftReason(t *testing.T) {
+func TestPartyScreenStartsWithTheHostLeftReason(t *testing.T) {
 	manager := &partyManager{provider: party.Cloudflare}
 	manager.closedNotice = hostClosedNotice
 
-	screen := newPartyWindow(nil, nil, manager)
+	screen := newPartyScreen(nil, nil, manager)
 	if screen.mode != wpJoin {
 		t.Fatalf("mode = %d, want the join form", screen.mode)
 	}
@@ -379,7 +379,7 @@ func TestGuestControlIgnoresItsOwnSeekSettleAndSlowPlayback(t *testing.T) {
 }
 
 func TestAcceptedSecretOpensTheWaitingScreen(t *testing.T) {
-	screen := newPartyWindow(nil, nil, &partyManager{provider: party.Cloudflare})
+	screen := newPartyScreen(nil, nil, &partyManager{provider: party.Cloudflare})
 	screen.mode = wpSecret
 	screen.busy = true
 	screen.secretEditor.SetText("4K7Q2M9XBT")
@@ -401,7 +401,7 @@ func TestAcceptedSecretOpensTheWaitingScreen(t *testing.T) {
 }
 
 func TestWrongSecretShakesAndClearsTheField(t *testing.T) {
-	screen := newPartyWindow(nil, nil, &partyManager{provider: party.Cloudflare})
+	screen := newPartyScreen(nil, nil, &partyManager{provider: party.Cloudflare})
 	screen.mode = wpSecret
 	screen.busy = true
 	screen.secretEditor.SetText("4K7Q2M9XBT")

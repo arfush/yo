@@ -1,6 +1,6 @@
 param(
     [string]$Version = "",
-    [string]$Repo = "arfush/yoanime",
+    [string]$Repo = "arfush/yo",
     [string]$Arch = "amd64",
     [string]$Output = ""
 )
@@ -38,10 +38,10 @@ if ($outDir) {
 
 $ldflags = "-s -w -H=windowsgui"
 if ($Version) {
-    $ldflags += " -X github.com/arfush/yoanime/version.Version=$Version"
+    $ldflags += " -X github.com/arfush/yo/version.Version=$Version"
 }
 if ($Repo) {
-    $ldflags += " -X github.com/arfush/yoanime/updates.Repository=$Repo"
+    $ldflags += " -X github.com/arfush/yo/update.Repository=$Repo"
 }
 
 # Party relays are deployed once and baked into the official build so the
@@ -83,7 +83,7 @@ foreach ($flag in $partyFlags) {
         Write-Warning "party: $($flag.Field) is still the party.json example, skip it"
         continue
     }
-    $ldflags += " -X github.com/arfush/yoanime/party.$($flag.Symbol)=$value"
+    $ldflags += " -X github.com/arfush/yo/party.$($flag.Symbol)=$value"
     $partyBaked += "$($flag.Field) ($source)"
 }
 if ($partyBaked.Count -gt 0) {

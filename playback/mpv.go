@@ -16,8 +16,8 @@ import (
 
 	"github.com/dexterlb/mpvipc"
 
-	"github.com/arfush/yoanime/metadata"
-	"github.com/arfush/yoanime/mpv"
+	"github.com/arfush/yo/metadata"
+	"github.com/arfush/yo/mpv"
 )
 
 type mpvEventKind int

@@ -46,7 +46,7 @@ func dialSupabase(ctx context.Context, cfg Config, address string, role Role) (t
 			return nil, fmt.Errorf("Supabase отклонил подключение (%d)", resp.StatusCode)
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, errors.New("Supabase не ответил вовремя")
+			return nil, ErrServerUnreachable
 		}
 		return nil, fmt.Errorf("не удалось подключиться к Supabase: %w", err)
 	}
@@ -232,10 +232,10 @@ func (t *supabaseTransport) run(ctx context.Context, deliver func(frame)) error 
 			}
 			deliver(msg)
 		case supabaseEventError, supabaseEventClose:
-			return errors.New("канал комнаты закрыт")
+			return ErrRoomClosed
 		case supabaseEventReply:
 			if phx.Status != "" && phx.Status != "ok" {
-				return errors.New("Supabase отклонил сообщение комнаты")
+				return ErrServerUnreachable
 			}
 		}
 	}

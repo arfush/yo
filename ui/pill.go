@@ -8,7 +8,7 @@ import (
 	"gioui.org/layout"
 	"gioui.org/unit"
 
-	"github.com/arfush/yoanime/ui/widgets"
+	"github.com/arfush/yo/ui/widgets"
 )
 
 // pillStyle is the screen-facing shape of the shared capsule. The actual

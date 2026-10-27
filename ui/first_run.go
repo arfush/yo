@@ -18,8 +18,6 @@ import (
 	"gioui.org/op"
 	"gioui.org/unit"
 	"gioui.org/widget"
-
-	log "github.com/arfush/yoanime/log"
 )
 
 type downloadProgress struct {
@@ -530,5 +528,5 @@ func logFirstRunError(err error) {
 	if err == nil {
 		return
 	}
-	log.Error("first-run download failed", "error", err)
+	logger.Error("first-run download failed", "error", err)
 }

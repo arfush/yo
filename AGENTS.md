@@ -69,7 +69,7 @@ yoanime — десктопное Windows-приложение для веден�
 
 ## 3. Технологический стек
 
-- **Go 1.26.5**, модуль `github.com/arfush/yoanime`.
+- **Go 1.26.5**, модуль `github.com/arfush/yo`.
 - **Gio** (`gioui.org`) — весь интерфейс рисуется вручную, нативных виджетов нет.
 - **SQLite** (`modernc.org/sqlite`) — локальная база.
 - **Playwright Go + Chromium** — авторизация на сайте и резолв Kodik/Alloha.
@@ -85,25 +85,29 @@ yoanime — десктопное Windows-приложение для веден�
 ```text
 cmd/yoanime/            точка входа: только вызов app.Run
 app/                    композиционный корень: пути, сервисы, single instance, запуск ui
-catalog/                общие типы отображения: Title, Voice, Season, UserStatus, Segment
+catalog/                общие типы отображения: Title, Voice, Season, UserStatus, Segment, ReadingChapter
+  errors.go             общие сентинелы (ErrRateLimited, ErrTokenMissing, ...)
 animelib/               клиент AnimeLIB API, эпизоды, озвучки, rate limit
+  reading.go            LibSocial: ссылки, метаданные, главы, страницы (MangaLib и др.)
 browser/                Playwright: установка Chromium, авторизация, headless
 kodik/                  резолв Kodik embed -> HLS через headless Chromium
 kinopoisk/              второй источник: ссылки, метаданные, каталог Alloha, headless-резолв потоков
 library/                связка API + SQLite, выбор озвучки/серии, план playback, обложки
   kinopoisk.go          загрузка тайтла Кинопоиска: метаданные, сезоны, озвучки
   kinopoisk_playback.go план серий Кинопоиска и выбор озвучки Alloha
+  reading.go            чтение глав/страниц и роутинг reading-ссылок
 metadata/               Shikimori -> MAL, AniList -> сезон и постер, IMDb -> id, introdb -> главы
 mpv/                    поиск/установка mpv
 playback/               сессия mpv, очередь, прогресс, главы, автопропуск
   kinopoisk.go          резолв серии Кинопоиска, заголовки mpv, skipTime -> главы
 store/                  SQLite-схема, история, настройки, кэши
+  migrations.go         версионированные миграции (PRAGMA user_version)
+  titles.go, history.go, covers.go, tracking.go, settings.go
 token/                  чтение/запись токена AnimeLIB, проверка срока
-updater/                подмена exe через скрытый cmd-хелпер
-updates/                GitHub Releases, проверка версии, SHA-256
+update/                 всё об обновлении: GitHub Releases, SHA-256, замена exe через cmd-хелпер
 version/                версия по умолчанию и форматирование
 party/                  совместный просмотр: ключ комнаты, якоря, часы, реле
-log/                    журнал приложения и кольцевой буфер последних записей
+log/                    журнал на log/slog + кольцевой буфер; логгеры именуются константами Source*
 platform/
   appdata/              пути в %APPDATA%\yoanime
   install/              проверка установки через реестр Windows
@@ -113,13 +117,16 @@ platform/
 ui/                     Gio-интерфейс, шрифты, иконки, экраны
   app.go                жизненный цикл приложения и навигация между экранами
   services.go           объектный граф, который собирает app
-  shell.go              общий каркас окна: заголовок, футер, перетаскивание
-  main_window.go        главный экран: ввод ссылки, история, drag&drop, undo
-  title_window.go       страница тайтла: озвучки, серии, качество, сохранение
+  shell.go              общий каркас окна: заголовок, логотип-переключатель секций, футер
+  sections.go           секции yoanime/yomanga/yoranobe: настройка, фильтр истории
+  main_screen.go        главный экран: ввод ссылки, история, drag&drop, undo
+  title_screen.go       страница тайтла: озвучки, серии, качество, сохранение
+  reader_screen.go      ридер манги/ранобэ: главы, переводы, страницы, текст
   token_prompt.go       экран авторизации и выбора домена
   first_run.go          экран установки Chromium/mpv и обновления
   party.go              менеджер комнаты: heartbeat хоста, догон гостя
-  party_window.go       экраны совместного просмотра: создать/войти/ожидание
+  party_screen.go       экраны совместного просмотра: создать/войти/ожидание
+  log_screen.go         окно журнала с фильтром по уровню и поиском
   platform.go           адаптеры к platform/window
   *_test.go             тесты UI-логики без запуска окна
 party/deploy/           реле для Cloudflare DO и Supabase; образец — party/party.example.json
@@ -127,6 +134,10 @@ installer/              Inno Setup: установщик в %LOCALAPPDATA%\Progr
 docs/                   техническая документация (party.md, architecture.md)
 .github/workflows/      релизный workflow
 ```
+
+Каждый модуль, который пишет в журнал, объявляет именованный логгер:
+`var logger = log.For(log.SourceLibrary)` (константа в `log/errors.go` или
+`log/log.go`). В логах не угадывается source по стеку вызовов.
 
 Целевое дерево и направления зависимостей описаны в `docs/architecture.md`.
 Их проверяет `go test ./tools/architecture`: импорты `cmd`/`ui`/`app`,
@@ -236,7 +247,7 @@ docs/                   техническая документация (party.m
 
 ### Обновления
 
-- Источник — последний GitHub Release репозитория `arfush/yoanime` (переопределяется ldflags).
+- Источник — последний GitHub Release репозитория `arfush/yo` (переопределяется ldflags).
 - Обязательна проверка SHA-256; не ослабляй проверки URL, размера и сигнатуры файла.
 - Windows блокирует запущенный exe, поэтому замена идёт через `updater` и скрытый `cmd.exe`-хелпер.
 - Не удаляй `CheckTarget`, проверку `MZ`-заголовка и очистку временных файлов.

@@ -3,7 +3,7 @@ package ui
 import (
 	"gioui.org/layout"
 
-	"github.com/arfush/yoanime/ui/theme"
+	"github.com/arfush/yo/ui/theme"
 )
 
 // These aliases preserve the short names used throughout the screen code while

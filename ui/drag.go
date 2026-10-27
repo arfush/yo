@@ -11,7 +11,7 @@ import (
 	"gioui.org/op/clip"
 	"gioui.org/unit"
 
-	"github.com/arfush/yoanime/catalog"
+	"github.com/arfush/yo/catalog"
 )
 
 // dragState tracks a history row being reordered by its six-dot handle.
@@ -37,7 +37,7 @@ type dragState struct {
 // addHistoryDragInput installs a pointer handler over the six-dot handle
 // column. Keeping it out of the rest of the row leaves titles and controls
 // fully clickable.
-func (m *mainWindow) addHistoryDragInput(gtx layout.Context, rect image.Rectangle) {
+func (m *mainScreen) addHistoryDragInput(gtx layout.Context, rect image.Rectangle) {
 	left := gtx.Dp(mainRowPadding)
 	right := left + gtx.Dp(mainDragHandleWidth)
 	area := image.Rect(left, 0, right, rect.Dy())
@@ -54,7 +54,7 @@ func (m *mainWindow) addHistoryDragInput(gtx layout.Context, rect image.Rectangl
 	stack.Pop()
 }
 
-func (m *mainWindow) handleHistoryDrag(gtx layout.Context, rect image.Rectangle, rowHeight, gap int) {
+func (m *mainScreen) handleHistoryDrag(gtx layout.Context, rect image.Rectangle, rowHeight, gap int) {
 	for {
 		ev, ok := gtx.Event(pointer.Filter{
 			Target: &m.dragTag,
@@ -184,7 +184,7 @@ func (m *mainWindow) handleHistoryDrag(gtx layout.Context, rect image.Rectangle,
 // autoScrollHistoryDrag scrolls the list while a dragged card is held near an
 // edge. The speed ramps up as the pointer moves further into the edge zone,
 // and stops at either end of the history.
-func (m *mainWindow) autoScrollHistoryDrag(gtx layout.Context, rect image.Rectangle, rowHeight, gap int) bool {
+func (m *mainScreen) autoScrollHistoryDrag(gtx layout.Context, rect image.Rectangle, rowHeight, gap int) bool {
 	if !m.drag.active || !m.drag.moved || rect.Dy() <= 0 {
 		return false
 	}
@@ -233,7 +233,7 @@ func (m *mainWindow) autoScrollHistoryDrag(gtx layout.Context, rect image.Rectan
 	return true
 }
 
-func (m *mainWindow) updateDragPosition(rect image.Rectangle, x, y int) {
+func (m *mainScreen) updateDragPosition(rect image.Rectangle, x, y int) {
 	m.drag.pos = image.Pt(
 		rect.Min.X+x-m.drag.grab.X,
 		rect.Min.Y+y-m.drag.grab.Y,
@@ -243,7 +243,7 @@ func (m *mainWindow) updateDragPosition(rect image.Rectangle, x, y int) {
 // listAnchor normalizes the list position into a first index and an offset
 // smaller than one row. ScrollBy can leave the offset beyond a full row until
 // the next Layout pass.
-func (m *mainWindow) listAnchor(stride int) (int, int) {
+func (m *mainScreen) listAnchor(stride int) (int, int) {
 	if stride <= 0 {
 		return m.list.Position.First, m.list.Position.Offset
 	}
@@ -260,7 +260,7 @@ func (m *mainWindow) listAnchor(stride int) (int, int) {
 }
 
 // historyRowTop returns the top of a row in list-viewport coordinates.
-func (m *mainWindow) historyRowTop(index, stride int) int {
+func (m *mainScreen) historyRowTop(index, stride int) int {
 	if stride <= 0 {
 		return 0
 	}
@@ -269,7 +269,7 @@ func (m *mainWindow) historyRowTop(index, stride int) int {
 }
 
 // cancelDrag puts the dragged title back into its original slot.
-func (m *mainWindow) cancelDrag(gtx layout.Context) {
+func (m *mainScreen) cancelDrag(gtx layout.Context) {
 	if !m.drag.active {
 		return
 	}
@@ -284,7 +284,7 @@ func (m *mainWindow) cancelDrag(gtx layout.Context) {
 // Points above the viewport mean the first visible row; points below it are
 // clamped to the last title. The gap between cards belongs to the preceding
 // card.
-func (m *mainWindow) historyIndexAt(y, rowHeight, gap int) int {
+func (m *mainScreen) historyIndexAt(y, rowHeight, gap int) int {
 	if len(m.history) == 0 || rowHeight <= 0 {
 		return -1
 	}
@@ -309,7 +309,7 @@ func (m *mainWindow) historyIndexAt(y, rowHeight, gap int) int {
 
 // layoutOverlay draws the dragged row above the window chrome. origin is the
 // top-left of the main content in window coordinates.
-func (m *mainWindow) layoutOverlay(gtx layout.Context, origin image.Point) {
+func (m *mainScreen) layoutOverlay(gtx layout.Context, origin image.Point) {
 	if m.statusMenu.open {
 		itemID := m.statusMenu.id
 		m.statusMenu.layout(gtx, m.typo, origin, func(status catalog.UserStatus) {
@@ -347,7 +347,7 @@ func (m *mainWindow) layoutOverlay(gtx layout.Context, origin image.Point) {
 
 // moveHistoryItem moves one title while keeping selection and the active
 // loading indicator attached to their content.
-func (m *mainWindow) moveHistoryItem(from, to int) {
+func (m *mainScreen) moveHistoryItem(from, to int) {
 	if from == to || from < 0 || to < 0 || from >= len(m.history) || to >= len(m.history) {
 		return
 	}
@@ -371,7 +371,7 @@ func (m *mainWindow) moveHistoryItem(from, to int) {
 
 // syncVisibleStatusOrder copies the current filtered order into the per-status
 // order of the matching all-history rows.
-func (m *mainWindow) syncVisibleStatusOrder() {
+func (m *mainScreen) syncVisibleStatusOrder() {
 	if m.filter == filterAll {
 		return
 	}

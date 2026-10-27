@@ -6,7 +6,7 @@ import (
 	"net"
 	"strings"
 
-	"github.com/arfush/yoanime/catalog"
+	"github.com/arfush/yo/catalog"
 )
 
 // userMessageError carries a message that is already written for the user.

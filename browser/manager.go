@@ -25,7 +25,7 @@ import (
 
 	playwright "github.com/mxschmitt/playwright-go"
 
-	"github.com/arfush/yoanime/log"
+	"github.com/arfush/yo/log"
 )
 
 // removeChromiumOnExit is a development aid: it makes every application start
@@ -110,7 +110,7 @@ func (m *Manager) Installed() bool {
 // actually been installed.
 func (m *Manager) Download(ctx context.Context, onProgress func(Progress)) error {
 	if m == nil {
-		return errors.New("browser manager is nil")
+		return ErrManagerNil
 	}
 	if m.initErr != nil {
 		return fmt.Errorf("prepare Playwright: %w", m.initErr)
@@ -118,7 +118,7 @@ func (m *Manager) Download(ctx context.Context, onProgress func(Progress)) error
 	if onProgress == nil {
 		onProgress = func(Progress) {}
 	}
-	log.Info("Chromium installation started")
+	logger.Info("Chromium installation started")
 
 	ctx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
@@ -126,12 +126,12 @@ func (m *Manager) Download(ctx context.Context, onProgress func(Progress)) error
 	if m.closed {
 		m.mu.Unlock()
 		cancel()
-		return errors.New("application is closing")
+		return ErrClosing
 	}
 	if m.downloading {
 		m.mu.Unlock()
 		cancel()
-		return errors.New("Chromium download is already running")
+		return ErrDownloadRunning
 	}
 	m.downloading = true
 	m.cancel = cancel
@@ -157,7 +157,7 @@ func (m *Manager) Download(ctx context.Context, onProgress func(Progress)) error
 		return err
 	}
 	if m.Installed() {
-		log.Info("Chromium is already installed")
+		logger.Info("Chromium is already installed")
 		onProgress(Progress{Percent: 100})
 		return nil
 	}
@@ -198,7 +198,7 @@ func (m *Manager) Download(ctx context.Context, onProgress func(Progress)) error
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
-		return errors.New("application is closing")
+		return ErrClosing
 	}
 	m.cmd = cmd
 	m.mu.Unlock()
@@ -228,10 +228,10 @@ func (m *Manager) Download(ctx context.Context, onProgress func(Progress)) error
 
 	if waitErr != nil {
 		if ctx.Err() != nil {
-			log.Info("Chromium installation cancelled")
+			logger.Info("Chromium installation cancelled")
 			return ctx.Err()
 		}
-		log.Error("Chromium installation failed", "error", waitErr)
+		logger.Error("Chromium installation failed", "error", waitErr)
 		detail := stripANSI(strings.TrimSpace(stderr.String()))
 		if useful := usefulOutput(stdout.String()); useful != "" {
 			if detail != "" {
@@ -245,11 +245,11 @@ func (m *Manager) Download(ctx context.Context, onProgress func(Progress)) error
 		return fmt.Errorf("Playwright could not install Chromium: %w", waitErr)
 	}
 	if !m.Installed() {
-		return errors.New("Playwright finished without installing Chromium")
+		return ErrNoInstallPlan
 	}
 
 	tracker.finish()
-	log.Info("Chromium installation finished")
+	logger.Info("Chromium installation finished")
 	return nil
 }
 
@@ -844,3 +844,5 @@ func browsersDirectory(driverDirectory string) string {
 	}
 	return "ms-playwright"
 }
+
+var logger = log.For(log.SourceBrowser)

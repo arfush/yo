@@ -6,9 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/arfush/yoanime/kinopoisk"
-	"github.com/arfush/yoanime/log"
-	"github.com/arfush/yoanime/metadata"
+	"github.com/arfush/yo/kinopoisk"
+	"github.com/arfush/yo/metadata"
 )
 
 // animelibStreamHeaders keep AnimeLIB direct files and Kodik manifests working.
@@ -77,7 +76,7 @@ func (s *Session) resolveKinopoisk(ctx context.Context, index int) (*playlistEnt
 		chaptersReady:  true,
 		chaptersNoData: len(media.Skip) == 0,
 	}
-	log.Info("Kinopoisk episode resolved", "episode", episode.Number, "quality", media.Quality, "subtitles", len(media.Subtitles), "skip", len(media.Skip))
+	logger.Info("Kinopoisk episode resolved", "episode", episode.Number, "quality", media.Quality, "subtitles", len(media.Subtitles), "skip", len(media.Skip))
 	return entry, nil
 }
 

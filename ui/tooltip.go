@@ -8,7 +8,7 @@ import (
 	"gioui.org/unit"
 )
 
-func (w *titleWindow) layoutTooltip(gtx layout.Context, size image.Point) {
+func (w *titleScreen) layoutTooltip(gtx layout.Context, size image.Point) {
 	if w.tooltipIndex < 0 || w.tooltipIndex >= len(w.item.voices) {
 		return
 	}

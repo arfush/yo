@@ -3,7 +3,6 @@ package party
 import (
 	"crypto/rand"
 	"encoding/base64"
-	"errors"
 )
 
 // cardCheck is the fixed plaintext sealed into every card. A guest that derives
@@ -13,10 +12,8 @@ import (
 const cardCheck = "yoanime/party/card"
 
 // ErrWrongSecret reports a secret that does not open the room.
-var ErrWrongSecret = errors.New("неверный секрет комнаты")
 
 // ErrNoCard reports a guest that has not heard the host card yet.
-var ErrNoCard = errors.New("комната ещё не ответила")
 
 // Card is the cleartext room header. The relay stores and replays it, so a
 // guest learns whether a secret is needed before the host answers, and can

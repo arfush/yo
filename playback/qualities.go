@@ -4,9 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/arfush/yoanime/kinopoisk"
-	"github.com/arfush/yoanime/library"
-	"github.com/arfush/yoanime/log"
+	"github.com/arfush/yo/kinopoisk"
+	"github.com/arfush/yo/library"
 )
 
 // Qualities reports which stream qualities a Kinopoisk voice actually offers.
@@ -47,7 +46,7 @@ func (s *Service) Qualities(ctx context.Context, plan *library.PlaybackPlan, pre
 	if preferred <= 0 {
 		preferred = 1080
 	}
-	log.Info("probing Kinopoisk qualities", "title", plan.Slug, "voice", plan.Voice, "episode", plan.Episodes[index].Number)
+	logger.Info("probing Kinopoisk qualities", "title", plan.Slug, "voice", plan.Voice, "episode", plan.Episodes[index].Number)
 	media, err := s.kinopoisk.Resolve(ctx, kinopoisk.Request{
 		Iframe:        plan.Kinopoisk.Iframe,
 		Season:        season,
@@ -56,9 +55,9 @@ func (s *Service) Qualities(ctx context.Context, plan *library.PlaybackPlan, pre
 		Quality:       preferred,
 	})
 	if err != nil {
-		log.Warn("cannot probe Kinopoisk qualities", "title", plan.Slug, "voice", plan.Voice, "error", err)
+		logger.Warn("cannot probe Kinopoisk qualities", "title", plan.Slug, "voice", plan.Voice, "error", err)
 		return nil, err
 	}
-	log.Info("Kinopoisk qualities resolved", "title", plan.Slug, "voice", plan.Voice, "qualities", media.Qualities)
+	logger.Info("Kinopoisk qualities resolved", "title", plan.Slug, "voice", plan.Voice, "qualities", media.Qualities)
 	return media.Qualities, nil
 }

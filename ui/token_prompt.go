@@ -18,8 +18,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yoanime/catalog"
-	"github.com/arfush/yoanime/log"
+	"github.com/arfush/yo/catalog"
 )
 
 const (
@@ -560,5 +559,5 @@ func logTokenError(err error) {
 	if err == nil {
 		return
 	}
-	log.Error("token loading failed", "error", err)
+	logger.Error("token loading failed", "error", err)
 }

@@ -7,19 +7,18 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/arfush/yoanime/browser"
-	"github.com/arfush/yoanime/library"
-	"github.com/arfush/yoanime/log"
-	"github.com/arfush/yoanime/mpv"
-	"github.com/arfush/yoanime/platform/appdata"
-	"github.com/arfush/yoanime/platform/install"
-	"github.com/arfush/yoanime/platform/singleinstance"
-	"github.com/arfush/yoanime/platform/tray"
-	"github.com/arfush/yoanime/playback"
-	"github.com/arfush/yoanime/ui"
-	"github.com/arfush/yoanime/updater"
-	"github.com/arfush/yoanime/updates"
-	"github.com/arfush/yoanime/version"
+	"github.com/arfush/yo/browser"
+	"github.com/arfush/yo/library"
+	"github.com/arfush/yo/log"
+	"github.com/arfush/yo/mpv"
+	"github.com/arfush/yo/platform/appdata"
+	"github.com/arfush/yo/platform/install"
+	"github.com/arfush/yo/platform/singleinstance"
+	"github.com/arfush/yo/platform/tray"
+	"github.com/arfush/yo/playback"
+	"github.com/arfush/yo/ui"
+	"github.com/arfush/yo/update"
+	"github.com/arfush/yo/version"
 )
 
 // Run starts the desktop application. It never returns while the window loop
@@ -31,13 +30,13 @@ func Run() {
 		}
 		defer log.Close()
 	}
-	log.Info("application starting", "version", version.Version)
+	logger.Info("application starting", "version", version.Version)
 
 	release, ok := singleinstance.Acquire()
 	if !ok {
 		// Another copy already owns the window, database and browser profile.
 		// Hand the focus over so it can come back from the notification area.
-		log.Info("another instance is already running")
+		logger.Info("another instance is already running")
 		tray.ActivateRunningInstance()
 		return
 	}
@@ -49,7 +48,7 @@ func Run() {
 
 	services, err := buildServices()
 	if err != nil {
-		log.Error("application startup failed", "error", err)
+		logger.Error("application startup failed", "error", err)
 		fmt.Fprintln(os.Stderr, "yoanime:", err)
 		os.Exit(1)
 	}
@@ -73,7 +72,7 @@ func buildServices() (ui.Services, error) {
 	if err != nil {
 		return ui.Services{}, err
 	}
-	updateStore, err := updates.Open(updatesPath)
+	updateStore, err := update.Open(updatesPath)
 	if err != nil {
 		return ui.Services{}, err
 	}
@@ -81,16 +80,16 @@ func buildServices() (ui.Services, error) {
 	if err != nil {
 		return ui.Services{}, err
 	}
-	updater.Cleanup(updateDir)
+	update.Cleanup(updateDir)
 
 	// The executable path is hashed once so a re-pushed build with an unchanged
 	// version can still be offered.
 	currentSHA := ""
 	if executable, exeErr := os.Executable(); exeErr == nil {
-		if digest, hashErr := updates.FileSHA256(executable); hashErr == nil {
+		if digest, hashErr := update.FileSHA256(executable); hashErr == nil {
 			currentSHA = digest
 		} else {
-			log.Warn("cannot hash the executable", "error", hashErr)
+			logger.Warn("cannot hash the executable", "error", hashErr)
 		}
 	}
 
@@ -117,3 +116,5 @@ func buildServices() (ui.Services, error) {
 		CurrentSHA:        currentSHA,
 	}, nil
 }
+
+var logger = log.For(log.SourceApp)

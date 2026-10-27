@@ -2,7 +2,6 @@ package browser
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 
@@ -28,13 +27,13 @@ type Headless struct {
 // NewHeadless starts Chromium using the already installed Playwright driver.
 func (m *Manager) NewHeadless(ctx context.Context) (*Headless, error) {
 	if m == nil {
-		return nil, errors.New("browser manager is nil")
+		return nil, ErrManagerNil
 	}
 	if m.initErr != nil {
 		return nil, fmt.Errorf("prepare Playwright: %w", m.initErr)
 	}
 	if !m.Installed() {
-		return nil, errors.New("Chromium не установлен")
+		return nil, ErrChromiumMissing
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -73,12 +72,12 @@ func (m *Manager) NewHeadless(ctx context.Context) (*Headless, error) {
 // NewPage opens a new page in the shared browser context.
 func (h *Headless) NewPage() (playwright.Page, error) {
 	if h == nil {
-		return nil, errors.New("headless browser is nil")
+		return nil, ErrHeadlessNil
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.closed {
-		return nil, errors.New("headless browser is closed")
+		return nil, ErrHeadlessClosed
 	}
 	return h.context.NewPage()
 }

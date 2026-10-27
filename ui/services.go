@@ -3,12 +3,12 @@ package ui
 import (
 	"time"
 
-	"github.com/arfush/yoanime/browser"
-	"github.com/arfush/yoanime/catalog"
-	"github.com/arfush/yoanime/library"
-	"github.com/arfush/yoanime/mpv"
-	"github.com/arfush/yoanime/playback"
-	"github.com/arfush/yoanime/updates"
+	"github.com/arfush/yo/browser"
+	"github.com/arfush/yo/catalog"
+	"github.com/arfush/yo/library"
+	"github.com/arfush/yo/mpv"
+	"github.com/arfush/yo/playback"
+	"github.com/arfush/yo/update"
 )
 
 // RateLimitState is the part of AnimeLIB's cooldown the header needs. The
@@ -29,7 +29,7 @@ type Services struct {
 	Browser           *browser.Manager
 	MPV               *mpv.Manager
 	Playback          *playback.Service
-	UpdateStore       *updates.Store
+	UpdateStore       *update.Store
 	RateLimit         RateLimitState
 	History           []catalog.Title
 	TokenPath         string

@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/arfush/yoanime/library"
-	"github.com/arfush/yoanime/store"
+	"github.com/arfush/yo/library"
+	"github.com/arfush/yo/store"
 )
 
 func TestUserStatusFilterStatus(t *testing.T) {
@@ -28,7 +28,7 @@ func TestVisibleHistoryUsesStatusOrderForFilteredViews(t *testing.T) {
 		{id: 4, userStatus: library.UserStatusWatching, statusOrder: 10},
 	}
 
-	m := &mainWindow{filter: filterWatching}
+	m := &mainScreen{filter: filterWatching}
 	if got := historyIDs(m.visibleHistory(items)); !equalIDs(got, []int64{2, 4, 1}) {
 		t.Fatalf("filtered order = %v, want [2 4 1]", got)
 	}
@@ -47,7 +47,7 @@ func TestMoveFilteredHistoryUpdatesOnlyItsStatusOrder(t *testing.T) {
 		{id: 4, userStatus: library.UserStatusWatching, statusOrder: 20},
 		{id: 5, userStatus: library.UserStatusWatching, statusOrder: 30},
 	}
-	m := &mainWindow{
+	m := &mainScreen{
 		allHistory: append([]historyTitle(nil), all...),
 		filter:     filterWatching,
 	}
@@ -85,7 +85,7 @@ func TestSetUserStatusMovesTitleToTopOfNewStatus(t *testing.T) {
 		{id: 2, userStatus: library.UserStatusWatching, statusOrder: 15},
 		{id: 3, userStatus: library.UserStatusPlanned, statusOrder: -20},
 	}
-	m := &mainWindow{
+	m := &mainScreen{
 		allHistory: append([]historyTitle(nil), all...),
 		history:    append([]historyTitle(nil), all...),
 		filter:     filterAll,
@@ -112,7 +112,7 @@ func TestSetUserStatusRemovesRowFromCurrentFilter(t *testing.T) {
 		{id: 2, userStatus: library.UserStatusWatching, statusOrder: 10},
 		{id: 3, userStatus: library.UserStatusPlanned, statusOrder: 0},
 	}
-	m := &mainWindow{
+	m := &mainScreen{
 		allHistory: append([]historyTitle(nil), all...),
 		filter:     filterWatching,
 	}
@@ -174,7 +174,7 @@ func TestPersistHistoryOrderWritesOnlyTheActiveStatus(t *testing.T) {
 	for _, item := range history {
 		all = append(all, titleFromLibrary(item))
 	}
-	m := &mainWindow{
+	m := &mainScreen{
 		titles:     lib,
 		allHistory: all,
 		filter:     filterWatching,

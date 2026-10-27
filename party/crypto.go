@@ -5,7 +5,6 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
-	"errors"
 	"fmt"
 
 	"golang.org/x/crypto/argon2"
@@ -33,8 +32,7 @@ var (
 	kdfThreads = kdfThreadsDefault
 )
 
-// errCiphertext reports a payload that is too short or fails authentication.
-var errCiphertext = errors.New("повреждённое сообщение комнаты")
+// ErrCorruptedMessage reports a payload that is too short or fails authentication.
 
 // deriveContentKey turns the room key and the optional secret into the AES key
 // that protects every room frame. The room key is included on purpose: a secret
@@ -61,22 +59,22 @@ func sealContent(key, plaintext []byte) (string, error) {
 // relay altered the frame; both are treated the same.
 func openContent(key []byte, encoded string) ([]byte, error) {
 	if encoded == "" {
-		return nil, errCiphertext
+		return nil, ErrCorruptedMessage
 	}
 	raw, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
-		return nil, errCiphertext
+		return nil, ErrCorruptedMessage
 	}
 	aead, err := contentAEAD(key)
 	if err != nil {
 		return nil, err
 	}
 	if len(raw) < aead.NonceSize()+aead.Overhead() {
-		return nil, errCiphertext
+		return nil, ErrCorruptedMessage
 	}
 	plaintext, err := aead.Open(nil, raw[:aead.NonceSize()], raw[aead.NonceSize():], nil)
 	if err != nil {
-		return nil, errCiphertext
+		return nil, ErrCorruptedMessage
 	}
 	return plaintext, nil
 }

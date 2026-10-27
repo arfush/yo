@@ -3,7 +3,6 @@ package kinopoisk
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/arfush/yoanime/log"
+	"github.com/arfush/yo/log"
 )
 
 // Voice is one translation the mirror carries.
@@ -46,7 +45,7 @@ type Catalog struct {
 // exposes the season/episode catalogue this package can resolve.
 func (c *Client) Voices(ctx context.Context, id int) ([]Voice, error) {
 	if id <= 0 {
-		return nil, errors.New("некорректный id Кинопоиска")
+		return nil, ErrInvalidID
 	}
 	body, endpoint, err := c.fetchPlayers(ctx, id)
 	if err != nil {
@@ -88,9 +87,9 @@ func (c *Client) Voices(ctx context.Context, id int) ([]Voice, error) {
 		}
 	}
 	if len(voices) == 0 {
-		return nil, errors.New("Alloha не раздаёт этот тайтл")
+		return nil, ErrNotServed
 	}
-	log.Debug("kinopoisk voices loaded", "title", id, "voices", len(voices), "endpoint", endpoint)
+	logger.Debug("kinopoisk voices loaded", "title", id, "voices", len(voices), "endpoint", endpoint)
 	return voices, nil
 }
 
@@ -113,7 +112,7 @@ func (c *Client) fetchPlayers(ctx context.Context, id int) ([]byte, string, erro
 		return body, endpoint, nil
 	}
 	if lastErr == nil {
-		lastErr = errors.New("нет доступных зеркал")
+		lastErr = ErrNoMirrors
 	}
 	return nil, "", fmt.Errorf("каталог плеера недоступен: %w", lastErr)
 }
@@ -148,7 +147,7 @@ func (c *Client) playersURLs() []string {
 func (c *Client) Catalog(ctx context.Context, voice Voice) (Catalog, error) {
 	iframe := strings.TrimSpace(voice.Iframe)
 	if iframe == "" {
-		return Catalog{}, errors.New("у озвучки нет ссылки плеера")
+		return Catalog{}, ErrNoPlayerLink
 	}
 	body, err := c.get(ctx, iframe, c.config.referer())
 	if err != nil {
@@ -162,7 +161,7 @@ func (c *Client) Catalog(ctx context.Context, voice Voice) (Catalog, error) {
 	if err != nil {
 		return Catalog{}, err
 	}
-	log.Debug("kinopoisk catalog parsed", "voice", voice.ID, "movie", catalog.Movie, "seasons", len(catalog.Seasons), "episodes", len(catalog.Episodes))
+	logger.Debug("kinopoisk catalog parsed", "voice", voice.ID, "movie", catalog.Movie, "seasons", len(catalog.Seasons), "episodes", len(catalog.Episodes))
 	return catalog, nil
 }
 
@@ -198,12 +197,12 @@ func extractFileList(html []byte) ([]byte, error) {
 	const marker = "fileList = JSON.parse("
 	index := strings.Index(text, marker)
 	if index < 0 {
-		return nil, errors.New("плеер не вернул список серий")
+		return nil, ErrNoEpisodeList
 	}
 	rest := text[index+len(marker):]
 	quote := byte('\'')
 	if len(rest) == 0 {
-		return nil, errors.New("пустой список серий")
+		return nil, ErrEmptyEpisodeList
 	}
 	if rest[0] == '"' || rest[0] == '\'' {
 		quote = rest[0]
@@ -211,11 +210,11 @@ func extractFileList(html []byte) ([]byte, error) {
 	}
 	end := strings.IndexByte(rest, quote)
 	if end < 0 {
-		return nil, errors.New("некорректный список серий")
+		return nil, ErrBadEpisodeList
 	}
 	payload := unescapeJSString(rest[:end])
 	if !json.Valid([]byte(payload)) {
-		return nil, errors.New("список серий повреждён")
+		return nil, ErrCorruptedEpisodeList
 	}
 	return []byte(payload), nil
 }
@@ -339,7 +338,7 @@ func parseSerialList(raw json.RawMessage) (Catalog, error) {
 		}
 	}
 	if len(catalog.Episodes) == 0 {
-		return Catalog{}, errors.New("в плеере нет серий")
+		return Catalog{}, ErrNoEpisodes
 	}
 	sortVoices(catalog.Available, catalog.Episodes)
 	return catalog, nil
@@ -373,7 +372,7 @@ func parseMovieList(raw json.RawMessage) (Catalog, error) {
 		break
 	}
 	if len(catalog.Available) == 0 {
-		return Catalog{}, errors.New("в плеере нет файла фильма")
+		return Catalog{}, ErrNoMovieFile
 	}
 	catalog.Seasons = []Season{{Number: 0, Episodes: []int{1}}}
 	catalog.Episodes = []string{"1"}
@@ -436,3 +435,5 @@ func asInt(value any) int {
 	}
 	return 0
 }
+
+var logger = log.For(log.SourceKinopoisk)

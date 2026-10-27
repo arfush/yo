@@ -8,9 +8,9 @@ import (
 	"gioui.org/op"
 )
 
-func undoTestWindow() *mainWindow {
+func undoTestWindow() *mainScreen {
 	history := testHistory()
-	return &mainWindow{
+	return &mainScreen{
 		history:  history,
 		rows:     make([]historyRow, len(history)),
 		selected: 2,

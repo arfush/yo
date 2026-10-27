@@ -12,8 +12,8 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yoanime/ui/draw"
-	"github.com/arfush/yoanime/ui/theme"
+	"github.com/arfush/yo/ui/draw"
+	"github.com/arfush/yo/ui/theme"
 )
 
 // IconButtonShape selects how an icon button paints its background.

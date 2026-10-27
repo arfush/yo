@@ -5,7 +5,7 @@ import (
 	"testing"
 	"unicode/utf16"
 
-	"github.com/arfush/yoanime/library"
+	"github.com/arfush/yo/library"
 )
 
 func TestFormatEpisodeNotification(t *testing.T) {

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha1"
-	"errors"
 	"fmt"
 	"image"
 	_ "image/gif"
@@ -20,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arfush/yoanime/store"
+	"github.com/arfush/yo/store"
 )
 
 const (
@@ -103,11 +102,11 @@ func (l *Library) ensureCover(ctx context.Context, title *Title) {
 // saved title can reuse it without downloading the poster again.
 func (l *Library) PreviewCover(ctx context.Context, sourceURL string) (string, error) {
 	if l == nil || l.covers == nil {
-		return "", errors.New("хранилище обложек не открыто")
+		return "", ErrCoversClosed
 	}
 	sourceURL = strings.TrimSpace(sourceURL)
 	if sourceURL == "" {
-		return "", errors.New("у тайтла нет ссылки на обложку")
+		return "", ErrNoCoverURL
 	}
 	if path, ok := l.covers.cachedByURL(sourceURL); ok {
 		return path, nil
@@ -174,14 +173,14 @@ func (l *Library) adoptPreview(tid int64, sourceURL, previewPath string) (string
 // flight.
 func (l *Library) RefreshCover(ctx context.Context, tid int64, sourceURL string) (string, error) {
 	if l == nil || l.covers == nil {
-		return "", errors.New("хранилище обложек не открыто")
+		return "", ErrCoversClosed
 	}
 	if tid == 0 {
-		return "", errors.New("у тайтла нет локального id")
+		return "", ErrNoTitleID
 	}
 	sourceURL = strings.TrimSpace(sourceURL)
 	if sourceURL == "" {
-		return "", errors.New("у тайтла нет ссылки на обложку")
+		return "", ErrNoCoverURL
 	}
 
 	cache, err := l.covers.db.GetCoverCache(tid)
@@ -311,7 +310,7 @@ func (c *coverManager) fetch(ctx context.Context, sourceURL string) ([]byte, str
 		return nil, "", err
 	}
 	if len(data) == 0 || len(data) > maxCoverBytes {
-		return nil, "", errors.New("обложка: пустой или слишком большой файл")
+		return nil, "", ErrBadCoverFile
 	}
 
 	_, format, err := image.Decode(bytes.NewReader(data))

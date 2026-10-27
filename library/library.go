@@ -9,13 +9,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arfush/yoanime/animelib"
-	"github.com/arfush/yoanime/catalog"
-	"github.com/arfush/yoanime/kinopoisk"
-	"github.com/arfush/yoanime/log"
-	"github.com/arfush/yoanime/metadata"
-	"github.com/arfush/yoanime/store"
-	"github.com/arfush/yoanime/token"
+	"github.com/arfush/yo/animelib"
+	"github.com/arfush/yo/catalog"
+	"github.com/arfush/yo/kinopoisk"
+	"github.com/arfush/yo/log"
+	"github.com/arfush/yo/metadata"
+	"github.com/arfush/yo/store"
+	"github.com/arfush/yo/token"
 )
 
 // The display model lives in catalog so screens can use it without importing
@@ -89,10 +89,10 @@ func (l *Library) Close() error {
 func (l *Library) History() ([]Title, error) {
 	entries, err := l.store.ListHistory()
 	if err != nil {
-		log.Error("cannot load history", "error", err)
+		logger.Error("cannot load history", "error", err)
 		return nil, err
 	}
-	log.Debug("history loaded", "count", len(entries))
+	logger.Debug("history loaded", "count", len(entries))
 	out := make([]Title, 0, len(entries))
 	for _, entry := range entries {
 		title := titleFromStore(entry.Title)
@@ -114,10 +114,15 @@ func (l *Library) Load(ctx context.Context, input string) (Title, error) {
 	if link, ok := kinopoisk.ParseInput(input); ok {
 		return l.loadKinopoisk(ctx, link, true)
 	}
-	log.Info("loading title", "input", input)
+	if link, ok, err := animelib.ParseReadingInput(input); err != nil {
+		return Title{}, err
+	} else if ok {
+		return l.loadReading(ctx, link, true)
+	}
+	logger.Info("loading title", "input", input)
 	token, err := l.readToken()
 	if err != nil {
-		log.Error("cannot read AnimeLIB token", "error", err)
+		logger.Error("cannot read AnimeLIB token", "error", err)
 		return Title{}, err
 	}
 
@@ -125,10 +130,10 @@ func (l *Library) Load(ctx context.Context, input string) (Title, error) {
 	data, err := client.Fetch(ctx, input)
 	if err != nil {
 		if ctx.Err() != nil {
-			log.Info("title load cancelled", "input", input)
+			logger.Info("title load cancelled", "input", input)
 			return Title{}, ctx.Err()
 		}
-		log.Error("title load failed", "input", input, "error", err)
+		logger.Error("title load failed", "input", input, "error", err)
 		return Title{}, err
 	}
 
@@ -142,7 +147,7 @@ func (l *Library) Load(ctx context.Context, input string) (Title, error) {
 		return Title{}, err
 	}
 	l.ensureCover(ctx, &title)
-	log.Info("title loaded", "title", title.Russian, "slug", title.Slug, "episodes", len(title.Episodes), "voices", len(title.Voiceovers))
+	logger.Info("title loaded", "title", title.Russian, "slug", title.Slug, "episodes", len(title.Episodes), "voices", len(title.Voiceovers))
 	return title, nil
 }
 
@@ -174,10 +179,15 @@ func (l *Library) Fetch(ctx context.Context, input string) (Title, error) {
 	if link, ok := kinopoisk.ParseInput(input); ok {
 		return l.loadKinopoisk(ctx, link, false)
 	}
-	log.Info("fetching title", "input", input)
+	if link, ok, err := animelib.ParseReadingInput(input); err != nil {
+		return Title{}, err
+	} else if ok {
+		return l.loadReading(ctx, link, false)
+	}
+	logger.Info("fetching title", "input", input)
 	token, err := l.readToken()
 	if err != nil {
-		log.Error("cannot read AnimeLIB token", "error", err)
+		logger.Error("cannot read AnimeLIB token", "error", err)
 		return Title{}, err
 	}
 
@@ -185,10 +195,10 @@ func (l *Library) Fetch(ctx context.Context, input string) (Title, error) {
 	data, err := client.Fetch(ctx, input)
 	if err != nil {
 		if ctx.Err() != nil {
-			log.Info("title fetch cancelled", "input", input)
+			logger.Info("title fetch cancelled", "input", input)
 			return Title{}, ctx.Err()
 		}
-		log.Error("title fetch failed", "input", input, "error", err)
+		logger.Error("title fetch failed", "input", input, "error", err)
 		return Title{}, err
 	}
 
@@ -220,18 +230,18 @@ func (l *Library) Fetch(ctx context.Context, input string) (Title, error) {
 	title.SelectedVoice = voice
 	title.SelectedEpisode = episode
 	l.ensureCover(ctx, &title)
-	log.Info("title fetched", "title", title.Russian, "slug", title.Slug, "episodes", len(title.Episodes), "voices", len(title.Voiceovers))
+	logger.Info("title fetched", "title", title.Russian, "slug", title.Slug, "episodes", len(title.Episodes), "voices", len(title.Voiceovers))
 	return title, nil
 }
 
 // Save writes a URL-opened title to the local history and stores the voiceover
 // and episode chosen in the title window.
 func (l *Library) Save(title Title, voice, episode string) (Title, error) {
-	log.Info("saving title", "title", title.Russian, "slug", title.Slug, "user_status", title.UserStatus)
+	logger.Info("saving title", "title", title.Russian, "slug", title.Slug, "user_status", title.UserStatus)
 	stored := storedTitleFromLibrary(title)
 	id, err := l.store.UpsertTitle(stored)
 	if err != nil {
-		log.Error("cannot save title", "slug", title.Slug, "error", err)
+		logger.Error("cannot save title", "slug", title.Slug, "error", err)
 		return Title{}, fmt.Errorf("не удалось сохранить тайтл: %w", err)
 	}
 	stored.ID = id
@@ -239,7 +249,7 @@ func (l *Library) Save(title Title, voice, episode string) (Title, error) {
 		// The quality ladder costs a headless resolve, so it is cached only for
 		// titles the user actually keeps in history.
 		if err := l.store.SaveTitleQualities(id, data); err != nil {
-			log.Warn("cannot cache Kinopoisk qualities", "title", id, "error", err)
+			logger.Warn("cannot cache Kinopoisk qualities", "title", id, "error", err)
 		}
 	}
 
@@ -266,7 +276,7 @@ func (l *Library) Save(title Title, voice, episode string) (Title, error) {
 	// not overwrite a manual choice. Save is explicit, so write the status from
 	// the title window even when the title already existed without history.
 	if err := l.store.SetUserStatus(id, int(stored.UserStatus)); err != nil {
-		log.Error("cannot save user status", "title", id, "error", err)
+		logger.Error("cannot save user status", "title", id, "error", err)
 		return Title{}, err
 	}
 	saved.UserStatus = UserStatus(stored.UserStatus)
@@ -277,7 +287,7 @@ func (l *Library) Save(title Title, voice, episode string) (Title, error) {
 			saved.CoverNeedsRetry = false
 		}
 	}
-	log.Info("title saved", "title", saved.ID, "slug", saved.Slug)
+	logger.Info("title saved", "title", saved.ID, "slug", saved.Slug)
 	return saved, nil
 }
 
@@ -297,11 +307,11 @@ func (l *Library) TrackViewing(title Title, voice, episode string) (int64, error
 		return 0, fmt.Errorf("не удалось сохранить тайтл: %w", err)
 	}
 	if err := l.store.TrackViewing(id, episode, voice); err != nil {
-		log.Error("cannot track viewing", "title", id, "episode", episode, "error", err)
+		logger.Error("cannot track viewing", "title", id, "episode", episode, "error", err)
 		return id, err
 	}
 	l.promoteWatching(id)
-	log.Info("viewing tracked", "title", id, "episode", episode, "voice", voice)
+	logger.Info("viewing tracked", "title", id, "episode", episode, "voice", voice)
 	return id, nil
 }
 
@@ -315,7 +325,7 @@ func (l *Library) SaveSelection(tid int64, voice, episode string) error {
 // planned: their episodes do not exist yet, so "Смотрю" would be misleading.
 func (l *Library) SetUserStatus(tid int64, status UserStatus) error {
 	if !status.Valid() {
-		return errors.New("неизвестный статус тайтла")
+		return ErrUnknownUserStatus
 	}
 	if tid != 0 {
 		title, err := l.store.GetTitleByID(tid)
@@ -336,7 +346,7 @@ func (l *Library) promoteWatching(tid int64) {
 		return
 	}
 	if err := l.store.SetUserStatusFrom(tid, int(UserStatusPlanned), int(UserStatusWatching)); err != nil {
-		log.Warn("cannot promote user status", "title", tid, "error", err)
+		logger.Warn("cannot promote user status", "title", tid, "error", err)
 		return
 	}
 }
@@ -350,7 +360,7 @@ func (l *Library) UserStatus(tid int64) UserStatus {
 	}
 	title, err := l.store.GetTitleByID(tid)
 	if err != nil {
-		log.Warn("cannot read user status", "title", tid, "error", err)
+		logger.Warn("cannot read user status", "title", tid, "error", err)
 		return UserStatusPlanned
 	}
 	if title == nil {
@@ -367,10 +377,10 @@ func (l *Library) MarkCompleted(tid int64) error {
 		return nil
 	}
 	if err := l.store.SetUserStatus(tid, int(UserStatusCompleted)); err != nil {
-		log.Error("cannot mark title completed", "title", tid, "error", err)
+		logger.Error("cannot mark title completed", "title", tid, "error", err)
 		return err
 	}
-	log.Info("title completed", "title", tid)
+	logger.Info("title completed", "title", tid)
 	return nil
 }
 
@@ -457,7 +467,7 @@ func (l *Library) AutoSkipSegments() map[metadata.Segment]bool {
 // SetAutoSkipSegment stores the per-type auto-skip choice.
 func (l *Library) SetAutoSkipSegment(segment metadata.Segment, enabled bool) error {
 	if l == nil || l.store == nil {
-		return errors.New("база данных недоступна")
+		return ErrDatabaseUnavailable
 	}
 	return l.store.SetAutoSkipSegment(string(segment), enabled)
 }
@@ -532,21 +542,21 @@ func (l *Library) SaveIntrodbCache(tid int64, episode string, chapters []byte, n
 // otherwise stay on disk forever after the history row is gone.
 func (l *Library) DeleteHistory(tid int64) error {
 	if err := l.store.DeleteHistory(tid); err != nil {
-		log.Error("cannot delete history", "title", tid, "error", err)
+		logger.Error("cannot delete history", "title", tid, "error", err)
 		return err
 	}
 	l.removeCover(tid)
-	log.Info("history deleted", "title", tid)
+	logger.Info("history deleted", "title", tid)
 	return nil
 }
 
 // ClearHistory removes every title from the visible history.
 func (l *Library) ClearHistory() error {
 	if err := l.store.ClearHistory(); err != nil {
-		log.Error("cannot clear history", "error", err)
+		logger.Error("cannot clear history", "error", err)
 		return err
 	}
-	log.Info("history cleared")
+	logger.Info("history cleared")
 	return nil
 }
 
@@ -572,12 +582,12 @@ func (l *Library) readToken() (string, error) {
 	value, err := token.Load(l.tokenPath)
 	if err != nil {
 		if errors.Is(err, token.ErrNotFound) {
-			return "", errors.New("токен AnimeLIB не найден — перезапусти yoanime, чтобы авторизоваться")
+			return "", ErrTokenMissing
 		}
 		return "", fmt.Errorf("не удалось прочитать токен AnimeLIB: %w", err)
 	}
 	if value.Expired(time.Now()) {
-		return "", errors.New("токен AnimeLIB истёк — перезапусти yoanime, чтобы авторизоваться")
+		return "", ErrTokenExpired
 	}
 	return value.AccessToken, nil
 }
@@ -822,3 +832,5 @@ func contains(list []string, value string) bool {
 	}
 	return false
 }
+
+var logger = log.For(log.SourceLibrary)

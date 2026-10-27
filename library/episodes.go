@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/arfush/yoanime/animelib"
-	"github.com/arfush/yoanime/catalog"
-	"github.com/arfush/yoanime/kinopoisk"
-	"github.com/arfush/yoanime/store"
+	"github.com/arfush/yo/animelib"
+	"github.com/arfush/yo/catalog"
+	"github.com/arfush/yo/kinopoisk"
+	"github.com/arfush/yo/store"
 )
 
 // Notification types are shared with the UI through catalog.
@@ -36,7 +36,7 @@ func (l *Library) EpisodeNotificationsEnabled() bool {
 // SetEpisodeNotificationsEnabled stores the notification choice.
 func (l *Library) SetEpisodeNotificationsEnabled(enabled bool) error {
 	if l == nil {
-		return errors.New("база данных недоступна")
+		return ErrDatabaseUnavailable
 	}
 	return l.store.SetEpisodeNotificationsEnabled(enabled)
 }
@@ -250,6 +250,9 @@ func (l *Library) RefreshMissingEpisodeTotals(ctx context.Context, onUpdate func
 	}
 	missing := make([]Title, 0, len(titles))
 	for _, title := range titles {
+		if title.IsReading() {
+			continue
+		}
 		if title.EpisodesTotal == 0 && title.Slug != "" {
 			missing = append(missing, title)
 		}

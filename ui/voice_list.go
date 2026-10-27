@@ -9,7 +9,7 @@ import (
 	"gioui.org/unit"
 )
 
-func (w *titleWindow) layoutVoiceLabel(gtx layout.Context, rect image.Rectangle) int {
+func (w *titleScreen) layoutVoiceLabel(gtx layout.Context, rect image.Rectangle) int {
 	face := font.Font{Typeface: fontFamily, Weight: font.Medium}
 	_, ink := w.typo.measure(gtx, "ОЗВУЧКА", face, titlePageSectionSize)
 	top := rect.Min.Y + gtx.Dp(unit.Dp(5))
@@ -17,7 +17,7 @@ func (w *titleWindow) layoutVoiceLabel(gtx layout.Context, rect image.Rectangle)
 	return top + ink.Dy() + gtx.Dp(unit.Dp(7))
 }
 
-func (w *titleWindow) layoutVoices(gtx layout.Context, rect image.Rectangle) {
+func (w *titleScreen) layoutVoices(gtx layout.Context, rect image.Rectangle) {
 	w.tooltipIndex = -1
 	w.tooltipKodik = false
 	if rect.Empty() || len(w.item.voices) == 0 {
@@ -69,7 +69,7 @@ func (w *titleWindow) layoutVoices(gtx layout.Context, rect image.Rectangle) {
 	}
 }
 
-func (w *titleWindow) layoutVoiceRow(gtx layout.Context, index, width, height int) {
+func (w *titleScreen) layoutVoiceRow(gtx layout.Context, index, width, height int) {
 	if index < 0 || index >= len(w.item.voices) {
 		return
 	}
@@ -190,7 +190,7 @@ func (w *titleWindow) layoutVoiceRow(gtx layout.Context, index, width, height in
 
 // drawVoiceBadge paints one of the small square markers at the right of a
 // voice row. hover is the badge's own hover progress.
-func (w *titleWindow) drawVoiceBadge(gtx layout.Context, rect image.Rectangle, label string, hover float32) {
+func (w *titleScreen) drawVoiceBadge(gtx layout.Context, rect image.Rectangle, label string, hover float32) {
 	fill := mixColor(titleHelpFill, titleHelpHoverFill, hover)
 	border := mixColor(titleHelpBorder, titleHelpHoverBorder, hover)
 	radius := gtx.Dp(unit.Dp(5))

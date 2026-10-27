@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arfush/yoanime/log"
+	"github.com/arfush/yo/log"
 )
 
 const (
@@ -247,13 +247,13 @@ func unescapePathSegment(segment string) string {
 func (c *Client) Fetch(ctx context.Context, input string) (*TitleData, error) {
 	slug, err := ParseInput(input)
 	if err != nil {
-		log.Warn("cannot parse AnimeLIB input", "input", input, "error", err)
+		logger.Warn("cannot parse AnimeLIB input", "input", input, "error", err)
 		return nil, err
 	}
-	log.Debug("resolving AnimeLIB title", "slug", slug)
+	logger.Debug("resolving AnimeLIB title", "slug", slug)
 	title, err := c.resolve(ctx, slug)
 	if err != nil {
-		log.Error("cannot resolve AnimeLIB title", "slug", slug, "error", err)
+		logger.Error("cannot resolve AnimeLIB title", "slug", slug, "error", err)
 		return nil, err
 	}
 	if announced(title) {
@@ -295,7 +295,7 @@ func (c *Client) Fetch(ctx context.Context, input string) (*TitleData, error) {
 		Episodes:   episodes,
 		Voiceovers: buildVoiceovers(episodes, groups, complete, kodik),
 	}
-	log.Info("AnimeLIB title resolved", "title", title.RusName, "slug", title.Slug, "episodes", len(episodes), "voices", len(data.Voiceovers))
+	logger.Info("AnimeLIB title resolved", "title", title.RusName, "slug", title.Slug, "episodes", len(episodes), "voices", len(data.Voiceovers))
 	return data, nil
 }
 
@@ -631,7 +631,7 @@ func (c *Client) waitPace(ctx context.Context) error {
 
 func (c *Client) get(ctx context.Context, endpoint string, siteID int) ([]byte, error) {
 	if c.token == "" {
-		return nil, errors.New("не найден токен AnimeLIB (animelib_token.txt в папке данных yoanime)")
+		return nil, ErrNoToken
 	}
 	for {
 		// A previous 429 parks every request (including parallel voiceover
@@ -652,11 +652,11 @@ func (c *Client) get(ctx context.Context, endpoint string, siteID int) ([]byte, 
 
 		sentAt := time.Now()
 		noteRequestSent(sentAt)
-		log.Debug("AnimeLIB request", "endpoint", endpoint, "site", siteID)
+		logger.Debug("AnimeLIB request", "endpoint", endpoint, "site", siteID)
 		body, status, retryAfter, err := c.do(ctx, endpoint, siteID)
 		<-c.sem
 		if err != nil {
-			log.Warn("AnimeLIB request failed", "endpoint", endpoint, "site", siteID, "error", err)
+			logger.Warn("AnimeLIB request failed", "endpoint", endpoint, "site", siteID, "error", err)
 			return nil, err
 		}
 		switch {
@@ -666,7 +666,7 @@ func (c *Client) get(ctx context.Context, endpoint string, siteID int) ([]byte, 
 			// until AnimeLIB answers without a rate limit. AnimeLIB usually
 			// omits Retry-After, so log the pause the client actually uses.
 			pause := noteRateLimit(sentAt, parseRetryAfter(retryAfter))
-			log.Warn("AnimeLIB rate limit reached", "endpoint", endpoint, "retry_after", pause.Round(time.Second))
+			logger.Warn("AnimeLIB rate limit reached", "endpoint", endpoint, "retry_after", pause.Round(time.Second))
 			continue
 		case status >= http.StatusOK && status < http.StatusMultipleChoices:
 			noteRateLimitSuccess(sentAt)
@@ -676,7 +676,7 @@ func (c *Client) get(ctx context.Context, endpoint string, siteID int) ([]byte, 
 			if len(snippet) > 240 {
 				snippet = snippet[:240] + "…"
 			}
-			log.Warn("AnimeLIB returned an error", "endpoint", endpoint, "status", status)
+			logger.Warn("AnimeLIB returned an error", "endpoint", endpoint, "status", status)
 			return nil, fmt.Errorf("HTTP %d: %s", status, snippet)
 		}
 	}
@@ -689,9 +689,10 @@ func (c *Client) do(ctx context.Context, endpoint string, siteID int) ([]byte, i
 	if err != nil {
 		return nil, 0, "", err
 	}
+	origin := siteOrigin(siteID)
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Referer", webOrigin+"/")
-	req.Header.Set("Origin", webOrigin)
+	req.Header.Set("Referer", origin+"/")
+	req.Header.Set("Origin", origin)
 	req.Header.Set("Site-Id", strconv.Itoa(siteID))
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Authorization", "Bearer "+c.token)
@@ -768,3 +769,5 @@ func SortEpisodes(episodes []string) {
 		return episodes[i] < episodes[j]
 	})
 }
+
+var logger = log.For(log.SourceAnimelib)

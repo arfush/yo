@@ -7,7 +7,7 @@ import (
 	"gioui.org/layout"
 	"gioui.org/unit"
 
-	"github.com/arfush/yoanime/ui/draw"
+	"github.com/arfush/yo/ui/draw"
 )
 
 // PanelStyle describes the rounded surface used by settings groups, title

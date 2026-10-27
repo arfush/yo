@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/arfush/yoanime/animelib"
-	"github.com/arfush/yoanime/store"
+	"github.com/arfush/yo/animelib"
+	"github.com/arfush/yo/store"
 )
 
 func openEpisodeTestLibrary(t *testing.T) *Library {

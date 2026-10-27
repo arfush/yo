@@ -18,8 +18,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/arfush/yoanime/catalog"
 )
 
 // tokenMagic marks the DPAPI container. Its presence is enough to reject a
@@ -32,8 +30,7 @@ const ExpiryMargin = 2 * time.Minute
 
 // ErrNotFound is returned by Load when the token file does not exist. The
 // sentinel lives in catalog so the token prompt can map it without importing
-// the token file implementation.
-var ErrNotFound = catalog.ErrTokenMissing
+// the token file implementation; token/errors.go re-exports it.
 
 // Token mirrors the token object stored by the AnimeLIB web application.
 type Token struct {
@@ -77,7 +74,7 @@ func Load(path string) (Token, error) {
 func Parse(data []byte) (Token, error) {
 	trimmed := strings.TrimSpace(string(data))
 	if trimmed == "" {
-		return Token{}, errors.New("файл токена пустой")
+		return Token{}, ErrEmptyTokenFile
 	}
 	if !strings.HasPrefix(trimmed, "{") {
 		return Token{AccessToken: trimmed, TokenType: "Bearer"}, nil
@@ -102,7 +99,7 @@ func Parse(data []byte) (Token, error) {
 		TokenType:    stringField(fields, "token_type"),
 	}
 	if token.AccessToken == "" {
-		return Token{}, errors.New("в файле нет access_token")
+		return Token{}, ErrMissingAccessToken
 	}
 	return token, nil
 }
@@ -111,7 +108,7 @@ func Parse(data []byte) (Token, error) {
 // The JSON payload is sealed with DPAPI before it reaches the disk.
 func Save(path string, token Token) error {
 	if strings.TrimSpace(token.AccessToken) == "" {
-		return errors.New("нельзя сохранить пустой токен")
+		return ErrEmptySave
 	}
 	data, err := json.MarshalIndent(token, "", "  ")
 	if err != nil {

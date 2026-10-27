@@ -14,7 +14,7 @@ import (
 // layoutQualities draws the quality block. A step the selected Kinopoisk voice
 // cannot deliver is painted muted and ignores clicks instead of silently
 // falling back during playback.
-func (w *titleWindow) layoutQualities(gtx layout.Context, rect image.Rectangle) {
+func (w *titleScreen) layoutQualities(gtx layout.Context, rect image.Rectangle) {
 	if rect.Empty() {
 		return
 	}
@@ -61,7 +61,7 @@ func (w *titleWindow) layoutQualities(gtx layout.Context, rect image.Rectangle) 
 	}
 }
 
-func (w *titleWindow) drawQualityButton(gtx layout.Context, local image.Rectangle, option qualityOption, selected, hovered bool) {
+func (w *titleScreen) drawQualityButton(gtx layout.Context, local image.Rectangle, option qualityOption, selected, hovered bool) {
 	if local.Empty() {
 		return
 	}

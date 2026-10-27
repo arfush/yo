@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/arfush/yoanime/catalog"
+	"github.com/arfush/yo/catalog"
 )
 
 // formatEpisodeNotification turns a checker event into the two strings a

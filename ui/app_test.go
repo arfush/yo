@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arfush/yoanime/animelib"
-	"github.com/arfush/yoanime/library"
-	"github.com/arfush/yoanime/updates"
+	"github.com/arfush/yo/animelib"
+	"github.com/arfush/yo/library"
+	"github.com/arfush/yo/update"
 )
 
-func TestStartFailureResultKeepsRateLimitOnMainWindow(t *testing.T) {
+func TestStartFailureResultKeepsRateLimitOnMainScreen(t *testing.T) {
 	rateErr := fmt.Errorf("load: %w", animelib.ErrRateLimited)
 	item := &historyTitle{id: 7}
 
@@ -65,7 +65,7 @@ func TestHandleWatchResultRefreshesTitleUserStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	window := &titleWindow{item: historyTitle{
+	window := &titleScreen{item: historyTitle{
 		id:         saved.ID,
 		userStatus: library.UserStatusPlanned,
 	}}
@@ -206,9 +206,9 @@ func TestMaybeAutoUpdateWaitsForMain(t *testing.T) {
 		t.Fatal("auto-update must be enabled by default")
 	}
 
-	a := &application{library: lib, autoUpdateCard: make(chan updates.Release, 1)}
+	a := &application{library: lib, autoUpdateCard: make(chan update.Release, 1)}
 	a.autoUpdateStartup.Store(true)
-	release := &updates.Release{Version: "9.9", SHA256: "0123456789abcdef"}
+	release := &update.Release{Version: "9.9", SHA256: "0123456789abcdef"}
 
 	a.maybeAutoUpdate(release)
 	if !a.autoUpdateStartup.Load() {

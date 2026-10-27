@@ -3,7 +3,6 @@ package kinopoisk
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/url"
 	"sort"
@@ -14,8 +13,7 @@ import (
 
 	playwright "github.com/mxschmitt/playwright-go"
 
-	"github.com/arfush/yoanime/browser"
-	"github.com/arfush/yoanime/log"
+	"github.com/arfush/yo/browser"
 )
 
 const (
@@ -115,7 +113,7 @@ func NewResolver(manager *browser.Manager) *Resolver {
 // signed CDN links can expire faster than the 40-minute cache TTL.
 func (r *Resolver) ResolveFresh(ctx context.Context, request Request) (Media, error) {
 	if r == nil {
-		return Media{}, errors.New("браузер Kinopoisk недоступен")
+		return Media{}, ErrBrowserUnavailable
 	}
 	r.cacheMu.Lock()
 	delete(r.cache, cacheKey(request))
@@ -127,7 +125,7 @@ func (r *Resolver) ResolveFresh(ctx context.Context, request Request) (Media, er
 func (r *Resolver) Resolve(ctx context.Context, request Request) (Media, error) {
 	request.Iframe = strings.TrimSpace(request.Iframe)
 	if request.Iframe == "" {
-		return Media{}, errors.New("у озвучки нет ссылки плеера")
+		return Media{}, ErrNoPlayerLink
 	}
 	key := cacheKey(request)
 	if media, ok := r.cached(key); ok {
@@ -141,21 +139,21 @@ func (r *Resolver) Resolve(ctx context.Context, request Request) (Media, error) 
 	}
 
 	target := IframeURL(request.Iframe, request.Season, request.Episode)
-	log.Info("resolving Kinopoisk stream", "title", target, "season", request.Season, "episode", request.Episode, "quality", request.Quality)
+	logger.Info("resolving Kinopoisk stream", "title", target, "season", request.Season, "episode", request.Episode, "quality", request.Quality)
 	media, err := r.resolve(ctx, target, request)
 	if err != nil {
 		// A dropped page or a crashed Chromium leaves the cached handle
 		// unusable; retry once from a clean page before giving up.
-		log.Warn("Kinopoisk resolve failed, retrying with a fresh page", "error", err)
+		logger.Warn("Kinopoisk resolve failed, retrying with a fresh page", "error", err)
 		r.dropPage()
 		media, err = r.resolve(ctx, target, request)
 		if err != nil {
-			log.Error("Kinopoisk resolve failed", "season", request.Season, "episode", request.Episode, "error", err)
+			logger.Error("Kinopoisk resolve failed", "season", request.Season, "episode", request.Episode, "error", err)
 			return Media{}, err
 		}
 	}
 	r.store(key, media)
-	log.Info("Kinopoisk stream resolved", "quality", media.Quality, "subtitles", len(media.Subtitles))
+	logger.Info("Kinopoisk stream resolved", "quality", media.Quality, "subtitles", len(media.Subtitles))
 	return media, nil
 }
 
@@ -180,14 +178,14 @@ func (r *Resolver) resolve(ctx context.Context, target string, request Request) 
 	select {
 	case body = <-cap.media:
 	case <-time.After(mediaTimeout):
-		return Media{}, errors.New("плеер не вернул ссылки на видео")
+		return Media{}, ErrNoVideoSources
 	case <-ctx.Done():
 		return Media{}, ctx.Err()
 	}
 
 	manifest := parseManifest(body)
 	if len(manifest.Sources) == 0 {
-		return Media{}, errors.New("плеер вернул пустой список качеств")
+		return Media{}, ErrNoQualityLinks
 	}
 
 	// The player picks the audio track of the selected translation itself. The
@@ -213,14 +211,14 @@ func (r *Resolver) resolve(ctx context.Context, target string, request Request) 
 	sourceIndex := matchSource(manifest.Sources, captured)
 	streamURL, quality := pickQuality(manifest.Sources[sourceIndex], request.Quality)
 	if streamURL == "" {
-		return Media{}, errors.New("плеер не вернул ссылку на видео")
+		return Media{}, ErrNoStreamURL
 	}
 
 	if bearer == "" {
 		bearer = r.cachedAuth()
 	}
 	if bearer == "" {
-		return Media{}, errors.New("плеер не вернул ключ доступа к видео")
+		return Media{}, ErrNoAccessKey
 	}
 	r.storeAuth(bearer)
 
@@ -446,7 +444,7 @@ func (r *Resolver) ensurePage(ctx context.Context) (playwright.Page, error) {
 	r.mu.Lock()
 	if r.closed {
 		r.mu.Unlock()
-		return nil, errors.New("браузер Kinopoisk закрыт")
+		return nil, ErrBrowserClosed
 	}
 	if r.page != nil {
 		page := r.page
@@ -527,7 +525,7 @@ func (r *Resolver) ensurePage(ctx context.Context) (playwright.Page, error) {
 	if r.closed {
 		r.mu.Unlock()
 		_ = page.Close()
-		return nil, errors.New("браузер Kinopoisk закрыт")
+		return nil, ErrBrowserClosed
 	}
 	if r.page != nil {
 		existing := r.page
@@ -570,7 +568,7 @@ func (r *Resolver) ensureHeadless(ctx context.Context) (*browser.Headless, error
 	r.mu.Lock()
 	if r.closed {
 		r.mu.Unlock()
-		return nil, errors.New("браузер Kinopoisk закрыт")
+		return nil, ErrBrowserClosed
 	}
 	if r.headless != nil {
 		headless := r.headless
@@ -580,7 +578,7 @@ func (r *Resolver) ensureHeadless(ctx context.Context) (*browser.Headless, error
 	r.mu.Unlock()
 
 	if r.manager == nil {
-		return nil, errors.New("браузер Kinopoisk недоступен")
+		return nil, ErrBrowserUnavailable
 	}
 	headless, err := r.manager.NewHeadless(ctx)
 	if err != nil {
@@ -595,7 +593,7 @@ func (r *Resolver) ensureHeadless(ctx context.Context) (*browser.Headless, error
 			return existing, nil
 		}
 		_ = headless.Close()
-		return nil, errors.New("браузер Kinopoisk закрыт")
+		return nil, ErrBrowserClosed
 	}
 	r.headless = headless
 	r.mu.Unlock()

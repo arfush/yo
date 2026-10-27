@@ -1,4 +1,4 @@
-# Архитектура yoanime
+# Архитектура yo
 
 Документ фиксирует целевую структуру пакетов и направления зависимостей.
 Правила, которые уже можно проверить, закреплены тестом
@@ -32,25 +32,31 @@
 cmd/
   yoanime/            единственная точка входа: app.Run
 app/                  композиционный корень: пути, сервисы, single instance, запуск ui
-  app.go              запуск процесса, сборка ui.Services
+  app.go              запуск процесса, сборка ui.Services, именованные логгеры
   ratelimit.go        адаптер состояния лимита AnimeLIB для заголовка
-catalog/              чистые типы: Title, Episode, Voice, UserStatus, Segment
-animelib/            API AnimeLIB, rate limit, прямые ссылки на серии
-browser/             Playwright: Chromium, авторизация, headless Kodik
-kodik/               резолв Kodik embed -> HLS
-library/             загрузка тайтла, выбор озвучки/серии, обложки
-metadata/            Shikimori/MAL, AniList, IMDb, introdb
-mpv/                 поиск и установка mpv
-playback/            сессия mpv, очередь, прогресс, главы, автопропуск
-party/               протокол совместного просмотра, часы, конфигурация реле
-  deploy/            Cloudflare Worker и Supabase-реле
-  party.example.json образец пользовательского party.json
-store/               SQLite: схема, история, настройки, кэши
-token/               файл токена AnimeLIB и проверка срока
-updates/             GitHub Releases, версия, SHA-256
-updater/             подмена запущенного exe (фича, не примитив ОС)
-log/                 журнал приложения и кольцевой буфер
-version/             версия по умолчанию и форматирование
+catalog/              чистые типы: Title, Voice, Status, Segment, ReadingChapter
+  errors.go           общие сентинелы (ErrRateLimited, ErrTokenMissing и т. п.)
+animelib/             API AnimeLIB и LibSocial: клиент, episodes, reading, rate limit
+  reading.go          ссылки и главы MangaLib/SlashLIB/RanobeLib/HentaiLib
+  errors.go           сентинелы API-клиента
+browser/              Playwright: Chromium, авторизация, headless Kodik/Kinopoisk
+kodik/                резолв Kodik embed -> HLS
+kinopoisk/            второй источник: метаданные, каталог Alloha, резолв потоков
+library/              загрузка тайтла, выбор озвучки/главы, обложки, reader-мост
+  reading.go          чтение глав и страниц, source-роутинг
+metadata/             Shikimori/MAL, AniList, IMDb, introdb
+mpv/                  поиск и установка mpv
+playback/             сессия mpv, очередь, прогресс, главы, автопропуск
+party/                протокол совместного просмотра, часы, конфигурация реле
+  deploy/             Cloudflare Worker и Supabase-реле
+  party.example.json  образец пользовательского party.json
+store/                SQLite: схема, история, настройки, кэши, миграции
+  migrations.go       версионированные миграции (PRAGMA user_version)
+  errors.go           ErrCorruptDatabase: старая/битая база не поддерживается
+token/                файл токена AnimeLIB и проверка срока
+update/               всё об обновлении: GitHub Releases, SHA-256, замена exe
+log/                  журнал на log/slog: файл, ротация, кольцевой буфер, source
+version/              версия по умолчанию и форматирование
 platform/
   appdata/           пути в %APPDATA%\yoanime
   install/           проверка установки через реестр Windows
@@ -62,8 +68,12 @@ ui/
   draw/              низкоуровневые примитивы рисования
   theme/             палитра и hover-анимация
   widgets/           переиспользуемые кнопки, панели, пилюли, прогресс
-  app.go, shell.go,  экраны, каркас окна и состояние между экранами
-  *_window.go
+  app.go, shell.go,  контроллер приложения, каркас окна, секции библиотеки
+  sections.go        yoanime/yomanga/yoranobe: настройка, цвета, фильтр истории
+  main_screen.go,    экраны: главный, тайтл, ридер, настройки, журнал, F1, party
+  title_screen.go,
+  reader_screen.go,
+  *_screen.go
 docs/
 installer/
 third_party/
@@ -85,7 +95,7 @@ app -> ui, все фичи, platform, log, version, catalog
 ui  -> catalog, log, version, party, platform (экраны)
 фичи -> catalog, log, version, token, platform
 platform -> catalog, log, version
-log, version, catalog -> только стандартная библиотека
+log, version, catalog -> только стандартная библиотека (log использует log/slog)
 token -> catalog и стандартная библиотека
 ```
 
@@ -108,19 +118,23 @@ token -> catalog и стандартная библиотека
 
 ## Почему так
 
-### `updater` не в `platform`
+### `updater` и `updates` — один пакет `update`
 
-`platform` — это тонкие обёртки над ОС без продуктовой логики. В `updater`
-продуктовая логика и есть: проверить цель, подготовить `update-helper.cmd`,
-дождаться выхода процесса, заменить файл, убрать временные файлы. От ОС там
-зависит только запуск скрытого `cmd.exe` (и заглушка для других ОС).
+Всё про обновление живёт в одном модуле: `update/` проверяет релизы на
+GitHub, скачивает и проверяет SHA-256, а затем заменяет запущенный exe через
+скрытый `update-helper.cmd`. Разделять эти две части по пакетам было неудобно:
+`ui` и так импортировал их обе, а общая политика (цепочка проверок, временные
+файлы, ldflags `Repository`) у них одна. `platform` остаётся тонкими обёртками
+над ОС без продуктовой политики — замена exe продуктовая, поэтому она не во
+`platform`, а рядом с остальным ходом обновления.
 
-Если считать признаком платформенности наличие файла `*_windows.go`, то в
-`platform` пришлось бы отправить ещё `mpv` (скачивание Windows-сборки),
-`browser` (Playwright/Chromium), `install` и `tray`. Тогда `platform`
-перестанет означать «механизм ОС» и станет свалкой. Поэтому `updater`
-остаётся отдельной фичей; при необходимости из него можно выделить
-`platform/replace` для одного запуска, но сейчас это преждевременно.
+### Логирование: `log` на `log/slog` с именованными логгерами
+
+`log/` не угадывает источник записи по стеку: каждый модуль собирает свой
+логгер константой из `log` (`var logger = log.For(log.SourceLibrary)`) и
+пишет через него. Атрибут `source` попадает во все записи и в кольцевой
+буфер окна журнала. Пакет отвечает только за файл, ротацию, редактирование
+секретов и окно журнала; формат — стандартные `log/slog`-вызовы.
 
 ### `token` — это файл токена AnimeLIB
 
@@ -136,11 +150,20 @@ DPAPI, плюс запасной разбор простой строки. Ст�
 от API-клиента и его rate limiter. Отдельный маленький пакет — самый дешёвый
 способ разорвать эту связь.
 
-### `version` и `updates`
+### `version` и `update`
 
-`version` — форматирование и версия по умолчанию, без сети. `updates` —
-проверка GitHub Releases и скачивание, то есть фича. Не смешивай их:
-`platform/install` и `ui` могут знать про `version`, но не про `updates`.
+`version` — форматирование и версия по умолчанию, без сети. `update` —
+проверка GitHub Releases, скачивание и замена exe, то есть фича. Не смешивай
+их: `platform/install` и `ui` могут знать про `version`, но не про `update`.
+
+### Секции библиотеки и ридер
+
+Приложение показывает три библиотеки: `yoanime` (аниме), `yomanga`
+(MangaLib/SlashLIB/HentaiLib) и `yoranobe` (RanobeLib). Секция хранится в
+настройках (`library_section`), переключается меню в шапке и фильтрует
+историю на главном экране. Манга и ранобэ открываются не страницей тайтла, а
+отдельным ридером (`ui/reader_screen.go`), который ходит в `library` за
+главами и страницами; mpv в чтении не участвует.
 
 ## Совместимость имён
 
@@ -164,7 +187,7 @@ repository variables нужно обновить. Вшитые значения 
 ## Статус переезда
 
 - [x] `internal/watchparty` -> `party/`
-- [x] `internal/logging` -> `log/`
+- [x] `internal/logging` -> `log/` (теперь на `log/slog` с именованными source)
 - [x] `internal/appdata` -> `platform/appdata`
 - [x] `internal/install` -> `platform/install`
 - [x] `internal/singleinstance` -> `platform/singleinstance`
@@ -172,6 +195,15 @@ repository variables нужно обновить. Вшитые значения 
 - [x] Win32-код из `ui/platform_*` -> `platform/window`
 - [x] остальные `internal/*` -> корень
 - [x] `catalog/` и `app/` как отдельные пакеты
+- [x] модуль и репозиторий переименованы: `github.com/arfush/yo`
+- [x] экраны `*_window` -> `*_screen` (main/title/reader/settings/log/…)
+- [x] `updates/` + `updater/` -> единый пакет `update/`
+- [x] `store`: старая схема без миграций; ad-hoc ALTER-миграции удалены,
+      вместо них `store/migrations.go` на `PRAGMA user_version`; базы старых
+      версий открываются как повреждённые (`ErrCorruptDatabase`)
+- [x] сентинелы ошибок собраны в `errors.go` каждого модуля
+- [x] LibSocial: `animelib/reading.go`, `library/reading.go`, секции
+      yoanime/yomanga/yoranobe, `ui/reader_screen.go`
 - [ ] `ui` разложен на `kit`, `controls`, `chrome`, `screen`
 - [ ] контроллер окна и комнаты вынесен из `ui` в `app`; до этого
   `ui/app.go`, `ui/party.go` и `ui/services.go` временно импортируют фичи

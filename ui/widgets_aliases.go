@@ -7,7 +7,7 @@ import (
 	"gioui.org/layout"
 	"gioui.org/widget"
 
-	"github.com/arfush/yoanime/ui/widgets"
+	"github.com/arfush/yo/ui/widgets"
 )
 
 // Icon button aliases keep the control call sites stable while the shared

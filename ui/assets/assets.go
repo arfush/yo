@@ -22,6 +22,12 @@ var fontFS embed.FS
 //go:embed images/app-icon-48.png
 var appIconPNG []byte
 
+//go:embed images/app-icon-manga.png
+var mangaIconPNG []byte
+
+//go:embed images/app-icon-ranobe.png
+var ranobeIconPNG []byte
+
 //go:embed icons/*.iconvg
 var iconFS embed.FS
 
@@ -40,6 +46,25 @@ func AppIcon() (image.Image, error) {
 	img, _, err := image.Decode(bytes.NewReader(appIconPNG))
 	if err != nil {
 		return nil, fmt.Errorf("decode app icon: %w", err)
+	}
+	return img, nil
+}
+
+// SectionIcon decodes the section logo variant by name ("manga", "ranobe").
+// The anime section keeps the shared app icon.
+func SectionIcon(name string) (image.Image, error) {
+	var data []byte
+	switch name {
+	case "manga":
+		data = mangaIconPNG
+	case "ranobe":
+		data = ranobeIconPNG
+	default:
+		return AppIcon()
+	}
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("decode section icon %s: %w", name, err)
 	}
 	return img, nil
 }

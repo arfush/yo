@@ -110,6 +110,70 @@ func (r *textRenderer) drawCentered(gtx layout.Context, txt string, face font.Fo
 	return ink.Add(offset)
 }
 
+// measureWrapped shapes txt into lines of at most maxWidth pixels and returns
+// the glyphs together with the ink box of the whole block. paintWrapped uses
+// the same shaping so the returned box matches the painted output exactly.
+func (r *textRenderer) measureWrapped(gtx layout.Context, txt string, face font.Font, size unit.Sp, maxWidth int) ([]text.Glyph, image.Rectangle) {
+	if maxWidth <= 0 {
+		maxWidth = 1 << 20
+	}
+	r.shaper.LayoutString(text.Parameters{
+		Font:      face,
+		PxPerEm:   fixed.I(gtx.Sp(size)),
+		MaxWidth:  maxWidth,
+		Locale:    gtx.Locale,
+		Alignment: text.Start,
+	}, txt)
+
+	var glyphs []text.Glyph
+	var block image.Rectangle
+	first := true
+	for {
+		g, ok := r.shaper.NextGlyph()
+		if !ok {
+			break
+		}
+		glyphs = append(glyphs, g)
+		if g.Flags&text.FlagParagraphBreak != 0 {
+			continue
+		}
+		if g.Flags&text.FlagLineBreak != 0 {
+			continue
+		}
+		bounds := image.Rect(
+			int(g.X)+g.Bounds.Min.X.Floor(),
+			int(g.Y)+g.Bounds.Min.Y.Floor(),
+			int(g.X)+g.Bounds.Max.X.Ceil(),
+			int(g.Y)+g.Bounds.Max.Y.Ceil(),
+		)
+		if bounds.Empty() {
+			continue
+		}
+		if first {
+			block = bounds
+			first = false
+		} else {
+			block = block.Union(bounds)
+		}
+	}
+	return glyphs, block
+}
+
+// drawWrapped paints txt wrapped at maxWidth starting at at and returns the ink
+// box of the painted block. It is the wrapped counterpart of draw and is used by
+// the ranobe reader to lay out multiparagraph text.
+func (r *textRenderer) drawWrapped(gtx layout.Context, txt string, face font.Font, size unit.Sp, col color.NRGBA, at image.Point, maxWidth int) image.Rectangle {
+	glyphs, ink := r.measureWrapped(gtx, txt, face, size, maxWidth)
+	if len(glyphs) == 0 || ink.Empty() {
+		return image.Rectangle{}
+	}
+	offset := at.Sub(ink.Min)
+	stack := op.Offset(offset).Push(gtx.Ops)
+	r.paintGlyphs(gtx, glyphs, col)
+	stack.Pop()
+	return ink.Add(offset)
+}
+
 // paintCentered paints txt with its ink center at center. A positive capHeight
 // centers only the box from the ink top to the baseline, so descenders do not
 // make the text look too high inside a control. The fractional offset keeps

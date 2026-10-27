@@ -1,6 +1,6 @@
 package main
 
-import "github.com/arfush/yoanime/app"
+import "github.com/arfush/yo/app"
 
 func main() {
 	app.Run()

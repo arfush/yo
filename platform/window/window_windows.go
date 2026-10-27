@@ -12,7 +12,7 @@ import (
 	"gioui.org/io/event"
 	"golang.org/x/sys/windows"
 
-	"github.com/arfush/yoanime/catalog"
+	"github.com/arfush/yo/catalog"
 )
 
 const (

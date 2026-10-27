@@ -3,7 +3,6 @@
 package token
 
 import (
-	"errors"
 	"fmt"
 	"unsafe"
 
@@ -29,7 +28,7 @@ func unprotect(data []byte) ([]byte, error) {
 
 func cryptProtect(data []byte, encrypt bool) ([]byte, error) {
 	if len(data) == 0 {
-		return nil, errors.New("token payload is empty")
+		return nil, ErrEmptyPayload
 	}
 	in := windows.DataBlob{Size: uint32(len(data)), Data: &data[0]}
 	entropy := windows.DataBlob{Size: uint32(len(tokenEntropy)), Data: &tokenEntropy[0]}
@@ -64,7 +63,7 @@ func cryptProtect(data []byte, encrypt bool) ([]byte, error) {
 		return nil, fmt.Errorf("DPAPI: %w", err)
 	}
 	if out.Data == nil || out.Size == 0 {
-		return nil, errors.New("DPAPI returned an empty payload")
+		return nil, ErrEmptyDPAPIResult
 	}
 	defer func() {
 		_, _ = windows.LocalFree(windows.Handle(unsafe.Pointer(out.Data)))

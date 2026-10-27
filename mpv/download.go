@@ -3,7 +3,6 @@ package mpv
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -175,7 +174,7 @@ func extractArchive(ctx context.Context, archivePath, dir string, report func(fr
 		total += file.UncompressedSize
 	}
 	if !foundMPV {
-		return errors.New("mpv.exe not found in the downloaded archive")
+		return ErrArchiveMissingExecutable
 	}
 
 	var written uint64

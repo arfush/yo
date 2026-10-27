@@ -17,7 +17,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/arfush/yoanime/catalog"
+	"github.com/arfush/yo/catalog"
 )
 
 // Source is the value stored in titles.source for Kinopoisk rows.

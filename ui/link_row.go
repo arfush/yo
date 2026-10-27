@@ -17,7 +17,7 @@ type wpLinkAction struct {
 }
 
 // layoutLinkRow centers a row of small links under the card content.
-func (w *partyWindow) layoutLinkRow(gtx layout.Context, cardWidth int, px func(float32) int, actions []wpLinkAction) {
+func (w *partyScreen) layoutLinkRow(gtx layout.Context, cardWidth int, px func(float32) int, actions []wpLinkAction) {
 	if len(actions) == 0 {
 		return
 	}

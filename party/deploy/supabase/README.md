@@ -72,8 +72,8 @@ URL и ключ можно ввести в настройках yoanime: **Со�
 
 ```bash
 go build -ldflags "\
- -X github.com/arfush/yoanime/party.SupabaseURL=https://abcdefghijkl.supabase.co \
- -X github.com/arfush/yoanime/party.SupabaseKey=sb_publishable_..." ./cmd/yoanime
+ -X github.com/arfush/yo/party.SupabaseURL=https://abcdefghijkl.supabase.co \
+ -X github.com/arfush/yo/party.SupabaseKey=sb_publishable_..." ./cmd/yoanime
 ```
 
 Publishable-ключ публичный: он и должен лежать в клиенте. Не вшивайте

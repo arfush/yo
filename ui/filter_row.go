@@ -100,7 +100,7 @@ func centeredFilterRowStart(left, available, total int) int {
 // layoutHistoryFilters draws the six status filters centred in the stable
 // middle span. Inactive pills are neutral gray; selecting one reveals its
 // status color.
-func (m *mainWindow) layoutHistoryFilters(gtx layout.Context, left, right, centerY int) {
+func (m *mainScreen) layoutHistoryFilters(gtx layout.Context, left, right, centerY int) {
 	available := right - left
 	if available <= 0 {
 		return
@@ -128,7 +128,7 @@ func (m *mainWindow) layoutHistoryFilters(gtx layout.Context, left, right, cente
 
 // setFilter applies a history filter from either a mouse click or a keyboard
 // shortcut. It is a no-op when the filter is already selected.
-func (m *mainWindow) setFilter(gtx layout.Context, next userStatusFilter) {
+func (m *mainScreen) setFilter(gtx layout.Context, next userStatusFilter) {
 	if next == m.filter {
 		return
 	}
@@ -139,7 +139,7 @@ func (m *mainWindow) setFilter(gtx layout.Context, next userStatusFilter) {
 
 // stepFilter moves through the filter pills in their visual order and wraps
 // around, so the left and right arrows always have a visible result.
-func (m *mainWindow) stepFilter(gtx layout.Context, delta int) {
+func (m *mainScreen) stepFilter(gtx layout.Context, delta int) {
 	count := len(userStatusFilterOptions)
 	if count == 0 {
 		return

@@ -16,15 +16,15 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yoanime/party"
+	"github.com/arfush/yo/party"
 )
 
-func (w *partyWindow) layoutKeyField(gtx layout.Context, rect image.Rectangle, value string, editable, errored bool, shake float32) bool {
+func (w *partyScreen) layoutKeyField(gtx layout.Context, rect image.Rectangle, value string, editable, errored bool, shake float32) bool {
 	return w.layoutRoomField(gtx, rect, &w.editor, value, editable, errored, shake, w.busy && w.mode == wpJoin)
 }
 
 // layoutSecretField draws the secret field on the locked-room screen.
-func (w *partyWindow) layoutSecretField(gtx layout.Context, rect image.Rectangle, errored bool, shake float32) bool {
+func (w *partyScreen) layoutSecretField(gtx layout.Context, rect image.Rectangle, errored bool, shake float32) bool {
 	return w.layoutRoomField(gtx, rect, &w.secretEditor, w.secretEditor.Text(), true, errored, shake, w.busy && w.mode == wpSecret)
 }
 
@@ -32,7 +32,7 @@ func (w *partyWindow) layoutSecretField(gtx layout.Context, rect image.Rectangle
 // on its right. editor hosts the editable text; view is the text shown and
 // copied in the read-only case. spinner replaces the submit chevron while a
 // background check runs.
-func (w *partyWindow) layoutRoomField(gtx layout.Context, rect image.Rectangle, editor *widget.Editor, view string, editable, errored bool, shake float32, spinner bool) bool {
+func (w *partyScreen) layoutRoomField(gtx layout.Context, rect image.Rectangle, editor *widget.Editor, view string, editable, errored bool, shake float32, spinner bool) bool {
 	box := fieldBoxStyle{
 		fill:        mainInputColor,
 		border:      mainInputBorder,
@@ -135,7 +135,7 @@ func (w *partyWindow) layoutRoomField(gtx layout.Context, rect image.Rectangle, 
 // layoutRoomEditor draws an editable field and reports whether Enter was
 // pressed. Editor.Layout drains its events internally, so SubmitEvent has to be
 // collected with a separate Update pass before the layout.
-func (w *partyWindow) layoutRoomEditor(gtx layout.Context, rect image.Rectangle, editor *widget.Editor) bool {
+func (w *partyScreen) layoutRoomEditor(gtx layout.Context, rect image.Rectangle, editor *widget.Editor) bool {
 	w.syncEditor(editor)
 	submitted := false
 	for {
@@ -166,7 +166,7 @@ func (w *partyWindow) layoutRoomEditor(gtx layout.Context, rect image.Rectangle,
 // syncEditor keeps an input field in its canonical form: the join field holds a
 // room key, the secret field a ten-symbol secret. The caret is restored so
 // typing feels normal.
-func (w *partyWindow) syncEditor(editor *widget.Editor) {
+func (w *partyScreen) syncEditor(editor *widget.Editor) {
 	text := editor.Text()
 	cleaned := party.SanitizeKeyInput(text)
 	if editor == &w.secretEditor {
@@ -194,7 +194,7 @@ func (w *partyWindow) syncEditor(editor *widget.Editor) {
 // layoutKeyViewer shows the created room key in a read-only editor. The key is
 // selected as soon as the card opens and the editor keeps keyboard focus, so
 // Ctrl+C copies it immediately; clicking the field also works for mouse users.
-func (w *partyWindow) layoutKeyViewer(gtx layout.Context, rect image.Rectangle, roomKey string) {
+func (w *partyScreen) layoutKeyViewer(gtx layout.Context, rect image.Rectangle, roomKey string) {
 	if roomKey == "" {
 		return
 	}
@@ -221,7 +221,7 @@ func (w *partyWindow) layoutKeyViewer(gtx layout.Context, rect image.Rectangle, 
 	stack.Pop()
 }
 
-func (w *partyWindow) layoutActionButton(gtx layout.Context, rect image.Rectangle, click *widget.Clickable, label string, errored bool, shake float32) bool {
+func (w *partyScreen) layoutActionButton(gtx layout.Context, rect image.Rectangle, click *widget.Clickable, label string, errored bool, shake float32) bool {
 	if rect.Empty() {
 		return false
 	}
@@ -241,7 +241,7 @@ func (w *partyWindow) layoutActionButton(gtx layout.Context, rect image.Rectangl
 	return clicked
 }
 
-func (w *partyWindow) drawActionButton(gtx layout.Context, size image.Point, hovered bool, label string, errored bool, shake float32) {
+func (w *partyScreen) drawActionButton(gtx layout.Context, size image.Point, hovered bool, label string, errored bool, shake float32) {
 	rect := image.Rectangle{Max: size}
 	radius := size.Y / 2
 	face := font.Font{Typeface: fontFamily, Weight: font.SemiBold}

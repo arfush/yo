@@ -3,7 +3,7 @@ package app
 import (
 	"time"
 
-	"github.com/arfush/yoanime/animelib"
+	"github.com/arfush/yo/animelib"
 )
 
 // animeLibRateLimit exposes only the cooldown state the header renders. The

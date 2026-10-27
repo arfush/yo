@@ -14,7 +14,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yoanime/library"
+	"github.com/arfush/yo/library"
 )
 
 func TestUserStatusLabel(t *testing.T) {
@@ -281,7 +281,7 @@ func TestEscapeClosesHistoryStatusMenu(t *testing.T) {
 	var router input.Router
 	ops := new(op.Ops)
 	gtx := layout.Context{Ops: ops, Source: router.Source()}
-	m := &mainWindow{
+	m := &mainScreen{
 		selected:   2,
 		statusMenu: userStatusMenu{open: true},
 	}
@@ -306,7 +306,7 @@ func TestEscapeClosesTitleStatusMenuBeforeBack(t *testing.T) {
 	ops := new(op.Ops)
 	gtx := layout.Context{Ops: ops, Source: router.Source()}
 	back := false
-	w := &titleWindow{
+	w := &titleScreen{
 		statusMenu: userStatusMenu{open: true},
 		onBack:     func() { back = true },
 	}

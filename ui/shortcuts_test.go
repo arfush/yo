@@ -35,7 +35,7 @@ func TestMainArrowKeysCycleHistoryFilters(t *testing.T) {
 	var router input.Router
 	ops := new(op.Ops)
 	gtx := layout.Context{Ops: ops, Source: router.Source()}
-	m := &mainWindow{filter: filterAll, selected: -1}
+	m := &mainScreen{filter: filterAll, selected: -1}
 	frame := func() {
 		ops.Reset()
 		m.handleKeys(gtx)
@@ -68,7 +68,7 @@ func TestMainPlayShortcutWorksInRussianLayout(t *testing.T) {
 	ops := new(op.Ops)
 	gtx := layout.Context{Ops: ops, Source: router.Source()}
 	var played []int64
-	m := &mainWindow{
+	m := &mainScreen{
 		history:  testHistory(),
 		selected: 3,
 		filter:   filterAll,
@@ -114,7 +114,7 @@ func TestMainDeleteShortcutRemovesSelectedTitle(t *testing.T) {
 	var router input.Router
 	ops := new(op.Ops)
 	gtx := layout.Context{Ops: ops, Source: router.Source()}
-	m := &mainWindow{
+	m := &mainScreen{
 		history:    testHistory(),
 		allHistory: testHistory(),
 		selected:   2,
@@ -145,7 +145,7 @@ func TestTitleArrowKeysMoveEpisodeAndVoice(t *testing.T) {
 	var router input.Router
 	ops := new(op.Ops)
 	gtx := layout.Context{Ops: ops, Source: router.Source()}
-	w := &titleWindow{
+	w := &titleScreen{
 		item: historyTitle{
 			status:   statusOngoing,
 			episodes: []string{"1", "2", "3"},
@@ -199,7 +199,7 @@ func TestTitleSaveAndWatchShortcutsWorkInRussianLayout(t *testing.T) {
 	gtx := layout.Context{Ops: ops, Source: router.Source()}
 	saved := 0
 	watched := 0
-	w := &titleWindow{
+	w := &titleScreen{
 		item: historyTitle{
 			status:   statusOngoing,
 			episodes: []string{"1"},
@@ -253,7 +253,7 @@ func TestTitleSaveAndWatchShortcutsWorkInRussianLayout(t *testing.T) {
 }
 
 func TestShortcutInfoIsPageSpecific(t *testing.T) {
-	mainInfo := (&mainWindow{}).shortcutInfo()
+	mainInfo := (&mainScreen{}).shortcutInfo()
 	if mainInfo.page != "Главная" {
 		t.Fatalf("main page = %q", mainInfo.page)
 	}
@@ -264,7 +264,7 @@ func TestShortcutInfoIsPageSpecific(t *testing.T) {
 		t.Fatal("main summary leaked the title-page save key")
 	}
 
-	titleInfo := (&titleWindow{
+	titleInfo := (&titleScreen{
 		item: historyTitle{
 			status:   statusOngoing,
 			episodes: []string{"1"},
@@ -284,7 +284,7 @@ func TestShortcutInfoIsPageSpecific(t *testing.T) {
 		t.Fatal("title summary advertised navigation that cannot move")
 	}
 
-	multiInfo := (&titleWindow{
+	multiInfo := (&titleScreen{
 		item: historyTitle{
 			status:   statusOngoing,
 			episodes: []string{"1", "2"},
@@ -295,7 +295,7 @@ func TestShortcutInfoIsPageSpecific(t *testing.T) {
 		t.Fatal("title summary is missing episode or voice navigation")
 	}
 
-	announcedInfo := (&titleWindow{
+	announcedInfo := (&titleScreen{
 		item: historyTitle{status: statusAnnounced},
 	}).shortcutInfo()
 	if hasShortcut(announcedInfo, "Enter") {
@@ -308,7 +308,7 @@ func TestShortcutsBackButtonLivesInTheLeftFooter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := newShortcutsWindow(typo, (&mainWindow{}).shortcutInfo())
+	w := newShortcutsScreen(typo, (&mainScreen{}).shortcutInfo())
 	backs := 0
 	w.onBack = func() { backs++ }
 

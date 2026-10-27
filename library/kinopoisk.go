@@ -6,9 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/arfush/yoanime/kinopoisk"
-	"github.com/arfush/yoanime/log"
-	"github.com/arfush/yoanime/store"
+	"github.com/arfush/yo/kinopoisk"
+	"github.com/arfush/yo/store"
 )
 
 // loadKinopoisk builds a title from the mirror catalogue. persist mirrors the
@@ -20,7 +19,7 @@ func (l *Library) loadKinopoisk(ctx context.Context, link kinopoisk.Link, persis
 	if persist {
 		action = "loading"
 	}
-	log.Info(action+" Kinopoisk title", "title", link.ID)
+	logger.Info(action+" Kinopoisk title", "title", link.ID)
 
 	client := l.kinopoisk
 	if client == nil {
@@ -28,7 +27,7 @@ func (l *Library) loadKinopoisk(ctx context.Context, link kinopoisk.Link, persis
 	}
 	meta, err := client.Meta(ctx, link)
 	if err != nil {
-		log.Error("cannot load Kinopoisk metadata", "title", link.ID, "error", err)
+		logger.Error("cannot load Kinopoisk metadata", "title", link.ID, "error", err)
 		return Title{}, err
 	}
 	voices, err := client.Voices(ctx, link.ID)
@@ -36,7 +35,7 @@ func (l *Library) loadKinopoisk(ctx context.Context, link kinopoisk.Link, persis
 		if ctx.Err() != nil {
 			return Title{}, ctx.Err()
 		}
-		log.Error("cannot load Kinopoisk voices", "title", link.ID, "error", err)
+		logger.Error("cannot load Kinopoisk voices", "title", link.ID, "error", err)
 		return Title{}, err
 	}
 	catalog, err := loadKinopoiskCatalog(ctx, client, voices)
@@ -44,7 +43,7 @@ func (l *Library) loadKinopoisk(ctx context.Context, link kinopoisk.Link, persis
 		if ctx.Err() != nil {
 			return Title{}, ctx.Err()
 		}
-		log.Error("cannot load Kinopoisk catalogue", "title", link.ID, "error", err)
+		logger.Error("cannot load Kinopoisk catalogue", "title", link.ID, "error", err)
 		return Title{}, err
 	}
 
@@ -82,7 +81,7 @@ func (l *Library) loadKinopoisk(ctx context.Context, link kinopoisk.Link, persis
 	}
 
 	l.ensureCover(ctx, &title)
-	log.Info("Kinopoisk title ready", "title", title.Russian, "slug", title.Slug, "episodes", len(title.Episodes), "seasons", len(title.Seasons), "voices", len(title.Voiceovers))
+	logger.Info("Kinopoisk title ready", "title", title.Russian, "slug", title.Slug, "episodes", len(title.Episodes), "seasons", len(title.Seasons), "voices", len(title.Voiceovers))
 	return title, nil
 }
 

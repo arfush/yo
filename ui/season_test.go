@@ -72,7 +72,7 @@ func TestVisibleEpisodeIndicesFollowSeason(t *testing.T) {
 			{number: 2, episodes: []string{"S2E1", "S2E2"}},
 		},
 	}
-	window := &titleWindow{item: item, selectedSeason: 1}
+	window := &titleScreen{item: item, selectedSeason: 1}
 	if got := window.visibleEpisodeIndices(); !reflect.DeepEqual(got, []int{3, 4}) {
 		t.Fatalf("season 2 indices = %v", got)
 	}
@@ -82,7 +82,7 @@ func TestVisibleEpisodeIndicesFollowSeason(t *testing.T) {
 	}
 
 	// A title without seasons keeps the whole flat list.
-	anime := &titleWindow{item: historyTitle{episodes: []string{"1", "2"}}}
+	anime := &titleScreen{item: historyTitle{episodes: []string{"1", "2"}}}
 	if got := anime.visibleEpisodeIndices(); !reflect.DeepEqual(got, []int{0, 1}) {
 		t.Fatalf("flat indices = %v", got)
 	}

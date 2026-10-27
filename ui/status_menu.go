@@ -8,7 +8,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yoanime/catalog"
+	"github.com/arfush/yo/catalog"
 )
 
 // userStatusMenu is a small popup anchored to a status pill. It is drawn by the

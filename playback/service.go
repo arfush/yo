@@ -11,13 +11,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arfush/yoanime/animelib"
-	"github.com/arfush/yoanime/browser"
-	"github.com/arfush/yoanime/kinopoisk"
-	"github.com/arfush/yoanime/kodik"
-	"github.com/arfush/yoanime/library"
-	"github.com/arfush/yoanime/log"
-	"github.com/arfush/yoanime/metadata"
+	"github.com/arfush/yo/animelib"
+	"github.com/arfush/yo/browser"
+	"github.com/arfush/yo/kinopoisk"
+	"github.com/arfush/yo/kodik"
+	"github.com/arfush/yo/library"
+	"github.com/arfush/yo/log"
+	"github.com/arfush/yo/metadata"
 )
 
 // WindowRect is the physical screen rectangle mpv should occupy. It is the
@@ -78,7 +78,7 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 	if plan == nil || len(plan.Episodes) == 0 {
 		return nil, errors.New("нет серий для воспроизведения")
 	}
-	log.Info("playback starting", "title", plan.Russian, "slug", plan.Slug, "voice", plan.Voice, "episode_index", plan.EpisodeIndex, "episodes", len(plan.Episodes), "quality", options.Quality)
+	logger.Info("playback starting", "title", plan.Russian, "slug", plan.Slug, "voice", plan.Voice, "episode_index", plan.EpisodeIndex, "episodes", len(plan.Episodes), "quality", options.Quality)
 	if plan.EpisodeIndex < 0 || plan.EpisodeIndex >= len(plan.Episodes) {
 		return nil, errors.New("некорректная серия")
 	}
@@ -111,7 +111,7 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 		// Kinopoisk playback has nothing to do with the AnimeLIB account, so an
 		// expired token must not block it.
 		if plan.Source != kinopoisk.Source {
-			log.Error("cannot read token for playback", "error", err)
+			logger.Error("cannot read token for playback", "error", err)
 			return nil, err
 		}
 		token = ""
@@ -148,20 +148,20 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 	// this fails the application stays visible and shows the error.
 	entry, err := session.resolveEntry(ctx, plan.EpisodeIndex)
 	if err != nil {
-		log.Error("cannot resolve the selected episode", "episode_index", plan.EpisodeIndex, "error", err)
+		logger.Error("cannot resolve the selected episode", "episode_index", plan.EpisodeIndex, "error", err)
 		cancel()
 		return nil, err
 	}
 	geometry := geometryString(options.Window.X, options.Window.Y, options.Window.Width, options.Window.Height)
 	mpv, err := startMPV(ctx, geometry, options.Title)
 	if err != nil {
-		log.Error("cannot start mpv", "error", err)
+		logger.Error("cannot start mpv", "error", err)
 		cancel()
 		return nil, err
 	}
 	session.mpv = mpv
 	if err := mpv.load(entry.URL, headersFor(entry)); err != nil {
-		log.Error("cannot load the first video", "episode", entry.Episode.Number, "error", err)
+		logger.Error("cannot load the first video", "episode", entry.Episode.Number, "error", err)
 		mpv.close()
 		cancel()
 		return nil, fmt.Errorf("запустить видео: %w", err)
@@ -185,7 +185,7 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 	started = true
 	s.mu.Unlock()
 
-	log.Info("playback started", "title", plan.Russian, "episode", entry.Episode.Number)
+	logger.Info("playback started", "title", plan.Russian, "episode", entry.Episode.Number)
 	if options.OnReady != nil {
 		options.OnReady()
 	}
@@ -230,7 +230,7 @@ func (s *Service) Close() {
 	session := s.session
 	s.session = nil
 	s.mu.Unlock()
-	log.Info("playback service closing")
+	logger.Info("playback service closing")
 	if session != nil {
 		session.stop()
 	}
@@ -582,7 +582,7 @@ func (s *Session) failUnopened(event mpvEvent) {
 	// the old one; the fresh entry gets a new id and keeps its own error.
 	if event.EntryID != 0 && s.openRetried && event.EntryID == s.failedEntryID {
 		s.mu.Unlock()
-		log.Debug("ignoring stale end-file after retry", "entry_id", event.EntryID)
+		logger.Debug("ignoring stale end-file after retry", "entry_id", event.EntryID)
 		return
 	}
 	if !s.openRetried {
@@ -649,7 +649,7 @@ func (s *Session) retryOpenOnce() bool {
 		s.mu.Lock()
 		s.freshResolve = false
 		s.mu.Unlock()
-		log.Warn("cannot resolve the first video again", "episode", number, "error", err)
+		logger.Warn("cannot resolve the first video again", "episode", number, "error", err)
 		return false
 	}
 	s.mu.Lock()
@@ -662,7 +662,7 @@ func (s *Session) retryOpenOnce() bool {
 	s.freshResolve = false
 	if err != nil {
 		s.mu.Unlock()
-		log.Warn("cannot reload the first video", "episode", entry.Episode.Number, "error", err)
+		logger.Warn("cannot reload the first video", "episode", entry.Episode.Number, "error", err)
 		return false
 	}
 	s.entries = []*playlistEntry{entry}
@@ -729,9 +729,9 @@ func (s *Session) saveProgress(force bool, position float64) {
 func (s *Session) finish(err error) {
 	s.finishOnce.Do(func() {
 		if err != nil {
-			log.Warn("playback finished with an error", "error", err)
+			logger.Warn("playback finished with an error", "error", err)
 		} else {
-			log.Info("playback finished")
+			logger.Info("playback finished")
 		}
 		s.onFinishProgress()
 		s.mu.Lock()
@@ -1444,3 +1444,5 @@ func isAbsoluteURL(value string) bool {
 	parsed, err := url.Parse(strings.TrimSpace(value))
 	return err == nil && parsed.IsAbs()
 }
+
+var logger = log.For(log.SourcePlayback)

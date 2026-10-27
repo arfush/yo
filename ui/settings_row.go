@@ -9,10 +9,10 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
-	"github.com/arfush/yoanime/party"
+	"github.com/arfush/yo/party"
 )
 
-func (w *settingsWindow) layoutToggleRow(
+func (w *settingsScreen) layoutToggleRow(
 	gtx layout.Context,
 	rect image.Rectangle,
 	label, note string,
@@ -57,7 +57,7 @@ func (w *settingsWindow) layoutToggleRow(
 // layoutNamePanel edits the nickname shown to the other side of a room. An
 // empty name would leave the other person without a hint about who is hosting,
 // so the field is validated on commit.
-func (w *settingsWindow) layoutRelayPanels(gtx layout.Context, left, right, top int) (int, bool, bool) {
+func (w *settingsScreen) layoutRelayPanels(gtx layout.Context, left, right, top int) (int, bool, bool) {
 	height := gtx.Dp(settingsPanelHeight)
 	gap := gtx.Dp(settingsRowGap)
 	submitted := false
@@ -93,7 +93,7 @@ func (w *settingsWindow) layoutRelayPanels(gtx layout.Context, left, right, top 
 
 // layoutRelayPanel paints one endpoint setting: the name on the left, the
 // editor on the right, both vertically centered like the other setting rows.
-func (w *settingsWindow) layoutRelayPanel(
+func (w *settingsScreen) layoutRelayPanel(
 	gtx layout.Context,
 	rect image.Rectangle,
 	label string,
@@ -152,7 +152,7 @@ func relayFieldRect(gtx layout.Context, rect image.Rectangle) image.Rectangle {
 
 // layoutSettingsEditor paints one editable settings value. Enter and leaving
 // the field both commit the block that owns it; typing only marks it dirty.
-func (w *settingsWindow) layoutSettingsEditor(gtx layout.Context, rect image.Rectangle, editor *widget.Editor, hint string, dirty *bool) bool {
+func (w *settingsScreen) layoutSettingsEditor(gtx layout.Context, rect image.Rectangle, editor *widget.Editor, hint string, dirty *bool) bool {
 	if rect.Empty() {
 		return false
 	}

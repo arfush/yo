@@ -3,7 +3,7 @@ package ui
 import (
 	"image"
 
-	platformtray "github.com/arfush/yoanime/platform/tray"
+	platformtray "github.com/arfush/yo/platform/tray"
 )
 
 // trayAdaptor keeps the screen code on its old method names while the Win32

@@ -8,15 +8,12 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/arfush/yoanime/catalog"
 )
 
 // ErrRateLimited reports that a request hit AnimeLIB's limit while the caller
 // asked not to wait for the pause to end. Callers can show the pause and let
 // the user retry instead of keeping a spinner alive for up to a minute. The
 // screen-facing sentinel is defined in catalog.
-var ErrRateLimited = catalog.ErrRateLimited
 
 type failFastRateLimitKey struct{}
 

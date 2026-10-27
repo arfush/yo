@@ -75,8 +75,6 @@ type transport interface {
 	close()
 }
 
-var errNotConnected = errors.New("нет соединения с комнатой")
-
 const (
 	readLimit    = 64 << 10
 	writeTimeout = 10 * time.Second
@@ -125,7 +123,7 @@ func (t *wsTransport) close() {
 // closeError converts a WebSocket failure into a message a person can read.
 func closeError(err error) error {
 	if err == nil {
-		return errors.New("соединение с комнатой закрыто")
+		return ErrRoomClosed
 	}
 	if errors.Is(err, context.Canceled) {
 		return err
@@ -133,8 +131,8 @@ func closeError(err error) error {
 	if status := websocket.CloseStatus(err); status != -1 {
 		switch status {
 		case websocket.StatusNormalClosure, websocket.StatusGoingAway:
-			return errors.New("соединение с комнатой закрыто")
+			return ErrRoomClosed
 		}
 	}
-	return errors.New("не удалось связаться с сервером комнаты")
+	return ErrServerUnreachable
 }

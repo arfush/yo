@@ -1,10 +1,13 @@
-// Package log writes the application log and keeps recent structured entries
-// in memory for the log window.
+// Package log writes the application journal and keeps recent structured
+// entries in memory for the log window.
 //
-// The implementation is built on log/slog: callers use the small wrappers in
-// this package, while the handler owns the file, rotation, redaction, source
-// inference and the bounded in-memory ring. The log lives next to the database,
-// in %APPDATA%\yoanime\yoanime.log.
+// The implementation is log/slog: callers are handed a named logger by For and
+// log through it like any slog.Logger. The handler only owns the file,
+// rotation, redaction, the bounded in-memory ring and the last-error context;
+// it never guesses where an entry came from. The source attribute is attached
+// explicitly when a module builds its logger, and modules are expected to use
+// the constants below for their names. The log lives next to the database, in
+// %APPDATA%\yoanime\yoanime.log.
 package log
 
 import (
@@ -12,7 +15,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,9 +34,40 @@ const (
 	LevelNotice = slog.LevelInfo + 2
 )
 
+// Source constants name every module that writes to the journal. A package
+// builds its logger once at load time:
+//
+//	var logger = log.For(log.SourceAnimelib)
+//
+// and every entry it writes then carries `source=animelib`, without the log
+// package having to look at the call stack.
+const (
+	SourceAnimelib  = "animelib"
+	SourceApp       = "app"
+	SourceBrowser   = "browser"
+	SourceKinopoisk = "kinopoisk"
+	SourceKodik     = "kodik"
+	SourceLibrary   = "library"
+	SourceMpv       = "mpv"
+	SourceParty     = "party"
+	SourcePlayback  = "playback"
+	SourceStore     = "store"
+	SourceUI        = "ui"
+	SourceUpdate    = "update"
+)
+
+// Sources returns every module name in display order. The log window uses the
+// list only as an affordance; the row value always comes from the entry.
+func Sources() []string {
+	return []string{
+		SourceAnimelib, SourceApp, SourceBrowser, SourceKinopoisk, SourceKodik,
+		SourceLibrary, SourceMpv, SourceParty, SourcePlayback, SourceStore,
+		SourceUI, SourceUpdate,
+	}
+}
+
 // Entry is one structured log record. Detail contains the formatted attributes
-// after redaction; Source is the lower-case package/feature name inferred from
-// the caller.
+// after redaction; Source is the module that owns the logger that wrote it.
 type Entry struct {
 	ID      uint64
 	Time    time.Time
@@ -62,6 +95,9 @@ type state struct {
 
 var defaultState state
 
+// handler implements the journal: it formats a record into a line, keeps the
+// in-memory ring and appends to the file. Attrs are accumulated through
+// WithAttrs/WithGroup so the source name set by For lands on every record.
 type handler struct {
 	state  *state
 	attrs  []slog.Attr
@@ -71,9 +107,17 @@ type handler struct {
 var defaultLogger = slog.New(&handler{state: &defaultState})
 
 func init() {
-	// Applications and libraries that use slog directly should land in the
-	// same file and in-memory ring.
+	// Libraries that use slog directly should land in the same file and
+	// in-memory ring, tagged as the default source.
 	slog.SetDefault(defaultLogger)
+}
+
+// For returns a logger that tags every entry with the given source. Source
+// should be one of the Source* constants so the log window sees a familiar
+// module name.
+func For(source string) *slog.Logger {
+	attrs := []slog.Attr{slog.String("source", source)}
+	return slog.New(&handler{state: &defaultState, attrs: attrs})
 }
 
 // Init opens the log file. Calling Init again closes the previous file and
@@ -113,89 +157,6 @@ func Close() {
 		_ = s.file.Close()
 		s.file = nil
 	}
-}
-
-// Trace writes the most detailed diagnostic entry.
-func Trace(message string, attrs ...any) {
-	logAt(LevelTrace, message, attrs...)
-}
-
-// Debug writes a diagnostic entry.
-func Debug(message string, attrs ...any) {
-	logAt(slog.LevelDebug, message, attrs...)
-}
-
-// Info writes an informational entry.
-func Info(message string, attrs ...any) {
-	logAt(slog.LevelInfo, message, attrs...)
-}
-
-// Notice writes a notable but non-problematic event.
-func Notice(message string, attrs ...any) {
-	logAt(LevelNotice, message, attrs...)
-}
-
-// Warn writes a recoverable problem.
-func Warn(message string, attrs ...any) {
-	logAt(slog.LevelWarn, message, attrs...)
-}
-
-// Error writes a failure. Its surrounding lines become the context copied from
-// the log window.
-func Error(message string, attrs ...any) {
-	logAt(slog.LevelError, message, attrs...)
-}
-
-func logAt(level slog.Level, message string, attrs ...any) {
-	record := slog.NewRecord(time.Now(), level, message, callerPC())
-	record.Add(attrs...)
-	_ = defaultLogger.Handler().Handle(context.Background(), record)
-}
-
-// callerPC finds the first frame outside the log package implementation. This
-// keeps the source meaningful even when the compiler inlines the wrappers.
-func callerPC() uintptr {
-	var pcs [8]uintptr
-	n := runtime.Callers(2, pcs[:])
-	frames := runtime.CallersFrames(pcs[:n])
-	var fallback uintptr
-	for {
-		frame, more := frames.Next()
-		if isLogImplementation(frame) {
-			if !more {
-				break
-			}
-			continue
-		}
-		if fallback == 0 {
-			fallback = frame.PC + 1
-		}
-		// Prefer an application frame over an inlined stdlib call such as
-		// errors.New in an argument list.
-		if sourceFromFile(frame.File) != "" {
-			// CallersFrames returns the call-site PC minus one. NewRecord
-			// expects a return address, so restore it before source lookup.
-			return frame.PC + 1
-		}
-		if !more {
-			break
-		}
-	}
-	return fallback
-}
-
-func isLogImplementation(frame runtime.Frame) bool {
-	if !strings.Contains(filepathSlash(frame.File), "/log/") {
-		return false
-	}
-	if strings.HasSuffix(frame.File, "_test.go") {
-		return false
-	}
-	return strings.Contains(frame.Function, "/log.")
-}
-
-func filepathSlash(path string) string {
-	return strings.ReplaceAll(path, "\\", "/")
 }
 
 // Snapshot returns the recent log lines, oldest first.
@@ -290,11 +251,10 @@ func (h *handler) Handle(_ context.Context, record slog.Record) error {
 	entry := Entry{
 		Time:    at,
 		Level:   record.Level,
-		Source:  sourceName(record.PC),
+		Source:  sourceFromAttrs(attrs),
 		Message: record.Message,
 		Detail:  detail,
 	}
-	entry.Line = entry.formatLine()
 
 	s := h.state
 	s.mu.Lock()
@@ -322,7 +282,6 @@ func (h *handler) Handle(_ context.Context, record slog.Record) error {
 	if record.Level >= slog.LevelError {
 		s.lastErr = &errorRecord{line: entry.Line, context: previous}
 	}
-	_ = attrs
 	s.writeLocked(entry.Line)
 	return nil
 }
@@ -355,6 +314,19 @@ func (e Entry) formatLine() string {
 		b.WriteString(e.Detail)
 	}
 	return b.String()
+}
+
+// sourceFromAttrs returns the source attached by For, or the default name for
+// records written through slog.SetDefault.
+func sourceFromAttrs(attrs []slog.Attr) string {
+	for _, attr := range attrs {
+		if attr.Key == "source" && attr.Value.Kind() == slog.KindString {
+			if source := attr.Value.String(); source != "" {
+				return source
+			}
+		}
+	}
+	return "app"
 }
 
 func formatAttrs(base []slog.Attr, groups []string, record slog.Record) (string, []slog.Attr) {
@@ -440,64 +412,6 @@ func formatValue(value slog.Value) string {
 	default:
 		return fmt.Sprint(value.Any())
 	}
-}
-
-func sourceName(pc uintptr) string {
-	if pc == 0 {
-		return "app"
-	}
-	// A single PC can expand into several inline frames. The innermost one is
-	// often a helper such as errors.New, so walk them until an application
-	// package is found instead of naming the source after a stdlib helper.
-	frames := runtime.CallersFrames([]uintptr{pc})
-	fallback := ""
-	for {
-		frame, more := frames.Next()
-		if name := sourceFromFile(frame.File); name != "" {
-			return name
-		}
-		if fallback == "" {
-			fallback = sourceFromFunction(frame.Function)
-		}
-		if !more {
-			break
-		}
-	}
-	if fallback != "" {
-		return fallback
-	}
-	return "app"
-}
-
-func sourceFromFile(path string) string {
-	path = filepathSlash(path)
-	for _, name := range []string{
-		"animelib", "app", "browser", "catalog", "kodik", "kinopoisk",
-		"library", "log", "metadata", "mpv", "party", "playback", "store",
-		"token", "updater", "updates", "version", "ui",
-	} {
-		if strings.Contains(path, "/"+name+"/") {
-			return name
-		}
-	}
-	if strings.Contains(path, "/platform/") {
-		return "platform"
-	}
-	if strings.Contains(path, "/cmd/") {
-		return "app"
-	}
-	return ""
-}
-
-func sourceFromFunction(function string) string {
-	name := function
-	if index := strings.LastIndex(name, "/"); index >= 0 {
-		name = name[index+1:]
-	}
-	if index := strings.IndexByte(name, '.'); index >= 0 {
-		name = name[:index]
-	}
-	return strings.ToLower(name)
 }
 
 func (s *state) writeLocked(line string) {

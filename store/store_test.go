@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 )
@@ -385,56 +386,6 @@ func TestClearHistoryDropsEpisodeTracking(t *testing.T) {
 	}
 }
 
-func TestOpenClearsUserStatusesWithoutHistory(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "yoanime.sqlite")
-	db, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	saved, err := db.UpsertTitle(Title{Slug: "kept-status"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.EnsureHistory(saved, "1", "Озвучка"); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.SetUserStatus(saved, 4); err != nil {
-		t.Fatal(err)
-	}
-	orphan, err := db.UpsertTitle(Title{Slug: "orphan-status", UserStatus: 5})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	db, err = Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-
-	keptTitle, err := db.GetTitleByID(saved)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if keptTitle == nil || keptTitle.UserStatus != 4 {
-		t.Fatalf("history title status = %#v, want 4", keptTitle)
-	}
-	orphanTitle, err := db.GetTitleByID(orphan)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if orphanTitle == nil {
-		t.Fatal("cached title metadata was deleted")
-	}
-	if orphanTitle.UserStatus != defaultUserStatus {
-		t.Fatalf("orphan status = %d, want %d", orphanTitle.UserStatus, defaultUserStatus)
-	}
-}
-
 func TestDeleteHistoryResetsUserStatus(t *testing.T) {
 	db, err := Open(filepath.Join(t.TempDir(), "yoanime.sqlite"))
 	if err != nil {
@@ -652,7 +603,9 @@ func TestHistoryKeepsNewestFirst(t *testing.T) {
 	}
 }
 
-func TestOpenAddsEpisodesTotalToLegacyDatabase(t *testing.T) {
+func TestOpenRejectsLegacyDatabaseAsCorrupt(t *testing.T) {
+	// Databases written by older builds are intentionally unsupported: Open
+	// must report the file as corrupted instead of half-migrating it.
 	path := filepath.Join(t.TempDir(), "legacy.sqlite")
 	raw, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -678,28 +631,51 @@ func TestOpenAddsEpisodesTotalToLegacyDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	db, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
+	if _, err := Open(path); !errors.Is(err, ErrCorruptDatabase) {
+		t.Fatalf("legacy database open error = %v, want ErrCorruptDatabase", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+}
 
-	title, err := db.GetTitle("legacy")
+func TestOpenRejectsIncompleteHistorySchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy-history.sqlite")
+	raw, err := sql.Open("sqlite", path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if title == nil || title.RusName != "Старое" || title.EpisodesTotal != 0 || title.IsMovie {
-		t.Fatalf("legacy title = %#v", title)
-	}
-	if err := db.UpdateEpisodesTotal(title.ID, 13); err != nil {
+	if _, err := raw.Exec(`CREATE TABLE titles (
+		id INTEGER PRIMARY KEY,
+		slug TEXT UNIQUE NOT NULL,
+		eng_name TEXT NOT NULL DEFAULT '',
+		rus_name TEXT NOT NULL DEFAULT '',
+		imdb_id TEXT NOT NULL DEFAULT '',
+		season INTEGER NOT NULL DEFAULT 0,
+		status INTEGER NOT NULL DEFAULT 0,
+		updated_at INTEGER NOT NULL DEFAULT 0
+	)`); err != nil {
 		t.Fatal(err)
 	}
-	updated, err := db.GetTitle("legacy")
-	if err != nil {
+	if _, err := raw.Exec(`CREATE TABLE history (
+		tid INTEGER PRIMARY KEY REFERENCES titles(id) ON DELETE CASCADE,
+		episode TEXT NOT NULL DEFAULT '',
+		resume_at REAL NOT NULL DEFAULT 0,
+		duration REAL NOT NULL DEFAULT 0,
+		voiceover TEXT NOT NULL DEFAULT '',
+		sort_order INTEGER NOT NULL DEFAULT 0
+	)`); err != nil {
 		t.Fatal(err)
 	}
-	if updated == nil || updated.EpisodesTotal != 13 {
-		t.Fatalf("episode total = %#v, want 13", updated)
+	if _, err := raw.Exec("INSERT INTO titles (slug) VALUES ('legacy')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec("INSERT INTO history (tid, episode, sort_order) VALUES (1, '2', -500)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Open(path); !errors.Is(err, ErrCorruptDatabase) {
+		t.Fatalf("incomplete history open error = %v, want ErrCorruptDatabase", err)
 	}
 }
 
@@ -799,57 +775,5 @@ func TestHistoryTracksPerStatusOrderAndPromotion(t *testing.T) {
 	}
 	if got := orders(t)[ids[0]]; got != -2000 {
 		t.Fatalf("stale conditional change moved title to %d", got)
-	}
-}
-
-func TestOpenAddsStatusOrderToLegacyHistory(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "legacy-history.sqlite")
-	raw, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := raw.Exec(`CREATE TABLE titles (
-		id INTEGER PRIMARY KEY,
-		slug TEXT UNIQUE NOT NULL,
-		eng_name TEXT NOT NULL DEFAULT '',
-		rus_name TEXT NOT NULL DEFAULT '',
-		imdb_id TEXT NOT NULL DEFAULT '',
-		season INTEGER NOT NULL DEFAULT 0,
-		status INTEGER NOT NULL DEFAULT 0,
-		updated_at INTEGER NOT NULL DEFAULT 0
-	)`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := raw.Exec(`CREATE TABLE history (
-		tid INTEGER PRIMARY KEY REFERENCES titles(id) ON DELETE CASCADE,
-		episode TEXT NOT NULL DEFAULT '',
-		resume_at REAL NOT NULL DEFAULT 0,
-		duration REAL NOT NULL DEFAULT 0,
-		voiceover TEXT NOT NULL DEFAULT '',
-		sort_order INTEGER NOT NULL DEFAULT 0
-	)`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := raw.Exec("INSERT INTO titles (slug) VALUES ('legacy')"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := raw.Exec("INSERT INTO history (tid, episode, sort_order) VALUES (1, '2', -500)"); err != nil {
-		t.Fatal(err)
-	}
-	if err := raw.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	db, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	history, err := db.ListHistory()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(history) != 1 || history[0].StatusOrder != -500 {
-		t.Fatalf("legacy status order = %#v, want -500", history)
 	}
 }

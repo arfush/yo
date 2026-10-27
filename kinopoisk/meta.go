@@ -10,8 +10,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/arfush/yoanime/log"
 )
 
 const (
@@ -102,7 +100,7 @@ func (c *Client) Meta(ctx context.Context, link Link) (Meta, error) {
 		if ctx.Err() != nil {
 			return Meta{}, ctx.Err()
 		}
-		log.Warn("kinopoisk metadata request failed", "endpoint", endpoint, "title", link.ID, "error", err)
+		logger.Warn("kinopoisk metadata request failed", "endpoint", endpoint, "title", link.ID, "error", err)
 	}
 	meta.Partial = true
 	meta.NameRu = fmt.Sprintf("Кинопоиск #%d", link.ID)

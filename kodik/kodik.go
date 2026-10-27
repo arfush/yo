@@ -12,7 +12,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -21,8 +20,8 @@ import (
 
 	playwright "github.com/mxschmitt/playwright-go"
 
-	"github.com/arfush/yoanime/browser"
-	"github.com/arfush/yoanime/log"
+	"github.com/arfush/yo/browser"
+	"github.com/arfush/yo/log"
 )
 
 const (
@@ -64,10 +63,10 @@ func New(manager *browser.Manager) *Resolver {
 func (r *Resolver) Resolve(ctx context.Context, embedURL string) (map[int]string, error) {
 	embedURL = normalizeEmbed(embedURL)
 	if embedURL == "" {
-		return nil, errors.New("пустая ссылка Kodik")
+		return nil, ErrEmptyLink
 	}
 	if links, ok := r.cached(embedURL); ok {
-		log.Debug("Kodik links served from cache", "embed", embedURL)
+		logger.Debug("Kodik links served from cache", "embed", embedURL)
 		return links, nil
 	}
 
@@ -79,21 +78,21 @@ func (r *Resolver) Resolve(ctx context.Context, embedURL string) (map[int]string
 	if links, ok := r.cached(embedURL); ok {
 		return links, nil
 	}
-	log.Info("resolving Kodik embed", "embed", embedURL)
+	logger.Info("resolving Kodik embed", "embed", embedURL)
 	links, err := r.resolve(ctx, embedURL)
 	if err != nil {
 		// A Chromium crash leaves the cached handle unusable. Drop it and retry
 		// once with a fresh browser.
-		log.Warn("Kodik resolve failed, retrying with a fresh browser", "embed", embedURL, "error", err)
+		logger.Warn("Kodik resolve failed, retrying with a fresh browser", "embed", embedURL, "error", err)
 		r.dropHeadless()
 		links, err = r.resolve(ctx, embedURL)
 		if err != nil {
-			log.Error("Kodik resolve failed", "embed", embedURL, "error", err)
+			logger.Error("Kodik resolve failed", "embed", embedURL, "error", err)
 			return nil, err
 		}
 	}
 	r.store(embedURL, links)
-	log.Info("Kodik embed resolved", "embed", embedURL, "qualities", len(links))
+	logger.Info("Kodik embed resolved", "embed", embedURL, "qualities", len(links))
 	return links, nil
 }
 
@@ -193,7 +192,7 @@ func (r *Resolver) resolve(ctx context.Context, embedURL string) (map[int]string
 	select {
 	case body = <-responses:
 	case <-time.After(30 * time.Second):
-		return nil, errors.New("Kodik не вернул ссылки на видео")
+		return nil, ErrNoVideoLinks
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
@@ -204,7 +203,7 @@ func (r *Resolver) ensureHeadless(ctx context.Context) (*browser.Headless, error
 	r.mu.Lock()
 	if r.closed {
 		r.mu.Unlock()
-		return nil, errors.New("браузер Kodik закрыт")
+		return nil, ErrBrowserClosed
 	}
 	if r.headless != nil {
 		headless := r.headless
@@ -214,7 +213,7 @@ func (r *Resolver) ensureHeadless(ctx context.Context) (*browser.Headless, error
 	r.mu.Unlock()
 
 	if r.manager == nil {
-		return nil, errors.New("браузер Kodik недоступен")
+		return nil, ErrBrowserUnavailable
 	}
 	headless, err := r.manager.NewHeadless(ctx)
 	if err != nil {
@@ -225,7 +224,7 @@ func (r *Resolver) ensureHeadless(ctx context.Context) (*browser.Headless, error
 	if r.closed {
 		r.mu.Unlock()
 		_ = headless.Close()
-		return nil, errors.New("браузер Kodik закрыт")
+		return nil, ErrBrowserClosed
 	}
 	if r.headless != nil {
 		existing := r.headless
@@ -322,7 +321,7 @@ func parseLinks(body string) (map[int]string, error) {
 		return nil, fmt.Errorf("некорректный ответ Kodik: %w", err)
 	}
 	if len(response.Links) == 0 {
-		return nil, errors.New("Kodik вернул пустой список ссылок")
+		return nil, ErrEmptyLinks
 	}
 	out := make(map[int]string)
 	for quality, raw := range response.Links {
@@ -341,7 +340,7 @@ func parseLinks(body string) (map[int]string, error) {
 		out[number] = decoded
 	}
 	if len(out) == 0 {
-		return nil, errors.New("Kodik вернул ссылки в неизвестном формате")
+		return nil, ErrUnknownFormat
 	}
 	return out, nil
 }
@@ -382,7 +381,7 @@ func extractSrc(raw json.RawMessage) string {
 func decodeKodik(encoded string) (string, error) {
 	encoded = strings.TrimSpace(encoded)
 	if encoded == "" {
-		return "", errors.New("пустая ссылка")
+		return "", ErrEmptySource
 	}
 	for shift := 0; shift < 26; shift++ {
 		rotated := rotateLetters(encoded, shift)
@@ -393,7 +392,7 @@ func decodeKodik(encoded string) (string, error) {
 			}
 		}
 	}
-	return "", errors.New("не удалось декодировать ссылку Kodik")
+	return "", ErrCannotDecodeLink
 }
 
 func rotateLetters(value string, shift int) string {
@@ -440,3 +439,5 @@ func normalizePlaybackURL(raw string) string {
 	}
 	return raw
 }
+
+var logger = log.For(log.SourceKodik)

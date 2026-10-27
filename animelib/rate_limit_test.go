@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	applog "github.com/arfush/yoanime/log"
+	applog "github.com/arfush/yo/log"
 )
 
 func TestParseRetryAfter(t *testing.T) {

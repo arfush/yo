@@ -3,7 +3,6 @@ package mpv
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -13,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arfush/yoanime/log"
-	"github.com/arfush/yoanime/platform/appdata"
+	"github.com/arfush/yo/log"
+	"github.com/arfush/yo/platform/appdata"
 )
 
 // Progress reports the overall mpv installation progress. Preparing is true
@@ -66,14 +65,14 @@ func Locate() (string, error) {
 			return path, nil
 		}
 	}
-	return "", errors.New("mpv не найден")
+	return "", ErrNotFound
 }
 
 // Download installs mpv into %APPDATA%\yoanime\mpv. The callback is invoked
 // from a background goroutine and must be safe to call repeatedly.
 func (m *Manager) Download(ctx context.Context, onProgress func(Progress)) error {
 	if m == nil {
-		return errors.New("mpv manager is nil")
+		return ErrManagerNil
 	}
 	if onProgress == nil {
 		onProgress = func(Progress) {}
@@ -82,7 +81,7 @@ func (m *Manager) Download(ctx context.Context, onProgress func(Progress)) error
 	m.mu.Lock()
 	if m.downloading {
 		m.mu.Unlock()
-		return errors.New("mpv download is already running")
+		return ErrDownloadRunning
 	}
 	m.downloading = true
 	m.mu.Unlock()
@@ -94,28 +93,28 @@ func (m *Manager) Download(ctx context.Context, onProgress func(Progress)) error
 
 	onProgress(Progress{Preparing: true})
 	if m.Installed() {
-		log.Info("mpv is already installed")
+		logger.Info("mpv is already installed")
 		onProgress(Progress{Percent: 100})
 		return nil
 	}
-	log.Info("mpv installation started")
+	logger.Info("mpv installation started")
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
 	dir, err := appdata.MPVDir()
 	if err != nil {
-		log.Error("cannot resolve the mpv directory", "error", err)
+		logger.Error("cannot resolve the mpv directory", "error", err)
 		return err
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		log.Error("cannot create the mpv directory", "error", err)
+		logger.Error("cannot create the mpv directory", "error", err)
 		return fmt.Errorf("create mpv directory: %w", err)
 	}
 
 	release, err := resolveRelease(ctx, m.client)
 	if err != nil {
-		log.Error("cannot resolve the mpv release", "error", err)
+		logger.Error("cannot resolve the mpv release", "error", err)
 		return err
 	}
 	onProgress(Progress{Percent: 0})
@@ -142,11 +141,11 @@ func (m *Manager) Download(ctx context.Context, onProgress func(Progress)) error
 	})
 	closeErr := temp.Close()
 	if err != nil {
-		log.Error("cannot download the mpv archive", "error", err)
+		logger.Error("cannot download the mpv archive", "error", err)
 		return err
 	}
 	if closeErr != nil {
-		log.Error("cannot close the mpv archive", "error", closeErr)
+		logger.Error("cannot close the mpv archive", "error", closeErr)
 		return closeErr
 	}
 
@@ -158,20 +157,22 @@ func (m *Manager) Download(ctx context.Context, onProgress func(Progress)) error
 		}
 		onProgress(Progress{Percent: percent})
 	}); err != nil {
-		log.Error("cannot extract the mpv archive", "error", err)
+		logger.Error("cannot extract the mpv archive", "error", err)
 		return err
 	}
 
 	path, err := appdata.MPVPath()
 	if err != nil {
-		log.Error("cannot resolve the mpv path", "error", err)
+		logger.Error("cannot resolve the mpv path", "error", err)
 		return err
 	}
 	if info, err := os.Stat(path); err != nil || info.IsDir() || info.Size() == 0 {
-		log.Error("mpv executable was not installed", "path", path, "error", err)
-		return errors.New("mpv.exe was not installed")
+		logger.Error("mpv executable was not installed", "path", path, "error", err)
+		return ErrNotInstalled
 	}
-	log.Info("mpv installation finished", "path", path)
+	logger.Info("mpv installation finished", "path", path)
 	onProgress(Progress{Percent: 100})
 	return nil
 }
+
+var logger = log.For(log.SourceMpv)

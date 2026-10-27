@@ -15,10 +15,10 @@ import (
 	"gioui.org/op"
 	"gioui.org/unit"
 
-	"github.com/arfush/yoanime/party"
+	"github.com/arfush/yo/party"
 )
 
-func (w *partyWindow) layoutCardText(gtx layout.Context, cardWidth int, px func(float32) int, title, description string) {
+func (w *partyScreen) layoutCardText(gtx layout.Context, cardWidth int, px func(float32) int, title, description string) {
 	w.typo.draw(gtx, title, font.Font{Typeface: fontFamily, Weight: font.Bold}, wpTitleSize, titleColor, image.Pt(px(wpCardPadding), px(wpTitleTop)))
 
 	face := font.Font{Typeface: fontFamily, Weight: font.Normal}
@@ -33,7 +33,7 @@ func (w *partyWindow) layoutCardText(gtx layout.Context, cardWidth int, px func(
 	}
 }
 
-func (w *partyWindow) layoutChoice(gtx layout.Context, cardWidth int, px func(float32) int) {
+func (w *partyScreen) layoutChoice(gtx layout.Context, cardWidth int, px func(float32) int) {
 	w.layoutCardText(gtx, cardWidth, px, wpTitleChoice, wpDescChoice)
 
 	gap := px(wpButtonGap)
@@ -66,7 +66,7 @@ func (w *partyWindow) layoutChoice(gtx layout.Context, cardWidth int, px func(fl
 	}
 }
 
-func (w *partyWindow) layoutCreated(gtx layout.Context, cardWidth int, px func(float32) int, snapshot partySnapshot) {
+func (w *partyScreen) layoutCreated(gtx layout.Context, cardWidth int, px func(float32) int, snapshot partySnapshot) {
 	description := wpDescCreated
 	if snapshot.Locked {
 		description = wpDescLocked
@@ -94,7 +94,7 @@ func (w *partyWindow) layoutCreated(gtx layout.Context, cardWidth int, px func(f
 
 // layoutSecretChip shows the host secret in a read-only chip. Clicking it
 // copies the formatted value, which is what people paste into a chat.
-func (w *partyWindow) layoutSecretChip(gtx layout.Context, cardWidth int, px func(float32) int, secret string) {
+func (w *partyScreen) layoutSecretChip(gtx layout.Context, cardWidth int, px func(float32) int, secret string) {
 	if secret == "" {
 		return
 	}
@@ -143,7 +143,7 @@ func (w *partyWindow) layoutSecretChip(gtx layout.Context, cardWidth int, px fun
 	}
 }
 
-func (w *partyWindow) layoutSecret(gtx layout.Context, cardWidth int, px func(float32) int) {
+func (w *partyScreen) layoutSecret(gtx layout.Context, cardWidth int, px func(float32) int) {
 	w.layoutCardText(gtx, cardWidth, px, wpTitleSecret, wpDescSecret)
 
 	if w.focusSecret {
@@ -167,7 +167,7 @@ func (w *partyWindow) layoutSecret(gtx layout.Context, cardWidth int, px func(fl
 	})
 }
 
-func (w *partyWindow) layoutJoin(gtx layout.Context, cardWidth int, px func(float32) int) {
+func (w *partyScreen) layoutJoin(gtx layout.Context, cardWidth int, px func(float32) int) {
 	w.layoutCardText(gtx, cardWidth, px, wpTitleJoin, wpDescJoin)
 
 	if w.focusField {
@@ -191,7 +191,7 @@ func (w *partyWindow) layoutJoin(gtx layout.Context, cardWidth int, px func(floa
 
 // shakeRunning keeps animation frames coming for the whole shake, including
 // its very first frame when the sine offset is still zero.
-func (w *partyWindow) layoutWaiting(gtx layout.Context, snapshot partySnapshot) {
+func (w *partyScreen) layoutWaiting(gtx layout.Context, snapshot partySnapshot) {
 	if w.waitSince.IsZero() {
 		w.waitSince = gtx.Now
 	}
