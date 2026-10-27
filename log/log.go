@@ -32,6 +32,10 @@ const (
 const (
 	LevelTrace  = slog.Level(-8)
 	LevelNotice = slog.LevelInfo + 2
+	// LevelPanic sits above Error so it is always selected by every severity
+	// filter and is kept in the last-error context. The UI deliberately does
+	// not offer a panic option in the level menu.
+	LevelPanic = slog.LevelError + 4
 )
 
 // Source constants name every module that writes to the journal. A package
@@ -233,8 +237,10 @@ func LevelLabel(level slog.Level) string {
 		return "notice"
 	case level < slog.LevelError:
 		return "warn"
-	default:
+	case level < LevelPanic:
 		return "error"
+	default:
+		return "panic"
 	}
 }
 

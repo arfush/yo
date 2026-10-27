@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -116,6 +117,10 @@ type application struct {
 	main           *mainScreen
 	log            *logScreen
 	active         Screen
+	// previousScreen is the screen the user came from. A panic in the active
+	// screen returns there instead of leaving the window on a half-drawn page.
+	previousScreen Screen
+	recovering     bool
 	shortcuts      *shortcutsScreen
 	window         *app.Window
 	icon           image.Image
@@ -1982,6 +1987,9 @@ func (a *application) persistWindowRects(now time.Time) {
 }
 
 func (a *application) showWindow(w *app.Window, screen Screen) {
+	if !a.recovering && a.active != nil && a.active != screen {
+		a.previousScreen = a.active
+	}
 	if a.active != nil && a.active != screen {
 		a.active.Close()
 	}
@@ -2186,6 +2194,62 @@ func (a *application) close() {
 	}
 }
 
+// frame renders one window frame. The defer is deliberately at this level: a
+// panic from a screen, shell or event-processing helper must not unwind the Gio
+// run loop and terminate the process. The recovered frame still calls
+// e.Frame in run so Gio receives a valid frame.
+func (a *application) frame(gtx layout.Context, w *app.Window) {
+	defer func() {
+		if value := recover(); value != nil {
+			a.recoverPanic(value)
+		}
+	}()
+	a.processUpdateCard()
+	a.processPartyState()
+	a.processWatchResults(gtx)
+	a.processQualityResults(gtx)
+	a.updatePlaybackNow(gtx)
+	a.persistWindowRects(gtx.Now)
+	a.syncFooterControls()
+	a.handleGlobalKeys(gtx)
+	a.shell.layout(gtx, w)
+}
+
+// recoverPanic records the panic at its own severity, tells the user that the
+// action failed and returns to the previous screen. It is intentionally
+// defensive: a panic in the fallback path must not cause a second panic loop.
+func (a *application) recoverPanic(value any) {
+	if a.recovering {
+		return
+	}
+	a.recovering = true
+	defer func() { a.recovering = false }()
+
+	logger.Log(context.Background(), log.LevelPanic, "ui panic", "panic", fmt.Sprint(value), "stack", string(debug.Stack()))
+	if a.shell != nil {
+		a.shell.setError("Что-то пошло не так. Вернулись на предыдущий экран.", time.Now())
+	}
+	var fallback Screen = a.main
+	if a.active != nil && a.active != a.main && a.previousScreen != nil {
+		fallback = a.previousScreen
+	}
+	if fallback != nil && fallback != a.active && a.window != nil {
+		a.showWindow(a.window, fallback)
+	}
+}
+
+// drawFrame hands the completed ops to Gio's GPU renderer. The renderer can
+// panic on an invalid texture (the old webtoon read path did exactly that), and
+// that panic is on this goroutine, so it is recoverable here as well.
+func (a *application) drawFrame(gtx layout.Context, e app.FrameEvent) {
+	defer func() {
+		if value := recover(); value != nil {
+			a.recoverPanic(value)
+		}
+	}()
+	e.Frame(gtx.Ops)
+}
+
 func (a *application) run(w *app.Window) error {
 	var ops op.Ops
 
@@ -2206,16 +2270,8 @@ func (a *application) run(w *app.Window) error {
 			a.hideToTray()
 		case app.FrameEvent:
 			gtx := app.NewContext(&ops, e)
-			a.processUpdateCard()
-			a.processPartyState()
-			a.processWatchResults(gtx)
-			a.processQualityResults(gtx)
-			a.updatePlaybackNow(gtx)
-			a.persistWindowRects(gtx.Now)
-			a.syncFooterControls()
-			a.handleGlobalKeys(gtx)
-			a.shell.layout(gtx, w)
-			e.Frame(gtx.Ops)
+			a.frame(gtx, w)
+			a.drawFrame(gtx, e)
 		case app.ConfigEvent:
 			wasFocused := a.shell.cfg.Focused
 			a.shell.setConfig(e.Config)

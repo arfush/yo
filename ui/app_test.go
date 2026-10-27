@@ -11,8 +11,27 @@ import (
 
 	"github.com/arfush/yo/animelib"
 	"github.com/arfush/yo/library"
+	applog "github.com/arfush/yo/log"
 	"github.com/arfush/yo/update"
 )
+
+func TestRecoverPanicLogsAtPanicLevelAndShowsUserError(t *testing.T) {
+	a := &application{shell: &shell{}, main: &mainScreen{}}
+	a.recoverPanic("boom")
+
+	if !strings.Contains(a.shell.errorText, "Что-то пошло не так") {
+		t.Fatalf("user-facing panic message = %q", a.shell.errorText)
+	}
+	found := false
+	for _, entry := range applog.Recent() {
+		if entry.Level == applog.LevelPanic && entry.Message == "ui panic" && strings.Contains(entry.Detail, "boom") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("panic was not written to the journal at the panic level")
+	}
+}
 
 func TestStartFailureResultKeepsRateLimitOnMainScreen(t *testing.T) {
 	rateErr := fmt.Errorf("load: %w", animelib.ErrRateLimited)

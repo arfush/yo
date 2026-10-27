@@ -48,6 +48,8 @@ func logLevelColor(level slog.Level) color.NRGBA {
 		return logWarningText
 	case "error":
 		return logErrorText
+	case "panic":
+		return logPanicText
 	default:
 		return logInfoText
 	}
@@ -103,10 +105,12 @@ func (w *logScreen) layoutLine(gtx layout.Context, entry applog.Entry, width, ro
 		if index%2 == 1 {
 			rowFill = logRowAlt
 		}
-		switch entry.Level {
-		case slog.LevelError:
+		switch {
+		case entry.Level >= applog.LevelPanic:
 			rowFill = logErrorRowFill
-		case slog.LevelWarn:
+		case entry.Level == slog.LevelError:
+			rowFill = logErrorRowFill
+		case entry.Level == slog.LevelWarn:
 			rowFill = logWarnRowFill
 		}
 		// Hover and expand must not erase the level tint: warn/error rows stay
