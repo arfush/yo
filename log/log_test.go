@@ -51,6 +51,37 @@ func TestSnapshotDoesNotIncludeOrdinaryLinesInCopy(t *testing.T) {
 	}
 }
 
+func TestClearDropsRingButKeepsFileAndLastError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "yonime.log")
+	if err := Init(path); err != nil {
+		t.Fatal(err)
+	}
+	defer Close()
+
+	Info("ordinary line")
+	Error("playback failed", "error", "mpv exited")
+	if len(Snapshot()) != 2 {
+		t.Fatalf("snapshot length = %d, want 2", len(Snapshot()))
+	}
+	context := LastErrorContext()
+
+	Clear()
+
+	if lines := Snapshot(); len(lines) != 0 {
+		t.Fatalf("snapshot after clear = %q, want empty", lines)
+	}
+	if got := LastErrorContext(); got != context {
+		t.Fatalf("last error context changed after clear:\n got %q\nwant %q", got, context)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "ordinary line") || !strings.Contains(string(data), "ERROR playback failed") {
+		t.Fatalf("clear removed entries from the log file:\n%s", data)
+	}
+}
+
 func TestRedactsSecrets(t *testing.T) {
 	if err := Init(""); err != nil {
 		t.Fatal(err)

@@ -65,16 +65,22 @@ var IconNames = []string{
 	"chevron_up_thin",
 	"close",
 	"copy",
+	"check",
+	"error",
+	"info",
 	"log",
 	"maximize",
 	"minimize",
+	"pause",
 	"people",
 	"play",
 	"restore",
+	"search",
 	"settings",
 	"trash",
 	"undo",
 	"update",
+	"warning",
 }
 
 var (

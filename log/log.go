@@ -99,6 +99,15 @@ func Snapshot() []string {
 	return out
 }
 
+// Clear drops the in-memory entries shown by the log window. The log file is
+// left untouched so it can still be attached to a bug report, and the last
+// error context stays copyable until a new error replaces it.
+func Clear() {
+	mu.Lock()
+	defer mu.Unlock()
+	ring = nil
+}
+
 // LastErrorContext returns the last error and the log lines that led to it.
 // Ordinary lines are not included when no error has been logged.
 func LastErrorContext() string {

@@ -56,6 +56,25 @@ func drawTrash(gtx layout.Context, center image.Point, size int, col color.NRGBA
 	drawAppIcon(gtx, "trash", center, max(1, size), col)
 }
 
+func drawSearchIcon(gtx layout.Context, center image.Point, size int, col color.NRGBA) {
+	drawAppIcon(gtx, "search", center, max(1, size), col)
+}
+
+func drawCheckIcon(gtx layout.Context, center image.Point, size int, col color.NRGBA) {
+	drawAppIcon(gtx, "check", center, max(1, size), col)
+}
+
+func drawLogLevelIcon(gtx layout.Context, level logLevel, center image.Point, size int, col color.NRGBA) {
+	name := "info"
+	switch level {
+	case logLevelWarning:
+		name = "warning"
+	case logLevelError:
+		name = "error"
+	}
+	drawAppIcon(gtx, name, center, max(1, size), col)
+}
+
 // chevronIcon keeps the original stroke-weight distinction between the thin
 // footer arrow and the heavier arrows inside buttons. IconVG bakes the stroke
 // into the path, so the matching asset is selected from the same width/size
