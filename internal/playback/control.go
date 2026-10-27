@@ -8,6 +8,10 @@ import (
 // ErrNotRunning is returned by the control methods when mpv is gone.
 var ErrNotRunning = errors.New("mpv не запущен")
 
+// ErrEpisodeNotLoaded is returned by JumpTo when the episode is not part of
+// the already-resolved playlist, so the caller has to start a fresh session.
+var ErrEpisodeNotLoaded = errors.New("серия ещё не загружена")
+
 // Position returns the last playback position reported by mpv, in seconds.
 func (s *Session) Position() float64 {
 	if s == nil {
@@ -123,6 +127,55 @@ func (s *Session) SetPaused(paused bool) error {
 	}
 	_, err := mpv.call("set_property", "pause", paused)
 	return err
+}
+
+// Matches reports whether the running session plays the given title and voice.
+// The watch-party guest uses it to decide whether a host episode can be
+// followed inside the current player instead of replacing the session.
+func (s *Session) Matches(slug, voice string) bool {
+	if s == nil || s.plan == nil {
+		return false
+	}
+	if s.plan.Slug != slug {
+		return false
+	}
+	return voice == "" || s.plan.Voice == voice
+}
+
+// JumpTo moves the running player to an episode that already sits in its
+// resolved playlist. Resolving a stream can take seconds (Kodik, and every
+// Kinopoisk episode), so when the host rolls to the next episode of the same
+// title the guest should jump inside its own preloaded window instead of
+// killing mpv and re-resolving. ErrEpisodeNotLoaded tells the caller to fall
+// back to a fresh session for a jump outside the window.
+func (s *Session) JumpTo(episode string) error {
+	if s == nil {
+		return ErrNotRunning
+	}
+	s.mu.Lock()
+	mpv := s.mpv
+	index := resolveEntryIndex(s.entries, episode)
+	s.mu.Unlock()
+	if mpv == nil {
+		return ErrNotRunning
+	}
+	if index < 0 {
+		return ErrEpisodeNotLoaded
+	}
+	// entries[i] always sits at playlist position i: resolveAndAdd inserts in
+	// episode order and mirrors every insert into mpv.
+	_, err := mpv.call("set_property", "playlist-pos", index)
+	return err
+}
+
+// resolveEntryIndex finds the playlist index of a resolved episode, or -1.
+func resolveEntryIndex(entries []*playlistEntry, episode string) int {
+	for index, entry := range entries {
+		if entry != nil && entry.Episode.Number == episode {
+			return index
+		}
+	}
+	return -1
 }
 
 // SetInputLocked blocks or restores timeline control in mpv. It is used for a
