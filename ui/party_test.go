@@ -345,6 +345,39 @@ func TestGuestControlUsesTheHostDecision(t *testing.T) {
 	}
 }
 
+func TestGuestControlDetectsInputWhilePaused(t *testing.T) {
+	now := time.Unix(2000, 0)
+	settled := now.Add(-time.Second)
+
+	action, value, ok := guestControlFromInput(now, now.Add(-time.Second), 100, true, 130, true, settled)
+	if !ok || action != party.ControlSeek || value != 130 {
+		t.Fatalf("paused seek = (%q, %v, %v), want a seek to 130", action, value, ok)
+	}
+	action, _, ok = guestControlFromInput(now, now.Add(-time.Second), 100, true, 100, false, settled)
+	if !ok || action != party.ControlPlay {
+		t.Fatalf("paused play = (%q, %v), want play", action, ok)
+	}
+	action, _, ok = guestControlFromInput(now, now.Add(-time.Second), 100, false, 101, true, settled)
+	if !ok || action != party.ControlPause {
+		t.Fatalf("playing pause = (%q, %v), want pause", action, ok)
+	}
+}
+
+func TestGuestControlIgnoresItsOwnSeekSettleAndSlowPlayback(t *testing.T) {
+	now := time.Unix(3000, 0)
+	settled := now.Add(-time.Second)
+
+	if _, _, ok := guestControlFromInput(now, now.Add(-time.Second), 100, true, 130, true, now.Add(time.Second)); ok {
+		t.Fatal("a seek that is still settling must not be sent back to the host")
+	}
+	if action, _, ok := guestControlFromInput(now, now.Add(-time.Second), 100, false, 100.2, false, settled); ok {
+		t.Fatalf("a stalled picture produced %q, want no control", action)
+	}
+	if action, _, ok := guestControlFromInput(now, now.Add(-time.Second), 100, true, 100, true, settled); ok {
+		t.Fatalf("an unchanged paused picture produced %q, want no control", action)
+	}
+}
+
 func TestAcceptedSecretOpensTheWaitingScreen(t *testing.T) {
 	screen := newPartyWindow(nil, nil, &partyManager{provider: party.Cloudflare})
 	screen.mode = wpSecret

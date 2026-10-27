@@ -55,6 +55,16 @@ const (
 	// A position jump larger than this between two guest ticks is a person
 	// seeking in mpv; the drift loop never moves the picture this far.
 	partyUserSeekThreshold = 1.5
+	// After our own seek, mpv may still report the old position for a moment
+	// (especially on HLS). The guest ignores both drift and user-seek checks
+	// until the new picture is visible, otherwise it mistakes its own delayed
+	// correction for a person scrubbing and sends the same seek back to the
+	// host.
+	partySeekSettle = 1200 * time.Millisecond
+	// A host restart closes mpv for a few seconds while the next episode is
+	// resolved. Keep the guest's player alive through that gap; an intentionally
+	// closed host session still stops the guest after this grace period.
+	partyGuestStopGrace = 10 * time.Second
 )
 
 // partySnapshot is a consistent copy of the room state for the UI.
@@ -267,24 +277,6 @@ func (m *partyManager) SharedControl() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.control
-}
-
-// GuestControlAllowed reports whether the guest player should accept input.
-// The host publishes its own decision with every anchor; only a room created
-// by an older build falls back to the guest's local setting.
-func (m *partyManager) GuestControlAllowed() bool {
-	if m == nil {
-		return true
-	}
-	m.mu.Lock()
-	state := m.state
-	hasState := m.hasState
-	local := m.control
-	m.mu.Unlock()
-	if hasState {
-		return guestControlAllowed(state, local)
-	}
-	return local
 }
 
 func guestControlAllowed(state party.State, local bool) bool {
@@ -737,12 +729,11 @@ func (m *partyManager) consume(session *party.Session, stop chan struct{}) {
 		if session.Role != party.Guest {
 			continue
 		}
+		// An empty anchor can mean a host restart, so the guest loop owns the
+		// grace period before it stops local playback. Starting is only valid
+		// for a readable anchor.
 		if started {
 			m.startGuest(state)
-		} else {
-			// The host closed playback, so the guest stops too instead of
-			// rolling on through its own queue alone.
-			m.stopGuest()
 		}
 	}
 }
@@ -903,6 +894,14 @@ func (m *partyManager) startGuest(state party.State) {
 		m.mu.Lock()
 		m.guestStarting = false
 		if err != nil {
+			// Keep the retry backoff consistent with a failure reported through
+			// the playback result channel: by the time the UI drains that
+			// result, guestRunning would already be empty and the failed media
+			// would be retried on the very next heartbeat.
+			if m.guestRunning.Started() {
+				m.guestDone = m.guestRunning
+				m.guestDoneAt = time.Now()
+			}
 			m.guestRunning = party.State{}
 			m.notice = err.Error()
 		}
@@ -961,6 +960,31 @@ func (m *partyManager) guestFinished(err error) {
 // guestLoop keeps the local mpv close to the extrapolated host position. It
 // also watches for input the person makes in mpv (pause, seek) and forwards it
 // to the host when shared control is on.
+// guestControlFromInput recognises the pause or seek a person just made in the
+// guest's mpv. The baseline is the previous tick's picture, not the host
+// anchor: the drift loop corrects the anchor itself, so anything larger than a
+// network stall is deliberate input. The paused state is part of the baseline
+// so scrubbing a paused guest reaches the host too.
+func guestControlFromInput(now, lastSample time.Time, lastPosition float64, lastPaused bool, position float64, paused bool, settleUntil time.Time) (string, float64, bool) {
+	if paused != lastPaused {
+		if paused {
+			return party.ControlPause, 0, true
+		}
+		return party.ControlPlay, 0, true
+	}
+	if lastSample.IsZero() || now.Before(settleUntil) {
+		return "", 0, false
+	}
+	expected := lastPosition
+	if !lastPaused {
+		expected += now.Sub(lastSample).Seconds()
+	}
+	if position == lastPosition || math.Abs(position-expected) <= partyUserSeekThreshold {
+		return "", 0, false
+	}
+	return party.ControlSeek, position, true
+}
+
 func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 	ticker := time.NewTicker(partyGuestTick)
 	defer ticker.Stop()
@@ -969,14 +993,17 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 	var lastSample time.Time
 	var lastPaused bool
 	var holdUntil time.Time
+	var settleUntil time.Time
 	var seeded bool
 	var mismatchLogged bool
 	// anchorAt is when the last *new* host anchor arrived. A half-open socket
 	// stops delivering anchors without ever erroring; the refresh below pulls
-	// the player back into the room.
+	// the player back into the room. It must work while paused too: a paused
+	// guest that loses the socket otherwise never hears the host resume.
 	var anchorAt time.Time
 	var lastAnchor int64
 	var lastRefresh time.Time
+	var emptySince time.Time
 	for {
 		select {
 		case <-stop:
@@ -989,19 +1016,32 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 		current := m.app.playback.Current()
 		if current == nil {
 			seeded = false
+			emptySince = time.Time{}
 			continue
 		}
-		// Block the player itself, not just the commands sent to the host: with
-		// guest control off, pause and seek must not work even for a moment.
-		// The host's anchor is authoritative; the local setting only covers
-		// rooms created by older builds.
-		controlAllowed := m.GuestControlAllowed()
-		_ = current.SetInputLocked(!controlAllowed)
 		state, ok := session.State()
+		now := time.Now()
 		if !ok || !state.Started() {
+			// The host may be restarting mpv. Give the new session a short
+			// window to publish its first anchor before ending local playback.
+			if emptySince.IsZero() {
+				emptySince = now
+			}
+			if now.Sub(emptySince) >= partyGuestStopGrace {
+				log.Info("party host playback stayed closed, stopping guest")
+				m.stopGuest()
+				emptySince = time.Time{}
+				seeded = false
+			}
+			rate = 1
 			continue
 		}
-		now := time.Now()
+		emptySince = time.Time{}
+		if anchorAt.IsZero() {
+			// A host that joined but never published still needs a way to be
+			// poked; measure staleness from the first observed state.
+			anchorAt = now
+		}
 		if state.Anchor != lastAnchor {
 			lastAnchor = state.Anchor
 			anchorAt = now
@@ -1019,12 +1059,12 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 			continue
 		}
 		mismatchLogged = false
-		// A playing guest that stopped hearing from the host for a long time
-		// is running on a stale anchor: the extrapolation still tracks the
-		// picture, but a pause or seek from the host can no longer arrive.
-		// Ask once, then back off — the hello makes the host republish.
-		stale := !anchorAt.IsZero() && now.Sub(anchorAt) >= partyStaleAnchor && now.Sub(lastRefresh) >= partyRefreshBackoff
-		if current != nil && !current.Paused() && stale {
+		// A guest that stopped hearing from the host for a long time is
+		// running on a stale anchor: extrapolation still tracks the picture,
+		// but a pause or seek from the host can no longer arrive. Ask once,
+		// then back off — the hello makes the host republish immediately.
+		stale := now.Sub(anchorAt) >= partyStaleAnchor && now.Sub(lastRefresh) >= partyRefreshBackoff
+		if stale {
 			log.Info("party guest anchor feed stale, requesting a fresh anchor", "since", now.Sub(anchorAt).Round(time.Second), "episode", number)
 			if err := session.RequestRefresh(); err == nil {
 				lastRefresh = now
@@ -1032,29 +1072,23 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 		}
 		position := current.LivePosition()
 		paused := current.Paused()
+		// The host's anchor owns the shared-control decision. Read it from the
+		// same state snapshot as the sync target: m.state is updated by the UI
+		// consumer and may lag behind (or miss a dropped notification), which
+		// used to leave a guest unable to control a room where control was on.
+		controlAllowed := guestControlAllowed(state, m.SharedControl())
 		if !seeded {
 			seeded = true
 		} else if controlAllowed {
 			// Between two ticks only a person can change the player: the drift
 			// loop acts below and records its own corrections in the baseline.
-			switch {
-			case paused != lastPaused:
-				action := party.ControlPlay
-				if paused {
-					action = party.ControlPause
-				}
-				log.Info("party guest sent control", "action", action)
-				_ = session.SendControl(action, 0)
-				holdUntil = now.Add(partyControlHold)
-			case !lastPaused && !lastSample.IsZero():
-				expected := lastPosition + now.Sub(lastSample).Seconds()
-				// A stalled network freezes the position instead of moving
-				// it, so only a real jump counts as a seek; otherwise a slow
-				// connection would drag the host back to the guest.
-				if position != lastPosition && math.Abs(position-expected) > partyUserSeekThreshold {
-					log.Info("party guest sent control", "action", party.ControlSeek, "position", position)
-					_ = session.SendControl(party.ControlSeek, position)
+			if action, value, ok := guestControlFromInput(now, lastSample, lastPosition, lastPaused, position, paused, settleUntil); ok {
+				log.Info("party guest sent control", "action", action, "position", value)
+				if err := session.SendControl(action, value); err == nil {
 					holdUntil = now.Add(partyControlHold)
+				} else {
+					log.Warn("party guest control send failed", "action", action, "error", err)
+					_ = session.RequestRefresh()
 				}
 			}
 		}
@@ -1070,26 +1104,27 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 			continue
 		}
 
-		switch {
-		case !state.Playing:
+		if !state.Playing {
 			if !current.Paused() {
 				log.Info("party guest pausing to host")
 				_ = current.SetPaused(true)
 			}
-			if math.Abs(position-state.Position) > 0.8 {
+			if now.After(settleUntil) && math.Abs(position-state.Position) > 0.8 {
 				log.Info("party guest seek to paused host", "host", state.Position, "player", position)
-				_ = current.SeekTo(state.Position)
-				tracked = state.Position
+				if err := current.SeekTo(state.Position); err == nil {
+					tracked = state.Position
+					settleUntil = now.Add(partySeekSettle)
+				}
 			}
 			if rate != 1 {
 				_ = current.SetSpeed(1)
 				rate = 1
 			}
-		case current.Paused():
-			log.Info("party guest resuming to host")
-			_ = current.SetPaused(false)
-			fallthrough
-		default:
+		} else {
+			if current.Paused() {
+				log.Info("party guest resuming to host")
+				_ = current.SetPaused(false)
+			}
 			want, _, ok := session.ExpectedPosition(now)
 			if !ok {
 				lastPaused = current.Paused()
@@ -1099,11 +1134,16 @@ func (m *partyManager) guestLoop(session *party.Session, stop chan struct{}) {
 			log.Debug("party guest tick", "episode", number, "player", position, "want", want, "playing", state.Playing, "paused", paused)
 			drift := position - want
 			switch {
+			case now.Before(settleUntil):
+				// Our previous seek is still becoming visible. Leave the
+				// picture alone until mpv catches up.
 			case math.Abs(drift) > partySeekThreshold:
 				target := want + partySeekLead
 				log.Info("party guest seek", "to", target, "want", want, "player", position)
-				_ = current.SeekTo(target)
-				tracked = target
+				if err := current.SeekTo(target); err == nil {
+					tracked = target
+					settleUntil = now.Add(partySeekSettle)
+				}
 				if rate != 1 {
 					_ = current.SetSpeed(1)
 					rate = 1

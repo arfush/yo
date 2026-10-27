@@ -70,20 +70,7 @@ type mpvProcess struct {
 	callMu sync.Mutex
 }
 
-// inputLockArgs disables the player's built-in controls for a guest whose host
-// does not allow shared control. The native window controls keep the guest able
-// to leave.
-func inputLockArgs(locked bool) []string {
-	if !locked {
-		return nil
-	}
-	// The timeline is blocked by the yoanime-no-timeline input section, not by
-	// disabling every binding. Only the OSC has to go: its buttons and seek bar
-	// would bypass the section.
-	return []string{"--osc=no"}
-}
-
-func startMPV(ctx context.Context, geometry, inputConfPath, title string, inputLocked bool) (*mpvProcess, error) {
+func startMPV(ctx context.Context, geometry, title string) (*mpvProcess, error) {
 	path, err := findMPV()
 	if err != nil {
 		return nil, err
@@ -111,10 +98,6 @@ func startMPV(ctx context.Context, geometry, inputConfPath, title string, inputL
 	}
 	if geometry != "" {
 		args = append(args, "--geometry="+geometry)
-	}
-	args = append(args, inputLockArgs(inputLocked)...)
-	if inputConfPath != "" {
-		args = append(args, "--input-conf="+inputConfPath)
 	}
 	cmd := exec.Command(path, args...)
 	cmd.Dir = filepath.Dir(path)
@@ -160,14 +143,6 @@ func startMPV(ctx context.Context, geometry, inputConfPath, title string, inputL
 		return nil, fmt.Errorf("не удалось подключиться к mpv: %w", openErr)
 	}
 	m.conn = conn
-	if inputLocked {
-		if _, err := conn.Call("enable-section", guestInputSection); err != nil {
-			_ = conn.Close()
-			_ = cmd.Process.Kill()
-			_, _ = cmd.Process.Wait()
-			return nil, fmt.Errorf("включить блокировку перемотки mpv: %w", err)
-		}
-	}
 	m.events, m.stopEvents = conn.NewEventListener()
 	for id, property := range map[int64]string{
 		1: "time-pos",
@@ -422,9 +397,12 @@ func findMPV() (string, error) {
 }
 
 // geometryString converts a physical window rectangle to mpv's --geometry form.
+// The size is deliberately omitted: mpv knows best how large to open its own
+// window, and forcing the application rectangle made the player inherit a size
+// it never chose. Only the remembered position is preserved.
 func geometryString(x, y, width, height int) string {
 	if width <= 0 || height <= 0 {
 		return ""
 	}
-	return fmt.Sprintf("%dx%d%+d%+d", width, height, x, y)
+	return fmt.Sprintf("%+d%+d", x, y)
 }

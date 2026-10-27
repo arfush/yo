@@ -37,9 +37,6 @@ type StartOptions struct {
 	// over automatically. It is empty for a watch-party guest: the room owner
 	// decides what is skipped.
 	AutoSkipSegments map[metadata.Segment]bool
-	// InputLocked blocks timeline control in mpv for a watch-party guest whose
-	// host keeps playback to itself. Other player controls stay available.
-	InputLocked bool
 	// Title overrides the mpv window title. The desktop window keeps the
 	// default; the watch-party console client adds the role so a host and a
 	// guest on one machine can tell their players apart.
@@ -142,7 +139,6 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 		chaptersNoData:  make(map[string]bool),
 		autoSkip:        options.AutoSkipSegments,
 		skippedChapters: make(map[int]bool),
-		inputLocked:     options.InputLocked,
 	}
 	if session.quality <= 0 {
 		session.quality = 1080
@@ -157,12 +153,7 @@ func (s *Service) Start(ctx context.Context, plan *library.PlaybackPlan, options
 		return nil, err
 	}
 	geometry := geometryString(options.Window.X, options.Window.Y, options.Window.Width, options.Window.Height)
-	inputConf, err := installInputConf()
-	if err != nil {
-		cancel()
-		return nil, err
-	}
-	mpv, err := startMPV(ctx, geometry, inputConf, options.Title, options.InputLocked)
+	mpv, err := startMPV(ctx, geometry, options.Title)
 	if err != nil {
 		log.Error("cannot start mpv", "error", err)
 		cancel()
@@ -317,9 +308,6 @@ type Session struct {
 	suppressFinish bool
 	finished       bool
 	loadedOnce     bool
-	// inputLocked mirrors the mpv input section so the guest loop only toggles
-	// it when the setting changes.
-	inputLocked bool
 	// autoSkip holds the introdb segment types that are jumped over. The event
 	// loop marks each chapter once so a manual rewind into an intro does not
 	// trap the viewer in a seek loop.

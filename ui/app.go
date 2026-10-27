@@ -756,7 +756,7 @@ func (a *application) startPartyPlayback(state party.State) error {
 			return fmt.Errorf("mpv не успел завершить прошлую серию")
 		}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), playbackStartTimeout)
 	defer cancel()
 	title, err := a.library.Load(ctx, state.TitleSlug)
 	if err != nil {
@@ -769,7 +769,24 @@ func (a *application) startPartyPlayback(state party.State) error {
 			startAt = position
 		}
 	}
-	return a.startPlayback(title, state.Voice, state.Episode, quality, nil, true, startAt)
+	// startPlayback launches the resolve and mpv startup in the background.
+	// A party guest must keep its "starting" guard until the actual session
+	// exists: a heartbeat state arrives every few seconds, and clearing the
+	// guard on return made the guest launch mpv again while the first resolve
+	// was still running. Two concurrent starts fought for the single playback
+	// slot and killed the episode that had just opened.
+	started := make(chan error, 1)
+	if err := a.startPlaybackNotify(title, state.Voice, state.Episode, quality, nil, true, startAt, func(err error) {
+		started <- err
+	}); err != nil {
+		return err
+	}
+	select {
+	case err := <-started:
+		return err
+	case <-time.After(playbackStartTimeout + 30*time.Second):
+		return fmt.Errorf("mpv не успел начать воспроизведение")
+	}
 }
 
 func (a *application) downloadAndApply(ctx context.Context, release updates.Release, report func(downloadProgress)) error {
@@ -1373,6 +1390,14 @@ func (a *application) playFromHistory(item historyTitle) historyPlayResult {
 // startPlayback builds the plan and launches mpv in the background. The
 // application window is hidden only after mpv has accepted the first file.
 func (a *application) startPlayback(title library.Title, voice, episode string, quality int, historyItem *historyTitle, partyGuest bool, startAt float64) error {
+	return a.startPlaybackNotify(title, voice, episode, quality, historyItem, partyGuest, startAt, nil)
+}
+
+// startPlaybackNotify starts playback in the background and reports the final
+// launch result through onStart. The callback is called exactly once on every
+// path that enters the goroutine, including failures before mpv opens. A party
+// guest uses it to keep one start in flight until the session really exists.
+func (a *application) startPlaybackNotify(title library.Title, voice, episode string, quality int, historyItem *historyTitle, partyGuest bool, startAt float64, onStart func(error)) error {
 	if a.library == nil || a.playback == nil {
 		return fmt.Errorf("воспроизведение недоступно")
 	}
@@ -1400,6 +1425,14 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 	go func() {
 		a.playbackStarting.Store(true)
 		defer a.playbackStarting.Store(false)
+		notified := false
+		notifyStart := func(err error) {
+			if notified || onStart == nil {
+				return
+			}
+			notified = true
+			onStart(err)
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), playbackStartTimeout)
 		defer cancel()
 		// Playback start must not sit in a rate-limit pause: the row spinner
@@ -1412,7 +1445,9 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 			// first; the saved voice and episode are restored during the load.
 			loaded, loadErr := a.library.Load(ctx, title.Slug)
 			if loadErr != nil {
-				a.deliverWatch(watchResult{err: playbackStartError(loadErr), historyFailure: true, party: partyGuest})
+				loadErr = playbackStartError(loadErr)
+				notifyStart(loadErr)
+				a.deliverWatch(watchResult{err: loadErr, historyFailure: true, party: partyGuest})
 				return
 			}
 			title = loaded
@@ -1422,6 +1457,7 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 		}
 		plan, err := a.library.PlaybackPlan(ctx, title, voice, episode)
 		if err != nil {
+			notifyStart(err)
 			a.deliverWatch(startFailureResult(err, historyItem, 0, partyGuest))
 			return
 		}
@@ -1442,10 +1478,6 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 			// history, which would start the file in the wrong place.
 			plan.ResumeAt = startAt
 		}
-		inputLocked := false
-		if partyGuest && a.party != nil {
-			inputLocked = !a.party.GuestControlAllowed()
-		}
 		// Auto-skip belongs to the room owner. A guest follows the host's
 		// picture, so its own chapter settings must not move the timeline.
 		var autoSkip map[metadata.Segment]bool
@@ -1456,7 +1488,6 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 			Quality:          quality,
 			Window:           window,
 			AutoSkipSegments: autoSkip,
-			InputLocked:      inputLocked,
 			OnReady: func() {
 				// The application window stays visible next to mpv: the title
 				// page mirrors the playing episode and its progress live.
@@ -1469,12 +1500,14 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 			},
 		})
 		if err != nil {
+			notifyStart(err)
 			a.deliverWatch(startFailureResult(err, historyItem, trackedID, partyGuest))
 			return
 		}
 		if !partyGuest && a.party != nil {
 			a.party.hostStarted(session, title, voice, episode)
 		}
+		notifyStart(nil)
 	}()
 	return nil
 }
