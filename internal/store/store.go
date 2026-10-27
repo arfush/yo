@@ -68,6 +68,10 @@ CREATE TABLE IF NOT EXISTS episode_tracking (
     any_voice_notified       INTEGER NOT NULL DEFAULT 0,
     preferred_voice_notified INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS title_qualities (
+    tid  INTEGER PRIMARY KEY REFERENCES titles(id) ON DELETE CASCADE,
+    data TEXT    NOT NULL DEFAULT ''
+);
 `
 
 // Title is the persisted AnimeLIB metadata plus local display fields. Episode
@@ -947,6 +951,37 @@ func (s *Store) SaveIntrodbCache(tid int64, episode string, chapters []byte, noD
             chapters = excluded.chapters,
             no_data  = excluded.no_data`,
 		tid, episode, string(chapters), value)
+	return err
+}
+
+// GetTitleQualities returns the quality ladder cached for a saved Kinopoisk
+// title. The ladder is JSON keyed by voice name; an empty string means the
+// title page has to probe it again.
+func (s *Store) GetTitleQualities(tid int64) (string, error) {
+	if tid == 0 {
+		return "", nil
+	}
+	var data string
+	if err := s.db.QueryRow("SELECT data FROM title_qualities WHERE tid = ?", tid).Scan(&data); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", nil
+		}
+		return "", err
+	}
+	return data, nil
+}
+
+// SaveTitleQualities caches the quality ladders of a saved Kinopoisk title. Only
+// a non-empty payload is written: a failed probe must not erase the ladder the
+// previous save managed to learn.
+func (s *Store) SaveTitleQualities(tid int64, data string) error {
+	if tid == 0 || data == "" {
+		return nil
+	}
+	_, err := s.db.Exec(`
+        INSERT INTO title_qualities (tid, data) VALUES (?, ?)
+        ON CONFLICT(tid) DO UPDATE SET data = excluded.data`,
+		tid, data)
 	return err
 }
 
