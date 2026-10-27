@@ -356,6 +356,12 @@ func libraryTitleFromHistory(item historyTitle) catalog.Title {
 			Qualities: append([]int(nil), voice.qualities...),
 		})
 	}
+	if item.selectedVoice >= 0 && item.selectedVoice < len(item.voices) {
+		title.SelectedVoice = item.voices[item.selectedVoice].name
+	}
+	if item.selectedEpisode >= 0 && item.selectedEpisode < len(item.episodes) {
+		title.SelectedEpisode = item.episodes[item.selectedEpisode]
+	}
 	return title
 }
 
