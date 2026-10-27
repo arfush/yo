@@ -663,9 +663,10 @@ func (c *Client) get(ctx context.Context, endpoint string, siteID int) ([]byte, 
 		case status == http.StatusTooManyRequests:
 			// A request that hit the limit is never dropped: pause and send it
 			// again. Every queued request is therefore retried with a delay
-			// until AnimeLIB answers without a rate limit.
-			log.Warn("AnimeLIB rate limit reached", "endpoint", endpoint, "retry_after", retryAfter)
-			noteRateLimit(sentAt, parseRetryAfter(retryAfter))
+			// until AnimeLIB answers without a rate limit. AnimeLIB usually
+			// omits Retry-After, so log the pause the client actually uses.
+			pause := noteRateLimit(sentAt, parseRetryAfter(retryAfter))
+			log.Warn("AnimeLIB rate limit reached", "endpoint", endpoint, "retry_after", pause.Round(time.Second))
 			continue
 		case status >= http.StatusOK && status < http.StatusMultipleChoices:
 			noteRateLimitSuccess(sentAt)

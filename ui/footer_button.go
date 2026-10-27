@@ -124,7 +124,7 @@ func (b *footerNamedButton) drawContent(gtx layout.Context, typo *typography, lo
 
 	iconSize := gtx.Dp(unit.Dp(11))
 	if b.icon == footerButtonPlayIcon {
-		iconSize = gtx.Dp(unit.Dp(13))
+		iconSize = gtx.Dp(unit.Dp(20))
 	}
 	gap := gtx.Dp(unit.Dp(8))
 	groupWidth := float32(iconSize + gap + labelWidth)

@@ -25,7 +25,7 @@ func TestLogFileAndLastErrorContext(t *testing.T) {
 	if !strings.Contains(string(data), "history loaded") {
 		t.Fatalf("log file does not contain the info entry:\n%s", data)
 	}
-	if !strings.Contains(string(data), "ERROR playback failed") {
+	if !strings.Contains(string(data), "error log: playback failed") {
 		t.Fatalf("log file does not contain the error:\n%s", data)
 	}
 
@@ -33,7 +33,7 @@ func TestLogFileAndLastErrorContext(t *testing.T) {
 	if !strings.Contains(context, "history loaded") {
 		t.Fatalf("last error context = %q, want the preceding line", context)
 	}
-	if !strings.Contains(context, "ERROR playback failed") {
+	if !strings.Contains(context, "error log: playback failed") {
 		t.Fatalf("last error context = %q, want the error line", context)
 	}
 }
@@ -77,7 +77,7 @@ func TestClearDropsRingButKeepsFileAndLastError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "ordinary line") || !strings.Contains(string(data), "ERROR playback failed") {
+	if !strings.Contains(string(data), "ordinary line") || !strings.Contains(string(data), "error log: playback failed") {
 		t.Fatalf("clear removed entries from the log file:\n%s", data)
 	}
 }

@@ -71,7 +71,6 @@ type settingsValues struct {
 	AutoUpdate    bool
 	Beta          bool
 	SharedControl bool
-	Discord       bool
 	AutoSkip      map[metadata.Segment]bool
 	Name          string
 	Provider      party.Provider
@@ -87,7 +86,6 @@ type settingsWindow struct {
 	autoUpdate bool
 	beta       bool
 	control    bool
-	discord    bool
 	provider   party.Provider
 
 	cloudflareEditor   widget.Editor
@@ -109,8 +107,6 @@ type settingsWindow struct {
 	betaHover       hoverAnim
 	controlClick    widget.Clickable
 	controlHover    hoverAnim
-	discordClick    widget.Clickable
-	discordHover    hoverAnim
 
 	autoSkip      map[metadata.Segment]bool
 	autoSkipClick map[metadata.Segment]*widget.Clickable
@@ -146,7 +142,6 @@ type settingsWindow struct {
 	onAutoUpdate func(bool) error
 	onBeta       func(bool) error
 	onControl    func(bool) error
-	onDiscord    func(bool) error
 	onAutoSkip   func(metadata.Segment, bool) error
 	onProvider   func(party.Provider) error
 	onRelay      func(party.Config) error
@@ -160,7 +155,6 @@ func newSettingsWindow(typo *typography, values settingsValues) *settingsWindow 
 		autoUpdate:    values.AutoUpdate,
 		beta:          values.Beta,
 		control:       values.SharedControl,
-		discord:       values.Discord,
 		provider:      values.Provider,
 		autoSkip:      make(map[metadata.Segment]bool),
 		autoSkipClick: make(map[metadata.Segment]*widget.Clickable),
@@ -294,9 +288,6 @@ func (w *settingsWindow) layout(gtx layout.Context) {
 	}
 	y += gtx.Dp(settingsGroupGap)
 
-	y = w.layoutSectionTitle(gtx, left, y, "Интеграции")
-	y = w.layoutDiscordPanel(gtx, image.Rect(left, y, right, y+gtx.Dp(settingsPanelHeight)))
-
 	content.Pop()
 
 	// The menu floats over the panels above, so it is painted last. Its anchor
@@ -377,7 +368,6 @@ func (w *settingsWindow) contentHeight(gtx layout.Context) int {
 		height += (segments - 1) * gtx.Dp(settingsRowGap)
 	}
 	height += gtx.Dp(settingsGroupGap)
-	height += title("Интеграции") + panel
 	height += gtx.Dp(settingsPadBottom)
 	return height
 }
@@ -479,28 +469,6 @@ func (w *settingsWindow) layoutControlPanel(gtx layout.Context, rect image.Recta
 		w.control,
 		hover,
 		&w.controlClick,
-	)
-	return rect.Max.Y
-}
-
-func (w *settingsWindow) layoutDiscordPanel(gtx layout.Context, rect image.Rectangle) int {
-	w.drawPanel(gtx, rect)
-	clicked := w.discordClick.Clicked(gtx)
-	hovered := w.discordClick.Hovered()
-	hover := w.discordHover.update(gtx, hovered && w.animationsRun())
-	if clicked {
-		w.setDiscord(!w.discord)
-		gtx.Execute(op.InvalidateCmd{})
-	}
-
-	w.layoutToggleRow(
-		gtx,
-		rect,
-		"Показывать активность в Discord",
-		"Название тайтла, серия и обложка видны друзьям в профиле",
-		w.discord,
-		hover,
-		&w.discordClick,
 	)
 	return rect.Max.Y
 }
@@ -675,17 +643,6 @@ func (w *settingsWindow) setControl(enabled bool) {
 		}
 	}
 	w.control = enabled
-	w.errorText = ""
-}
-
-func (w *settingsWindow) setDiscord(enabled bool) {
-	if w.onDiscord != nil {
-		if err := w.onDiscord(enabled); err != nil {
-			w.reportError(err)
-			return
-		}
-	}
-	w.discord = enabled
 	w.errorText = ""
 }
 

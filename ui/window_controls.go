@@ -10,26 +10,34 @@ import (
 	"gioui.org/widget"
 )
 
-// Control icons are centered inside each control hitbox. The IconVG assets are
-// square, so the shared renderer scales them with the window DPI.
-
-func (s *shell) drawMinimize(gtx layout.Context, g geometry) {
-	drawAppIcon(gtx, "minimize", g.iconCenter, g.px(11), iconColor)
+// Window-control glyphs share the 24-unit grid of the supplied icon sheet and
+// fade together with the hover outline: the same progress drives both colours.
+func (s *shell) drawMinimize(gtx layout.Context, g geometry, progress float32) {
+	drawWindowControlIcon(gtx, "minimize", g, progress)
 }
 
-func (s *shell) drawMaximize(gtx layout.Context, g geometry) {
-	drawAppIcon(gtx, "maximize", g.iconCenter, g.px(11), iconColor)
+func (s *shell) drawMaximize(gtx layout.Context, g geometry, progress float32) {
+	drawWindowControlIcon(gtx, "maximize", g, progress)
 }
 
-func (s *shell) drawRestore(gtx layout.Context, g geometry) {
-	drawAppIcon(gtx, "restore", g.iconCenter, g.px(13), iconColor)
+func (s *shell) drawRestore(gtx layout.Context, g geometry, progress float32) {
+	drawWindowControlIcon(gtx, "restore", g, progress)
 }
 
-func (s *shell) drawClose(gtx layout.Context, g geometry) {
-	drawAppIcon(gtx, "close", g.iconCenter, g.px(11), iconColor)
+func (s *shell) drawClose(gtx layout.Context, g geometry, progress float32) {
+	drawWindowControlIcon(gtx, "close", g, progress)
 }
 
-func (s *shell) clickControl(gtx layout.Context, g geometry, rect image.Rectangle, control *widget.Clickable, hover *hoverAnim, hoverColor color.NRGBA, draw func(layout.Context)) bool {
+func drawWindowControlIcon(gtx layout.Context, name string, g geometry, progress float32) {
+	asset := name
+	if progress > 0.002 {
+		asset = name + "_active"
+	}
+	col := mixColor(windowControlIconColor, windowControlHoverIconColor, progress)
+	drawAppIcon(gtx, asset, g.iconCenter, g.px(24), col)
+}
+
+func (s *shell) clickControl(gtx layout.Context, g geometry, rect image.Rectangle, control *widget.Clickable, hover *hoverAnim, hoverColor color.NRGBA, draw func(layout.Context, float32)) bool {
 	clicked := control.Clicked(gtx)
 	hovered := control.Hovered()
 	if hovered && !cursorInRect(rect) {
@@ -49,7 +57,7 @@ func (s *shell) clickControl(gtx layout.Context, g geometry, rect image.Rectangl
 	control.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		pointer.CursorPointer.Add(gtx.Ops)
 		drawControlHover(gtx, g, progress, hoverColor)
-		draw(gtx)
+		draw(gtx, progress)
 		return layout.Dimensions{Size: rect.Size()}
 	})
 	stack.Pop()

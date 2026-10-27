@@ -16,11 +16,6 @@ import (
 
 const dirName = "yoanime"
 
-// legacyDirName is the lower-case directory used by releases before the
-// app-data rename. On a case-insensitive file system it is the same directory;
-// on a case-sensitive one it is moved to the new name on first launch.
-const legacyDirName = "yoanime"
-
 const (
 	databaseName  = "yoanime.sqlite"
 	tokenName     = "animelib_token.txt"
@@ -31,11 +26,7 @@ const (
 	updateDirName = "update"
 	updateLogName = "update.log"
 	logName       = "yoanime.log"
-	// partyName is the relay configuration file. Releases before the party
-	// rename stored it as legacyPartyName; PartyConfigPath moves that file once
-	// so an existing override keeps working.
-	partyName       = "party.json"
-	legacyPartyName = "watchparty.json"
+	partyName     = "party.json"
 )
 
 // Dir returns the per-user data directory and creates it when necessary.
@@ -58,39 +49,9 @@ func Dir() (string, error) {
 	return dir, nil
 }
 
-// ensureDir creates the data directory under base and normalizes the casing of
-// the old lower-case name. Windows treats both names as the same directory, so
-// a plain MkdirAll would leave the old spelling in Explorer and in paths shown
-// to the user.
+// ensureDir creates the data directory under base.
 func ensureDir(base string) (string, error) {
 	dir := filepath.Join(base, dirName)
-	legacy := filepath.Join(base, legacyDirName)
-
-	if entries, err := os.ReadDir(base); err == nil {
-		for _, entry := range entries {
-			if !entry.IsDir() || entry.Name() == dirName || !strings.EqualFold(entry.Name(), dirName) {
-				continue
-			}
-			// Rename through a temporary name because Windows refuses a
-			// case-only rename directly.
-			oldPath := filepath.Join(base, entry.Name())
-			temp := filepath.Join(base, dirName+".rename")
-			if err := os.Rename(oldPath, temp); err == nil {
-				if err := os.Rename(temp, dir); err != nil {
-					_ = os.Rename(temp, oldPath)
-				}
-			}
-			break
-		}
-	}
-
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		if _, legacyErr := os.Stat(legacy); legacyErr == nil {
-			if renameErr := os.Rename(legacy, dir); renameErr != nil {
-				return "", fmt.Errorf("rename %s to %s: %w", legacy, dir, renameErr)
-			}
-		}
-	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("create %s: %w", dir, err)
 	}
@@ -167,31 +128,7 @@ func TokenPath() (string, error) {
 // PartyConfigPath returns the relay configuration the user edits after
 // deploying the Worker or the Supabase project.
 func PartyConfigPath() (string, error) {
-	dir, err := Dir()
-	if err != nil {
-		return "", err
-	}
-	return migratePartyConfig(dir), nil
-}
-
-// migratePartyConfig renames the pre-rename watchparty.json once. If the
-// rename fails, the legacy path is returned instead of silently dropping the
-// user's relay override; the next launch retries the migration.
-func migratePartyConfig(dir string) string {
-	current := filepath.Join(dir, partyName)
-	if _, err := os.Stat(current); err == nil {
-		return current
-	} else if !os.IsNotExist(err) {
-		return current
-	}
-	legacy := filepath.Join(dir, legacyPartyName)
-	if _, err := os.Stat(legacy); err != nil {
-		return current
-	}
-	if err := os.Rename(legacy, current); err != nil {
-		return legacy
-	}
-	return current
+	return path(partyName)
 }
 
 // BrowserProfileDir returns the persistent Chromium profile path. The profile

@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -25,7 +24,6 @@ import (
 	"github.com/arfush/yoanime/internal/animelib"
 	"github.com/arfush/yoanime/internal/appdata"
 	"github.com/arfush/yoanime/internal/browser"
-	"github.com/arfush/yoanime/internal/discord"
 	"github.com/arfush/yoanime/internal/library"
 	"github.com/arfush/yoanime/internal/metadata"
 	"github.com/arfush/yoanime/internal/mpv"
@@ -50,10 +48,6 @@ const (
 	// mpv window. Without it a stuck rate-limit wait or resolver leaves the
 	// row's spinner turning forever with no way to retry.
 	playbackStartTimeout = 3 * time.Minute
-	// presencePollInterval is how often a running session is sampled for the
-	// Discord card. It only costs a mutex and an episode number; the manager
-	// drops updates whose text did not change.
-	presencePollInterval = 5 * time.Second
 	// autoUpdatePollInterval is how often a downloaded update rechecks whether
 	// installing it would interrupt playback or a watch party.
 	autoUpdatePollInterval = 15 * time.Second
@@ -110,17 +104,12 @@ type application struct {
 	library        *library.Library
 	playback       *playback.Service
 	party          *partyManager
-	presence       *discord.Manager
-	// presenceSeq identifies the playback session that owns the Discord card.
-	// Starting a new session bumps it, so a loop left over from a replaced
-	// session can no longer publish or clear the new one's activity.
-	presenceSeq atomic.Uint64
-	main        *mainWindow
-	log         *logWindow
-	active      windowScreen
-	shortcuts   *shortcutsWindow
-	window      *app.Window
-	icon        image.Image
+	main           *mainWindow
+	log            *logWindow
+	active         windowScreen
+	shortcuts      *shortcutsWindow
+	window         *app.Window
+	icon           image.Image
 	// tray is the notification-area icon. It stays nil when the platform has no
 	// notification area or when creating the icon failed; the close button then
 	// keeps ending the process.
@@ -269,7 +258,6 @@ func newApp() (*application, error) {
 		mpvManager:        mpv.New(),
 		library:           lib,
 		playback:          playback.New(lib, manager),
-		presence:          discord.New(discord.AppID),
 		main:              newMainWindow(typo, lib, history),
 		icon:              icon,
 		watchResults:      make(chan watchResult, 8),
@@ -573,7 +561,6 @@ func (a *application) openSettings() {
 		AutoUpdate:    a.library.AutoUpdateEnabled(),
 		Beta:          a.library.BetaUpdatesEnabled(),
 		SharedControl: a.library.SharedControlEnabled(),
-		Discord:       a.library.DiscordPresenceEnabled(),
 		AutoSkip:      a.library.AutoSkipSegments(),
 		Name:          a.party.Name(),
 		Provider:      a.party.Provider(),
@@ -629,17 +616,6 @@ func (a *application) openSettings() {
 			return err
 		}
 		a.party.SetSharedControl(enabled)
-		return nil
-	}
-	settings.onDiscord = func(enabled bool) error {
-		if err := a.library.SetDiscordPresenceEnabled(enabled); err != nil {
-			return err
-		}
-		if !enabled && a.presence != nil {
-			// Turn the card off immediately instead of waiting for the
-			// playback loop to notice the setting.
-			a.presence.Clear()
-		}
 		return nil
 	}
 	settings.onAutoSkip = func(segment metadata.Segment, enabled bool) error {
@@ -1384,8 +1360,6 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 		if !partyGuest {
 			autoSkip = a.library.AutoSkipSegments()
 		}
-		stopPresence := make(chan struct{})
-		var stopPresenceOnce sync.Once
 		session, err := a.playback.Start(ctx, plan, playback.StartOptions{
 			Quality:          quality,
 			Window:           window,
@@ -1399,7 +1373,6 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 				}
 			},
 			OnFinish: func(err error) {
-				stopPresenceOnce.Do(func() { close(stopPresence) })
 				a.hidden.Store(false)
 				showAppWindow()
 				a.deliverWatch(watchResult{finished: true, err: err, historyItem: historyItem, titleID: trackedID, party: partyGuest})
@@ -1409,85 +1382,11 @@ func (a *application) startPlayback(title library.Title, voice, episode string, 
 			a.deliverWatch(startFailureResult(err, historyItem, trackedID, partyGuest))
 			return
 		}
-		a.trackPresence(session, title, plan, stopPresence)
 		if !partyGuest && a.party != nil {
 			a.party.hostStarted(session, title, voice, episode)
 		}
 	}()
 	return nil
-}
-
-// presenceTitle is the name shown in Discord. The Russian title is what the
-// library displays, so it wins over the original one.
-func presenceTitle(title library.Title) string {
-	if name := strings.TrimSpace(title.Russian); name != "" {
-		return name
-	}
-	return strings.TrimSpace(title.Original)
-}
-
-// trackPresence follows one playback session and keeps the Discord card in step
-// with it. The loop ends with the session; a session replaced by a newer one is
-// ignored through presenceSeq, so a stale loop cannot clear the new activity.
-func (a *application) trackPresence(session *playback.Session, title library.Title, plan *library.PlaybackPlan, stop <-chan struct{}) {
-	if a.presence == nil || session == nil || plan == nil {
-		return
-	}
-	base := discord.Presence{
-		Title:   presenceTitle(title),
-		Episode: plan.Episode,
-		Total:   title.EpisodesTotal,
-		Movie:   title.IsMovie,
-	}
-	if base.Total <= 0 {
-		base.Total = len(plan.Episodes)
-	}
-	token := a.presenceSeq.Add(1)
-	go func() {
-		ticker := time.NewTicker(presencePollInterval)
-		defer ticker.Stop()
-		for {
-			if !a.publishPresence(token, session, base) {
-				return
-			}
-			select {
-			case <-stop:
-				if a.presenceSeq.Load() == token {
-					a.presence.Clear()
-				}
-				return
-			case <-ticker.C:
-			}
-		}
-	}()
-}
-
-// publishPresence writes the current episode to Discord and reports whether the
-// loop still owns the card. An empty activity is sent when playback is over or
-// the user turned the integration off.
-func (a *application) publishPresence(token uint64, session *playback.Session, base discord.Presence) bool {
-	if a.presence == nil || a.library == nil || a.presenceSeq.Load() != token {
-		return false
-	}
-	if a.playback == nil || a.playback.Current() != session {
-		a.presence.Clear()
-		return false
-	}
-	if !a.library.DiscordPresenceEnabled() {
-		a.presence.Clear()
-		return true
-	}
-	if strings.TrimSpace(base.Title) == "" {
-		return true
-	}
-	presence := base
-	// The session's own number follows swaps and auto-advance; the plan only
-	// knows the episode the playback was started with.
-	if number, _ := session.Episode(); number != "" {
-		presence.Episode = number
-	}
-	a.presence.Set(presence)
-	return true
 }
 
 // playbackStartError turns the watchdog deadline into a reason the user can
@@ -1928,10 +1827,6 @@ func (a *application) close() {
 	if a.playback != nil {
 		a.playback.Close()
 		a.playback = nil
-	}
-	if a.presence != nil {
-		a.presence.Close()
-		a.presence = nil
 	}
 	if a.active != nil {
 		a.active.Close()

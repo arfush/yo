@@ -29,19 +29,34 @@ func drawAppIcon(gtx layout.Context, name string, center image.Point, size int, 
 }
 
 func drawLogIcon(gtx layout.Context, center image.Point, g geometry, col color.NRGBA) {
-	drawAppIcon(gtx, "log", center, g.px(16), col)
+	drawAppIcon(gtx, "log", center, g.px(24), col)
 }
 
 func drawUpdateIcon(gtx layout.Context, center image.Point, g geometry, col color.NRGBA) {
-	drawAppIcon(gtx, "update", center, g.px(14), col)
+	drawAppIcon(gtx, "update", center, g.px(24), col)
 }
 
 func drawSettingsIcon(gtx layout.Context, center image.Point, g geometry, col color.NRGBA) {
-	drawAppIcon(gtx, "settings", center, g.px(16), col)
+	drawAppIcon(gtx, "settings", center, g.px(24), col)
 }
 
 func drawPeopleIcon(gtx layout.Context, center image.Point, g geometry, col color.NRGBA) {
-	drawAppIcon(gtx, "people", center, g.px(16), col)
+	drawAppIcon(gtx, "people", center, g.px(24), col)
+}
+
+func drawPauseIcon(gtx layout.Context, center image.Point, size int, col color.NRGBA) {
+	drawAppIcon(gtx, "pause", center, max(1, size), col)
+}
+
+// drawAutoscrollIcon uses the two prepared states from the sheet. The files
+// differ only in their authored tint; callers select the colour that matches
+// the current state, so the shape stays identical in both modes.
+func drawAutoscrollIcon(gtx layout.Context, center image.Point, size int, on bool, col color.NRGBA) {
+	name := "autoscroll_off"
+	if on {
+		name = "autoscroll_on"
+	}
+	drawAppIcon(gtx, name, center, max(1, size), col)
 }
 
 func drawCopyIcon(gtx layout.Context, center image.Point, g geometry, col color.NRGBA) {
@@ -62,17 +77,6 @@ func drawSearchIcon(gtx layout.Context, center image.Point, size int, col color.
 
 func drawCheckIcon(gtx layout.Context, center image.Point, size int, col color.NRGBA) {
 	drawAppIcon(gtx, "check", center, max(1, size), col)
-}
-
-func drawLogLevelIcon(gtx layout.Context, level logLevel, center image.Point, size int, col color.NRGBA) {
-	name := "info"
-	switch level {
-	case logLevelWarning:
-		name = "warning"
-	case logLevelError:
-		name = "error"
-	}
-	drawAppIcon(gtx, name, center, max(1, size), col)
 }
 
 // chevronIcon keeps the original stroke-weight distinction between the thin

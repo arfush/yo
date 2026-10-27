@@ -2,7 +2,6 @@ package ui
 
 import (
 	"image"
-	"image/color"
 	"time"
 
 	"gioui.org/app"
@@ -296,16 +295,16 @@ func (s *shell) layoutHeader(gtx layout.Context, w *app.Window, g geometry) {
 	}
 	layoutHeaderNotice(gtx, s.typo, g, badgeRight, notice)
 
-	if s.clickControl(gtx, g, g.controls.minimize, &s.minimize, &s.minimizeHover, controlHoverColor, func(gtx layout.Context) {
-		s.drawMinimize(gtx, g)
+	if s.clickControl(gtx, g, g.controls.minimize, &s.minimize, &s.minimizeHover, controlHoverColor, func(gtx layout.Context, progress float32) {
+		s.drawMinimize(gtx, g, progress)
 	}) {
 		w.Perform(system.ActionMinimize)
 	}
-	if s.clickControl(gtx, g, g.controls.maximize, &s.maximize, &s.maximizeHover, controlHoverColor, func(gtx layout.Context) {
+	if s.clickControl(gtx, g, g.controls.maximize, &s.maximize, &s.maximizeHover, controlHoverColor, func(gtx layout.Context, progress float32) {
 		if s.cfg.Mode == app.Maximized {
-			s.drawRestore(gtx, g)
+			s.drawRestore(gtx, g, progress)
 		} else {
-			s.drawMaximize(gtx, g)
+			s.drawMaximize(gtx, g, progress)
 		}
 	}) {
 		if s.cfg.Mode == app.Maximized {
@@ -314,8 +313,8 @@ func (s *shell) layoutHeader(gtx layout.Context, w *app.Window, g geometry) {
 			w.Perform(system.ActionMaximize)
 		}
 	}
-	if s.clickControl(gtx, g, g.controls.close, &s.close, &s.closeHover, closeHoverColor, func(gtx layout.Context) {
-		s.drawClose(gtx, g)
+	if s.clickControl(gtx, g, g.controls.close, &s.close, &s.closeHover, controlHoverColor, func(gtx layout.Context, progress float32) {
+		s.drawClose(gtx, g, progress)
 	}) {
 		w.Perform(system.ActionClose)
 	}
@@ -403,7 +402,7 @@ func (s *shell) layoutFooter(gtx layout.Context, g geometry) {
 		return
 	}
 	if s.settingsVisible && !g.settingsRect.Empty() {
-		opened := s.layoutFooterControl(gtx, g, g.settingsRect, &s.settings, &s.settingsHover, false, false, func(gtx layout.Context, local image.Rectangle, progress float32, _ color.NRGBA) {
+		opened := s.layoutFooterControl(gtx, g, g.settingsRect, &s.settings, &s.settingsHover, func(gtx layout.Context, local image.Rectangle, progress float32) {
 			icon := mixColor(footerControlIconColor, footerControlHoverIconColor, progress)
 			drawSettingsIcon(gtx, centerOf(local), g, icon)
 		})
@@ -421,7 +420,7 @@ func (s *shell) layoutFooter(gtx layout.Context, g geometry) {
 		if alert && s.animationsRun() {
 			gtx.Execute(op.InvalidateCmd{At: s.logAlertUntil})
 		}
-		if s.layoutFooterControl(gtx, g, g.logRect, &s.log, &s.logHover, false, alert, func(gtx layout.Context, local image.Rectangle, progress float32, _ color.NRGBA) {
+		if s.layoutFooterControl(gtx, g, g.logRect, &s.log, &s.logHover, func(gtx layout.Context, local image.Rectangle, progress float32) {
 			icon := mixColor(footerControlIconColor, footerControlHoverIconColor, progress)
 			if alert {
 				icon = mixColor(footerLogAlertIcon, footerControlHoverIconColor, progress)
@@ -433,7 +432,7 @@ func (s *shell) layoutFooter(gtx layout.Context, g geometry) {
 	}
 	if s.partyVisible && !g.partyRect.Empty() {
 		active := s.partyActive
-		if s.layoutFooterControl(gtx, g, g.partyRect, &s.party, &s.partyHover, active, false, func(gtx layout.Context, local image.Rectangle, progress float32, _ color.NRGBA) {
+		if s.layoutFooterControl(gtx, g, g.partyRect, &s.party, &s.partyHover, func(gtx layout.Context, local image.Rectangle, progress float32) {
 			icon := mixColor(footerControlIconColor, footerControlHoverIconColor, progress)
 			if active {
 				icon = mixColor(footerPartyActiveIcon, footerControlHoverIconColor, progress)
@@ -444,7 +443,7 @@ func (s *shell) layoutFooter(gtx layout.Context, g geometry) {
 		}
 	}
 	if s.updateVisible && !g.updateRect.Empty() {
-		if s.layoutFooterControl(gtx, g, g.updateRect, &s.update, &s.updateHover, false, false, func(gtx layout.Context, local image.Rectangle, progress float32, _ color.NRGBA) {
+		if s.layoutFooterControl(gtx, g, g.updateRect, &s.update, &s.updateHover, func(gtx layout.Context, local image.Rectangle, progress float32) {
 			icon := mixColor(footerControlIconColor, footerControlHoverIconColor, progress)
 			drawUpdateIcon(gtx, centerOf(local), g, icon)
 		}) && s.onUpdate != nil {
@@ -453,10 +452,10 @@ func (s *shell) layoutFooter(gtx layout.Context, g geometry) {
 	}
 }
 
-// layoutFooterControl draws one round footer button and reports a click.
-// active tints the button for a control that is currently holding state, such
-// as an open watch-party room.
-func (s *shell) layoutFooterControl(gtx layout.Context, g geometry, rect image.Rectangle, control *widget.Clickable, hover *hoverAnim, active, alert bool, draw func(layout.Context, image.Rectangle, float32, color.NRGBA)) bool {
+// layoutFooterControl draws one round footer button and reports a click. The
+// surface is shared by every footer action; active and alert states only
+// recolour the glyph, never the button itself.
+func (s *shell) layoutFooterControl(gtx layout.Context, g geometry, rect image.Rectangle, control *widget.Clickable, hover *hoverAnim, draw func(layout.Context, image.Rectangle, float32)) bool {
 	if rect.Empty() {
 		return false
 	}
@@ -486,18 +485,9 @@ func (s *shell) layoutFooterControl(gtx layout.Context, g geometry, rect image.R
 			BorderHover: footerControlHoverBorder,
 			Radius:      mainControlRadius,
 		}
-		if active {
-			style.Fill = footerPartyActiveFill
-			style.Border = footerPartyActiveBorder
-		}
-		if alert {
-			style.Fill = footerLogAlertFill
-			style.Border = footerLogAlertBorder
-		}
 		drawIconButtonSurface(gtx, local, style, progress)
 		if draw != nil {
-			fill, _ := style.Palette(progress)
-			draw(gtx, local, progress, fill)
+			draw(gtx, local, progress)
 		}
 		return layout.Dimensions{Size: rect.Size()}
 	})

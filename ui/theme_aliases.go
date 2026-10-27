@@ -19,16 +19,15 @@ var (
 	borderColor  = theme.Border
 	dividerColor = theme.Divider
 
-	iconColor = theme.Icon
-
 	titleColor = theme.Title
 
 	badgeFillColor   = theme.BadgeFill
 	badgeBorderColor = theme.BadgeBorder
 	badgeTextColor   = theme.BadgeText
 
-	controlHoverColor = theme.ControlHover
-	closeHoverColor   = theme.CloseHover
+	controlHoverColor           = theme.ControlHover
+	windowControlIconColor      = theme.WindowControlIcon
+	windowControlHoverIconColor = theme.WindowControlHoverIcon
 
 	footerControlFillColor      = theme.FooterControlFill
 	footerControlBorderColor    = theme.FooterControlBorder
@@ -37,13 +36,8 @@ var (
 	footerControlIconColor      = theme.FooterControlIcon
 	footerControlHoverIconColor = theme.FooterControlHoverIcon
 
-	footerPartyActiveFill   = theme.FooterPartyActiveFill
-	footerPartyActiveBorder = theme.FooterPartyActiveBorder
-	footerPartyActiveIcon   = theme.FooterPartyActiveIcon
-
-	footerLogAlertFill   = theme.FooterLogAlertFill
-	footerLogAlertBorder = theme.FooterLogAlertBorder
-	footerLogAlertIcon   = theme.FooterLogAlertIcon
+	footerPartyActiveIcon = theme.FooterPartyActiveIcon
+	footerLogAlertIcon    = theme.FooterLogAlertIcon
 )
 
 // hoverAnim is the root-package name for the shared hover animation.

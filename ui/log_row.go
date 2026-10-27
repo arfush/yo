@@ -3,308 +3,139 @@ package ui
 import (
 	"image"
 	"image/color"
+	"log/slog"
 	"strings"
 	"time"
 	"unicode"
 
 	"gioui.org/f32"
 	"gioui.org/font"
+	"gioui.org/io/key"
 	"gioui.org/io/pointer"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/unit"
 	"gioui.org/widget"
+
+	applog "github.com/arfush/yoanime/log"
 )
 
-const logTimeLayout = "2006-01-02 15:04:05.000"
-
-type logLevel uint8
-
-const (
-	logLevelInfo logLevel = iota
-	logLevelWarning
-	logLevelError
-)
-
-func (l logLevel) label() string {
-	switch l {
-	case logLevelWarning:
-		return "Предупреждение"
-	case logLevelError:
-		return "Ошибка"
-	default:
-		return "Информация"
-	}
-}
-
-func (l logLevel) color() color.NRGBA {
-	switch l {
-	case logLevelWarning:
-		return logWarningText
-	case logLevelError:
-		return logErrorText
-	default:
-		return logInfoText
-	}
-}
-
-type logEntry struct {
-	raw     string
-	at      time.Time
-	level   logLevel
-	source  string
-	message string
-	detail  string
-}
-
-func (e logEntry) timeLabel() string {
-	if e.at.IsZero() {
-		return "--:--:--"
-	}
-	return e.at.Format("15:04:05")
-}
-
-func (e logEntry) searchText() string {
-	return e.message + " " + e.detail + " " + e.source + " " + e.level.label()
-}
+const logTimeLayout = "15:04:05.000"
 
 type logLineState struct {
 	click    widget.Clickable
 	expanded bool
 }
 
-// parseLogEntry splits the logger's fixed line format into the columns shown by
-// the log table. The source is inferred from the message because the logger
-// deliberately stays package-independent and has no source field.
-func parseLogEntry(line string) logEntry {
-	entry := logEntry{raw: line, level: logLevelInfo}
-	rest := line
-	hasTime := false
-	if len(line) >= len(logTimeLayout) {
-		if at, err := time.ParseInLocation(logTimeLayout, line[:len(logTimeLayout)], time.Local); err == nil {
-			entry.at = at
-			hasTime = true
-			rest = strings.TrimSpace(line[len(logTimeLayout):])
-		}
+func logTimeLabel(at time.Time) string {
+	if at.IsZero() {
+		return "--:--:--"
 	}
-	if hasTime {
-		if levelToken, after, ok := strings.Cut(rest, " "); ok {
-			entry.level = parseLogLevel(levelToken)
-			rest = after
-		} else {
-			entry.level = parseLogLevel(rest)
-			rest = ""
-		}
-	}
-	entry.message, entry.detail = splitLogDetail(rest)
-	entry.source = logSource(entry.message)
-	return entry
+	return at.Format(logTimeLayout)
 }
 
-func parseLogLevel(token string) logLevel {
-	switch strings.ToUpper(strings.TrimSpace(token)) {
-	case "WARN", "WARNING":
-		return logLevelWarning
-	case "ERROR":
-		return logLevelError
+func logSearchText(entry applog.Entry) string {
+	return entry.Message + " " + entry.Detail + " " + entry.Source + " " + applog.LevelLabel(entry.Level)
+}
+
+func logLevelColor(level slog.Level) color.NRGBA {
+	switch applog.LevelLabel(level) {
+	case "trace":
+		return logTraceText
+	case "debug":
+		return logDebugText
+	case "notice":
+		return logNoticeText
+	case "warn":
+		return logWarningText
+	case "error":
+		return logErrorText
 	default:
-		// DEBUG is deliberately informational: the window has no separate
-		// debug filter, and debug entries are still useful in the search.
-		return logLevelInfo
+		return logInfoText
 	}
-}
-
-// splitLogDetail removes the structured key="value" tail from the visible
-// message. Expanding the row shows that tail again for diagnostics.
-func splitLogDetail(rest string) (message, detail string) {
-	rest = strings.TrimSpace(rest)
-	for index := 0; index < len(rest); index++ {
-		if rest[index] != ' ' {
-			continue
-		}
-		if logAttrTail(rest[index:]) {
-			return strings.TrimSpace(rest[:index]), rest
-		}
-	}
-	return rest, rest
-}
-
-func logAttrTail(s string) bool {
-	for len(s) > 0 {
-		if s[0] != ' ' {
-			return false
-		}
-		s = s[1:]
-		start := 0
-		for start < len(s) && logAttrKeyByte(s[start]) {
-			start++
-		}
-		if start == 0 || start >= len(s) || s[start] != '=' {
-			return false
-		}
-		s = s[start+1:]
-		if len(s) == 0 || s[0] != '"' {
-			return false
-		}
-		s = s[1:]
-		closed := false
-		for len(s) > 0 {
-			switch s[0] {
-			case '\\':
-				if len(s) < 2 {
-					return false
-				}
-				s = s[2:]
-			case '"':
-				s = s[1:]
-				closed = true
-			default:
-				s = s[1:]
-			}
-			if closed {
-				break
-			}
-		}
-		if !closed {
-			return false
-		}
-	}
-	return true
-}
-
-func logAttrKeyByte(b byte) bool {
-	return b >= 'a' && b <= 'z' ||
-		b >= 'A' && b <= 'Z' ||
-		b >= '0' && b <= '9' ||
-		b == '_' || b == '-' || b == '.'
-}
-
-func logSource(message string) string {
-	lower := strings.ToLower(message)
-	switch {
-	case containsAny(lower,
-		"github", "release", "updater", "sha-256", "sha256", "новую версию") ||
-		containsLogWord(lower, "update"):
-		return "Обновления"
-	case containsAny(lower,
-		"party", "room", "relay", "anchor", "watch together", "совместн", "комнат"):
-		return "Комната"
-	case containsAny(lower,
-		"playback", "player", "mpv", "kodik", "episode", "voice", "audio",
-		"subtitle", "stream", "buffer", "seek", "playlist", "серия", "озвучка"):
-		return "Плеер"
-	default:
-		return "Приложение"
-	}
-}
-
-func containsAny(s string, parts ...string) bool {
-	for _, part := range parts {
-		if strings.Contains(s, part) {
-			return true
-		}
-	}
-	return false
-}
-
-// containsLogWord matches a whole ASCII word so "update check" maps to updates
-// while "presence updated" stays with the application.
-func containsLogWord(s, word string) bool {
-	for start := 0; start <= len(s)-len(word); {
-		index := strings.Index(s[start:], word)
-		if index < 0 {
-			return false
-		}
-		index += start
-		before := index == 0 || !logAttrKeyByte(s[index-1])
-		afterIndex := index + len(word)
-		after := afterIndex == len(s) || !logAttrKeyByte(s[afterIndex])
-		if before && after {
-			return true
-		}
-		start = index + 1
-	}
-	return false
 }
 
 // logRowHeight is the minimum row height. Expanded rows grow by whole text
-// lines instead of clipping the diagnostic tail.
-func (w *logWindow) logRowHeight(gtx layout.Context, entry logEntry, width int, expanded bool) int {
+// lines instead of clipping the message or the structured tail.
+func (w *logWindow) logRowHeight(gtx layout.Context, entry applog.Entry, width int, expanded bool) int {
 	minHeight := gtx.Dp(logRowHeightDp)
 	if !expanded {
 		return minHeight
 	}
 	cols := logColumnsForWidth(gtx, width)
-	lines := wrapLogText(gtx, w.typo, entry.detail, logFace, logLineSize, cols.messageWidth)
-	height := len(lines)*gtx.Dp(logLineHeight) + 2*gtx.Dp(logRowPadY)
+	messageLines := wrapLogText(gtx, w.typo, entry.Message, logFace, logLineSize, cols.messageWidth)
+	detailLines := 0
+	if entry.Detail != "" {
+		detailLines = len(wrapLogText(gtx, w.typo, entry.Detail, logFace, logLineSize, cols.messageWidth))
+	}
+	height := (len(messageLines)+detailLines)*gtx.Dp(logLineHeight) + 2*gtx.Dp(logRowPadY)
 	return max(minHeight, height)
 }
 
-func (w *logWindow) layoutLine(gtx layout.Context, entry logEntry, width int, state *logLineState) layout.Dimensions {
+func (w *logWindow) layoutLine(gtx layout.Context, entry applog.Entry, width, rowHeight, index int, state *logLineState) layout.Dimensions {
 	cols := logColumnsForWidth(gtx, width)
 	lineHeight := gtx.Dp(logLineHeight)
 	padY := gtx.Dp(logRowPadY)
-	minHeight := gtx.Dp(logRowHeightDp)
 
-	collapsed := truncateText(gtx, w.typo, entry.message, logFace, logLineSize, cols.messageWidth)
-	truncated := collapsed != entry.message
-	expandable := truncated || entry.detail != entry.message
+	collapsed := truncateText(gtx, w.typo, entry.Message, logFace, logLineSize, cols.messageWidth)
+	truncated := collapsed != entry.Message
+	expandable := truncated || entry.Detail != ""
 
 	if (expandable || state.expanded) && state.click.Clicked(gtx) {
 		state.expanded = !state.expanded
+		gtx.Execute(key.FocusCmd{Tag: nil})
 		gtx.Execute(op.InvalidateCmd{})
 	}
+	if state.expanded {
+		rowHeight = max(rowHeight, w.logRowHeight(gtx, entry, width, true))
+	}
 
-	lines := []string{entry.message}
-	if state.expanded {
-		lines = wrapLogText(gtx, w.typo, entry.detail, logFace, logLineSize, cols.messageWidth)
-	}
-	rowHeight := minHeight
-	if state.expanded {
-		rowHeight = max(minHeight, len(lines)*lineHeight+2*padY)
-	}
 	rowRect := image.Rect(0, 0, width, rowHeight)
 	centerY := rowHeight / 2
+	hovered := state.click.Hovered()
 
-	isError := entry.level == logLevelError
 	state.click.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		if expandable || state.expanded {
 			pointer.CursorPointer.Add(gtx.Ops)
 		}
 		switch {
-		case isError:
-			fill(gtx, logErrorRowFill, rowRect)
-			fill(gtx, logErrorRowBorder, image.Rect(0, 0, width, max(gtx.Dp(1), 1)))
-			fill(gtx, logErrorRowBorder, image.Rect(0, rowHeight-max(gtx.Dp(1), 1), width, rowHeight))
-		case (expandable || state.expanded) && state.click.Hovered():
+		case state.expanded:
+			fill(gtx, logRowExpanded, rowRect)
+		case hovered && expandable:
 			fill(gtx, logRowHover, rowRect)
+		case index%2 == 1:
+			fill(gtx, logRowAlt, rowRect)
 		}
-		if !isError && !((expandable || state.expanded) && state.click.Hovered()) {
-			fill(gtx, logRowDivider, image.Rect(0, rowHeight-max(gtx.Dp(1), 1), width, rowHeight))
-		}
+		// The divider is intentionally stronger than the fills: with softer
+		// hover colours the rows still need a visible boundary.
+		fill(gtx, logRowDivider, image.Rect(0, rowHeight-max(1, gtx.Dp(1)), width, rowHeight))
 
 		capHeight := logCapHeight(gtx, w.typo)
-		muted := logInfoText
-		messageColor := logMessageColor
-		if isError {
-			messageColor = logErrorText
-		}
+		levelColor := logLevelColor(entry.Level)
 
-		drawLogText(gtx, w.typo, entry.timeLabel(), logFace, logMetaSize, muted, cols.timeX, centerY, cols.timeWidth, capHeight)
-		levelColor := entry.level.color()
-		iconSize := gtx.Dp(logLevelIconSize)
-		drawLogLevelIcon(gtx, entry.level, image.Pt(cols.levelX+iconSize/2, centerY), iconSize, levelColor)
-		drawLogText(gtx, w.typo, entry.level.label(), logFace, logLevelSize, levelColor, cols.levelX+iconSize+gtx.Dp(logLevelGap), centerY, cols.levelWidth-iconSize-gtx.Dp(logLevelGap), capHeight)
-		drawLogText(gtx, w.typo, entry.source, logFace, logMetaSize, muted, cols.sourceX, centerY, cols.sourceWidth, capHeight)
+		drawLogText(gtx, w.typo, logTimeLabel(entry.Time), logFace, logMetaSize, logMetaText, cols.timeX, centerY, cols.timeWidth, capHeight)
+		drawLogText(gtx, w.typo, applog.LevelLabel(entry.Level), logFace, logLevelSize, levelColor, cols.levelX, centerY, cols.levelWidth, capHeight)
+		drawLogText(gtx, w.typo, entry.Source, logFace, logMetaSize, logSourceText, cols.sourceX, centerY, cols.sourceWidth, capHeight)
 
 		if state.expanded {
-			top := max(padY, (rowHeight-len(lines)*lineHeight)/2)
-			for index, text := range lines {
-				lineCenter := top + index*lineHeight + lineHeight/2
-				drawLogText(gtx, w.typo, text, logFace, logLineSize, messageColor, cols.messageX, lineCenter, cols.messageWidth, capHeight)
+			messageLines := wrapLogText(gtx, w.typo, entry.Message, logFace, logLineSize, cols.messageWidth)
+			var detailLines []string
+			if entry.Detail != "" {
+				detailLines = wrapLogText(gtx, w.typo, entry.Detail, logFace, logLineSize, cols.messageWidth)
+			}
+			contentHeight := (len(messageLines) + len(detailLines)) * lineHeight
+			top := max(padY, (rowHeight-contentHeight)/2)
+			y := top
+			for _, text := range messageLines {
+				drawLogText(gtx, w.typo, text, logFace, logLineSize, logMessageColor, cols.messageX, y+lineHeight/2, cols.messageWidth, capHeight)
+				y += lineHeight
+			}
+			for _, text := range detailLines {
+				drawLogText(gtx, w.typo, text, logFace, logLineSize, logDetailText, cols.messageX, y+lineHeight/2, cols.messageWidth, capHeight)
+				y += lineHeight
 			}
 		} else {
-			drawLogText(gtx, w.typo, collapsed, logFace, logLineSize, messageColor, cols.messageX, centerY, cols.messageWidth, capHeight)
+			drawLogText(gtx, w.typo, collapsed, logFace, logLineSize, logMessageColor, cols.messageX, centerY, cols.messageWidth, capHeight)
 		}
 		return layout.Dimensions{Size: rowRect.Size()}
 	})
@@ -346,14 +177,6 @@ func drawLogText(gtx layout.Context, typo *typography, text string, face font.Fo
 		f32.Pt(float32(x)+float32(ink.Dx())/2, float32(centerY)),
 		capHeight,
 	)
-}
-
-func isLogError(line string) bool {
-	return parseLogEntry(line).level == logLevelError
-}
-
-func logLineColor(line string) color.NRGBA {
-	return parseLogEntry(line).level.color()
 }
 
 // wrapLogText breaks a log entry at spaces, and at rune boundaries for a word

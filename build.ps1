@@ -44,13 +44,6 @@ if ($Repo) {
     $ldflags += " -X github.com/arfush/yoanime/internal/updates.Repository=$Repo"
 }
 
-# The Discord application id names the activity shown in the profile. It is
-# public by design and baked into the official build; a fork can point at its
-# own application with this variable.
-if ($env:YOANIME_DISCORD_APP_ID) {
-    $ldflags += " -X github.com/arfush/yoanime/internal/discord.AppID=$($env:YOANIME_DISCORD_APP_ID.Trim())"
-}
-
 # Party relays are deployed once and baked into the official build so the
 # shipped exe needs no party.json. Environment variables win; the rest comes
 # from party.json in the repository root. That file is never written here.

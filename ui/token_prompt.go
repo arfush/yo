@@ -2,12 +2,9 @@ package ui
 
 import (
 	"context"
-	"fmt"
 	"image"
 	"image/color"
 	"math"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +20,7 @@ import (
 
 	"github.com/arfush/yoanime/internal/browser"
 	"github.com/arfush/yoanime/internal/token"
+	"github.com/arfush/yoanime/log"
 )
 
 const (
@@ -554,18 +552,5 @@ func logTokenError(err error) {
 	if err == nil {
 		return
 	}
-	dir, cacheErr := os.UserCacheDir()
-	if cacheErr != nil {
-		return
-	}
-	logDir := filepath.Join(dir, "yoanime")
-	if mkErr := os.MkdirAll(logDir, 0o755); mkErr != nil {
-		return
-	}
-	file, openErr := os.OpenFile(filepath.Join(logDir, "token-error.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if openErr != nil {
-		return
-	}
-	defer file.Close()
-	_, _ = fmt.Fprintf(file, "%s\n%v\n\n", time.Now().Format(time.RFC3339), err)
+	log.Error("token loading failed", "error", err)
 }

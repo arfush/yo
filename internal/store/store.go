@@ -796,18 +796,6 @@ func (s *Store) SetBetaUpdatesEnabled(enabled bool) error {
 	return s.setBoolSetting("beta_updates", enabled)
 }
 
-// DiscordPresenceEnabled reports whether yoanime may publish the current episode
-// to Discord. It is off by default: the activity is visible to every friend, so
-// showing it has to be an explicit choice.
-func (s *Store) DiscordPresenceEnabled() bool {
-	return s.boolSetting("discord_presence", false)
-}
-
-// SetDiscordPresenceEnabled stores the Discord activity choice.
-func (s *Store) SetDiscordPresenceEnabled(enabled bool) error {
-	return s.setBoolSetting("discord_presence", enabled)
-}
-
 // PreferredQuality returns the globally remembered quality, defaulting to 1080.
 func (s *Store) PreferredQuality() int {
 	var value string

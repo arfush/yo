@@ -1,10 +1,11 @@
-// Command icongen turns yoanime's original painted icon geometry into IconVG
-// assets.
+// Command icongen turns the supplied action-icon sheet into IconVG assets and
+// generates the utility glyphs that are not part of that sheet.
 //
-// The desktop UI used to rasterise these glyphs with Gio clip paths on every
-// frame. The shapes in this file are a direct translation of those painting
-// functions: same proportions, same stroke widths, same joins. IconVG is only
-// the storage format, so the visual design does not change.
+// The sheet at tools/icongen/icons.svg is the source of truth for footer,
+// history, log-toolbar and window-control icons. Its paths are parsed and
+// normalized into the unit view box instead of being approximated with
+// hand-written primitives. Chevrons, check, search, undo, info/warning/error
+// and copy are not in the sheet, so their geometry remains in this file.
 //
 // Run from the repository root:
 //
@@ -22,10 +23,10 @@ import (
 	"golang.org/x/image/math/f32"
 )
 
-// The assets use a unit viewBox centered on (0.5, 0.5). design converts the
-// old design-pixel coordinates into that box. Each icon's nominal size is the
-// same number the old painting function used as its nominal width/height, so
-// callers can keep passing the old sizes.
+// The assets use a unit viewBox centered on (0.5, 0.5). Utility glyph design
+// coordinates are converted through design, while sheet glyphs keep the
+// coordinates parsed from the SVG. Each icon's nominal size matches the size
+// its UI caller uses, so drawAppIcon can rasterize it directly.
 type design struct {
 	size float64
 }
@@ -392,16 +393,11 @@ type iconSpec struct {
 	build func() []shape
 }
 
+// Utility glyphs that are not part of the supplied icon sheet. The sheet
+// itself covers every footer, history, log-toolbar and window-control action.
 var icons = []iconSpec{
-	{"log", buildLog},
-	{"update", buildUpdate},
-	{"settings", buildSettings},
-	{"people", buildPeople},
 	{"copy", buildCopy},
-	{"play", buildPlay},
-	{"trash", buildTrash},
 	{"search", buildSearch},
-	{"pause", buildPause},
 	{"info", buildInfo},
 	{"warning", buildWarning},
 	{"error", buildError},
@@ -423,10 +419,6 @@ var icons = []iconSpec{
 	{"chevron_up_heavy", chevronBuilder(chevronUpPoints, chevronWidthHeavy)},
 	{"chevron_down_heavy", chevronBuilder(chevronDownPoints, chevronWidthHeavy)},
 	{"undo", buildUndo},
-	{"minimize", buildMinimize},
-	{"maximize", buildMaximize},
-	{"restore", buildRestore},
-	{"close", buildClose},
 }
 
 func main() {
@@ -434,11 +426,16 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
+	sheetIcons, err := loadIconSheet(filepath.Join(root, "tools", "icongen", "icons.svg"))
+	if err != nil {
+		fail(err)
+	}
 	outDir := filepath.Join(root, "ui", "assets", "icons")
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		fail(err)
 	}
-	for _, icon := range icons {
+	all := append(sheetIcons, icons...)
+	for _, icon := range all {
 		data, err := encode(icon.build())
 		if err != nil {
 			fail(fmt.Errorf("%s: %w", icon.name, err))
@@ -486,11 +483,12 @@ func encode(shapes []shape) ([]byte, error) {
 	return enc.Bytes()
 }
 
-// --- Icon geometry -------------------------------------------------------
+// --- Utility icon geometry ----------------------------------------------
 //
-// Each build function below is a direct translation of the painting function
-// that used to live in ui/icons.go, ui/main_window.go, ui/settings_window.go,
-// ui/title_window.go, ui/undo_delete.go and ui/window_controls.go.
+// Builders in this section cover glyphs that the supplied sheet does not
+// provide. Generation uses loadIconSheet for every action glyph; the few older
+// sheet builders kept below are reference geometry for generator regression
+// tests and are not written to ui/assets/icons.
 
 func buildLog() []shape {
 	d := design{size: 16}

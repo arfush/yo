@@ -64,10 +64,9 @@ func layoutHeaderNotice(gtx layout.Context, typo *typography, g geometry, badgeR
 		return
 	}
 	x := left + (right-left-ink.Dx())/2
-	if notice.tone == headerNoticeError {
-		// The error keeps the established 2%-of-window nudge to the left.
-		x -= int(math.Round(float64(g.size.X) * 0.02))
-	}
+	// Header messages sit slightly right of the geometric centre so they read
+	// as part of the title block rather than the window controls.
+	x += int(math.Round(float64(g.size.X) * 0.05))
 	if x < left {
 		x = left
 	}

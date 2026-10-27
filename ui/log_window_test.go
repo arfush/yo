@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -15,22 +16,27 @@ import (
 	"gioui.org/op"
 	"gioui.org/unit"
 
-	"github.com/arfush/yoanime/log"
+	applog "github.com/arfush/yoanime/log"
 )
 
-func TestLogWindowStartsAtNewestAndEnterJumpsToEnd(t *testing.T) {
+func TestLogWindowStartsFollowingNewestAndKeysScroll(t *testing.T) {
 	typo, err := newTypography()
 	if err != nil {
 		t.Fatal(err)
 	}
 	w := newLogWindow(typo)
-	if !w.list.ScrollToEnd {
-		t.Fatal("a new log window must open on the newest entry")
+	if !w.autoScroll {
+		t.Fatal("a new log window must follow the newest entry")
 	}
 
 	var router input.Router
 	ops := new(op.Ops)
-	gtx := layout.Context{Ops: ops, Source: router.Source()}
+	gtx := layout.Context{
+		Ops:         ops,
+		Source:      router.Source(),
+		Metric:      unit.Metric{PxPerDp: 1, PxPerSp: 1},
+		Constraints: layout.Exact(image.Pt(833, 444)),
+	}
 	frame := func() {
 		ops.Reset()
 		w.handleKeys(gtx)
@@ -38,65 +44,67 @@ func TestLogWindowStartsAtNewestAndEnterJumpsToEnd(t *testing.T) {
 	}
 	frame()
 
-	w.list.Position.BeforeEnd = true
+	w.maxScroll = 900
+	w.bodyHeight = 300
+	w.target = 0
+	w.scroll = 0
+	w.autoScroll = false
 	router.Queue(key.Event{Name: key.NameEnter, State: key.Press})
 	frame()
-	if w.list.Position.BeforeEnd {
-		t.Fatal("Enter did not leave the older entries")
+	if !w.autoScroll || w.target != 900 {
+		t.Fatalf("Enter did not jump to the end: auto=%v target=%v", w.autoScroll, w.target)
 	}
-	if !w.list.ScrollToEnd {
-		t.Fatal("Enter disabled end-following")
+
+	router.Queue(key.Event{Name: key.NameHome, State: key.Press})
+	frame()
+	if w.autoScroll || w.target != 0 {
+		t.Fatalf("Home did not leave the end: auto=%v target=%v", w.autoScroll, w.target)
+	}
+
+	router.Queue(key.Event{Name: key.NamePageDown, State: key.Press})
+	frame()
+	if w.autoScroll {
+		t.Fatal("PageDown must stop end-following")
+	}
+	if w.target <= 0 {
+		t.Fatalf("PageDown did not scroll: target=%v", w.target)
 	}
 }
 
-func TestLogFollowModeTracksShortAndLongLogs(t *testing.T) {
+func TestLogWheelScrollingLeavesEndFollow(t *testing.T) {
 	typo, err := newTypography()
 	if err != nil {
 		t.Fatal(err)
 	}
-	gtx := layout.Context{Metric: unit.Metric{PxPerDp: 1, PxPerSp: 1}}
+	w := newLogWindow(typo)
+	w.maxScroll = 1000
+	w.scroll = 1000
+	w.target = 1000
+	w.autoScroll = true
 
-	short := newLogWindow(typo)
-	short.syncFollowMode(gtx, []logEntry{
-		{raw: "one", message: "one"},
-		{raw: "two", message: "two"},
-	}, 400, 300)
-	if short.list.ScrollToEnd {
-		t.Fatal("a short log should start at the top instead of bottom-aligning")
+	var router input.Router
+	gtx := layout.Context{
+		Ops:    new(op.Ops),
+		Source: router.Source(),
+		Metric: unit.Metric{PxPerDp: 1, PxPerSp: 1},
 	}
-	if short.list.Position.First != 0 || short.list.Position.Offset != 0 {
-		t.Fatal("a short log should keep the list at the top")
-	}
+	w.scrollStep(gtx, 1000)
+	router.Frame(gtx.Ops)
 
-	longEntries := make([]logEntry, 100)
-	for index := range longEntries {
-		longEntries[index] = logEntry{raw: "line", message: "line"}
-	}
-	long := newLogWindow(typo)
-	long.syncFollowMode(gtx, longEntries, 400, 40)
-	if !long.list.ScrollToEnd {
-		t.Fatal("a log taller than the viewport should open at the newest entry")
-	}
-	long.list.Position.BeforeEnd = true
-	long.syncFollowMode(gtx, longEntries, 400, 40)
-	if long.list.ScrollToEnd || long.autoScroll {
-		t.Fatal("scrolling into older entries should stop following the end")
-	}
-	long.jumpToEnd()
-	long.syncFollowMode(gtx, longEntries, 400, 40)
-	if !long.list.ScrollToEnd || !long.autoScroll {
-		t.Fatal("jumpToEnd did not re-enable end-following")
-	}
+	router.Queue(pointer.Event{
+		Kind:     pointer.Scroll,
+		Position: f32.Pt(100, 100),
+		Scroll:   f32.Pt(0, -200),
+	})
+	gtx.Ops = new(op.Ops)
+	w.scrollStep(gtx, 1000)
+	router.Frame(gtx.Ops)
 
-	long.setAutoScroll(false)
-	long.list.Position.BeforeEnd = false
-	long.syncFollowMode(gtx, longEntries, 400, 40)
-	if long.list.ScrollToEnd {
-		t.Fatal("turning autoscroll off did not stop end-following")
+	if w.autoScroll {
+		t.Fatal("scrolling up did not stop end-following")
 	}
-	long.setAutoScroll(true)
-	if !long.list.ScrollToEnd || long.list.Position.BeforeEnd {
-		t.Fatal("turning autoscroll on did not jump to the newest entry")
+	if w.target >= 1000 {
+		t.Fatalf("wheel did not move the target away from the end: %v", w.target)
 	}
 }
 
@@ -107,8 +115,14 @@ func TestLogLineClickExpandsTruncatedRow(t *testing.T) {
 	}
 	w := newLogWindow(typo)
 	line := strings.Repeat("очень длинная строка журнала ", 12)
-	entry := parseLogEntry(line)
-	state := w.lineState(line)
+	entry := applog.Entry{
+		ID:      1,
+		Time:    time.Now(),
+		Level:   slog.LevelInfo,
+		Source:  "ui",
+		Message: line,
+	}
+	state := w.lineState(entry.ID)
 
 	var router input.Router
 	ops := new(op.Ops)
@@ -120,7 +134,8 @@ func TestLogLineClickExpandsTruncatedRow(t *testing.T) {
 	}
 	frame := func() layout.Dimensions {
 		ops.Reset()
-		dims := w.layoutLine(gtx, entry, 220, state)
+		height := w.logRowHeight(gtx, entry, 220, state.expanded)
+		dims := w.layoutLine(gtx, entry, 220, height, 0, state)
 		router.Frame(ops)
 		return dims
 	}
@@ -157,14 +172,7 @@ func TestWrapLogTextKeepsTheWholeLine(t *testing.T) {
 	gtx := layout.Context{Metric: unit.Metric{PxPerDp: 1, PxPerSp: 1}}
 	face := font.Font{Typeface: fontFamily, Weight: font.Normal}
 	line := strings.Repeat("длинная строка ", 8) + strings.Repeat("x", 120)
-	lines := wrapLogText(
-		gtx,
-		typo,
-		line,
-		face,
-		logLineSize,
-		180,
-	)
+	lines := wrapLogText(gtx, typo, line, face, logLineSize, 180)
 	if len(lines) < 2 {
 		t.Fatalf("wrapped %q into %d line(s)", line, len(lines))
 	}
@@ -183,155 +191,83 @@ func TestWrapLogTextKeepsTheWholeLine(t *testing.T) {
 	}
 }
 
-func TestParseLogEntrySplitsColumnsAndAttributes(t *testing.T) {
-	entry := parseLogEntry(`2026-10-27 10:11:12.345 WARN playback failed to resolve episode session="abc" attempt="2"`)
-	if got := entry.at.Format("2006-01-02 15:04:05.000"); got != "2026-10-27 10:11:12.345" {
-		t.Fatalf("timestamp = %q", got)
-	}
-	if entry.level != logLevelWarning {
-		t.Fatalf("level = %v, want warning", entry.level)
-	}
-	if entry.source != "Плеер" {
-		t.Fatalf("source = %q, want Плеер", entry.source)
-	}
-	if entry.message != "playback failed to resolve episode" {
-		t.Fatalf("message = %q", entry.message)
-	}
-	if entry.detail != `playback failed to resolve episode session="abc" attempt="2"` {
-		t.Fatalf("detail = %q", entry.detail)
-	}
-	if !strings.Contains(entry.searchText(), "abc") || !strings.Contains(entry.searchText(), "attempt") {
-		t.Fatalf("search text lost structured attributes: %q", entry.searchText())
-	}
-
-	debug := parseLogEntry(`2026-10-27 10:11:12.345 DEBUG update check started`)
-	if debug.level != logLevelInfo {
-		t.Fatalf("DEBUG level = %v, want information", debug.level)
-	}
-	if debug.source != "Обновления" {
-		t.Fatalf("DEBUG source = %q, want Обновления", debug.source)
-	}
-
-	plain := parseLogEntry("ordinary message")
-	if !plain.at.IsZero() || plain.level != logLevelInfo || plain.message != "ordinary message" || plain.source != "Приложение" {
-		t.Fatalf("plain line parsed as %+v", plain)
-	}
-
-	unquoted := parseLogEntry(`2026-10-27 10:11:12.345 INFO request error=boom`)
-	if unquoted.detail != unquoted.message {
-		t.Fatalf("unquoted tail was treated as structured attributes: %q", unquoted.detail)
-	}
-}
-
-func TestLogSourceLabels(t *testing.T) {
-	cases := []struct {
-		message string
-		want    string
-	}{
-		{"update check started", "Обновления"},
-		{"downloading update", "Обновления"},
-		{"github release downloaded", "Обновления"},
-		{"discord presence updated", "Приложение"},
-		{"party anchor received", "Комната"},
-		{"room heartbeat sent", "Комната"},
-		{"mpv episode started", "Плеер"},
-		{"Kodik resolved stream", "Плеер"},
-		{"window attached", "Приложение"},
-	}
-	for _, test := range cases {
-		if got := logSource(test.message); got != test.want {
-			t.Errorf("logSource(%q) = %q, want %q", test.message, got, test.want)
-		}
-	}
-}
-
-func TestLogFilterSearchAndCounts(t *testing.T) {
+func TestLogFilterAndSearch(t *testing.T) {
 	typo, err := newTypography()
 	if err != nil {
 		t.Fatal(err)
 	}
 	w := newLogWindow(typo)
-	w.entries = []logEntry{
-		parseLogEntry(`2026-10-27 10:11:12.345 INFO history loaded`),
-		parseLogEntry(`2026-10-27 10:11:13.345 WARN party anchor lost relay="eu"`),
-		parseLogEntry(`2026-10-27 10:11:14.345 ERROR playback failed error="mpv exited"`),
-		parseLogEntry(`2026-10-27 10:11:15.345 DEBUG update check started`),
+	w.entries = []applog.Entry{
+		{ID: 1, Level: slog.LevelInfo, Source: "store", Message: "history loaded"},
+		{ID: 2, Level: slog.LevelWarn, Source: "party", Message: "party anchor lost", Detail: `relay="eu"`},
+		{ID: 3, Level: slog.LevelError, Source: "playback", Message: "playback failed", Detail: `error="mpv exited"`},
+		{ID: 4, Level: slog.LevelDebug, Source: "updates", Message: "update check started"},
 	}
 
-	w.filter = logFilterWarning
+	w.filter = logLevelFilter{level: slog.LevelWarn}
 	visible := w.visibleEntries()
-	if len(visible) != 1 || visible[0].level != logLevelWarning {
+	if len(visible) != 1 || visible[0].Level != slog.LevelWarn {
 		t.Fatalf("warning filter returned %d entries, want 1", len(visible))
 	}
 
-	w.filter = logFilterAll
+	w.filter = logLevelFilter{all: true}
 	w.search.SetText("MPV")
 	visible = w.visibleEntries()
-	if len(visible) != 1 || visible[0].message != "playback failed" {
-		t.Fatalf("search over attributes returned %d entries, want the playback error", len(visible))
+	if len(visible) != 1 || visible[0].Message != "playback failed" {
+		t.Fatalf("search over detail returned %d entries, want the playback error", len(visible))
 	}
 
 	w.search.SetText("relay")
 	visible = w.visibleEntries()
-	if len(visible) != 1 || visible[0].source != "Комната" {
+	if len(visible) != 1 || visible[0].Source != "party" {
 		t.Fatalf("search over detail returned %d entries, want the party warning", len(visible))
 	}
 
 	w.search.SetText("")
-	w.filter = logFilterInfo
+	w.filter = logLevelFilter{level: slog.LevelInfo}
 	visible = w.visibleEntries()
-	if len(visible) != 2 {
-		t.Fatalf("information filter returned %d entries, want 2", len(visible))
-	}
-	counts := countLogEntries(visible)
-	if counts.total != 2 || counts.info != 2 || counts.warning != 0 || counts.error != 0 {
-		t.Fatalf("counts = %+v", counts)
+	if len(visible) != 1 || visible[0].Message != "history loaded" {
+		t.Fatalf("info filter returned %d entries, want 1", len(visible))
 	}
 
-	labels := logStatsLabels(logCounts{total: 10, info: 7, warning: 2, error: 1})
-	want := [4]string{"10 записей", "7 информационных", "2 предупреждения", "1 ошибка"}
-	if labels != want {
-		t.Fatalf("labels = %v, want %v", labels, want)
+	w.filter = logLevelFilter{level: applog.LevelTrace}
+	if visible := w.visibleEntries(); len(visible) != 0 {
+		t.Fatalf("trace filter returned %d entries, want 0", len(visible))
 	}
 }
 
-func TestPluralRussian(t *testing.T) {
+func TestLogLevelLabelsAndColours(t *testing.T) {
 	cases := []struct {
-		n    int
-		one  string
-		few  string
-		many string
-		want string
+		level slog.Level
+		label string
 	}{
-		{1, "запись", "записи", "записей", "запись"},
-		{2, "запись", "записи", "записей", "записи"},
-		{5, "запись", "записи", "записей", "записей"},
-		{11, "запись", "записи", "записей", "записей"},
-		{21, "запись", "записи", "записей", "запись"},
-		{0, "ошибка", "ошибки", "ошибок", "ошибок"},
-		{22, "ошибка", "ошибки", "ошибок", "ошибки"},
+		{applog.LevelTrace, "trace"},
+		{slog.LevelDebug, "debug"},
+		{slog.LevelInfo, "info"},
+		{applog.LevelNotice, "notice"},
+		{slog.LevelWarn, "warn"},
+		{slog.LevelError, "error"},
 	}
 	for _, test := range cases {
-		if got := pluralRU(test.n, test.one, test.few, test.many); got != test.want {
-			t.Errorf("pluralRU(%d) = %q, want %q", test.n, got, test.want)
+		if got := applog.LevelLabel(test.level); got != test.label {
+			t.Errorf("LevelLabel(%v) = %q, want %q", test.level, got, test.label)
+		}
+		if got := logLevelColor(test.level); got.A == 0 {
+			t.Errorf("logLevelColor(%v) is transparent", test.level)
 		}
 	}
-}
-
-func TestFormatLogDate(t *testing.T) {
-	at := time.Date(2026, time.October, 27, 12, 0, 0, 0, time.Local)
-	if got := formatLogDate(at); got != "27 октября 2026" {
-		t.Fatalf("formatLogDate = %q", got)
+	if logLevelColor(slog.LevelError) == logLevelColor(slog.LevelWarn) {
+		t.Fatal("error and warning rows share the same colour")
 	}
 }
 
 func TestLogPauseAndClear(t *testing.T) {
-	if err := log.Init(""); err != nil {
+	if err := applog.Init(""); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = log.Init("") }()
+	defer func() { _ = applog.Init("") }()
 
-	log.Info("first entry")
+	applog.Info("first entry")
 	typo, err := newTypography()
 	if err != nil {
 		t.Fatal(err)
@@ -343,7 +279,7 @@ func TestLogPauseAndClear(t *testing.T) {
 	}
 
 	w.togglePause()
-	log.Info("second entry")
+	applog.Info("second entry")
 	w.refreshEntries()
 	if len(w.entries) != 1 {
 		t.Fatal("a paused log window consumed a new entry")
@@ -355,40 +291,22 @@ func TestLogPauseAndClear(t *testing.T) {
 	}
 
 	w.clearEntries()
-	if len(w.entries) != 0 || len(w.raw) != 0 {
+	if len(w.entries) != 0 {
 		t.Fatal("clear did not empty the visible entries")
 	}
-	if len(log.Snapshot()) != 0 {
+	if len(applog.Snapshot()) != 0 {
 		t.Fatal("clear did not empty the logger ring")
 	}
 }
 
-func TestLogErrorRowsAreHighlightedByLevel(t *testing.T) {
-	if !isLogError(`2026-10-26 15:04:05.000 ERROR ui error="boom"`) {
-		t.Fatal("error line was not recognized")
-	}
-	if isLogError(`2026-10-26 15:04:05.000 INFO error="boom"`) {
-		t.Fatal("an ordinary line mentioning error was treated as an error row")
-	}
-	if got := logLineColor(`2026-10-26 15:04:05.000 ERROR ui error="boom"`); got != logErrorText {
-		t.Fatalf("error color = %v, want %v", got, logErrorText)
-	}
-	if got := logLineColor(`2026-10-26 15:04:05.000 WARN ui error="boom"`); got != logWarningText {
-		t.Fatalf("warning color = %v, want %v", got, logWarningText)
-	}
-	if got := logLineColor(`2026-10-26 15:04:05.000 INFO ui error="boom"`); got != logInfoText {
-		t.Fatalf("info color = %v, want %v", got, logInfoText)
-	}
-}
-
 func TestLogWindowLayoutAtMinimumContentSize(t *testing.T) {
-	if err := log.Init(""); err != nil {
+	if err := applog.Init(""); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = log.Init("") }()
-	log.Info("history loaded", "count", 3)
-	log.Warn("party relay lag", "delay", "1.2s")
-	log.Error("playback failed", "error", "mpv exited")
+	defer func() { _ = applog.Init("") }()
+	applog.Info("history loaded", "count", 3)
+	applog.Warn("party relay lag", "delay", "1.2s")
+	applog.Error("playback failed", "error", "mpv exited")
 
 	typo, err := newTypography()
 	if err != nil {

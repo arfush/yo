@@ -24,6 +24,22 @@ func TestAllGlyphsStayInsideViewBox(t *testing.T) {
 	}
 }
 
+func TestIconSheetProducesEveryGlyph(t *testing.T) {
+	specs, err := loadIconSheet("icons.svg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := len(svgIconNames) + 1; len(specs) != want {
+		t.Fatalf("generated %d sheet glyphs, want %d", len(specs), want)
+	}
+	for _, icon := range specs {
+		b := iconBounds(icon.build())
+		if b.minX < 0 || b.minY < 0 || b.maxX > 1 || b.maxY > 1 {
+			t.Errorf("%s bounds %+v leave the unit view box", icon.name, b)
+		}
+	}
+}
+
 func TestGlyphPolylinesHaveNoDuplicatePoints(t *testing.T) {
 	for _, icon := range icons {
 		for si, s := range icon.build() {

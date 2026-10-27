@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	applog "github.com/arfush/yoanime/log"
 )
 
 func TestParseRetryAfter(t *testing.T) {
@@ -360,6 +362,21 @@ func TestHTTP429IsRetriedUntilSuccess(t *testing.T) {
 	}
 	if remaining := RateLimitRemaining(); remaining != 0 {
 		t.Fatalf("RateLimitRemaining() = %v after success, want 0", remaining)
+	}
+	var warning *applog.Entry
+	for _, entry := range applog.Recent() {
+		if entry.Message == "AnimeLIB rate limit reached" {
+			entry := entry
+			warning = &entry
+		}
+	}
+	if warning == nil {
+		t.Fatal("rate-limit warning was not logged")
+	}
+	const marker = "retry_after="
+	index := strings.Index(warning.Detail, marker)
+	if index < 0 || strings.TrimSpace(warning.Detail[index+len(marker):]) == "" {
+		t.Fatalf("rate-limit warning has an empty retry_after: %q", warning.Detail)
 	}
 }
 

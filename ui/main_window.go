@@ -1189,13 +1189,22 @@ func (m *mainWindow) layoutHistoryHeader(gtx layout.Context, rect image.Rectangl
 
 	clearFace := font.Font{Typeface: fontFamily, Weight: font.Medium}
 	clearLabel := "Очистить всё"
+	labelWidth := 0
+	for _, label := range []string{"Очистить всё", "Отменить"} {
+		if _, ink := m.typo.measure(gtx, label, clearFace, mainClearSize); ink.Dx() > labelWidth {
+			labelWidth = ink.Dx()
+		}
+	}
 	if m.undo.active {
 		clearLabel = "Отменить"
 	}
 	_, clearInk := m.typo.measure(gtx, clearLabel, clearFace, mainClearSize)
-	iconSize := gtx.Dp(unit.Dp(14))
+	iconSize := gtx.Dp(unit.Dp(20))
 	clearGap := gtx.Dp(unit.Dp(6))
-	clearWidth := clearInk.Dx() + clearGap + iconSize
+	// Reserve the widest label and icon footprint even while "Отменить" is
+	// shown, otherwise the status filters jump left as soon as a title is
+	// deleted.
+	clearWidth := labelWidth + clearGap + iconSize
 	clearHeight := rect.Dy()
 	clearRect := image.Rect(rect.Max.X-clearWidth, rect.Min.Y, rect.Max.X, rect.Min.Y+clearHeight)
 	if clearRect.Empty() {
@@ -1221,7 +1230,8 @@ func (m *mainWindow) layoutHistoryHeader(gtx layout.Context, rect image.Rectangl
 	if m.undo.active {
 		labelColor = mixColor(undoActionColor, undoActionHoverColor, hover)
 	}
-	labelX := clearRect.Min.X
+	groupWidth := clearInk.Dx() + clearGap + iconSize
+	labelX := clearRect.Max.X - groupWidth
 	labelY := clearRect.Min.Y + (clearRect.Dy()-clearInk.Dy())/2
 	m.typo.draw(gtx, clearLabel, clearFace, mainClearSize, labelColor, image.Pt(labelX, labelY))
 	iconCenter := image.Pt(clearRect.Max.X-iconSize/2, clearRect.Min.Y+clearRect.Dy()/2)

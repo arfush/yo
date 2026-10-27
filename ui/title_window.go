@@ -139,6 +139,10 @@ type titleWindow struct {
 	episodes    []widget.Clickable
 	qualities   []widget.Clickable
 
+	voicesPlaced   bool
+	episodesPlaced bool
+	episodeColumns int
+
 	selectedVoice   int
 	selectedEpisode int
 	selectedQuality int
@@ -383,11 +387,32 @@ func (w *titleWindow) stepEpisode(gtx layout.Context, delta int) {
 	for index >= 0 && index < len(w.item.episodes) {
 		if !w.episodeMissing(w.item.episodes[index]) {
 			w.selectedEpisode = index
-			w.episodeList.ScrollTo(index)
+			w.ensureEpisodeVisible()
 			gtx.Execute(op.InvalidateCmd{})
 			return
 		}
 		index += delta
+	}
+}
+
+func (w *titleWindow) ensureEpisodeVisible() {
+	if w.selectedEpisode < 0 {
+		return
+	}
+	row := 0
+	if w.episodeColumns > 0 {
+		row = w.selectedEpisode / w.episodeColumns
+	}
+	position := w.episodeList.Position
+	if position.Count <= 0 || row < position.First || row >= position.First+position.Count {
+		w.episodeList.ScrollTo(row)
+	}
+}
+
+func (w *titleWindow) ensureVoiceVisible() {
+	position := w.voiceList.Position
+	if position.Count <= 0 || w.selectedVoice < position.First || w.selectedVoice >= position.First+position.Count {
+		w.voiceList.ScrollTo(w.selectedVoice)
 	}
 }
 
@@ -407,9 +432,9 @@ func (w *titleWindow) stepVoice(gtx layout.Context, delta int) {
 	}
 	previousEpisode := w.selectedEpisode
 	w.selectVoice(index)
-	w.voiceList.ScrollTo(index)
+	w.ensureVoiceVisible()
 	if w.selectedEpisode != previousEpisode {
-		w.episodeList.ScrollTo(w.selectedEpisode)
+		w.ensureEpisodeVisible()
 	}
 	gtx.Execute(op.InvalidateCmd{})
 }

@@ -28,6 +28,23 @@ func (w *titleWindow) layoutVoices(gtx layout.Context, rect image.Rectangle) {
 	w.voiceList.Gap = gap
 
 	voiceCount := len(w.item.voices)
+	if !w.voicesPlaced {
+		w.voicesPlaced = true
+		stride := rowHeight + gap
+		visible := 1
+		if stride > 0 {
+			visible = max(1, (rect.Dy()+gap)/stride)
+		}
+		first := w.selectedVoice - visible/2
+		maxFirst := max(0, voiceCount-visible)
+		if first < 0 {
+			first = 0
+		}
+		if first > maxFirst {
+			first = maxFirst
+		}
+		w.voiceList.Position = layout.Position{First: first}
+	}
 	tailHeight := gtx.Dp(titlePageVoiceTailSpace)
 	stack := op.Offset(rect.Min).Push(gtx.Ops)
 	lgtx := gtx

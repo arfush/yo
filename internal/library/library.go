@@ -496,20 +496,6 @@ func (l *Library) SetBetaUpdatesEnabled(enabled bool) error {
 	return l.store.SetBetaUpdatesEnabled(enabled)
 }
 
-// DiscordPresenceEnabled reports whether the current episode may be shown in
-// the Discord profile.
-func (l *Library) DiscordPresenceEnabled() bool {
-	if l == nil || l.store == nil {
-		return false
-	}
-	return l.store.DiscordPresenceEnabled()
-}
-
-// SetDiscordPresenceEnabled stores the Discord activity choice.
-func (l *Library) SetDiscordPresenceEnabled(enabled bool) error {
-	return l.store.SetDiscordPresenceEnabled(enabled)
-}
-
 // PartyProvider returns the relay picked for new rooms, or "" when the
 // user never picked one.
 func (l *Library) PartyProvider() string {

@@ -32,6 +32,27 @@ func (w *titleWindow) layoutEpisodes(gtx layout.Context, rect image.Rectangle) {
 	rows := (len(w.episodes) + columns - 1) / columns
 	w.episodeList.Axis = layout.Vertical
 	w.episodeList.Gap = gap
+	w.episodeColumns = columns
+
+	if !w.episodesPlaced {
+		w.episodesPlaced = true
+		stride := rowHeight + gap
+		visible := 1
+		if stride > 0 {
+			visible = max(1, (rect.Dy()+gap)/stride)
+		}
+		first := 0
+		if w.selectedEpisode >= 0 {
+			first = w.selectedEpisode / columns
+		}
+		if first+visible > rows {
+			first = rows - visible
+		}
+		if first < 0 {
+			first = 0
+		}
+		w.episodeList.Position = layout.Position{First: first}
+	}
 
 	stack := op.Offset(rect.Min).Push(gtx.Ops)
 	lgtx := gtx
