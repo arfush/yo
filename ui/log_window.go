@@ -35,10 +35,8 @@ const (
 	logToolbarGap       = unit.Dp(11)
 	logToolbarButtonGap = unit.Dp(8)
 	logFilterWidth      = unit.Dp(124)
-	logPauseWidth       = unit.Dp(86)
-	logPauseWideWidth   = unit.Dp(118)
-	logClearWidth       = unit.Dp(98)
 	logAutoWidth        = unit.Dp(30)
+	logToolbarIconWidth = unit.Dp(30)
 	logToolbarPadX      = unit.Dp(10)
 	logToolbarIconSize  = unit.Dp(18)
 	logToolbarIconGap   = unit.Dp(8)
@@ -74,6 +72,9 @@ var (
 	logTableBorder = color.NRGBA{R: 0x2c, G: 0x28, B: 0x3b, A: 0xff}
 
 	logMessageColor = color.NRGBA{R: 0xf1, G: 0xef, B: 0xf8, A: 0xff}
+	logErrorRowFill = color.NRGBA{R: 0x26, G: 0x17, B: 0x1b, A: 0xff}
+	logWarnRowFill  = color.NRGBA{R: 0x24, G: 0x20, B: 0x15, A: 0xff}
+	logErrorRowBar  = color.NRGBA{R: 0xec, G: 0x96, B: 0xa1, A: 0xff}
 	logDetailText   = color.NRGBA{R: 0xb9, G: 0xb3, B: 0xc6, A: 0xff}
 	logMetaText     = color.NRGBA{R: 0xa8, G: 0xa2, B: 0xb8, A: 0xff}
 	logSourceText   = color.NRGBA{R: 0xb0, G: 0xa9, B: 0xbd, A: 0xff}
@@ -194,11 +195,8 @@ func (w *logWindow) layout(gtx layout.Context) {
 	toolbarHeight := gtx.Dp(logToolbarHeight)
 	toolbar := image.Rect(inner.Min.X, inner.Min.Y, inner.Max.X, inner.Min.Y+toolbarHeight)
 	gap := gtx.Dp(logToolbarButtonGap)
-	clearWidth := gtx.Dp(logClearWidth)
-	pauseWidth := gtx.Dp(logPauseWidth)
-	if w.paused {
-		pauseWidth = gtx.Dp(logPauseWideWidth)
-	}
+	clearWidth := gtx.Dp(logToolbarIconWidth)
+	pauseWidth := gtx.Dp(logToolbarIconWidth)
 	autoWidth := gtx.Dp(logAutoWidth)
 	filterWidth := gtx.Dp(logFilterWidth)
 	clearRect := image.Rect(inner.Max.X-clearWidth, toolbar.Min.Y, inner.Max.X, toolbar.Max.Y)
@@ -224,18 +222,18 @@ func (w *logWindow) layout(gtx layout.Context) {
 		gtx.Execute(op.InvalidateCmd{})
 	}
 
-	pauseLabel := "Пауза"
-	pauseIcon := "pause"
+	// Pause and clear are icon-only. The pause button shades the same way as
+	// autoscroll: grey while the log feeds, purple while it is held.
+	pauseCol := logInfoText
 	if w.paused {
-		pauseLabel = "Продолжить"
-		pauseIcon = "play"
+		pauseCol = logAccent
 	}
-	if w.layoutToolbarButton(gtx, pauseRect, &w.pauseClick, &w.pauseHover, pauseIcon, pauseLabel, logAccent) {
+	if w.layoutLogIconButton(gtx, pauseRect, &w.pauseClick, &w.pauseHover, "pause", pauseCol) {
 		w.togglePause()
 		gtx.Execute(key.FocusCmd{Tag: nil})
 		gtx.Execute(op.InvalidateCmd{})
 	}
-	if w.layoutToolbarButton(gtx, clearRect, &w.clearClick, &w.clearHover, "trash", "Очистить", logAccent) {
+	if w.layoutLogIconButton(gtx, clearRect, &w.clearClick, &w.clearHover, "trash", logInfoText) {
 		w.clearEntries()
 		gtx.Execute(key.FocusCmd{Tag: nil})
 		gtx.Execute(op.InvalidateCmd{})
@@ -512,7 +510,7 @@ func (w *logWindow) layoutFilterButton(gtx layout.Context, rect image.Rectangle)
 	return clicked
 }
 
-func (w *logWindow) layoutToolbarButton(gtx layout.Context, rect image.Rectangle, click *widget.Clickable, hover *hoverAnim, icon, label string, iconColor color.NRGBA) bool {
+func (w *logWindow) layoutLogIconButton(gtx layout.Context, rect image.Rectangle, click *widget.Clickable, hover *hoverAnim, icon string, col color.NRGBA) bool {
 	if rect.Empty() {
 		return false
 	}
@@ -527,22 +525,8 @@ func (w *logWindow) layoutToolbarButton(gtx layout.Context, rect image.Rectangle
 	fillRounded(gtx, fill, local.Inset(max(1, gtx.Dp(1))), max(0, radius-gtx.Dp(1)))
 
 	iconSize := gtx.Dp(logToolbarIconSize)
-	iconCenter := image.Pt(gtx.Dp(logToolbarPadX)+iconSize/2, local.Dy()/2)
-	drawAppIcon(gtx, icon, iconCenter, iconSize, iconColor)
-	textX := iconCenter.X + iconSize/2 + gtx.Dp(logToolbarIconGap)
-	textWidth := local.Max.X - textX - gtx.Dp(logToolbarPadX)
-	drawLogText(
-		gtx,
-		w.typo,
-		label,
-		font.Font{Typeface: fontFamily, Weight: font.Medium},
-		logToolbarTextSize,
-		logToolbarText,
-		textX,
-		local.Dy()/2,
-		textWidth,
-		logCapHeightFor(gtx, w.typo, font.Font{Typeface: fontFamily, Weight: font.Medium}, logToolbarTextSize),
-	)
+	col = mixColor(col, logToolbarText, progress*0.4)
+	drawAppIcon(gtx, icon, centerOf(local), iconSize, col)
 
 	click.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		pointer.CursorPointer.Add(gtx.Ops)

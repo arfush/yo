@@ -93,18 +93,39 @@ func (w *logWindow) layoutLine(gtx layout.Context, entry applog.Entry, width, ro
 	rowRect := image.Rect(0, 0, width, rowHeight)
 	centerY := rowHeight / 2
 	hovered := state.click.Hovered()
+	// The meta cells stay pinned to the first text line: an expanded row must
+	// not move its time/level/source away from the neighbouring rows.
+	metaY := centerY
+	if state.expanded {
+		metaY = padY + lineHeight/2
+	}
 
 	state.click.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		if expandable || state.expanded {
 			pointer.CursorPointer.Add(gtx.Ops)
 		}
+		rowFill := logRowFill
+		if index%2 == 1 {
+			rowFill = logRowAlt
+		}
+		switch entry.Level {
+		case slog.LevelError:
+			rowFill = logErrorRowFill
+		case slog.LevelWarn:
+			rowFill = logWarnRowFill
+		}
 		switch {
 		case state.expanded:
-			fill(gtx, logRowExpanded, rowRect)
+			rowFill = logRowExpanded
 		case hovered && expandable:
-			fill(gtx, logRowHover, rowRect)
-		case index%2 == 1:
-			fill(gtx, logRowAlt, rowRect)
+			rowFill = logRowHover
+		}
+		fill(gtx, rowFill, rowRect)
+		// Error rows keep a red accent on the left edge so the highlight reads
+		// even for a row whose level column is scrolled away.
+		if entry.Level >= slog.LevelError {
+			barWidth := max(1, gtx.Dp(unit.Dp(3)))
+			fill(gtx, logErrorRowBar, image.Rect(0, 0, barWidth, rowHeight))
 		}
 		// The divider is intentionally stronger than the fills: with softer
 		// hover colours the rows still need a visible boundary.
@@ -113,9 +134,9 @@ func (w *logWindow) layoutLine(gtx layout.Context, entry applog.Entry, width, ro
 		capHeight := logCapHeight(gtx, w.typo)
 		levelColor := logLevelColor(entry.Level)
 
-		drawLogText(gtx, w.typo, logTimeLabel(entry.Time), logFace, logMetaSize, logMetaText, cols.timeX, centerY, cols.timeWidth, capHeight)
-		drawLogText(gtx, w.typo, applog.LevelLabel(entry.Level), logFace, logLevelSize, levelColor, cols.levelX, centerY, cols.levelWidth, capHeight)
-		drawLogText(gtx, w.typo, entry.Source, logFace, logMetaSize, logSourceText, cols.sourceX, centerY, cols.sourceWidth, capHeight)
+		drawLogText(gtx, w.typo, logTimeLabel(entry.Time), logFace, logMetaSize, logMetaText, cols.timeX, metaY, cols.timeWidth, capHeight)
+		drawLogText(gtx, w.typo, applog.LevelLabel(entry.Level), logFace, logLevelSize, levelColor, cols.levelX, metaY, cols.levelWidth, capHeight)
+		drawLogText(gtx, w.typo, entry.Source, logFace, logMetaSize, logSourceText, cols.sourceX, metaY, cols.sourceWidth, capHeight)
 
 		if state.expanded {
 			messageLines := wrapLogText(gtx, w.typo, entry.Message, logFace, logLineSize, cols.messageWidth)
