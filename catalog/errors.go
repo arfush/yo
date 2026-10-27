@@ -3,8 +3,8 @@ package catalog
 import "errors"
 
 // Sentinels shared across the application layers. Feature packages return these
-// errors instead of raw network or database messages so screens and the
-// friendlyError mapper can recognise them without importing a client.
+// errors instead of raw network or database messages so screens can map them at
+// the UI boundary without importing a client.
 var (
 	// ErrRateLimited means the shared AnimeLIB rate-limit window is still
 	// cooling down, and the request was parked instead of sent.
