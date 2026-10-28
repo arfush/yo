@@ -1203,14 +1203,14 @@ func (a *application) startPlaybackNotify(title library.Title, voice, episode st
 	window := playback.WindowRect{}
 	// mpv reopens where the user parked it last time; only a fresh install or
 	// a missing record falls back to the application window rectangle.
-	if a.mpvRectOK && a.mpvRect.Width > 0 && a.mpvRect.Height > 0 {
+	if a.mpvRectOK && rectOnScreen(a.mpvRect) {
 		window = playback.WindowRect{
 			X:      a.mpvRect.X,
 			Y:      a.mpvRect.Y,
 			Width:  a.mpvRect.Width,
 			Height: a.mpvRect.Height,
 		}
-	} else if rect, ok := appWindowRect(); ok {
+	} else if rect, ok := appWindowRect(); ok && rectOnScreen(rect) {
 		window = playback.WindowRect{
 			X:      rect.X,
 			Y:      rect.Y,

@@ -131,7 +131,7 @@ func (a *application) persistWindowRects(now time.Time) {
 		return
 	}
 	if !a.windowHidden() && now.Sub(a.appRectAt) >= time.Second {
-		if rect, ok := appWindowRect(); ok && rect != a.appRectCur {
+		if rect, ok := appWindowRect(); ok && rectOnScreen(rect) && rect != a.appRectCur {
 			a.appRectCur = rect
 			a.appRectAt = now
 			_ = a.library.SetSetting("window_rect", encodeRect(rect))
@@ -143,7 +143,7 @@ func (a *application) persistWindowRects(now time.Time) {
 	}
 	if rect, ok := session.MpvWindowRect(); ok {
 		converted := windowRect{X: rect.Min.X, Y: rect.Min.Y, Width: rect.Dx(), Height: rect.Dy()}
-		if !a.mpvRectOK || converted != a.mpvRect {
+		if rectOnScreen(converted) && (!a.mpvRectOK || converted != a.mpvRect) {
 			a.mpvRect = converted
 			a.mpvRectOK = true
 			a.mpvRectAt = now

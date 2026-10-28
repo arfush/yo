@@ -35,6 +35,10 @@ type Rect struct {
 
 func AppWindowRect() (Rect, bool) { return Rect{}, false }
 
+// OnScreen has no real screen concept outside Windows; nothing stored on those
+// platforms is relied on, and AppWindowRect reports missing anyway.
+func OnScreen(Rect) bool { return false }
+
 func Remember(Rect) {}
 
 func Hide() {}

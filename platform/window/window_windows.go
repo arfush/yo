@@ -39,6 +39,7 @@ var (
 	procSetForegroundWindow          = user32.NewProc("SetForegroundWindow")
 	procIsIconic                     = user32.NewProc("IsIconic")
 	procSetWindowPos                 = user32.NewProc("SetWindowPos")
+	procGetSystemMetrics             = user32.NewProc("GetSystemMetrics")
 )
 
 var (
@@ -54,6 +55,23 @@ const (
 	swpNoZOrder       = 0x0004
 	swpNoActivate     = 0x0010
 	swpAsyncWindowPos = 0x4000
+)
+
+// GetSystemMetrics indexes for the virtual-screen rectangle that spans every
+// monitor in physical pixels. When a monitor sits to the left of or above the
+// primary one its origin is negative.
+const (
+	smXvirtualscreen  = 76
+	smYvirtualscreen  = 77
+	smCxvirtualscreen = 78
+	smCyvirtualscreen = 79
+
+	// minVisiblePixels is the smallest overlap with the virtual screen that
+	// still counts as reachable. Windows parks minimized windows at
+	// (-32000,-32000), and stale rows can point at monitors that are no longer
+	// attached; neither may ever be restored or stored. A window that merely
+	// sticks out of the edge of a real monitor keeps its spot.
+	minVisiblePixels = 64
 )
 
 const vkLeftButton = 0x01
@@ -201,6 +219,33 @@ type Rect struct {
 	Height int
 }
 
+func metric(index int32) int {
+	value, _, _ := procGetSystemMetrics.Call(uintptr(index))
+	return int(int32(value))
+}
+
+// VirtualScreen returns the bounding rectangle of all monitors in physical
+// pixels: the union of every display, including ones left of or above the
+// primary one.
+func VirtualScreen() (x, y, width, height int) {
+	return metric(smXvirtualscreen), metric(smYvirtualscreen), metric(smCxvirtualscreen), metric(smCyvirtualscreen)
+}
+
+// OnScreen reports whether rect overlaps the virtual screen enough to be
+// reachable by the user. Windows reports minimized windows at
+// (-32000,-32000), and a settings row can point at a monitor that has been
+// unplugged since; both would park the window where nobody can see it.
+func OnScreen(rect Rect) bool {
+	if rect.Width <= 0 || rect.Height <= 0 {
+		return false
+	}
+	left := max(rect.X, metric(smXvirtualscreen))
+	top := max(rect.Y, metric(smYvirtualscreen))
+	right := min(rect.X+rect.Width, metric(smXvirtualscreen)+metric(smCxvirtualscreen))
+	bottom := min(rect.Y+rect.Height, metric(smYvirtualscreen)+metric(smCyvirtualscreen))
+	return right-left >= minVisiblePixels && bottom-top >= minVisiblePixels
+}
+
 // AppWindowRect returns the physical window rectangle. mpv's --geometry uses
 // physical pixels, so this deliberately skips the DIP conversion used for
 // Chromium.
@@ -255,12 +300,12 @@ func takeRememberedWindowRect() (Rect, bool) {
 // inactive, so the first launch does not steal focus from itself. It must run
 // off the UI goroutine; see HandleViewEvent.
 func setAppWindowRect(hwnd windows.HWND, rect Rect) {
-	if rect.Width <= 0 || rect.Height <= 0 {
+	// A stale row (unplugged monitor) or the (-32000,-32000) minimized
+	// position must not park the window off-screen; the default placement of
+	// the freshly created window is always reachable.
+	if !OnScreen(rect) {
 		return
 	}
-	// GetSystemMetrics virtual screen bounds would need another DLL import;
-	// a basic guard keeps the window within the primary monitor instead of
-	// letting a stale row push it off-screen.
 	_, _, _ = procSetWindowPos.Call(
 		uintptr(hwnd),
 		0,

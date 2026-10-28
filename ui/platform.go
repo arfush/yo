@@ -30,6 +30,11 @@ func appWindowBounds(scale float64) (catalog.Bounds, bool) {
 
 func appWindowRect() (windowRect, bool) { return platformwindow.AppWindowRect() }
 
+// rectOnScreen reports whether a stored rectangle still lands on a reachable
+// spot of the virtual screen: the (-32000,-32000) minimized position and rows
+// pointing at unplugged monitors must never be stored or restored.
+func rectOnScreen(rect windowRect) bool { return platformwindow.OnScreen(rect) }
+
 func rememberAppWindowRect(rect windowRect) { platformwindow.Remember(rect) }
 
 func hideAppWindow() { platformwindow.Hide() }
