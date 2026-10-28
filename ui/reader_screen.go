@@ -1026,8 +1026,15 @@ func (r *readerScreen) layoutSidebar(gtx layout.Context, rect image.Rectangle) {
 	_, ink := r.typo.measure(gtx, titleText, face, unit.Sp(15))
 	if ink.Dy() > 0 {
 		r.typo.draw(gtx, titleText, face, unit.Sp(15), readerTitleColor, image.Pt(pad, top))
-		top += ink.Dy() + gtx.Dp(unit.Dp(4))
+		top += ink.Dy() + gtx.Dp(unit.Dp(12))
 	}
+
+	// Search field. The concept puts the chapter filter right under the title,
+	// above the chapter count and the translation selector.
+	searchHeight := gtx.Dp(readerSearchHeight)
+	searchRect := image.Rect(pad, top, pad+width, top+searchHeight)
+	r.layoutSearchField(gtx, searchRect)
+	top += searchHeight + gtx.Dp(unit.Dp(6))
 
 	// Chapter counter caption.
 	medium := font.Font{Typeface: fontFamily, Weight: font.Medium}
@@ -1050,12 +1057,6 @@ func (r *readerScreen) layoutSidebar(gtx layout.Context, rect image.Rectangle) {
 		gtx.Execute(op.InvalidateCmd{})
 	}
 	top += controlHeight + gtx.Dp(unit.Dp(8))
-
-	// Search field.
-	searchHeight := gtx.Dp(readerSearchHeight)
-	searchRect := image.Rect(pad, top, pad+width, top+searchHeight)
-	r.layoutSearchField(gtx, searchRect)
-	top += searchHeight + gtx.Dp(unit.Dp(6))
 
 	// Chapter list.
 	listRect := image.Rect(pad, top, pad+width, local.Dy()-pad)
