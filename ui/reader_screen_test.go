@@ -102,6 +102,35 @@ func TestReaderIntroEndIndexStopsAtFirstSeparator(t *testing.T) {
 	}
 }
 
+func TestBuildRanobeRowsInterleavesIllustrations(t *testing.T) {
+	images := []catalog.ReadingImage{
+		{URL: "first", After: 2},
+		{URL: "opening", After: 0},
+		{URL: "tail", After: 9},
+	}
+	rows := buildRanobeRows(4, images)
+	// Images are sorted by position: "opening" (index 0 after sorting) before
+	// paragraph 0, "first" between paragraphs 1 and 2, "tail" after the last
+	// paragraph.
+	want := []readerRanobeRow{
+		{image: true, index: 0},
+		{index: 0},
+		{index: 1},
+		{image: true, index: 1},
+		{index: 2},
+		{index: 3},
+		{image: true, index: 2},
+	}
+	if len(rows) != len(want) {
+		t.Fatalf("rows = %#v, want %#v", rows, want)
+	}
+	for i := range want {
+		if rows[i] != want[i] {
+			t.Fatalf("row %d = %+v, want %+v", i, rows[i], want[i])
+		}
+	}
+}
+
 func TestFitPageWidthKeepsTallStripsAtColumnWidth(t *testing.T) {
 	column := 608
 	viewport := 491

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -200,6 +201,7 @@ type ReadingChapterContent struct {
 	Pages      []ReadingPage
 	RawContent string
 	Paragraphs []string
+	Images     []ReadingImage
 }
 
 // ReadingPage is one scanned page returned by the chapter endpoint.
@@ -208,6 +210,13 @@ type ReadingPage struct {
 	Width  int
 	Height int
 	Ratio  string
+}
+
+// ReadingImage is one ranobe illustration placed after the given number of
+// text paragraphs (see catalog.ReadingImage).
+type ReadingImage struct {
+	URL   string
+	After int
 }
 
 type readingMetaResponse struct {
@@ -276,36 +285,45 @@ type readingChapterResponse struct {
 type readingRichNode struct {
 	Type    string            `json:"type"`
 	Text    string            `json:"text"`
+	Attrs   readingNodeAttrs  `json:"attrs"`
 	Content []readingRichNode `json:"content"`
 }
 
+// readingNodeAttrs carries the attributes the reader cares about: the image
+// source of illustration nodes.
+type readingNodeAttrs struct {
+	Src string `json:"src"`
+}
+
 // parseReadingContent returns HTML for the legacy string shape and plain
-// paragraphs for the ProseMirror object shape.
-func parseReadingContent(raw json.RawMessage) (string, []string) {
+// paragraphs for the ProseMirror object shape, together with the illustrations
+// found in either shape.
+func parseReadingContent(raw json.RawMessage, siteID int) (string, []string, []ReadingImage) {
 	raw = bytes.TrimSpace(raw)
 	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
-		return "", nil
+		return "", nil, nil
 	}
 	if raw[0] == '"' {
 		var html string
 		if err := json.Unmarshal(raw, &html); err == nil {
-			return html, nil
+			return html, nil, extractHTMLImages(html, siteID)
 		}
-		return "", nil
+		return "", nil, nil
 	}
 	if raw[0] != '{' && raw[0] != '[' {
-		return "", nil
+		return "", nil, nil
 	}
 	var node readingRichNode
 	if err := json.Unmarshal(raw, &node); err != nil {
-		return "", nil
+		return "", nil, nil
 	}
 	paragraphs := make([]string, 0, 32)
-	collectReadingBlocks(node, &paragraphs)
-	return "", paragraphs
+	images := make([]ReadingImage, 0, 8)
+	collectReadingBlocks(node, &paragraphs, &images, siteID)
+	return "", paragraphs, images
 }
 
-func collectReadingBlocks(node readingRichNode, out *[]string) {
+func collectReadingBlocks(node readingRichNode, out *[]string, images *[]ReadingImage, siteID int) {
 	switch node.Type {
 	case "paragraph", "heading", "codeBlock":
 		if text := strings.TrimSpace(readingRichText(node)); text != "" {
@@ -313,14 +331,24 @@ func collectReadingBlocks(node readingRichNode, out *[]string) {
 		}
 	case "bulletList", "orderedList", "blockquote", "listItem":
 		for _, child := range node.Content {
-			collectReadingBlocks(child, out)
+			collectReadingBlocks(child, out, images, siteID)
 		}
-	case "text", "hardBreak", "horizontalRule", "image":
-		// Top-level text nodes are unusual; paragraph and list handling below
-		// covers normal documents.
+	case "image":
+		// Illustrations keep their place in the document: the picture belongs
+		// after the paragraphs collected so far.
+		if src := strings.TrimSpace(node.Attrs.Src); src != "" {
+			*images = append(*images, ReadingImage{
+				URL:   NormalizeReadingImageURL(src, siteID),
+				After: len(*out),
+			})
+		}
+	case "horizontalRule":
+		// The horizontal rule is the "***" scene separator of the printed
+		// edition; the reader paints it as a faint centred line.
+		*out = append(*out, "***")
 	default:
 		for _, child := range node.Content {
-			collectReadingBlocks(child, out)
+			collectReadingBlocks(child, out, images, siteID)
 		}
 	}
 }
@@ -342,6 +370,72 @@ func readingRichText(node readingRichNode) string {
 	}
 	walk(node)
 	return builder.String()
+}
+
+// readingImageTagPattern matches an <img> element. The src attribute alone is
+// not enough: some editors emit lazy-loaded pictures where the real address
+// lives in data-src.
+var (
+	readingImageTagPattern  = regexp.MustCompile(`(?is)<img\b[^>]*\bsrc\s*=\s*("([^"]*)"|'([^']*)')`)
+	readingImageLazyPattern = regexp.MustCompile(`(?is)<img\b[^>]*\bdata-src\s*=\s*("([^"]*)"|'([^']*)')`)
+	// readingParagraphOpenPattern and readingParagraphBreakPattern mirror the
+	// boundaries of library.parseRanobeParagraphs, so the picture positions
+	// line up with the paragraph list the reader displays.
+	readingParagraphOpenPattern  = regexp.MustCompile(`(?is)<p\b[^>]*>`)
+	readingParagraphBreakPattern = regexp.MustCompile(`(?is)</(?:p|div)\b[^>]*>|<br\s*/?>`)
+)
+
+// extractHTMLImages pulls the illustrations out of a legacy HTML chapter in
+// document order. After counts the text paragraphs that precede each picture,
+// using the same boundaries parseRanobeParagraphs relies on: <p> elements when
+// the chapter has them, </div>/</p>/<br> otherwise.
+func extractHTMLImages(html string, siteID int) []ReadingImage {
+	starts := readingParagraphOpenPattern.FindAllStringSubmatchIndex(html, -1)
+	boundaries := starts
+	if len(starts) == 0 {
+		boundaries = readingParagraphBreakPattern.FindAllStringSubmatchIndex(html, -1)
+	}
+	var images []ReadingImage
+	seen := make(map[string]bool)
+	emit := func(src string, pos int) {
+		src = strings.TrimSpace(src)
+		if src == "" || strings.HasPrefix(src, "data:") || seen[src] {
+			return
+		}
+		after := 0
+		for _, start := range boundaries {
+			if start[0] >= pos {
+				break
+			}
+			after++
+		}
+		seen[src] = true
+		images = append(images, ReadingImage{
+			URL:   NormalizeReadingImageURL(src, siteID),
+			After: after,
+		})
+	}
+	for _, match := range readingImageTagPattern.FindAllStringSubmatchIndex(html, -1) {
+		emit(imgAttrValue(html, match), match[0])
+	}
+	for _, match := range readingImageLazyPattern.FindAllStringSubmatchIndex(html, -1) {
+		emit(imgAttrValue(html, match), match[0])
+	}
+	return images
+}
+
+// imgAttrValue returns the captured attribute from an img regex match; the
+// pattern captures both quote styles, so exactly one group is non-empty.
+// Groups are: 1 = the quoted span, 2 = double-quoted content, 3 = single-quoted
+// content.
+func imgAttrValue(html string, match []int) string {
+	if match[4] >= 0 {
+		return html[match[4]:match[5]]
+	}
+	if match[6] >= 0 {
+		return html[match[6]:match[7]]
+	}
+	return ""
 }
 
 // flexString accepts strings and numbers. LibSocial occasionally changes
@@ -475,7 +569,7 @@ func (c *Client) FetchReadingChapter(ctx context.Context, slug string, siteID in
 		return nil, fmt.Errorf("invalid chapter response: %w", err)
 	}
 	data := response.Data
-	rawContent, paragraphs := parseReadingContent(data.Content)
+	rawContent, paragraphs, images := parseReadingContent(data.Content, siteID)
 	content := &ReadingChapterContent{
 		ID:         data.ID,
 		Volume:     string(data.Volume),
@@ -483,6 +577,7 @@ func (c *Client) FetchReadingChapter(ctx context.Context, slug string, siteID in
 		Name:       data.Name,
 		RawContent: rawContent,
 		Paragraphs: paragraphs,
+		Images:     images,
 	}
 	content.Pages = make([]ReadingPage, 0, len(data.Pages))
 	for _, page := range data.Pages {

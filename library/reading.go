@@ -312,7 +312,14 @@ func (l *Library) ReadChapter(ctx context.Context, title Title, translation, key
 	} else if strings.TrimSpace(data.RawContent) != "" {
 		content.Paragraphs = parseRanobeParagraphs(data.RawContent)
 	}
-	logger.Info("reading chapter loaded", "slug", title.Slug, "chapter", key, "translation", translation, "pages", len(content.Pages), "paragraphs", len(content.Paragraphs))
+	content.Images = make([]catalog.ReadingImage, 0, len(data.Images))
+	for _, image := range data.Images {
+		content.Images = append(content.Images, catalog.ReadingImage{
+			URL:   image.URL,
+			After: image.After,
+		})
+	}
+	logger.Info("reading chapter loaded", "slug", title.Slug, "chapter", key, "translation", translation, "pages", len(content.Pages), "paragraphs", len(content.Paragraphs), "images", len(content.Images))
 	return content, nil
 }
 

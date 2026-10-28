@@ -79,7 +79,7 @@ func TestNormalizeReadingImageURL(t *testing.T) {
 }
 
 func TestParseReadingContentProseMirror(t *testing.T) {
-	raw := []byte(`{"data":{"content":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Первый абзац."}]},{"type":"paragraph","content":[{"type":"text","text":"Второй"},{"type":"hardBreak"},{"type":"text","text":"абзац."}]},{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Пункт списка."}]}]}]}]}}}`)
+	raw := []byte(`{"data":{"content":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Первый абзац."}]},{"type":"image","attrs":{"src":"/uploads/1.jpg"}},{"type":"paragraph","content":[{"type":"text","text":"Второй"},{"type":"hardBreak"},{"type":"text","text":"абзац."}]},{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Пункт списка."}]}]}]},{"type":"horizontalRule"}]}}}`)
 	var response struct {
 		Data struct {
 			Content json.RawMessage `json:"content"`
@@ -88,11 +88,11 @@ func TestParseReadingContentProseMirror(t *testing.T) {
 	if err := json.Unmarshal(raw, &response); err != nil {
 		t.Fatal(err)
 	}
-	html, paragraphs := parseReadingContent(response.Data.Content)
+	html, paragraphs, images := parseReadingContent(response.Data.Content, SiteRanobeLib)
 	if html != "" {
 		t.Fatalf("html = %q, want empty", html)
 	}
-	want := []string{"Первый абзац.", "Второй\nабзац.", "Пункт списка."}
+	want := []string{"Первый абзац.", "Второй\nабзац.", "Пункт списка.", "***"}
 	if len(paragraphs) != len(want) {
 		t.Fatalf("paragraphs = %#v, want %#v", paragraphs, want)
 	}
@@ -101,12 +101,51 @@ func TestParseReadingContentProseMirror(t *testing.T) {
 			t.Fatalf("paragraph %d = %q, want %q", i, paragraphs[i], want[i])
 		}
 	}
+	// The picture sits directly after the first paragraph, the horizontal
+	// rule became the "***" separator.
+	if len(images) != 1 {
+		t.Fatalf("images = %#v, want one illustration", images)
+	}
+	if images[0].After != 1 || images[0].URL != "https://img3.cdnlibs.org/uploads/1.jpg" {
+		t.Fatalf("image = %+v, want URL https://img3.cdnlibs.org/uploads/1.jpg after paragraph 1", images[0])
+	}
 }
 
 func TestParseReadingContentHTMLString(t *testing.T) {
-	html, paragraphs := parseReadingContent(json.RawMessage(`"<p>Текст</p>"`))
+	html, paragraphs, images := parseReadingContent(json.RawMessage(`"<p>Текст</p>"`), SiteRanobeLib)
 	if html != "<p>Текст</p>" || len(paragraphs) != 0 {
 		t.Fatalf("html = %q, paragraphs = %#v", html, paragraphs)
+	}
+	if len(images) != 0 {
+		t.Fatalf("images = %#v, want none", images)
+	}
+}
+
+func TestParseReadingContentHTMLExtractsIllustrations(t *testing.T) {
+	raw := json.RawMessage(`"<p>Абзац один</p><p>Абзац два</p><img src=\"/uploads/1.jpg\"><p>Абзац три</p><img data-src=\"//cdn.test/2.jpg\"><img src=\"data:image/gif;base64,AAA\">"`)
+	html, _, images := parseReadingContent(raw, SiteRanobeLib)
+	if html == "" {
+		t.Fatal("html must be kept for the library paragraph parser")
+	}
+	want := []ReadingImage{
+		{URL: "https://img3.cdnlibs.org/uploads/1.jpg", After: 2},
+		{URL: "https://cdn.test/2.jpg", After: 3},
+	}
+	if len(images) != len(want) {
+		t.Fatalf("images = %#v, want %#v", images, want)
+	}
+	for i := range want {
+		if images[i] != want[i] {
+			t.Fatalf("image %d = %+v, want %+v", i, images[i], want[i])
+		}
+	}
+}
+
+func TestParseReadingContentHTMLTracksParagraphCountWithoutPTags(t *testing.T) {
+	raw := json.RawMessage(`"<div>Строка</div><div><img src=\"/a.jpg\"></div><div>Ещё</div>"`)
+	_, _, images := parseReadingContent(raw, SiteRanobeLib)
+	if len(images) != 1 || images[0].After != 1 {
+		t.Fatalf("images = %#v, want one picture after the first div", images)
 	}
 }
 

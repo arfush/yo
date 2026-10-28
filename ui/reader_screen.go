@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	stddraw "image/draw"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -87,6 +88,28 @@ func introEndIndex(paragraphs []string) int {
 	return len(paragraphs)
 }
 
+// buildRanobeRows interleaves the text paragraphs and the illustrations into
+// the row list the reader paints. Every picture lands after the paragraphs
+// that precede it in the document.
+func buildRanobeRows(paragraphs int, images []catalog.ReadingImage) []readerRanobeRow {
+	if len(images) > 1 {
+		sort.SliceStable(images, func(i, j int) bool { return images[i].After < images[j].After })
+	}
+	rows := make([]readerRanobeRow, 0, paragraphs+len(images))
+	cursor := 0
+	for index := 0; index < paragraphs; index++ {
+		for cursor < len(images) && images[cursor].After <= index {
+			rows = append(rows, readerRanobeRow{image: true, index: cursor})
+			cursor++
+		}
+		rows = append(rows, readerRanobeRow{index: index})
+	}
+	for ; cursor < len(images); cursor++ {
+		rows = append(rows, readerRanobeRow{image: true, index: cursor})
+	}
+	return rows
+}
+
 // fitPageWidth narrows a page so its full height fits the viewport when the
 // aspect allows it. Very tall webtoon strips keep the column width: shrinking
 // them to a sliver would not make them readable.
@@ -134,6 +157,33 @@ type readerChapterResult struct {
 	key     string
 	content catalog.ReadingContent
 	err     error
+}
+
+// readerIllustration is one ranobe picture in the current chapter, mirroring
+// the lazy page state of the manga reader.
+type readerIllustration struct {
+	url     string
+	img     image.Image
+	chunks  []image.Image
+	width   int
+	height  int
+	loading bool
+	failed  bool
+}
+
+type readerIllustrationResult struct {
+	generation int
+	index      int
+	img        image.Image
+	err        error
+}
+
+// readerRanobeRow is one row of the ranobe list: either a text paragraph or an
+// illustration. For text rows index addresses content.Paragraphs, for image
+// rows it addresses the illustrations slice.
+type readerRanobeRow struct {
+	image bool
+	index int
 }
 
 // readerMangaRow is one virtualised list row. Tall scans are split into
@@ -193,6 +243,10 @@ type readerScreen struct {
 	mangaRowsDirty bool
 	mangaList      layout.List
 	ranobeList     layout.List
+	// illustrations holds the ranobe pictures of the current chapter; the
+	// results channel and generation guard mirror the manga page machinery.
+	illustrations       []readerIllustration
+	illustrationResults chan readerIllustrationResult
 	// mangaVisRows and ranobeVisRows are the number of document rows the last
 	// visible layout drew; Space/PageUp/PageDown page by nearly that amount.
 	mangaVisRows  int
@@ -214,18 +268,19 @@ type readerScreen struct {
 func newReaderScreen(typo *typography, item historyTitle, source readerSource) *readerScreen {
 	contentCtx, contentCancel := context.WithCancel(context.Background())
 	r := &readerScreen{
-		typo:           typo,
-		item:           item,
-		source:         source,
-		section:        item.section(),
-		chapterResults: make(chan readerChapterResult, 32),
-		chapterCache:   make(map[string]catalog.ReadingContent),
-		chapterPending: make(map[string]bool),
-		contentCtx:     contentCtx,
-		contentCancel:  contentCancel,
-		imageResults:   make(chan readerImageResult, 32),
-		imageSem:       make(chan struct{}, 3),
-		chapterSem:     make(chan struct{}, chapterFetchConcurrency),
+		typo:                typo,
+		item:                item,
+		source:              source,
+		section:             item.section(),
+		chapterResults:      make(chan readerChapterResult, 32),
+		chapterCache:        make(map[string]catalog.ReadingContent),
+		chapterPending:      make(map[string]bool),
+		contentCtx:          contentCtx,
+		contentCancel:       contentCancel,
+		imageResults:        make(chan readerImageResult, 32),
+		imageSem:            make(chan struct{}, 3),
+		chapterSem:          make(chan struct{}, chapterFetchConcurrency),
+		illustrationResults: make(chan readerIllustrationResult, 32),
 	}
 	r.trackedID.Store(item.id)
 	r.mangaList.Axis = layout.Vertical
@@ -293,6 +348,9 @@ func (r *readerScreen) loadChapter() {
 	r.cancelImages()
 	for len(r.imageResults) > 0 {
 		<-r.imageResults
+	}
+	for len(r.illustrationResults) > 0 {
+		<-r.illustrationResults
 	}
 
 	voice := r.translationName()
@@ -442,6 +500,10 @@ func (r *readerScreen) applyChapterContent(content catalog.ReadingContent) {
 			height: page.Height,
 		}
 	}
+	r.illustrations = make([]readerIllustration, 0, len(content.Images))
+	for _, image := range content.Images {
+		r.illustrations = append(r.illustrations, readerIllustration{url: image.URL})
+	}
 	r.mangaRowsDirty = true
 	r.mangaList.Position = layout.Position{}
 	r.ranobeList.Position = layout.Position{}
@@ -571,6 +633,62 @@ func (r *readerScreen) downloadPage(index int) {
 	}()
 }
 
+// requestIllustration starts fetching one ranobe picture. The same semaphore
+// bounds the requests as for manga pages.
+func (r *readerScreen) requestIllustration(index int) {
+	generation := r.loadGeneration
+	if r.source == nil || index < 0 || index >= len(r.illustrations) {
+		return
+	}
+	ill := &r.illustrations[index]
+	if ill.loading || ill.img != nil || len(ill.chunks) > 0 {
+		return
+	}
+	ill.loading = true
+	url := ill.url
+	title := r.title
+	go func() {
+		r.imageSem <- struct{}{}
+		defer func() { <-r.imageSem }()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		img, err := r.source.ReadingImage(ctx, title, url)
+		r.illustrationResults <- readerIllustrationResult{generation: generation, index: index, img: img, err: err}
+	}()
+}
+
+// updateIllustrationResults applies finished ranobe pictures, discarding
+// replies that belong to an older chapter.
+func (r *readerScreen) updateIllustrationResults(gtx layout.Context) {
+	for {
+		select {
+		case result := <-r.illustrationResults:
+			if result.generation != r.loadGeneration || result.index < 0 || result.index >= len(r.illustrations) {
+				continue
+			}
+			ill := &r.illustrations[result.index]
+			ill.loading = false
+			if result.err != nil {
+				ill.failed = true
+			} else {
+				if result.img != nil {
+					bounds := result.img.Bounds()
+					ill.width = bounds.Dx()
+					ill.height = bounds.Dy()
+				}
+				ill.chunks = splitReaderImage(result.img, readerMaxTextureSide)
+				ill.img = nil
+				ill.failed = false
+			}
+			if r.animationsRun() {
+				gtx.Execute(op.InvalidateCmd{})
+			}
+		default:
+			return
+		}
+	}
+}
+
 func (r *readerScreen) layout(gtx layout.Context) {
 	if !r.focusCleared {
 		r.focusCleared = true
@@ -578,6 +696,7 @@ func (r *readerScreen) layout(gtx layout.Context) {
 	}
 	r.updateChapterResult(gtx)
 	r.updateImages(gtx)
+	r.updateIllustrationResults(gtx)
 	r.handleReaderKeys(gtx)
 	size := gtx.Constraints.Max
 	if size.X <= 0 || size.Y <= 0 {
@@ -946,16 +1065,17 @@ func splitReaderImage(src image.Image, maxSide int) []image.Image {
 	return chunks
 }
 
-// layoutRanobe renders the paragraphs on a centred column capped at the
-// reading width. Star separators ("***") are centred and faint, the intro
-// block before the first separator keeps the faint colour, and the body uses
-// the soft white with extra leading between lines — exactly like the concept.
+// layoutRanobe renders the paragraphs and illustrations on a centred column
+// capped at the reading width. Star separators ("***") are centred and faint,
+// the intro block before the first separator keeps the faint colour, and the
+// body uses the soft white with extra leading between lines — exactly like the
+// concept.
 func (r *readerScreen) layoutRanobe(gtx layout.Context, rect image.Rectangle) {
 	if rect.Empty() {
 		return
 	}
 	paragraphs := r.content.Paragraphs
-	if len(paragraphs) == 0 {
+	if len(paragraphs) == 0 && len(r.illustrations) == 0 {
 		r.typo.draw(gtx, "В главе нет текста", font.Font{Typeface: fontFamily, Weight: font.Medium}, unit.Sp(13), mainMutedColor, image.Pt(0, gtx.Dp(unit.Dp(12))))
 		return
 	}
@@ -973,18 +1093,23 @@ func (r *readerScreen) layoutRanobe(gtx layout.Context, rect image.Rectangle) {
 	defer stack.Pop()
 	cgtx := gtx
 	cgtx.Constraints = layout.Exact(column.Size())
+	rows := buildRanobeRows(len(paragraphs), r.content.Images)
 	face := font.Font{Typeface: fontFamily, Weight: font.Normal}
 	gap := gtx.Dp(readerParaGap)
 	leading := gtx.Dp(readerTextLeading)
 	starSize := unit.Sp(13)
 	introEnd := introEndIndex(paragraphs)
 	visibleFirst, visibleLast := -1, -1
-	r.ranobeList.Layout(cgtx, len(paragraphs), func(gtx layout.Context, index int) layout.Dimensions {
+	r.ranobeList.Layout(cgtx, len(rows), func(gtx layout.Context, index int) layout.Dimensions {
 		if visibleFirst < 0 {
 			visibleFirst = index
 		}
 		visibleLast = index
-		text := paragraphs[index]
+		row := rows[index]
+		if row.image {
+			return r.layoutIllustrationRow(gtx, row.index, width, rect.Dy())
+		}
+		text := paragraphs[row.index]
 		if strings.TrimSpace(text) == "" {
 			return layout.Dimensions{Size: image.Pt(width, gtx.Dp(unit.Dp(10)))}
 		}
@@ -995,7 +1120,7 @@ func (r *readerScreen) layoutRanobe(gtx layout.Context, rect image.Rectangle) {
 			return layout.Dimensions{Size: image.Pt(width, rowH+gap/2)}
 		}
 		col := readerTextColor
-		if index < introEnd {
+		if row.index < introEnd {
 			col = readerFaintColor
 		}
 		_, ink := r.typo.measureWrappedLines(gtx, text, face, readerTextSize, width, leading)
@@ -1009,4 +1134,60 @@ func (r *readerScreen) layoutRanobe(gtx layout.Context, rect image.Rectangle) {
 	if visibleFirst >= 0 {
 		r.ranobeVisRows = visibleLast - visibleFirst + 1
 	}
+}
+
+// layoutIllustrationRow paints one ranobe picture: it is fetched lazily like a
+// manga page, narrowed when the full height does not fit the viewport, and the
+// texture chunks are stacked to keep the GPU uploads bounded.
+func (r *readerScreen) layoutIllustrationRow(gtx layout.Context, index, columnWidth, viewportHeight int) layout.Dimensions {
+	ill := &r.illustrations[index]
+	drawWidth := columnWidth
+	if ill.width > 0 && ill.height > 0 {
+		drawWidth = fitPageWidth(ill.width, ill.height, columnWidth, viewportHeight)
+	}
+	left := (columnWidth - drawWidth) / 2
+	height := gtx.Dp(unit.Dp(120))
+	chunksReady := false
+	if len(ill.chunks) > 0 {
+		chunksReady = true
+		height = 0
+		for _, chunk := range ill.chunks {
+			bounds := chunk.Bounds()
+			if bounds.Dx() > 0 {
+				height += drawWidth * bounds.Dy() / bounds.Dx()
+			}
+		}
+	} else if ill.width > 0 && ill.height > 0 {
+		height = drawWidth * ill.height / ill.width
+	} else if ill.loading {
+		height = gtx.Dp(unit.Dp(120))
+	}
+	if len(ill.chunks) == 0 && ill.img == nil && !ill.failed && !ill.loading {
+		r.requestIllustration(index)
+	}
+	if height < gtx.Dp(unit.Dp(40)) {
+		height = gtx.Dp(unit.Dp(40))
+	}
+	switch {
+	case chunksReady:
+		y := 0
+		for _, chunk := range ill.chunks {
+			bounds := chunk.Bounds()
+			chunkHeight := 0
+			if bounds.Dx() > 0 {
+				chunkHeight = drawWidth * bounds.Dy() / bounds.Dx()
+			}
+			drawImage(gtx, chunk, image.Rect(left, y, left+drawWidth, y+chunkHeight))
+			y += chunkHeight
+		}
+	case ill.img != nil:
+		drawImage(gtx, ill.img, image.Rect(left, 0, left+drawWidth, height))
+	case ill.failed:
+		r.typo.drawCentered(gtx, "Не удалось загрузить иллюстрацию", font.Font{Typeface: fontFamily, Weight: font.Medium}, unit.Sp(12), mainMutedColor, image.Pt(columnWidth/2, height/2))
+	default:
+		phase := float64(time.Now().UnixNano()) / 1e9
+		f := phase*2 - float64(int(phase*2))
+		drawSpinner(gtx, image.Pt(columnWidth/2, height/2), gtx.Dp(unit.Dp(10)), gtx.Dp(unit.Dp(2)), f, mainAccentColor1)
+	}
+	return layout.Dimensions{Size: image.Pt(columnWidth, height)}
 }

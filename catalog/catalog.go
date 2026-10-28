@@ -166,8 +166,17 @@ type ReadingPage struct {
 	Ratio  string
 }
 
+// ReadingImage is one ranobe illustration. The chapter is read top to bottom;
+// After is the number of text paragraphs before the picture, so the reader can
+// interleave images and prose.
+type ReadingImage struct {
+	URL   string
+	After int
+}
+
 // ReadingContent is a loaded manga or ranobe chapter. Pages is used by manga,
-// Paragraphs by ranobe; the two are mutually exclusive in normal responses.
+// Paragraphs by ranobe; Images carries the ranobe illustrations and is empty
+// for manga chapters.
 type ReadingContent struct {
 	ID         int64
 	Volume     string
@@ -175,6 +184,7 @@ type ReadingContent struct {
 	Name       string
 	Pages      []ReadingPage
 	Paragraphs []string
+	Images     []ReadingImage
 }
 
 // ReadingChapterKey builds the stable chapter key used by history. Volume is
