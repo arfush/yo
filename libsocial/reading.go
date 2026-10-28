@@ -292,7 +292,15 @@ type readingRichNode struct {
 // readingNodeAttrs carries the attributes the reader cares about: the image
 // source of illustration nodes.
 type readingNodeAttrs struct {
-	Src string `json:"src"`
+	Src    string            `json:"src"`
+	Images []readingImageRef `json:"images"`
+}
+
+// readingImageRef is one uploaded illustration referenced by a rich-text
+// document. The API addresses uploads by UUID; the site serves them under
+// /storage/<uuid>.jpg on the title host.
+type readingImageRef struct {
+	Image string `json:"image"`
 }
 
 // parseReadingContent returns HTML for the legacy string shape and plain
@@ -335,13 +343,22 @@ func collectReadingBlocks(node readingRichNode, out *[]string, images *[]Reading
 		}
 	case "image":
 		// Illustrations keep their place in the document: the picture belongs
-		// after the paragraphs collected so far.
-		if src := strings.TrimSpace(node.Attrs.Src); src != "" {
-			*images = append(*images, ReadingImage{
-				URL:   NormalizeReadingImageURL(src, siteID),
-				After: len(*out),
-			})
+		// after the paragraphs collected so far. A node may carry several
+		// uploaded images plus a legacy src attribute.
+		after := len(*out)
+		seen := make(map[string]bool)
+		emit := func(src string) {
+			src = strings.TrimSpace(src)
+			if src == "" || seen[src] {
+				return
+			}
+			seen[src] = true
+			*images = append(*images, ReadingImage{URL: src, After: after})
 		}
+		for _, ref := range node.Attrs.Images {
+			emit(StorageImageURL(siteID, ref.Image))
+		}
+		emit(NormalizeReadingImageURL(node.Attrs.Src, siteID))
 	case "horizontalRule":
 		// The horizontal rule is the "***" scene separator of the printed
 		// edition; the reader paints it as a faint centred line.
@@ -596,6 +613,21 @@ func (c *Client) FetchReadingChapter(ctx context.Context, slug string, siteID in
 		})
 	}
 	return content, nil
+}
+
+// StorageImageURL builds the public address of an uploaded illustration. The
+// rich-text documents reference the uploads by UUID; the site serves them
+// under /storage/<uuid>.jpg on the same host as the title pages.
+func StorageImageURL(siteID int, uuid string) string {
+	uuid = strings.TrimSpace(uuid)
+	if uuid == "" {
+		return ""
+	}
+	origin := readingOrigins[siteID]
+	if origin == "" {
+		return uuid
+	}
+	return strings.TrimRight(origin, "/") + "/storage/" + uuid + ".jpg"
 }
 
 // NormalizeReadingImageURL turns the site-relative page path into a CDN URL.

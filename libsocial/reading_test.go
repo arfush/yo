@@ -79,7 +79,7 @@ func TestNormalizeReadingImageURL(t *testing.T) {
 }
 
 func TestParseReadingContentProseMirror(t *testing.T) {
-	raw := []byte(`{"data":{"content":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Первый абзац."}]},{"type":"image","attrs":{"src":"/uploads/1.jpg"}},{"type":"paragraph","content":[{"type":"text","text":"Второй"},{"type":"hardBreak"},{"type":"text","text":"абзац."}]},{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Пункт списка."}]}]}]},{"type":"horizontalRule"}]}}}`)
+	raw := []byte(`{"data":{"content":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Первый абзац."}]},{"type":"image","attrs":{"description":null,"images":[{"image":"163cf502-48aa-46f2-8726-cf67592ce9d6"},{"image":"8a4cdb2c-359a-4079-8bcd-a102d36b2a22"}]}},{"type":"paragraph","content":[{"type":"text","text":"Второй"},{"type":"hardBreak"},{"type":"text","text":"абзац."}]},{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Пункт списка."}]}]}]},{"type":"horizontalRule"}]}}}`)
 	var response struct {
 		Data struct {
 			Content json.RawMessage `json:"content"`
@@ -101,13 +101,19 @@ func TestParseReadingContentProseMirror(t *testing.T) {
 			t.Fatalf("paragraph %d = %q, want %q", i, paragraphs[i], want[i])
 		}
 	}
-	// The picture sits directly after the first paragraph, the horizontal
+	// The pictures sit directly after the first paragraph, the horizontal
 	// rule became the "***" separator.
-	if len(images) != 1 {
-		t.Fatalf("images = %#v, want one illustration", images)
+	wantImages := []ReadingImage{
+		{URL: "https://ranobelib.me/storage/163cf502-48aa-46f2-8726-cf67592ce9d6.jpg", After: 1},
+		{URL: "https://ranobelib.me/storage/8a4cdb2c-359a-4079-8bcd-a102d36b2a22.jpg", After: 1},
 	}
-	if images[0].After != 1 || images[0].URL != "https://img3.cdnlibs.org/uploads/1.jpg" {
-		t.Fatalf("image = %+v, want URL https://img3.cdnlibs.org/uploads/1.jpg after paragraph 1", images[0])
+	if len(images) != len(wantImages) {
+		t.Fatalf("images = %#v, want %#v", images, wantImages)
+	}
+	for i := range wantImages {
+		if images[i] != wantImages[i] {
+			t.Fatalf("image %d = %+v, want %+v", i, images[i], wantImages[i])
+		}
 	}
 }
 
