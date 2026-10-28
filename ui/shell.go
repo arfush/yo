@@ -66,6 +66,9 @@ type shell struct {
 	onSettings  func()
 	onParty     func()
 	onLog       func()
+	// expandContent gives the content area the footer strip: the active screen
+	// (the reader) owns the full window below the header.
+	expandContent bool
 
 	// errorText is the user-facing failure shown in the middle of the header.
 	// Technical details stay in the log; screens never draw their own errors.
@@ -277,6 +280,12 @@ func (s *shell) layout(gtx layout.Context, w *app.Window) {
 	applySectionTheme(s.section)
 	s.updateError(gtx)
 	g := makeGeometry(gtx, s.cfg.Mode != app.Windowed, s.settingsVisible, s.partyVisible, s.updateVisible)
+	if s.expandContent {
+		// The reader claims the footer strip: content reaches the bottom
+		// border and the band underneath is covered by the chapter.
+		g.footerDivider = g.inner.Max.Y
+		g.contentBottom = g.inner.Max.Y
+	}
 	// The watcher registered last frame has already collected presses for this
 	// frame. Reading it before the content lets a press outside the selected
 	// history card clear the highlight before row click handlers run.

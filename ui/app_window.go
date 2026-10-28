@@ -173,11 +173,15 @@ func (a *application) showWindow(w *app.Window, screen Screen) {
 // where main.onShown must not run because it would clear the URL field.
 func (a *application) installScreen(screen Screen) {
 	a.shell.footer = nil
+	a.shell.expandContent = false
 	if fs, ok := screen.(footerScreen); ok {
 		a.shell.footer = func(gtx layout.Context) layout.Dimensions {
 			fs.layoutFooter(gtx)
 			return layout.Dimensions{Size: gtx.Constraints.Max}
 		}
+	}
+	if _, ok := screen.(fullHeightScreen); ok {
+		a.shell.expandContent = true
 	}
 	if screen == a.main {
 		a.shell.onPress = a.main.noteWindowPress

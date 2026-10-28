@@ -265,6 +265,10 @@ func (r *readerScreen) prefill(title catalog.Title) {
 	r.loadChapter()
 }
 
+// fullHeight claims the shell footer strip: the reader must show nothing but
+// the chapter, so the empty chrome band is given to the content.
+func (r *readerScreen) fullHeight() {}
+
 func (r *readerScreen) translationName() string {
 	if r.selectedVoice >= 0 && r.selectedVoice < len(r.title.Voiceovers) {
 		return r.title.Voiceovers[r.selectedVoice].Name

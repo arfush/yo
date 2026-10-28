@@ -14,6 +14,13 @@ type footerScreen interface {
 	layoutFooter(layout.Context)
 }
 
+// fullHeightScreen lets a screen claim the footer strip for its content. The
+// reader is the only bare screen: the chapter fills the window below the
+// header, because an empty chrome band would just waste vertical space.
+type fullHeightScreen interface {
+	fullHeight()
+}
+
 // popupScreen lets the application close transient menus when the window loses
 // focus, for example when the user clicks another application.
 type popupScreen interface {
