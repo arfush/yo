@@ -1,7 +1,8 @@
 import { Plugin } from "@opencode/plugin"
-import { readFile } from "node:fs/promises"
+import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
-import { join } from "node:path"
+import { basename, join } from "node:path"
+import { pathToFileURL } from "node:url"
 
 /**
  * Telegram → OpenCode steering bridge.
@@ -11,7 +12,8 @@ import { join } from "node:path"
  *   1. interrupts the session that most recently issued a model request;
  *   2. submits the Telegram message as a new steer prompt with a
  *      "continue where you stopped" instruction;
- *   3. sends the owner a short acknowledgement.
+ *   3. downloads any attached files and passes them to the session;
+ *   4. reports when the message was accepted by the session.
  *
  * The bot token is deliberately read from a config file outside the repository.
  * Set OPENCODE_TELEGRAM_BOT_TOKEN / OPENCODE_TELEGRAM_USER_ID to override it.
@@ -27,13 +29,27 @@ import { join } from "node:path"
  * }
  */
 
+type TelegramFile = {
+  file_id: string
+  file_name?: string
+  mime_type?: string
+  file_size?: number
+}
+
 type TelegramUpdate = {
   update_id: number
   message?: {
     message_id: number
     text?: string
+    caption?: string
     from?: { id: number }
     chat?: { id: number }
+    document?: TelegramFile
+    photo?: TelegramFile[]
+    video?: TelegramFile
+    audio?: TelegramFile
+    voice?: TelegramFile
+    animation?: TelegramFile
   }
 }
 
@@ -52,7 +68,16 @@ type Config = {
   configPath: string
 }
 
+type DownloadedFile = {
+  uri: string
+  name: string
+  description?: string
+  path: string
+}
+
 const DEFAULT_CONFIG_PATH = join(homedir(), ".config", "opencode", "telegram-steer.json")
+const TELEGRAM_FILES_DIR = join(homedir(), ".local", "share", "opencode", "telegram-files")
+const MAX_FILE_BYTES = 20 * 1024 * 1024
 
 export default Plugin.define({
   id: "telegram-steer",
@@ -75,6 +100,10 @@ export default Plugin.define({
     const controller = new AbortController()
     const eventController = new AbortController()
     const lastMessage = new Map<string, string>()
+    // Compaction events can be emitted several times for one compaction. Keep
+    // the start time here so the finish notification reports a truthful
+    // duration and duplicate events do not produce duplicate messages.
+    const compactions = new Map<string, { startedAt: number; reason: string; inputID: string }>()
 
     let hookRegistration: { dispose: () => Promise<void> } | undefined
     try {
@@ -95,22 +124,28 @@ export default Plugin.define({
 
     const handle = async (update: TelegramUpdate) => {
       const message = update.message
-      if (!message || !message.text) return
+      if (!message) return
       if (!message.from || String(message.from.id) !== config.userID) return
       if (config.chatID && message.chat && String(message.chat.id) !== config.chatID) return
-      const text = message.text.trim()
-      if (!text) return
+      const text = (message.text || message.caption || "").trim()
+      const attached = collectTelegramFiles(message)
+      if (!text && attached.length === 0) return
+
+      let files: DownloadedFile[] = []
+      if (attached.length > 0) {
+        try {
+          files = await downloadTelegramFiles(config, attached)
+        } catch (error) {
+          await sendTelegram(config, `Не смог скачать файл из Telegram: ${errorText(error)}`)
+          return
+        }
+      }
 
       const sessionID = await resolveSession(ctx, activeSessionID, activeSessionSeenAt)
       if (!sessionID) {
-        await sendTelegram(config, `Принял сообщение, но не нашёл активную сессию OpenCode.\n\n${preview(text)}`)
+        await sendTelegram(config, `Не нашёл активную сессию OpenCode. Сообщение не передано.\n\n${preview(text || filePreview(files))}`)
         return
       }
-
-      await sendTelegram(
-        config,
-        `Принял: «${preview(text)}»\nСначала отвечу на новое сообщение, затем продолжу текущую задачу.`,
-      )
 
       try {
         const result = await ctx.session.interrupt({ sessionID, resume: false })
@@ -125,7 +160,8 @@ export default Plugin.define({
 
       const prompt = [
         "[Telegram, владелец]",
-        text,
+        text || "Прикреплённый файл без текста.",
+        files.length > 0 ? `\n[Прикреплённые файлы: ${files.map((file) => `${file.name} — ${file.path}`).join("; ")}]` : "",
         "",
         "Сначала ответь на это новое сообщение из Telegram: коротко, по-русски, по существу. Ответ на него должен быть первым.",
         "После ответа сразу продолжай предыдущую задачу с того места, где остановился. Это новое указание владельца; не начинай задачу заново.",
@@ -134,7 +170,14 @@ export default Plugin.define({
       let submitted = false
       for (let attempt = 0; attempt < 2 && !submitted; attempt++) {
         try {
-          await ctx.session.prompt({ sessionID, text: prompt, delivery: "steer" })
+          await ctx.session.prompt({
+            sessionID,
+            text: prompt,
+            delivery: "steer",
+            ...(files.length > 0
+              ? { files: files.map(({ uri, name, description }) => ({ uri, name, description })) }
+              : {}),
+          })
           submitted = true
         } catch (error) {
           report(error)
@@ -143,7 +186,8 @@ export default Plugin.define({
       }
 
       if (submitted) {
-        await sendTelegram(config, "Передал в сессию. Сначала отвечу, затем продолжу с места остановки.")
+        const suffix = files.length > 0 ? ` вместе с файлами (${files.length})` : ""
+        await sendTelegram(config, `Передал в сессию${suffix}. Сначала отвечу, затем продолжу с места остановки.`)
       } else {
         await sendTelegram(config, "Не смог передать сообщение в сессию. Попробуй ещё раз.")
       }
@@ -187,7 +231,14 @@ export default Plugin.define({
     const eventLoop = async () => {
       for await (const event of ctx.event.subscribe({
         signal: eventController.signal,
-        types: ["session.idle", "session.error", "session.retry.scheduled"] as any,
+        types: [
+          "session.idle",
+          "session.error",
+          "session.retry.scheduled",
+          "session.compaction.started",
+          "session.compaction.ended",
+          "session.compaction.failed",
+        ] as any,
       })) {
         const type = String((event as any)?.type || "")
         const sessionID = eventSessionID(event)
@@ -195,6 +246,36 @@ export default Plugin.define({
         // Mirror only the session that most recently talked to the model. This
         // keeps background/child sessions from spamming Telegram.
         if (activeSessionID && sessionID !== activeSessionID) continue
+
+        if (type === "session.compaction.started") {
+          const details = compactionDetails(event)
+          const previous = compactions.get(sessionID)
+          if (previous && details.inputID && previous.inputID === details.inputID) continue
+          compactions.set(sessionID, {
+            startedAt: Date.now(),
+            reason: details.reason,
+            inputID: details.inputID,
+          })
+          await sendTelegram(config, `Компактизация началась${compactionReason(details.reason)}.`)
+          continue
+        }
+
+        if (type === "session.compaction.ended") {
+          const previous = compactions.get(sessionID)
+          compactions.delete(sessionID)
+          const elapsed = previous ? Date.now() - previous.startedAt : 0
+          const duration = elapsed > 0 ? ` за ${formatDelay(elapsed)}` : ""
+          await sendTelegram(config, `Компактизация завершена${duration}.`)
+          continue
+        }
+
+        if (type === "session.compaction.failed") {
+          const details = compactionDetails(event)
+          compactions.delete(sessionID)
+          const text = errorText(details.error || (event as any)?.error || event)
+          await sendTelegram(config, `Компактизация не удалась: ${text}`)
+          continue
+        }
 
         if (type === "session.idle") {
           // The idle event is emitted after the assistant message is persisted.
@@ -236,6 +317,7 @@ export default Plugin.define({
 
     return async () => {
       stopped = true
+      compactions.clear()
       controller.abort()
       eventController.abort()
       if (hookRegistration) {
@@ -246,8 +328,99 @@ export default Plugin.define({
 })
 
 function eventSessionID(event: any): string {
-  const value = event?.sessionID ?? event?.properties?.sessionID ?? event?.session?.id ?? event?.info?.sessionID
+  const value =
+    event?.sessionID ??
+    event?.properties?.sessionID ??
+    event?.data?.sessionID ??
+    event?.data?.session?.id ??
+    event?.session?.id ??
+    event?.info?.sessionID
   return typeof value === "string" ? value : ""
+}
+
+function collectTelegramFiles(message: NonNullable<TelegramUpdate["message"]>): TelegramFile[] {
+  const files: TelegramFile[] = []
+  const seen = new Set<string>()
+  const add = (file: TelegramFile | undefined) => {
+    if (!file || typeof file.file_id !== "string" || !file.file_id || seen.has(file.file_id)) return
+    seen.add(file.file_id)
+    files.push(file)
+  }
+  add(message.document)
+  if (message.photo?.length) add(message.photo[message.photo.length - 1])
+  add(message.video)
+  add(message.audio)
+  add(message.voice)
+  add(message.animation)
+  return files
+}
+
+async function downloadTelegramFiles(config: Config, files: TelegramFile[]): Promise<DownloadedFile[]> {
+  const downloaded: DownloadedFile[] = []
+  await mkdir(TELEGRAM_FILES_DIR, { recursive: true })
+  for (let index = 0; index < files.length; index++) {
+    const file = files[index]
+    if (file.file_size && file.file_size > MAX_FILE_BYTES) {
+      throw new Error(`файл ${file.file_name || file.file_id} больше 20 МБ`)
+    }
+    const info = await telegramCall<{ file_path?: string }>(config, "getFile", { file_id: file.file_id }, undefined, 30_000)
+    if (!info.file_path) throw new Error("Telegram не вернул путь к файлу")
+    const response = await fetch(`https://api.telegram.org/file/bot${config.token}/${info.file_path}`, {
+      signal: AbortSignal.timeout(60_000),
+    })
+    if (!response.ok) throw new Error(`Telegram HTTP ${response.status}`)
+    const declared = Number(response.headers.get("content-length") || 0)
+    if (declared > MAX_FILE_BYTES) throw new Error("файл больше 20 МБ")
+    const bytes = Buffer.from(await response.arrayBuffer())
+    if (bytes.length > MAX_FILE_BYTES) throw new Error("файл больше 20 МБ")
+    const name = safeFileName(file.file_name || basename(info.file_path) || `telegram-${Date.now()}-${index}`)
+    const path = join(TELEGRAM_FILES_DIR, `${Date.now()}-${index}-${name}`)
+    await writeFile(path, bytes)
+    downloaded.push({
+      uri: pathToFileURL(path).href,
+      name,
+      description: file.mime_type || undefined,
+      path,
+    })
+  }
+  return downloaded
+}
+
+function safeFileName(value: string): string {
+  const name = basename(value)
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
+    .replace(/^\.+/, "")
+    .trim()
+    .slice(0, 160)
+  return name || "telegram-file"
+}
+
+function filePreview(files: DownloadedFile[]): string {
+  return files.map((file) => file.name).join(", ")
+}
+
+function compactionDetails(event: any): { reason: string; inputID: string; error: unknown } {
+  const sources = [event?.data, event?.properties, event].filter(
+    (source): source is Record<string, unknown> => Boolean(source) && typeof source === "object",
+  )
+  const pick = (key: string): unknown => {
+    for (const source of sources) {
+      if (source[key] !== undefined && source[key] !== null) return source[key]
+    }
+    return undefined
+  }
+  return {
+    reason: String(pick("reason") || "").trim(),
+    inputID: String(pick("inputID") || pick("inputId") || "").trim(),
+    error: pick("error"),
+  }
+}
+
+function compactionReason(reason: string): string {
+  const normalized = reason.toLowerCase()
+  if (normalized === "auto" || normalized === "automatic") return " автоматически"
+  if (normalized === "manual") return " вручную"
+  return ""
 }
 
 function lastAssistantMessage(messages: any): { id: string; text: string } | undefined {
