@@ -4,6 +4,7 @@ import (
 	"context"
 	"image"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -315,4 +316,55 @@ func itoaReaderTest(value int) string {
 		return string(rune('0' + value))
 	}
 	return string(rune('0'+value/10)) + string(rune('0'+value%10))
+}
+
+// countingChapterSource blocks every ReadChapter until release is closed and
+// records the highest number of chapters fetched at the same time.
+type countingChapterSource struct {
+	readerSourceStub
+	release   chan struct{}
+	active    atomic.Int32
+	maxActive atomic.Int32
+}
+
+func (s *countingChapterSource) ReadChapter(_ context.Context, _ catalog.Title, _ string, key string) (catalog.ReadingContent, error) {
+	active := s.active.Add(1)
+	defer s.active.Add(-1)
+	for {
+		seen := s.maxActive.Load()
+		if active <= seen || s.maxActive.CompareAndSwap(seen, active) {
+			break
+		}
+	}
+	<-s.release
+	return catalog.ReadingContent{Paragraphs: []string{"chapter " + key}}, nil
+}
+
+// TestReaderChapterPrefetchBoundedBySemaphore makes sure the prefetch window
+// does not burst the library API: at most chapterFetchConcurrency chapter
+// requests may be in flight at once, no matter how wide the window is.
+func TestReaderChapterPrefetchBoundedBySemaphore(t *testing.T) {
+	source := &countingChapterSource{release: make(chan struct{})}
+	r := &readerScreen{
+		source:         source,
+		chapterSem:     make(chan struct{}, chapterFetchConcurrency),
+		chapterResults: make(chan readerChapterResult, 256),
+		chapterCache:   make(map[string]catalog.ReadingContent),
+		chapterPending: make(map[string]bool),
+		contentCtx:     context.Background(),
+	}
+	for index := 0; index < readerChapterWindow*2+1; index++ {
+		key := "1:" + itoaReaderTest(index+1)
+		r.requestChapter("Team", key, catalog.Title{})
+	}
+	time.Sleep(300 * time.Millisecond)
+	maxActive := source.maxActive.Load()
+	close(source.release)
+	time.Sleep(300 * time.Millisecond)
+	if maxActive > chapterFetchConcurrency {
+		t.Fatalf("max concurrent chapter fetches = %d, want <= %d", maxActive, chapterFetchConcurrency)
+	}
+	if maxActive == 0 {
+		t.Fatal("no chapter fetch started")
+	}
 }

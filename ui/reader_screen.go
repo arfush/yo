@@ -48,6 +48,10 @@ const (
 	// the current one. Moving one chapter forward/back does not wait for the
 	// network because the next window was already requested.
 	readerChapterWindow = 5
+	// chapterFetchConcurrency caps how many library chapter requests the
+	// prefetch runs at once, so a window load does not burst the AnimeLIB
+	// rate limiter with the whole window at the same time.
+	chapterFetchConcurrency = 3
 )
 
 var (
@@ -183,6 +187,7 @@ type readerScreen struct {
 	imageResults   chan readerImageResult
 	imageCancel    context.CancelFunc
 	imageSem       chan struct{}
+	chapterSem     chan struct{}
 	pages          []readerPageState
 	mangaRows      []readerMangaRow
 	mangaRowsDirty bool
@@ -223,6 +228,7 @@ func newReaderScreen(typo *typography, item historyTitle, source readerSource) *
 		contentCancel:  contentCancel,
 		imageResults:   make(chan readerImageResult, 32),
 		imageSem:       make(chan struct{}, 3),
+		chapterSem:     make(chan struct{}, chapterFetchConcurrency),
 	}
 	r.trackedID.Store(item.id)
 	r.search.SingleLine = true
@@ -589,6 +595,12 @@ func (r *readerScreen) requestChapter(voice, key string, title catalog.Title) {
 		ctx = context.Background()
 	}
 	go func() {
+		// Fetching chapters in a burst (the whole prefetch window at once)
+		// hammered the library API and the AnimeLIB rate limiter. The
+		// semaphore keeps a window load to a few in-flight requests; the
+		// rest queue in the worker.
+		r.chapterSem <- struct{}{}
+		defer func() { <-r.chapterSem }()
 		content, err := r.source.ReadChapter(ctx, title, voice, key)
 		if err != nil {
 			err = errReaderChapter.wrap(err)
