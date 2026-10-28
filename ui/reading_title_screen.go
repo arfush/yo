@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"image"
+	"image/color"
 	"strings"
 	"time"
 
@@ -16,6 +17,39 @@ import (
 
 	"github.com/arfush/yo/catalog"
 )
+
+// readerMutedColor and friends colour the reading title tree. They moved here
+// together with readerTreeRow when the reader itself became sidebar-free; the
+// values are section-themed by applySectionTheme like the rest of the chrome.
+var (
+	readerMutedColor    = color.NRGBA{R: 0x8d, G: 0x87, B: 0x9b, A: 0xff}
+	readerChapterHover  = color.NRGBA{R: 0x22, G: 0x1d, B: 0x33, A: 0xff}
+	readerChapterActive = color.NRGBA{R: 0x2b, G: 0x22, B: 0x45, A: 0xff}
+	readerDisabledText  = color.NRGBA{R: 0x55, G: 0x4f, B: 0x66, A: 0xff}
+)
+
+// readerTreeRow is one row of the volume/chapter tree on the reading title
+// screen. A header row has an empty chapter key and toggles its volume; a
+// chapter row may be unavailable for the active translation and is then drawn
+// disabled.
+type readerTreeRow struct {
+	volume   string
+	chapter  string
+	header   bool
+	expanded bool
+	missing  bool
+	// available/total are shown on a volume header.
+	available int
+	total     int
+}
+
+// readerVolumeLabel names a volume header on the reading title screen.
+func readerVolumeLabel(volume string) string {
+	if volume == "" || volume == "0" {
+		return "Без тома"
+	}
+	return "Том " + volume
+}
 
 // readingTitleLoadResult carries a refreshed manga/ranobe title back to the UI
 // goroutine. Chapter lists are never stored in SQLite, so a saved history row

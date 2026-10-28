@@ -11,7 +11,6 @@ import (
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/unit"
-	"gioui.org/widget"
 
 	"github.com/arfush/yo/catalog"
 )
@@ -36,56 +35,14 @@ func TestReaderListsBalanceTheirOperationStacks(t *testing.T) {
 		typo:     typo,
 		chapters: []string{"1:1", "1:2"},
 	}
-	r.chapterClick = make([]widget.Clickable, len(r.chapters))
 
 	gtx := readerTestContext()
-	r.layoutChapterList(gtx, image.Rect(0, 0, 280, 400))
-	gtx.Ops.Reset()
-
 	r.pages = []readerPageState{{url: "https://example.test/1.png", loading: true}}
 	r.layoutManga(gtx, image.Rect(0, 0, 500, 400))
 	gtx.Ops.Reset()
 
 	r.content.Paragraphs = []string{"first paragraph", "second paragraph"}
 	r.layoutRanobe(gtx, image.Rect(0, 0, 500, 400))
-}
-
-func TestReaderTreeShowsMissingChapters(t *testing.T) {
-	r := &readerScreen{
-		title: catalog.Title{
-			Episodes: []string{"1:1", "1:2", "2:1"},
-			Voiceovers: []catalog.Voiceover{{
-				Name:     "Команда",
-				Episodes: []string{"1:1", "2:1"},
-				Missing:  []string{"1:2"},
-			}},
-		},
-		chapters:      []string{"1:1", "2:1"},
-		selectedVoice: 0,
-		expanded:      map[string]bool{"1": true},
-	}
-	r.rebuildTranslations()
-	r.rebuildTree()
-
-	if got := len(r.treeRows); got != 4 {
-		t.Fatalf("tree rows = %d, want 2 headers and 2 chapters", got)
-	}
-	if !r.treeRows[0].header || r.treeRows[0].available != 1 || r.treeRows[0].total != 2 {
-		t.Fatalf("volume header = %+v", r.treeRows[0])
-	}
-	if r.treeRows[1].chapter != "1:1" || r.treeRows[1].missing {
-		t.Fatalf("available chapter = %+v", r.treeRows[1])
-	}
-	if !r.treeRows[2].missing {
-		t.Fatalf("chapter 1:2 must be marked missing: %+v", r.treeRows[2])
-	}
-	if !r.translations[0].hasCurrent {
-		t.Fatal("translation must be available for chapter 1:1")
-	}
-	r.selectedChapter = 1
-	if got := r.currentChapterKey(); got != "2:1" {
-		t.Fatalf("current key = %q", got)
-	}
 }
 
 func TestReaderMangaRowsReserveChunkCount(t *testing.T) {
@@ -100,29 +57,6 @@ func TestReaderMangaRowsReserveChunkCount(t *testing.T) {
 	r.rebuildMangaRows()
 	if got := len(r.mangaRows); got != 3 {
 		t.Fatalf("rows after decode = %d, want 3", got)
-	}
-}
-
-func TestReaderAutoStitchAppendsChapters(t *testing.T) {
-	r := &readerScreen{
-		chapters:        []string{"1:1", "1:2", "1:3"},
-		selectedChapter: 0,
-		streamNext:      1,
-		streamLoaded:    map[int]bool{0: true},
-	}
-	content := catalog.ReadingContent{Pages: []catalog.ReadingPage{{URL: "page"}}}
-	if !r.appendStreamChapter(1, content) {
-		t.Fatal("chapter was not appended")
-	}
-	if len(r.pages) != 1 || r.pages[0].chapter != 1 {
-		t.Fatalf("pages = %+v", r.pages)
-	}
-	if r.streamNext != 2 {
-		t.Fatalf("stream next = %d, want 2", r.streamNext)
-	}
-	// An empty chapter advances the cursor instead of retrying forever.
-	if r.appendStreamChapter(2, catalog.ReadingContent{}) {
-		t.Fatal("empty chapter should not append pages")
 	}
 }
 
