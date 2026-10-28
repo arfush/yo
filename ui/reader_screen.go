@@ -2,14 +2,19 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"image"
+	"image/color"
 	stddraw "image/draw"
 	"strings"
 	"sync/atomic"
 	"time"
 
+	"gioui.org/f32"
 	"gioui.org/font"
+	"gioui.org/io/event"
 	"gioui.org/io/key"
+	"gioui.org/io/pointer"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/unit"
@@ -28,7 +33,13 @@ type readerSource interface {
 
 const (
 	readerHeaderHeight = unit.Dp(48)
-	readerParaGap      = unit.Dp(12)
+	// readerParaGap separates ranobe paragraphs; the concept leaves one
+	// generous blank line between them.
+	readerParaGap = unit.Dp(18)
+	// readerTextSize and readerTextLeading define the ranobe body: a roomy
+	// 15sp with a few extra pixels after every wrapped line.
+	readerTextSize    = unit.Sp(15)
+	readerTextLeading = unit.Dp(3)
 	// readerMaxTextureSide keeps one GPU texture below the Direct3D limit.
 	// Webtoon pages are often 760x25000; uploading them as one texture makes
 	// Gio panic with CreateTexture2D 0x80070057 before anything is visible.
@@ -48,6 +59,57 @@ const (
 	// rate limiter with the whole window at the same time.
 	chapterFetchConcurrency = 3
 )
+
+var (
+	// readerTextColor and readerFaintColor follow the ranobe concept: the body
+	// uses a soft white, while the header, the intro block before the first
+	// separator and the star rules stay in the faint grey.
+	readerTextColor  = color.NRGBA{R: 0xd5, G: 0xd3, B: 0xdc, A: 0xff}
+	readerFaintColor = color.NRGBA{R: 0x89, G: 0x83, B: 0x91, A: 0xff}
+)
+
+// starSeparator reports whether a paragraph is a horizontal rule made of
+// asterisks ("***", "* * *", "**"). Ranobe chapters use them between scenes.
+func starSeparator(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	return trimmed != "" && strings.Trim(trimmed, "* \t") == ""
+}
+
+// introEndIndex returns the index of the first star separator. Paragraphs
+// before it are the chapter intro and keep the faint colour, like the concept
+// paints the credit block.
+func introEndIndex(paragraphs []string) int {
+	for index, text := range paragraphs {
+		if starSeparator(text) {
+			return index
+		}
+	}
+	return len(paragraphs)
+}
+
+// fitPageWidth narrows a page so its full height fits the viewport when the
+// aspect allows it. Very tall webtoon strips keep the column width: shrinking
+// them to a sliver would not make them readable.
+func fitPageWidth(width, height, columnWidth, viewportHeight int) int {
+	if width <= 0 || height <= 0 || viewportHeight <= 0 {
+		return columnWidth
+	}
+	fitted := viewportHeight * width / height
+	if fitted <= 0 || fitted < columnWidth*50/100 {
+		return columnWidth
+	}
+	return min(fitted, columnWidth)
+}
+
+// readerNavZone turns the left and right thirds of the reader into invisible
+// chapter-turn areas, keeping the reader free of buttons like the concept. A
+// press only navigates when the pointer barely moved, so scroll drags are not
+// mistaken for clicks.
+type readerNavZone struct {
+	tag     int
+	pressed bool
+	start   f32.Point
+}
 
 // readerPageState is one manga page in the virtualised list.
 type readerPageState struct {
@@ -135,6 +197,11 @@ type readerScreen struct {
 	// visible layout drew; Space/PageUp/PageDown page by nearly that amount.
 	mangaVisRows  int
 	ranobeVisRows int
+
+	// prevZone and nextZone are the invisible chapter-turn halves of the
+	// reader; the concept leaves the reader without any buttons.
+	prevZone readerNavZone
+	nextZone readerNavZone
 
 	focusCleared bool
 
@@ -514,6 +581,8 @@ func (r *readerScreen) layout(gtx layout.Context) {
 	}
 	headerH := gtx.Dp(readerHeaderHeight)
 	r.layoutHeader(gtx, size, headerH)
+	contentTop := headerH + gtx.Dp(unit.Dp(6))
+	r.layoutNavZones(gtx, size, contentTop)
 	if r.loading {
 		r.layoutLoading(gtx, image.Rectangle{Max: size}, headerH)
 		return
@@ -522,7 +591,6 @@ func (r *readerScreen) layout(gtx layout.Context) {
 		r.layoutLoadError(gtx, image.Rectangle{Max: size}, headerH)
 		return
 	}
-	contentTop := headerH + gtx.Dp(unit.Dp(6))
 	content := image.Rect(0, contentTop, size.X, size.Y)
 	if r.title.IsRanobe() {
 		r.layoutRanobe(gtx, content)
@@ -532,8 +600,9 @@ func (r *readerScreen) layout(gtx layout.Context) {
 }
 
 // layoutHeader draws the current volume and chapter centred on the strip, with
-// a section-coloured dot in front, exactly like the concept mockup: the reader
-// has no other chrome.
+// a section-coloured dot in front. The concept keeps the line thin and faint:
+// a normal-weight label in the muted grey, so it does not compete with the
+// content.
 func (r *readerScreen) layoutHeader(gtx layout.Context, size image.Point, headerH int) {
 	label := ""
 	if r.selectedChapter >= 0 && r.selectedChapter < len(r.chapters) {
@@ -542,18 +611,67 @@ func (r *readerScreen) layoutHeader(gtx layout.Context, size image.Point, header
 	if label == "" {
 		return
 	}
-	face := font.Font{Typeface: fontFamily, Weight: font.Bold}
-	_, ink := r.typo.measure(gtx, label, face, unit.Sp(14))
+	face := font.Font{Typeface: fontFamily, Weight: font.Normal}
+	_, ink := r.typo.measure(gtx, label, face, unit.Sp(12.5))
 	if ink.Dy() <= 0 {
 		return
 	}
-	dot := gtx.Dp(unit.Dp(6))
-	gap := gtx.Dp(unit.Dp(7))
+	dot := gtx.Dp(unit.Dp(4))
+	gap := gtx.Dp(unit.Dp(6))
 	startX := (size.X - (ink.Dx() + gap + dot)) / 2
 	labelTop := (headerH - ink.Dy()) / 2
-	r.typo.draw(gtx, label, face, unit.Sp(14), mainTextColor, image.Pt(startX+dot+gap, labelTop))
+	r.typo.draw(gtx, label, face, unit.Sp(12.5), readerFaintColor, image.Pt(startX+dot+gap, labelTop))
 	radius := dot / 2
 	fillRounded(gtx, mainAccentColor1, image.Rect(startX, headerH/2-radius, startX+dot, headerH/2+radius), radius)
+}
+
+// layoutNavZones makes the left and right thirds of the reader switch
+// chapters, as the concept leaves the reader without visible buttons.
+func (r *readerScreen) layoutNavZones(gtx layout.Context, size image.Point, top int) {
+	if size.Y <= top {
+		return
+	}
+	zoneWidth := size.X * 30 / 100
+	if zoneWidth <= 0 {
+		return
+	}
+	r.layoutNavZone(gtx, image.Rect(0, top, zoneWidth, size.Y), &r.prevZone, -1)
+	r.layoutNavZone(gtx, image.Rect(size.X-zoneWidth, top, size.X, size.Y), &r.nextZone, 1)
+}
+
+func (r *readerScreen) layoutNavZone(gtx layout.Context, rect image.Rectangle, zone *readerNavZone, direction int) {
+	stack := op.Offset(rect.Min).Push(gtx.Ops)
+	defer stack.Pop()
+	cgtx := gtx
+	cgtx.Constraints = layout.Exact(rect.Size())
+	event.Op(cgtx.Ops, &zone.tag)
+	for {
+		ev, ok := cgtx.Event(pointer.Filter{
+			Target: &zone.tag,
+			Kinds:  pointer.Press | pointer.Release | pointer.Cancel,
+		})
+		if !ok {
+			break
+		}
+		e, ok := ev.(pointer.Event)
+		if !ok {
+			continue
+		}
+		switch e.Kind {
+		case pointer.Press:
+			zone.pressed = true
+			zone.start = e.Position
+		case pointer.Release:
+			dx := e.Position.X - zone.start.X
+			dy := e.Position.Y - zone.start.Y
+			if zone.pressed && dx*dx+dy*dy < 12*12 {
+				r.selectChapter(r.selectedChapter + direction)
+			}
+			zone.pressed = false
+		case pointer.Cancel:
+			zone.pressed = false
+		}
+	}
 }
 
 // handleReaderKeys maps the minimal reader controls: arrows switch chapters,
@@ -724,7 +842,12 @@ func (r *readerScreen) layoutManga(gtx layout.Context, rect image.Rectangle) {
 		visibleLast = index
 		row := r.mangaRows[index]
 		page := &r.pages[row.page]
+		// A page is narrowed so the whole strip fits the viewport height,
+		// whenever the aspect allows it; the row stays centred in the column.
 		width := pageWidth
+		if page.width > 0 && page.height > 0 {
+			width = fitPageWidth(page.width, page.height, pageWidth, rect.Dy())
+		}
 		height := gtx.Dp(unit.Dp(20))
 		if page.img == nil && len(page.chunks) == 0 {
 			r.downloadPage(row.page)
@@ -748,7 +871,8 @@ func (r *readerScreen) layoutManga(gtx layout.Context, rect image.Rectangle) {
 		if height < gtx.Dp(unit.Dp(40)) {
 			height = gtx.Dp(unit.Dp(40))
 		}
-		item := image.Rect(0, 0, width, height)
+		left := (pageWidth - width) / 2
+		item := image.Rect(left, 0, left+width, height)
 		switch {
 		case row.chunk >= 0 && row.chunk < len(page.chunks):
 			drawImage(gtx, page.chunks[row.chunk], item)
@@ -767,6 +891,33 @@ func (r *readerScreen) layoutManga(gtx layout.Context, rect image.Rectangle) {
 		r.mangaVisRows = visibleLast - visibleFirst + 1
 	}
 	r.evictPagesOutside(visibleFirst, visibleLast)
+
+	// The tiny page counter floats over the bottom of the reader and follows
+	// the current page, muted enough not to pull the eye from the art.
+	if len(r.pages) > 0 {
+		page := 0
+		if first := r.mangaList.Position.First; first >= 0 && first < len(r.mangaRows) {
+			page = r.mangaRows[first].page
+		}
+		counter := fmt.Sprintf("%d / %d", min(page+1, len(r.pages)), len(r.pages))
+		r.layoutPageCounter(gtx, counter, rect)
+	}
+}
+
+// layoutPageCounter paints the "page / total" chip at the bottom centre of the
+// manga reader: a translucent dark pill with the faint grey label.
+func (r *readerScreen) layoutPageCounter(gtx layout.Context, counter string, rect image.Rectangle) {
+	face := font.Font{Typeface: fontFamily, Weight: font.Medium}
+	_, ink := r.typo.measure(gtx, counter, face, unit.Sp(11))
+	if ink.Dy() <= 0 {
+		return
+	}
+	padX := gtx.Dp(unit.Dp(10))
+	padY := gtx.Dp(unit.Dp(4))
+	chip := image.Rect(0, 0, ink.Dx()+2*padX, ink.Dy()+2*padY)
+	chip = chip.Add(image.Pt(rect.Min.X+(rect.Dx()-chip.Dx())/2, rect.Max.Y-chip.Dy()-gtx.Dp(unit.Dp(12))))
+	fillRounded(gtx, color.NRGBA{R: 0x0d, G: 0x0e, B: 0x14, A: 0xb0}, chip, gtx.Dp(unit.Dp(7)))
+	r.typo.drawCentered(gtx, counter, face, unit.Sp(11), readerFaintColor, centerOf(chip))
 }
 
 // splitReaderImage cuts a tall webtoon page into GPU-safe textures. Each chunk
@@ -792,7 +943,9 @@ func splitReaderImage(src image.Image, maxSide int) []image.Image {
 }
 
 // layoutRanobe renders the paragraphs on a centred column capped at the
-// reading width, matching the concept's even margins on a wide window.
+// reading width. Star separators ("***") are centred and faint, the intro
+// block before the first separator keeps the faint colour, and the body uses
+// the soft white with extra leading between lines — exactly like the concept.
 func (r *readerScreen) layoutRanobe(gtx layout.Context, rect image.Rectangle) {
 	if rect.Empty() {
 		return
@@ -818,6 +971,9 @@ func (r *readerScreen) layoutRanobe(gtx layout.Context, rect image.Rectangle) {
 	cgtx.Constraints = layout.Exact(column.Size())
 	face := font.Font{Typeface: fontFamily, Weight: font.Normal}
 	gap := gtx.Dp(readerParaGap)
+	leading := gtx.Dp(readerTextLeading)
+	starSize := unit.Sp(13)
+	introEnd := introEndIndex(paragraphs)
 	visibleFirst, visibleLast := -1, -1
 	r.ranobeList.Layout(cgtx, len(paragraphs), func(gtx layout.Context, index int) layout.Dimensions {
 		if visibleFirst < 0 {
@@ -828,12 +984,22 @@ func (r *readerScreen) layoutRanobe(gtx layout.Context, rect image.Rectangle) {
 		if strings.TrimSpace(text) == "" {
 			return layout.Dimensions{Size: image.Pt(width, gtx.Dp(unit.Dp(10)))}
 		}
-		_, ink := r.typo.measureWrapped(gtx, text, face, unit.Sp(14), width)
+		if starSeparator(text) {
+			trimmed := strings.TrimSpace(text)
+			rowH := gtx.Dp(unit.Dp(16))
+			r.typo.drawCentered(gtx, trimmed, face, starSize, readerFaintColor, image.Pt(width/2, rowH/2))
+			return layout.Dimensions{Size: image.Pt(width, rowH+gap/2)}
+		}
+		col := readerTextColor
+		if index < introEnd {
+			col = readerFaintColor
+		}
+		_, ink := r.typo.measureWrappedLines(gtx, text, face, readerTextSize, width, leading)
 		h := ink.Dy()
 		if h < gtx.Dp(unit.Dp(18)) {
 			h = gtx.Dp(unit.Dp(18))
 		}
-		r.typo.drawWrapped(gtx, text, face, unit.Sp(14), mainTextColor, image.Pt(0, 0), width)
+		r.typo.drawWrappedLines(gtx, text, face, readerTextSize, col, image.Pt(0, 0), width, leading)
 		return layout.Dimensions{Size: image.Pt(width, h+gap)}
 	})
 	if visibleFirst >= 0 {

@@ -174,6 +174,73 @@ func (r *textRenderer) drawWrapped(gtx layout.Context, txt string, face font.Fon
 	return ink.Add(offset)
 }
 
+// measureWrappedLines shapes txt like measureWrapped and also returns how many
+// visual lines the block spans, adding the extra per-line leading to the ink
+// box exactly the way drawWrappedLines paints it.
+func (r *textRenderer) measureWrappedLines(gtx layout.Context, txt string, face font.Font, size unit.Sp, maxWidth, extraLeading int) (lines int, ink image.Rectangle) {
+	glyphs, ink := r.measureWrapped(gtx, txt, face, size, maxWidth)
+	lines = 1
+	for _, g := range glyphs {
+		if g.Flags&text.FlagLineBreak != 0 {
+			lines++
+		}
+	}
+	ink.Max.Y += (lines - 1) * extraLeading
+	return lines, ink
+}
+
+// drawWrappedLines is drawWrapped with extraLeading extra pixels after every
+// visual line. The ranobe reader uses it because Roboto's natural line height
+// feels cramped at reading size; paintGlyphs cannot do this because it paints
+// lines back-to-back from the glyph metrics.
+func (r *textRenderer) drawWrappedLines(gtx layout.Context, txt string, face font.Font, size unit.Sp, col color.NRGBA, at image.Point, maxWidth, extraLeading int) image.Rectangle {
+	glyphs, ink := r.measureWrapped(gtx, txt, face, size, maxWidth)
+	if len(glyphs) == 0 || ink.Empty() {
+		return image.Rectangle{}
+	}
+	offset := at.Sub(ink.Min)
+	material := op.Record(gtx.Ops)
+	paint.ColorOp{Color: col}.Add(gtx.Ops)
+	mat := material.Stop()
+
+	breaks := 0
+	var line []text.Glyph
+	flush := func() {
+		if len(line) == 0 {
+			return
+		}
+		first := line[0]
+		origin := f32.Pt(
+			float32(first.X)/64,
+			float32(first.Y)+float32(breaks*extraLeading),
+		)
+		stack := op.Offset(offset).Push(gtx.Ops)
+		trans := op.Affine(f32.Affine2D{}.Offset(origin)).Push(gtx.Ops)
+		path := r.shaper.Shape(line)
+		outline := clip.Outline{Path: path}.Op().Push(gtx.Ops)
+		mat.Add(gtx.Ops)
+		paint.PaintOp{}.Add(gtx.Ops)
+		outline.Pop()
+		if call := r.shaper.Bitmaps(line); call != (op.CallOp{}) {
+			call.Add(gtx.Ops)
+		}
+		trans.Pop()
+		stack.Pop()
+		line = line[:0]
+	}
+	for _, g := range glyphs {
+		line = append(line, g)
+		if g.Flags&text.FlagLineBreak != 0 {
+			flush()
+			breaks++
+		}
+	}
+	flush()
+	box := ink.Add(offset)
+	box.Max.Y += max(0, breaks) * extraLeading
+	return box
+}
+
 // paintCentered paints txt with its ink center at center. A positive capHeight
 // centers only the box from the ink top to the baseline, so descenders do not
 // make the text look too high inside a control. The fractional offset keeps

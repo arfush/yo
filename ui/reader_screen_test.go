@@ -79,6 +79,54 @@ func TestSplitReaderImageKeepsTexturesUnderLimit(t *testing.T) {
 	}
 }
 
+func TestStarSeparatorRecognisesAsteriskRules(t *testing.T) {
+	for _, separator := range []string{"***", "* * *", "**", "  ***  "} {
+		if !starSeparator(separator) {
+			t.Fatalf("%q must be a star separator", separator)
+		}
+	}
+	for _, plain := range []string{"", "  ", "текст", "*** текст", "—", "***—"} {
+		if starSeparator(plain) {
+			t.Fatalf("%q must not be a star separator", plain)
+		}
+	}
+}
+
+func TestReaderIntroEndIndexStopsAtFirstSeparator(t *testing.T) {
+	paragraphs := []string{"Перевод: команда", "", "***", "Глава началась", "***", "Ещё текст"}
+	if got := introEndIndex(paragraphs); got != 2 {
+		t.Fatalf("intro end = %d, want 2 (paragraphs before the first ***)", got)
+	}
+	if got := introEndIndex([]string{"нет разделителей"}); got != 1 {
+		t.Fatalf("intro end without separators = %d, want len(paragraphs)", got)
+	}
+}
+
+func TestFitPageWidthKeepsTallStripsAtColumnWidth(t *testing.T) {
+	column := 608
+	viewport := 491
+	// A standard portrait page at full column is cut off: 760x1070 at 608 wide
+	// is 856 tall. The fit narrows it to the viewport height.
+	if got := fitPageWidth(760, 1070, column, viewport); got <= 0 || got >= column {
+		t.Fatalf("portrait fit = %d, want a narrowed page width", got)
+	}
+	if got := fitPageWidth(760, 1070, column, viewport); got != viewport*760/1070 {
+		t.Fatalf("portrait fit = %d, want %d", got, viewport*760/1070)
+	}
+	// A webtoon strip would shrink to a sliver: it keeps the column width.
+	if got := fitPageWidth(760, 12000, column, viewport); got != column {
+		t.Fatalf("webtoon fit = %d, want column width %d", got, column)
+	}
+	// Unknown dimensions (page metadata missing) keep the column width too.
+	if got := fitPageWidth(0, 0, column, viewport); got != column {
+		t.Fatalf("unknown fit = %d, want column width %d", got, column)
+	}
+	// A wide page that is already shorter than the viewport stays full width.
+	if got := fitPageWidth(1200, 800, column, viewport); got != column {
+		t.Fatalf("landscape fit = %d, want column width %d", got, column)
+	}
+}
+
 func TestReaderRequestFrameCallsInvalidator(t *testing.T) {
 	calls := 0
 	r := &readerScreen{invalidate: func() { calls++ }}
