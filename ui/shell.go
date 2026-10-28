@@ -390,19 +390,23 @@ func (s *shell) layoutFrame(gtx layout.Context, g geometry) {
 	))
 
 	// Footer divider, footer, and the content-colored strip above the bottom
-	// border.
-	fill(gtx, dividerColor, image.Rect(
-		g.inner.Min.X,
-		g.footerDivider,
-		g.inner.Max.X,
-		g.footerTop,
-	))
-	fill(gtx, chromeColor, image.Rect(
-		g.inner.Min.X,
-		g.footerTop,
-		g.inner.Max.X,
-		g.footerBottom,
-	))
+	// border. The reader claims the strip (expandContent): the chrome band
+	// would otherwise stay visible in the margins beside the chapter column,
+	// so it is skipped and only the content background remains.
+	if !s.expandContent {
+		fill(gtx, dividerColor, image.Rect(
+			g.inner.Min.X,
+			g.footerDivider,
+			g.inner.Max.X,
+			g.footerTop,
+		))
+		fill(gtx, chromeColor, image.Rect(
+			g.inner.Min.X,
+			g.footerTop,
+			g.inner.Max.X,
+			g.footerBottom,
+		))
+	}
 	fill(gtx, contentColor, image.Rect(
 		g.inner.Min.X,
 		g.stripTop,
