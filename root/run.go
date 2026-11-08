@@ -8,6 +8,7 @@ import (
 // Run starts the application and blocks until the window is closed.
 func Run() {
 	r := &root{window: new(app.Window)}
+	r.initResource()
 	r.initWindowOptions()
 
 	for {
