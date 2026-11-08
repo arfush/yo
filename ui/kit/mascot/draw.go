@@ -52,6 +52,7 @@ func (s scene) paint(gtx layout.Context, jitter float32) {
 	drawBody(gtx, s.g, c)
 	drawHead(gtx, s.g, c)
 	drawFace(gtx, s.g, c, s.pose, s.m.palette)
+	s.m.hat.draw(gtx, wardrobe{g: s.g, pal: s.m.palette})
 	left, right := s.hands()
 	drawArms(gtx, s.g, c, left, right)
 	drawPaw(gtx, s.g, left, c.Paw, c.HairShadow)
@@ -99,6 +100,10 @@ func (g grid) rect(x0, y0, x1, y1 float32) image.Rectangle {
 
 func (g grid) pt(x, y float32) f32.Point {
 	return f32.Pt(float32(g.center.X)+x*g.scale, float32(g.center.Y)+y*g.scale)
+}
+
+func (g grid) point(x, y float32) image.Point {
+	return image.Pt(g.center.X+g.px(x), g.center.Y+g.px(y))
 }
 
 func fillRound(gtx layout.Context, col color.NRGBA, r image.Rectangle, radius int) {

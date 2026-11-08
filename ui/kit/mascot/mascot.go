@@ -22,6 +22,7 @@ type Options struct {
 	Palette   appearance.MascotPalette
 	Mood      Mood
 	MoodSince time.Time
+	Hat       Hat
 }
 
 // Mascot is a drawable mascot value. Build it with New. The zero value is
@@ -30,16 +31,23 @@ type Mascot struct {
 	palette appearance.MascotPalette
 	mood    Mood
 	since   time.Time
+	hat     Hat
 }
 
-// New validates the options and builds a mascot. It panics on a zero palette or
-// an unknown mood: both are programmer errors, not runtime cases.
+// New validates the options and builds a mascot. It panics on a zero palette,
+// an unknown mood or an unknown hat: all are programmer errors.
 func New(opts Options) Mascot {
 	if opts.Palette == (appearance.MascotPalette{}) {
 		panic("mascot: zero palette")
 	}
 	opts.Mood.validate()
-	return Mascot{palette: opts.Palette, mood: opts.Mood, since: opts.MoodSince}
+	opts.Hat.validate()
+	return Mascot{
+		palette: opts.Palette,
+		mood:    opts.Mood,
+		since:   opts.MoodSince,
+		hat:     opts.Hat,
+	}
 }
 
 // SetMood switches the mood and resets its start time. A zero since means the
@@ -63,6 +71,7 @@ func (m Mascot) Draw(gtx layout.Context, rect image.Rectangle) {
 		panic("mascot: zero mascot")
 	}
 	m.mood.validate()
+	m.hat.validate()
 	gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(frameInterval)})
 
 	s := scene{

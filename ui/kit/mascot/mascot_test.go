@@ -27,6 +27,11 @@ func testPalette() appearance.MascotPalette {
 		Alert:        colors(alert),
 		Eye:          normal,
 		EyeHighlight: normal,
+		Hats: appearance.MascotHats{
+			Pink: alert, White: normal, Cream: normal, Dark: normal,
+			Gold: alert, Red: alert, Teal: normal, Sky: alert,
+			Brown: normal, Tan: alert, Green: normal,
+		},
 		Glitch: appearance.MascotGlitch{
 			Cyan:    color.NRGBA{R: 0x10, G: 0x50, B: 0x60, A: 0x55},
 			Magenta: color.NRGBA{R: 0x60, G: 0x10, B: 0x50, A: 0x55},
