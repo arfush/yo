@@ -57,12 +57,11 @@ cmd/yo       → root
 - `origin/libsocial` — провайдер семейства сайтов Libsocial: аниме, манга и ранобэ.
 - `origin/www` — провайдер кино и сериалов.
 - `browser` — Playwright и headless-сценарии.
-- `library` — история, планы, чтение.
 - `playback` — mpv, очередь, прогресс.
 - `party` — совместный просмотр; только когда начнётся этап.
 - `update` — обновления; только когда начнётся этап.
 
-`core/playback` может импортировать `core/library`; `core/library` не импортирует `core/playback`. `core/party` может импортировать `core/playback`; обратное запрещено. Если нужен обратный вызов — его передаёт `root` или `ui`, а не импорт.
+`core/party` может импортировать `core/playback`; обратное запрещено. Если нужен обратный вызов — его передаёт `root` или `ui`, а не импорт.
 
 ### `ui`
 
@@ -84,7 +83,7 @@ cmd/yo       → root
 ```go
 // Package playback owns one mpv session: queue, progress and lifecycle.
 //
-// Imports: catalog, core/library, core/origin/libsocial, core/origin/www.
+// Imports: catalog, core/origin/libsocial, core/origin/www.
 // Must not import: ui/*, root.
 // Invariants: one session at a time; callbacks run on the UI goroutine.
 ```
