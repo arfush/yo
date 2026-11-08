@@ -17,6 +17,7 @@ func Run() {
 
 	r.logger.Info("application started")
 	r.initResource()
+	r.initAppearance()
 	r.initWindowOptions()
 
 	interrupt := make(chan os.Signal, 1)

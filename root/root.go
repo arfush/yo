@@ -9,15 +9,21 @@ import (
 	"gioui.org/app"
 
 	"github.com/arfush/yo/core/log"
+	"github.com/arfush/yo/core/stdx"
+	"github.com/arfush/yo/ui/appearance"
 	"github.com/arfush/yo/ui/resource"
 )
 
-const windowTitle = "yo"
+const (
+	windowTitle     = "yo"
+	defaultLanguage = "ru"
+)
 
 // root owns the application object graph and the window lifecycle.
 type root struct {
 	window      *app.Window
 	resources   *resource.Resource
+	appearance  *stdx.Holder[appearance.Appearance]
 	journal     *log.Journal
 	logger      *log.Logger
 	windowShown bool
@@ -26,6 +32,14 @@ type root struct {
 
 func (r *root) initResource() {
 	r.resources = resource.New()
+}
+
+func (r *root) initAppearance() {
+	r.appearance = stdx.NewHolder(appearance.New(appearance.Options{
+		Resources: r.resources,
+		Language:  defaultLanguage,
+	}))
+	r.logger.Info("appearance ready", "language", defaultLanguage)
 }
 
 func (r *root) initWindowOptions() {
