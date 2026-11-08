@@ -3,7 +3,7 @@
   "format.decimal": ".",
   "format.percent": "%s%%",
   "format.date": "01/02/2006",
-  "format.dateTime": "01/02/2006 15:04",
+  "format.datetime": "01/02/2006 15:04",
   "format.duration.minutes": "%d:%02d",
   "format.duration.hours": "%d:%02d:%02d"
 }

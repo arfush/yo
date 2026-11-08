@@ -16,7 +16,7 @@ const (
 	formatDecimal       resource.TextKey = "format.decimal"
 	formatPercent       resource.TextKey = "format.percent"
 	formatDate          resource.TextKey = "format.date"
-	formatDateTime      resource.TextKey = "format.dateTime"
+	formatDateTime      resource.TextKey = "format.datetime"
 	formatDurationMin   resource.TextKey = "format.duration.minutes"
 	formatDurationHours resource.TextKey = "format.duration.hours"
 )
