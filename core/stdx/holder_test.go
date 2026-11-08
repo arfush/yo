@@ -21,6 +21,16 @@ func TestHolderValueAndSet(t *testing.T) {
 	}
 }
 
+func TestHolderUpdate(t *testing.T) {
+	t.Parallel()
+
+	h := stdx.NewHolder(40)
+	h.Update(func(v *int) { *v += 2 })
+	if got := h.Value(); got != 42 {
+		t.Fatalf("Value after Update = %d; want 42", got)
+	}
+}
+
 func TestReadonlyIsLive(t *testing.T) {
 	t.Parallel()
 
@@ -53,6 +63,14 @@ func TestNilHolderPanics(t *testing.T) {
 		{"holder set", func() {
 			var h *stdx.Holder[int]
 			h.Set(1)
+		}},
+		{"holder update", func() {
+			var h *stdx.Holder[int]
+			h.Update(func(*int) {})
+		}},
+		{"nil update", func() {
+			h := stdx.NewHolder(1)
+			h.Update(nil)
 		}},
 		{"holder readonly", func() {
 			var h *stdx.Holder[int]
@@ -87,6 +105,7 @@ func TestConcurrentAccess(t *testing.T) {
 			defer wg.Done()
 			for i := 0; i < writes; i++ {
 				h.Set(n)
+				h.Update(func(v *int) { *v = n })
 				_ = h.Value()
 				_ = view.Value()
 			}

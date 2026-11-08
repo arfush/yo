@@ -36,6 +36,21 @@ func (h *Holder[T]) Set(v T) {
 	h.value = v
 }
 
+// Update mutates the current value under the holder lock. fn must not call back
+// into the holder: the lock is not reentrant. A nil holder or nil fn is a
+// programmer error and panics.
+func (h *Holder[T]) Update(fn func(*T)) {
+	if h == nil {
+		panic("stdx: nil holder")
+	}
+	if fn == nil {
+		panic("stdx: nil update")
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	fn(&h.value)
+}
+
 // Readonly returns a live read-only view. The view always reports the current
 // value and has no setter. A nil holder is a programmer error and panics.
 func (h *Holder[T]) Readonly() ReadonlyHolder[T] {
