@@ -1,7 +1,11 @@
 package root
 
 import (
+	"os"
+	"os/signal"
+
 	"gioui.org/app"
+	"gioui.org/io/system"
 	"gioui.org/op"
 )
 
@@ -9,11 +13,22 @@ import (
 func Run() {
 	r := &root{window: new(app.Window)}
 	r.initLog()
-	defer r.closeLog()
+	defer r.stop()
 
 	r.logger.Info("application started")
 	r.initResource()
 	r.initWindowOptions()
+
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt)
+	defer signal.Stop(interrupt)
+	go func() {
+		sig := <-interrupt
+		signal.Stop(interrupt)
+		r.logger.Info("interrupt received", "signal", sig)
+		r.stop()
+		r.window.Perform(system.ActionClose)
+	}()
 
 	for {
 		switch e := r.window.Event().(type) {
@@ -23,7 +38,7 @@ func Run() {
 			} else {
 				r.logger.Info("window closed")
 			}
-			r.logger.Info("application stopped")
+			r.stop()
 			return
 		case app.FrameEvent:
 			if !r.windowShown {
