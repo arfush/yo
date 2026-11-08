@@ -1,0 +1,148 @@
+package appearance_test
+
+import (
+	"testing"
+
+	"gioui.org/font"
+	"gioui.org/unit"
+
+	"github.com/arfush/yo/ui/appearance"
+	"github.com/arfush/yo/ui/resource"
+)
+
+func TestNew(t *testing.T) {
+	t.Parallel()
+
+	app := appearance.New(appearance.Options{Resources: resource.New(), Language: "ru"})
+	if got := app.Locale().Code(); got != "ru" {
+		t.Fatalf("Locale().Code() = %q; want ru", got)
+	}
+	if got := app.Locale().Tag().String(); got != "ru" {
+		t.Fatalf("Locale().Tag() = %q; want ru", got)
+	}
+	if app.Typography().Shaper() == nil {
+		t.Fatal("Typography().Shaper() = nil")
+	}
+	if got := app.Palette().Canvas.A; got == 0 {
+		t.Fatal("Palette().Canvas is fully transparent")
+	}
+}
+
+func TestSetLanguage(t *testing.T) {
+	t.Parallel()
+
+	app := appearance.New(appearance.Options{Resources: resource.New(), Language: "ru"})
+	app.SetLanguage("en")
+
+	if got := app.Locale().Code(); got != "en" {
+		t.Fatalf("Locale().Code() = %q; want en", got)
+	}
+	if got := app.Locale().Tag().String(); got != "en" {
+		t.Fatalf("Locale().Tag() = %q; want en", got)
+	}
+}
+
+func TestTypographyRoles(t *testing.T) {
+	t.Parallel()
+
+	typo := appearance.New(appearance.Options{
+		Resources: resource.New(),
+		Language:  "en",
+	}).Typography()
+
+	tests := []struct {
+		name   string
+		role   appearance.TextRole
+		weight font.Weight
+		size   unit.Sp
+	}{
+		{"display", appearance.RoleDisplay, font.Bold, 26},
+		{"title", appearance.RoleTitle, font.SemiBold, 23.5},
+		{"subtitle", appearance.RoleSubtitle, font.Medium, 15},
+		{"body", appearance.RoleBody, font.Normal, 12.5},
+		{"label", appearance.RoleLabel, font.Medium, 13},
+		{"caption", appearance.RoleCaption, font.Normal, 12},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := typo.Font(tt.role).Weight; got != tt.weight {
+				t.Fatalf("Font(%s).Weight = %v; want %v", tt.name, got, tt.weight)
+			}
+			if got := typo.TextSize(tt.role); got != tt.size {
+				t.Fatalf("TextSize(%s) = %v; want %v", tt.name, got, tt.size)
+			}
+		})
+	}
+}
+
+func TestNewPanics(t *testing.T) {
+	t.Parallel()
+
+	res := resource.New()
+	tests := []struct {
+		name string
+		opts appearance.Options
+	}{
+		{"nil resources", appearance.Options{Language: "ru"}},
+		{"empty language", appearance.Options{Resources: res}},
+		{"unknown language", appearance.Options{Resources: res, Language: "xx"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assertPanics(t, func() { appearance.New(tt.opts) })
+		})
+	}
+}
+
+func TestSetLanguagePanics(t *testing.T) {
+	t.Parallel()
+
+	res := resource.New()
+	app := appearance.New(appearance.Options{Resources: res, Language: "ru"})
+	tests := []struct {
+		name string
+		call func()
+	}{
+		{"nil appearance", func() {
+			var nilApp *appearance.Appearance
+			nilApp.SetLanguage("en")
+		}},
+		{"empty language", func() {
+			app.SetLanguage("")
+		}},
+		{"unknown language", func() {
+			app.SetLanguage("xx")
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assertPanics(t, tt.call)
+		})
+	}
+}
+
+func TestUnknownTextRolePanics(t *testing.T) {
+	t.Parallel()
+
+	typo := appearance.New(appearance.Options{
+		Resources: resource.New(),
+		Language:  "ru",
+	}).Typography()
+	for _, role := range []appearance.TextRole{appearance.RoleCaption + 1, 255} {
+		assertPanics(t, func() { typo.Font(role) })
+		assertPanics(t, func() { typo.TextSize(role) })
+	}
+}
+
+func assertPanics(t *testing.T, fn func()) {
+	t.Helper()
+	defer func() {
+		if recover() == nil {
+			t.Fatal("call did not panic")
+		}
+	}()
+	fn()
+}
