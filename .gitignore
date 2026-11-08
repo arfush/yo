@@ -1,0 +1,7 @@
+# IDE
+.idea/
+
+# Go build and test artifacts
+*.exe
+*.test
+*.out
