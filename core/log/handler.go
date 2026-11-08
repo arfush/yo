@@ -159,7 +159,7 @@ func redactKey(key string) bool {
 func formatValue(value slog.Value) string {
 	switch value.Kind() {
 	case slog.KindString:
-		return strconv.Quote(value.String())
+		return quoteString(value.String())
 	case slog.KindDuration:
 		return value.Duration().String()
 	case slog.KindTime:
@@ -167,10 +167,10 @@ func formatValue(value slog.Value) string {
 	case slog.KindAny:
 		any := value.Any()
 		if err, ok := any.(error); ok {
-			return strconv.Quote(err.Error())
+			return quoteString(err.Error())
 		}
 		if stringer, ok := any.(fmt.Stringer); ok {
-			return strconv.Quote(stringer.String())
+			return quoteString(stringer.String())
 		}
 		return fmt.Sprint(any)
 	case slog.KindBool:
@@ -190,4 +190,32 @@ func formatValue(value slog.Value) string {
 	default:
 		return fmt.Sprint(value.Any())
 	}
+}
+
+// quoteString quotes a value and escapes only what would break the line.
+// Backslashes stay single so Windows paths remain readable.
+func quoteString(s string) string {
+	var b strings.Builder
+	b.Grow(len(s) + 2)
+	b.WriteByte('"')
+	for _, r := range s {
+		switch r {
+		case '"':
+			b.WriteString(`\"`)
+		case '\n':
+			b.WriteString(`\n`)
+		case '\r':
+			b.WriteString(`\r`)
+		case '\t':
+			b.WriteString(`\t`)
+		default:
+			if r < 0x20 || r == 0x7f {
+				fmt.Fprintf(&b, `\x%02x`, r)
+				continue
+			}
+			b.WriteRune(r)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
 }

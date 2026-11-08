@@ -139,6 +139,27 @@ func TestRedaction(t *testing.T) {
 	}
 }
 
+func TestStringQuoting(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	j := newTestJournal(t, Options{Stdout: &stdout})
+	logger := j.Logger(SourceRoot)
+	logger.Info("journal opened", "path", `C:\Users\example\AppData\Roaming\yo\yo.log`)
+	logger.Info("say", "text", `a "quoted" value`)
+
+	got := stdout.String()
+	if !strings.Contains(got, `path="C:\Users\example\AppData\Roaming\yo\yo.log"`) {
+		t.Fatalf("journal = %q; want a readable Windows path", got)
+	}
+	if strings.Contains(got, `\\`) {
+		t.Fatalf("journal = %q; want single backslashes", got)
+	}
+	if !strings.Contains(got, `text="a \"quoted\" value"`) {
+		t.Fatalf("journal = %q; want escaped quotes", got)
+	}
+}
+
 func TestLevelLabel(t *testing.T) {
 	t.Parallel()
 
