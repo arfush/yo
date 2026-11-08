@@ -23,9 +23,9 @@ func Run() {
 	signal.Notify(interrupt, os.Interrupt)
 	defer signal.Stop(interrupt)
 	go func() {
-		sig := <-interrupt
+		<-interrupt
 		signal.Stop(interrupt)
-		r.logger.Info("interrupt received", "signal", sig)
+		r.logger.Info("interrupt received")
 		r.stop()
 		r.window.Perform(system.ActionClose)
 	}()
