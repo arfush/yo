@@ -50,7 +50,6 @@ func testNavigator(t *testing.T) (*Navigator, *fakeScreen, *fakeDialog, *fakeIns
 		Installer:  installer,
 		Invalidate: func() {},
 		Startup:    func(Handler) Screen { return startup },
-		StubDialog: func(Handler) shell.Dialog { return dialog },
 	})
 	return nav, startup, dialog, installer
 }
@@ -120,14 +119,13 @@ func TestBackAtRootDoesNothing(t *testing.T) {
 	}
 }
 
-func TestStubDialogOpens(t *testing.T) {
+func TestDialogOpens(t *testing.T) {
 	nav, startup, dialog, installer := testNavigator(t)
 	nav.Apply()
 
-	nav.Navigate(StubDialog{})
-	nav.Apply()
+	nav.openDialog(dialog)
 	if installer.dialog != dialog {
-		t.Fatal("StubDialog did not install the dialog")
+		t.Fatal("openDialog did not install the dialog")
 	}
 	if startup.hidden != 0 {
 		t.Fatalf("startup.OnHidden = %d while the dialog is open; want 0", startup.hidden)
@@ -139,8 +137,7 @@ func TestBackClosesDialogBeforeScreen(t *testing.T) {
 	child := &fakeScreen{ScreenBase: ScreenBase{ScreenTitle: "child"}}
 	nav.Apply()
 	nav.push(child)
-	nav.Navigate(StubDialog{})
-	nav.Apply()
+	nav.openDialog(&fakeDialog{})
 
 	nav.Navigate(Back{})
 	nav.Apply()
@@ -167,8 +164,7 @@ func TestBackClosesDialogBeforeScreen(t *testing.T) {
 func TestCloseClearsDialogAndScreens(t *testing.T) {
 	nav, startup, _, installer := testNavigator(t)
 	nav.Apply()
-	nav.Navigate(StubDialog{})
-	nav.Apply()
+	nav.openDialog(&fakeDialog{})
 
 	nav.Close()
 	nav.Close()
@@ -199,11 +195,10 @@ func TestNavigateAfterCloseIsIgnored(t *testing.T) {
 		Installer:  &fakeInstaller{},
 		Invalidate: func() { invalidated++ },
 		Startup:    func(Handler) Screen { return startup },
-		StubDialog: func(Handler) shell.Dialog { return &fakeDialog{} },
 	})
 	nav.Close()
 
-	nav.Navigate(StubDialog{})
+	nav.Navigate(Back{})
 	if invalidated != 0 {
 		t.Fatalf("invalidate calls after Close = %d; want 0", invalidated)
 	}

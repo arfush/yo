@@ -14,13 +14,12 @@ type Installer interface {
 	SetDialog(shell.Dialog)
 }
 
-// Options configures a navigator. Installer, Invalidate, Startup and StubDialog
-// are required; future screens and dialogs add their own factories here.
+// Options configures a navigator. Installer, Invalidate and Startup are
+// required; future screens and dialogs add their own factories here.
 type Options struct {
 	Installer  Installer
 	Invalidate func()
 	Startup    ScreenFactory
-	StubDialog StubDialogFactory
 }
 
 var _ Handler = (*Navigator)(nil)
@@ -30,7 +29,6 @@ var _ Handler = (*Navigator)(nil)
 type Navigator struct {
 	installer  Installer
 	invalidate func()
-	stubDialog StubDialogFactory
 	entries    []Screen
 	dialogs    []shell.Dialog
 	pending    []Intent
@@ -50,13 +48,9 @@ func New(opts Options) *Navigator {
 	if opts.Startup == nil {
 		panic("navigator: nil startup factory")
 	}
-	if opts.StubDialog == nil {
-		panic("navigator: nil stub dialog factory")
-	}
 	n := &Navigator{
 		installer:  opts.Installer,
 		invalidate: opts.Invalidate,
-		stubDialog: opts.StubDialog,
 	}
 	startup := opts.Startup(n)
 	if startup == nil {
@@ -124,8 +118,6 @@ func (n *Navigator) apply(intent Intent) {
 	switch intent.(type) {
 	case Back:
 		n.back()
-	case StubDialog:
-		n.openDialog(n.stubDialog(n))
 	default:
 		panic(fmt.Sprintf("navigator: unknown intent %T", intent))
 	}

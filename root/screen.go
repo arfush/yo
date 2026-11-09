@@ -5,7 +5,12 @@ import (
 	"github.com/arfush/yo/ui/screen"
 )
 
-// newStubScreen builds the fallback screen installed at startup.
-func (r *root) newStubScreen(navigator.Handler) navigator.Screen {
-	return screen.NewStub(windowTitle)
+// newStartupScreen builds the temporary main screen, a placeholder until the
+// real main screen exists. It reuses the panic screen layout with no detail and
+// keeps the native window title constant.
+func (r *root) newStartupScreen(navigator.Handler) navigator.Screen {
+	app := r.appearance.Value()
+	startup := screen.NewPanic(app, panicTitle(app), "")
+	startup.ScreenTitle = windowTitle
+	return startup
 }

@@ -14,7 +14,6 @@ import (
 	"github.com/arfush/yo/ui/appearance"
 	"github.com/arfush/yo/ui/navigator"
 	"github.com/arfush/yo/ui/resource"
-	"github.com/arfush/yo/ui/screen"
 	"github.com/arfush/yo/ui/shell"
 	"github.com/arfush/yo/version"
 )
@@ -68,11 +67,11 @@ func (r *root) initWindowOptions() {
 	r.logger.Info("window configured", "title", windowTitle)
 }
 
-// initShell builds the window chrome and installs the fallback screen. The
-// navigator replaces it with the startup screen before the first frame.
+// initShell builds the window chrome and installs the temporary main screen
+// placeholder. The navigator installs the same screen before the first frame.
 func (r *root) initShell() {
 	r.shell = shell.New(shell.Options{
-		Screen:     screen.NewStub(windowTitle),
+		Screen:     r.newStartupScreen(nil),
 		Window:     r.window,
 		Site:       r.site,
 		Appearance: r.appearance,
@@ -83,14 +82,14 @@ func (r *root) initShell() {
 }
 
 // initNavigator installs the screen and dialog stacks above the shell. The
-// startup screen and the fallback dialog are the only destinations until the
-// first feature registers its own factories.
+// temporary main screen placeholder is the only destination until the first
+// feature registers its own factories; the dialog stack stays empty for future
+// real dialogs.
 func (r *root) initNavigator() {
 	r.navigator = navigator.New(navigator.Options{
 		Installer:  r.shell,
 		Invalidate: r.window.Invalidate,
-		Startup:    r.newStubScreen,
-		StubDialog: r.newStubDialog,
+		Startup:    r.newStartupScreen,
 	})
 	r.logger.Info("navigator ready")
 }
