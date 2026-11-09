@@ -51,6 +51,7 @@ type Shell struct {
 	screen     Screen
 	dialog     Dialog
 	maximized  bool
+	content    op.CallOp
 
 	backdrop      paint.ImageOp
 	backdropSize  image.Point
@@ -118,20 +119,55 @@ func (s *Shell) SetConfig(cfg app.Config) {
 	s.maximized = cfg.Mode != app.Windowed
 }
 
-// Layout draws one frame of the shell.
+// Prepare records the active screen and refreshes the modal backdrop. It must
+// run once per frame on the UI goroutine before Layout, with the same context:
+// the recorded content is replayed by Layout. The offscreen render stays out of
+// Layout, so layout itself never blocks on the GPU.
+func (s *Shell) Prepare(gtx layout.Context) {
+	if s.screen == nil {
+		panic("shell: no screen installed")
+	}
+	g := s.newGeometry(gtx)
+	s.content = s.layoutScreen(gtx, g)
+	s.prepareBackdrop(gtx, g)
+}
+
+// Layout draws one frame of the shell from the content recorded by Prepare.
 func (s *Shell) Layout(gtx layout.Context) {
 	if s.screen == nil {
 		panic("shell: no screen installed")
 	}
-	g := newGeometry(gtx, s.maximized)
+	g := s.newGeometry(gtx)
 	s.layoutFrame(gtx, g)
 	s.layoutHeader(gtx, g)
-	content := s.layoutScreen(gtx, g)
 	s.layoutFooter(gtx, g)
 	if s.dialog == nil {
-		s.layoutContent(gtx, g, content)
+		s.layoutContent(gtx, g, s.content)
 	} else {
-		s.layoutDialog(gtx, g, content)
+		s.layoutDialog(gtx, g, s.content)
+	}
+}
+
+// prepareBackdrop captures the recorded screen once per dialog and size. The
+// result is cached until SetDialog, SetScreen or a resize invalidates it.
+func (s *Shell) prepareBackdrop(gtx layout.Context, g geometry) {
+	if s.dialog == nil {
+		return
+	}
+	bounds := g.contentRect()
+	if bounds.Empty() {
+		return
+	}
+	size := bounds.Size()
+	if s.backdropTried && s.backdropSize == size {
+		return
+	}
+	img, ok := s.captureBackdrop(s.content, size, s.appearance.Palette().Canvas, gtx.Dp(blurRadiusDp))
+	s.backdropTried = true
+	s.backdropSize = size
+	s.backdropReady = ok
+	if ok {
+		s.backdrop = img
 	}
 }
 
@@ -218,10 +254,9 @@ func (s *Shell) layoutFooter(gtx layout.Context, g geometry) {
 	s.screen.LayoutFooter(gtx)
 }
 
-// layoutDialog replaces the body with a blurred snapshot of the screen, dims
-// it, then draws the modal above it. The snapshot is captured once per dialog
-// and size: replaying the recorded screen costs one offscreen render instead of
-// one full-screen layer per blur sample every frame.
+// layoutDialog replaces the body with the cached blurred snapshot of the
+// screen, dims it, then draws the modal above it. The snapshot itself is made
+// by Prepare; Layout only replays it.
 func (s *Shell) layoutDialog(gtx layout.Context, g geometry, content op.CallOp) {
 	bounds := g.contentRect()
 	if bounds.Empty() {
@@ -230,17 +265,6 @@ func (s *Shell) layoutDialog(gtx layout.Context, g geometry, content op.CallOp) 
 
 	clipStack := clip.Rect(bounds).Push(gtx.Ops)
 	defer clipStack.Pop()
-
-	size := bounds.Size()
-	if !s.backdropReady && (!s.backdropTried || s.backdropSize != size) {
-		img, ok := s.captureBackdrop(content, size, s.appearance.Palette().Canvas, gtx.Dp(blurRadiusDp))
-		s.backdropTried = true
-		s.backdropSize = size
-		if ok {
-			s.backdrop = img
-			s.backdropReady = true
-		}
-	}
 
 	offset := op.Offset(bounds.Min).Push(gtx.Ops)
 	if s.backdropReady {

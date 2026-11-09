@@ -58,6 +58,7 @@ func Run() {
 			}
 			gtx := app.NewContext(new(op.Ops), e)
 			r.navigator.Apply()
+			r.shell.Prepare(gtx)
 			r.shell.Layout(gtx)
 			e.Frame(gtx.Ops)
 		case event.Event:
