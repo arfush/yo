@@ -23,6 +23,7 @@ func Run() {
 	r.initAppearance()
 	r.initWindowOptions()
 	r.initShell()
+	r.initNavigator()
 
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
@@ -53,6 +54,7 @@ func Run() {
 				r.windowShown = true
 			}
 			gtx := app.NewContext(new(op.Ops), e)
+			r.navigator.Apply()
 			r.shell.Layout(gtx)
 			e.Frame(gtx.Ops)
 		case event.Event:

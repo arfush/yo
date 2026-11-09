@@ -12,6 +12,7 @@ import (
 	"github.com/arfush/yo/core/log"
 	"github.com/arfush/yo/core/stdx"
 	"github.com/arfush/yo/ui/appearance"
+	"github.com/arfush/yo/ui/navigator"
 	"github.com/arfush/yo/ui/resource"
 	"github.com/arfush/yo/ui/screen"
 	"github.com/arfush/yo/ui/shell"
@@ -29,6 +30,7 @@ type root struct {
 	resources   *resource.Resource
 	appearance  *stdx.Holder[appearance.Appearance]
 	shell       *shell.Shell
+	navigator   *navigator.Navigator
 	journal     *log.Journal
 	logger      *log.Logger
 	windowShown bool
@@ -58,10 +60,10 @@ func (r *root) initWindowOptions() {
 }
 
 // initShell builds the window chrome and installs the fallback screen. The
-// navigator replaces it with the first route in the next stage.
+// navigator replaces it with the startup screen before the first frame.
 func (r *root) initShell() {
 	r.shell = shell.New(shell.Options{
-		Screen:     screen.NewStub(),
+		Screen:     screen.NewStub(windowTitle),
 		Window:     r.window,
 		Appearance: r.appearance.Value(),
 		Resources:  r.resources,
@@ -69,6 +71,19 @@ func (r *root) initShell() {
 		Version:    version.Ver,
 	})
 	r.logger.Info("shell ready")
+}
+
+// initNavigator installs the screen stack above the shell. No routes are
+// registered until the first real destination exists.
+func (r *root) initNavigator() {
+	r.navigator = navigator.New(navigator.Options{
+		Installer:  r.shell,
+		Invalidate: r.window.Invalidate,
+		Startup: func(navigator.Handler) navigator.Screen {
+			return screen.NewStub(windowTitle)
+		},
+	})
+	r.logger.Info("navigator ready")
 }
 
 // initLog creates the process journal and the composition root logger. A
@@ -97,6 +112,9 @@ func (r *root) initLog() {
 // belongs here as well.
 func (r *root) stop() {
 	r.stopOnce.Do(func() {
+		if r.navigator != nil {
+			r.navigator.Close()
+		}
 		r.logger.Info("application stopped")
 		if err := r.journal.Close(); err != nil {
 			r.logger.Error("close journal", "error", err)
