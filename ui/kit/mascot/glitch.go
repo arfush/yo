@@ -3,6 +3,7 @@ package mascot
 import (
 	"image"
 	"math"
+	"time"
 
 	"gioui.org/layout"
 	"gioui.org/op/clip"
@@ -11,12 +12,12 @@ import (
 	"github.com/arfush/yo/ui/appearance"
 )
 
-// Panic glitch timing, in seconds. The character stays intact for most of the
-// cycle, then a short burst tears a few horizontal slices sideways.
+// Panic glitch timing. The character stays intact for most of the cycle, then a
+// short burst tears a few horizontal slices sideways.
 const (
-	glitchCycle = 1.35
-	glitchBurst = 0.3
-	glitchStep  = 1.0 / 18
+	glitchCycle = 1350 * time.Millisecond
+	glitchBurst = 300 * time.Millisecond
+	glitchStep  = time.Second / 18
 	glitchBands = 3
 	glitchShift = 3.0
 )
@@ -32,10 +33,10 @@ type glitchScene struct {
 }
 
 func (g glitchScene) draw(gtx layout.Context) {
-	if math.Mod(g.phase, glitchCycle) > glitchBurst {
+	if math.Mod(g.phase, glitchCycle.Seconds()) > glitchBurst.Seconds() {
 		return
 	}
-	step := uint64(g.phase / glitchStep)
+	step := uint64(g.phase / glitchStep.Seconds())
 	for index := uint64(0); index < glitchBands; index++ {
 		noise := glitchNoise(step*glitchBands + index)
 		top := -16 + float32(noise&0xff)/255*30

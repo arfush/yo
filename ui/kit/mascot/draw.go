@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"time"
 
 	"gioui.org/f32"
 	"gioui.org/layout"
@@ -15,13 +16,13 @@ import (
 	"github.com/arfush/yo/ui/kit"
 )
 
-// Motion periods, in seconds, and Alert hand geometry, in design units.
+// Motion periods and Alert hand geometry. Hand coordinates are design units.
 const (
-	wavePeriod           = 2.4
-	loadingRingPeriod    = 1.4
-	panicTremblePeriod   = 0.09
-	panicTremble         = 0.6
-	alertTogetherSeconds = 1.0
+	wavePeriod          = 2400 * time.Millisecond
+	loadingRingPeriod   = 1400 * time.Millisecond
+	panicTremblePeriod  = 90 * time.Millisecond
+	panicTremble        = 0.6
+	alertTogetherPeriod = time.Second
 
 	alertHandRestX     = 11
 	alertHandRestY     = 3.5
@@ -42,7 +43,7 @@ type scene struct {
 // Panic repaints clipped slices through it to build the glitch.
 func (s scene) paint(gtx layout.Context, jitter float32) {
 	c := s.style.colors
-	bob := float32(math.Sin(s.phase*2*math.Pi/s.style.period)) * s.style.amplitude
+	bob := float32(math.Sin(s.phase*2*math.Pi/s.style.period.Seconds())) * s.style.amplitude
 	motion := op.Affine(f32.Affine2D{}.Offset(f32.Pt(jitter*s.g.scale, bob*s.g.scale))).Push(gtx.Ops)
 	defer motion.Pop()
 
@@ -67,10 +68,10 @@ func (s scene) hands() (f32.Point, f32.Point) {
 		return alertHands(s.g.pt, s.pose.together)
 	}
 	if s.pose.panic {
-		tremble := float32(math.Sin(s.phase*2*math.Pi/panicTremblePeriod)) * panicTremble
+		tremble := float32(math.Sin(s.phase*2*math.Pi/panicTremblePeriod.Seconds())) * panicTremble
 		return s.g.pt(-11+tremble, -1.6), s.g.pt(11+tremble, -1.6)
 	}
-	wave := float32(math.Sin(s.phase * 2 * math.Pi / wavePeriod))
+	wave := float32(math.Sin(s.phase * 2 * math.Pi / wavePeriod.Seconds()))
 	leftLift := smoothStep(wave*0.5+0.5) * 4.4
 	rightLift := smoothStep(0.5-wave*0.5) * 4.4
 	return s.g.pt(-11, 3.5-leftLift), s.g.pt(11, 3.5-rightLift)
@@ -195,7 +196,8 @@ func drawRing(gtx layout.Context, g grid, phase float64, col color.NRGBA) {
 	radius := 18.4 * g.scale
 	width := max(float32(1.6), float32(g.px(1.8)))
 	strokeCircle(gtx, center, radius, width, kit.WithAlpha(col, 0x33))
-	turn := math.Mod(phase, loadingRingPeriod) / loadingRingPeriod
+	period := loadingRingPeriod.Seconds()
+	turn := math.Mod(phase, period) / period
 	strokeArc(gtx, center, radius, float32(turn*2*math.Pi)-math.Pi/2, float32(1.5*math.Pi), width, col)
 }
 

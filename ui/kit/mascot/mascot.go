@@ -96,11 +96,11 @@ func (m Mascot) Draw(gtx layout.Context, rect image.Rectangle) {
 
 // elapsed returns how long the current mood has been active. A zero since
 // means "already settled", so the intro animation is skipped.
-func (m Mascot) elapsed(now time.Time) float64 {
+func (m Mascot) elapsed(now time.Time) time.Duration {
 	if m.since.IsZero() {
-		return alertTogetherSeconds
+		return alertTogetherPeriod
 	}
-	return now.Sub(m.since).Seconds()
+	return now.Sub(m.since)
 }
 
 // seconds turns a frame time into animation seconds.
