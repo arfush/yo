@@ -31,8 +31,8 @@ const (
 
 // Chrome geometry, in device-independent dp.
 const (
-	headerHeight    unit.Dp = 52
-	footerHeight    unit.Dp = 49
+	headerHeight    unit.Dp = 48
+	footerHeight    unit.Dp = 45
 	innerRadius     unit.Dp = 8
 	controlWidth    unit.Dp = 30
 	controlGap      unit.Dp = 12
@@ -40,13 +40,13 @@ const (
 	closeIconSize   unit.Dp = 28
 	controlsInset   unit.Dp = 12
 	logoInset       unit.Dp = 16
-	logoSize        unit.Dp = 28
+	logoSize        unit.Dp = 25
 	labelGap        unit.Dp = 10
 	contentGap      unit.Dp = 14
 	versionGap      unit.Dp = 12
 	badgeHeight     unit.Dp = 20
 	badgePaddingX   unit.Dp = 7
-	markRadius      unit.Dp = 7
+	markRadius      unit.Dp = 6
 	markInset       unit.Dp = 3
 	siteChevronSize unit.Dp = 10
 	siteChevronGap  unit.Dp = 10
@@ -231,7 +231,7 @@ func (s *Shell) brandLayout(gtx layout.Context, g geometry) brandLayout {
 	labelGtx := gtx
 	labelGtx.Constraints = layout.Constraints{Max: image.Pt(maxWidth, g.headerClickEnd)}
 	macro := op.Record(gtx.Ops)
-	dims := kit.Text(labelGtx, typo, appearance.RoleSubtitle, label, palette.Text)
+	dims := kit.Text(labelGtx, typo, appearance.RoleLabel, label, palette.Text)
 	call := macro.Stop()
 
 	b := brandLayout{label: call, labelSize: dims.Size}
@@ -250,12 +250,13 @@ func (s *Shell) brandLayout(gtx layout.Context, g geometry) brandLayout {
 // and the version.
 func (s *Shell) layoutBrand(gtx layout.Context, g geometry, b brandLayout) {
 	palette := s.palette()
-	s.layoutSiteMark(gtx, g, palette)
+	s.layoutSiteMark(gtx, g.logo, palette)
 	if b.labelSize.X <= 0 {
 		return
 	}
 	if s.siteSwitchable() && !b.trigger.Empty() && s.layoutSiteTrigger(gtx, b.trigger) {
 		s.menu.toggle(b.trigger)
+		gtx.Execute(op.InvalidateCmd{})
 	}
 
 	stack := op.Offset(image.Pt(g.titleX, g.headerCenterY-b.labelSize.Y/2)).Push(gtx.Ops)
@@ -273,17 +274,20 @@ func (s *Shell) layoutBrand(gtx layout.Context, g geometry, b brandLayout) {
 
 // layoutSiteMark paints the vector site tile: a dim rounded edge, the
 // alternative surface and the torii in the site accent.
-func (s *Shell) layoutSiteMark(gtx layout.Context, g geometry, palette appearance.Palette) {
+func (s *Shell) layoutSiteMark(gtx layout.Context, r image.Rectangle, palette appearance.Palette) {
+	if r.Empty() {
+		return
+	}
 	line := max(1, gtx.Dp(1))
 	radius := gtx.Dp(markRadius)
-	fillRounded(gtx, withAlpha(palette.AccentMuted, 0x40), g.logo, radius)
-	inner := g.logo.Inset(line)
+	fillRounded(gtx, withAlpha(palette.AccentMuted, 0x40), r, radius)
+	inner := r.Inset(line)
 	fillRounded(gtx, palette.SurfaceAlt, inner, max(0, radius-line))
 	drawIcon(gtx, s.icon(resource.IconTorii), inner.Inset(gtx.Dp(markInset)), palette.Accent)
 }
 
-// layoutVersion paints the version pill after the site block. The shell never
-// formats the version text.
+// layoutVersion paints the version pill after the site block. Its fill is
+// tinted by the active palette. The shell never formats the version text.
 func (s *Shell) layoutVersion(gtx layout.Context, g geometry, left int) {
 	palette := s.palette()
 	typo := s.typography()
@@ -303,7 +307,7 @@ func (s *Shell) layoutVersion(gtx layout.Context, g geometry, left int) {
 	if pill.Max.X > g.controls.minimize.Min.X-gtx.Dp(contentGap) {
 		return
 	}
-	fillRounded(gtx, palette.SurfaceAlt, pill, height/2)
+	fillRounded(gtx, withAlpha(palette.AccentMuted, 0x40), pill, height/2)
 	stack := op.Offset(image.Pt(left+padding, g.headerCenterY-dims.Size.Y/2)).Push(gtx.Ops)
 	call.Add(gtx.Ops)
 	stack.Pop()

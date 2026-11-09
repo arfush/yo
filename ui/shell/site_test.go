@@ -37,6 +37,34 @@ func TestSwitchSite(t *testing.T) {
 	}
 }
 
+func TestSiteMenuAnchor(t *testing.T) {
+	t.Parallel()
+
+	bounds := image.Rect(0, 0, 833, 545)
+	tests := []struct {
+		name    string
+		trigger image.Rectangle
+		min     int
+		want    image.Rectangle
+	}{
+		{"aligns with the brand", image.Rect(16, 0, 123, 48), 120, image.Rect(4, 0, 123, 48)},
+		{"keeps the window margin", image.Rect(10, 0, 80, 48), 40, image.Rect(4, 0, 80, 48)},
+		{"widens left for the minimum", image.Rect(100, 0, 180, 48), 120, image.Rect(60, 0, 180, 48)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := siteMenuAnchor(tt.trigger, 12, tt.min, 4, bounds)
+			if got != tt.want {
+				t.Fatalf("siteMenuAnchor() = %v; want %v", got, tt.want)
+			}
+			if got.Max.X != tt.trigger.Max.X {
+				t.Fatalf("menu right = %d; want chevron right %d", got.Max.X, tt.trigger.Max.X)
+			}
+		})
+	}
+}
+
 func TestPlaceSiteMenuBelow(t *testing.T) {
 	t.Parallel()
 

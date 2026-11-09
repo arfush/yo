@@ -14,21 +14,19 @@ import (
 	"github.com/arfush/yo/catalog"
 	"github.com/arfush/yo/ui/appearance"
 	"github.com/arfush/yo/ui/kit"
-	"github.com/arfush/yo/ui/resource"
 )
 
 // Site switcher geometry, in device-independent dp.
 const (
-	siteMenuMinWidth   unit.Dp = 188
+	siteMenuMinWidth   unit.Dp = 120
 	siteMenuGap        unit.Dp = 6
-	siteMenuMargin     unit.Dp = 8
-	siteMenuPadding    unit.Dp = 6
+	siteMenuMargin     unit.Dp = 4
+	siteMenuPadding    unit.Dp = 4
 	siteMenuRadius     unit.Dp = 8
-	siteMenuItemHeight unit.Dp = 34
+	siteMenuItemHeight unit.Dp = 42
 	siteMenuItemGap    unit.Dp = 2
 	siteMenuItemRadius unit.Dp = 6
-	siteMenuItemPad    unit.Dp = 10
-	siteMenuItemIcon   unit.Dp = 16
+	siteMenuItemPad    unit.Dp = 7
 	siteMenuItemGapX   unit.Dp = 10
 )
 
@@ -98,31 +96,37 @@ func (s *Shell) layoutSiteMenu(gtx layout.Context, g geometry) {
 	}
 	if !s.siteSwitchable() {
 		s.menu.close()
+		gtx.Execute(op.InvalidateCmd{})
 		return
 	}
 	sites := catalog.Sites()
 	if len(sites) < 2 {
 		s.menu.close()
+		gtx.Execute(op.InvalidateCmd{})
 		return
 	}
 
 	line := max(1, gtx.Dp(1))
 	pad := gtx.Dp(siteMenuPadding)
+	itemPad := gtx.Dp(siteMenuItemPad)
 	itemHeight := gtx.Dp(siteMenuItemHeight)
 	itemGap := gtx.Dp(siteMenuItemGap)
 	rows := len(sites) - 1
 	height := 2*(line+pad) + rows*itemHeight + max(0, rows-1)*itemGap
 	margin := gtx.Dp(siteMenuMargin)
 	bounds := image.Rectangle{Max: g.size}
-	width := max(s.menu.anchor.Dx(), gtx.Dp(siteMenuMinWidth))
-	width = min(width, max(1, bounds.Dx()-2*margin))
-	menu := placeSiteMenu(s.menu.anchor, width, height, gtx.Dp(siteMenuGap), margin, bounds)
+
+	anchor := siteMenuAnchor(s.menu.anchor, line+pad+itemPad,
+		gtx.Dp(siteMenuMinWidth), margin, bounds)
+	menu := placeSiteMenu(anchor, anchor.Dx(), height, gtx.Dp(siteMenuGap), margin, bounds)
 	if menu.Empty() {
 		s.menu.close()
+		gtx.Execute(op.InvalidateCmd{})
 		return
 	}
 	if s.scrim.dismissed(gtx, menu) {
 		s.menu.close()
+		gtx.Execute(op.InvalidateCmd{})
 		return
 	}
 	s.scrim.layout(gtx, bounds)
@@ -135,6 +139,7 @@ func (s *Shell) layoutSiteMenu(gtx layout.Context, g geometry) {
 	inner := menu.Inset(line + pad)
 	if inner.Empty() {
 		s.menu.close()
+		gtx.Execute(op.InvalidateCmd{})
 		return
 	}
 
@@ -185,12 +190,12 @@ func (s *Shell) layoutSiteItem(
 		}
 
 		target := appearance.PaletteFor(site)
-		iconSize := gtx.Dp(siteMenuItemIcon)
+		iconSize := gtx.Dp(logoSize)
 		pad := gtx.Dp(siteMenuItemPad)
 		gap := gtx.Dp(siteMenuItemGapX)
 		top := (size.Y - iconSize) / 2
 		iconRect := rect(pad, top, pad+iconSize, top+iconSize)
-		drawIcon(gtx, s.icon(resource.IconTorii), iconRect, target.Accent)
+		s.layoutSiteMark(gtx, iconRect, target)
 
 		textGtx := gtx
 		textGtx.Constraints = layout.Constraints{Max: image.Pt(
@@ -198,7 +203,7 @@ func (s *Shell) layoutSiteItem(
 			size.Y,
 		)}
 		macro := op.Record(gtx.Ops)
-		dims := kit.Text(textGtx, typo, appearance.RoleBody, site.String(), palette.Text)
+		dims := kit.Text(textGtx, typo, appearance.RoleLabel, site.String(), palette.Text)
 		call := macro.Stop()
 		at := image.Pt(pad+iconSize+gap, (size.Y-dims.Size.Y)/2)
 		textStack := op.Offset(at).Push(gtx.Ops)
@@ -207,6 +212,19 @@ func (s *Shell) layoutSiteItem(
 		return layout.Dimensions{Size: size}
 	})
 	return clicked
+}
+
+// siteMenuAnchor widens the trigger leftwards so the menu ends at the chevron
+// while its first row content lines up with the header brand. It never extends
+// past the chevron or the window margin.
+func siteMenuAnchor(trigger image.Rectangle, contentInset, minWidth, margin int, bounds image.Rectangle) image.Rectangle {
+	right := min(trigger.Max.X, bounds.Max.X-margin)
+	left := max(trigger.Min.X-contentInset, bounds.Min.X+margin)
+	if right-left < minWidth {
+		left = max(bounds.Min.X+margin, right-minWidth)
+	}
+	right = max(right, left)
+	return image.Rect(left, trigger.Min.Y, right, trigger.Max.Y)
 }
 
 // placeSiteMenu aligns the menu with its anchor, prefers the space below it,
