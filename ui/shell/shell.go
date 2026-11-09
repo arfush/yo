@@ -33,9 +33,11 @@ type Screen interface {
 }
 
 // Dialog is the modal content contract. The shell dims the screen body, then
-// draws the dialog over it. The shell never imports a concrete dialog.
+// draws the dialog over it. A dialog may also replace the footer band, like a
+// screen does. The shell never imports a concrete dialog.
 type Dialog interface {
 	Layout(layout.Context)
+	LayoutFooter(layout.Context)
 }
 
 // Options configures the shell chrome.
@@ -179,7 +181,8 @@ func (s *Shell) layoutScreen(gtx layout.Context, g geometry) op.CallOp {
 	return call
 }
 
-// layoutFooter lets the active screen fill the common footer band.
+// layoutFooter lets the active dialog replace the footer band. Without a
+// dialog, the active screen fills the band.
 func (s *Shell) layoutFooter(gtx layout.Context, g geometry) {
 	bounds := g.footerRect()
 	if bounds.Empty() {
@@ -190,6 +193,10 @@ func (s *Shell) layoutFooter(gtx layout.Context, g geometry) {
 	gtx.Constraints = layout.Exact(bounds.Size())
 	clipStack := clip.Rect(image.Rectangle{Max: bounds.Size()}).Push(gtx.Ops)
 	defer clipStack.Pop()
+	if s.dialog != nil {
+		s.dialog.LayoutFooter(gtx)
+		return
+	}
 	s.screen.LayoutFooter(gtx)
 }
 

@@ -45,3 +45,6 @@ func (s *Stub) Layout(gtx layout.Context) {
 		}
 	}
 }
+
+// LayoutFooter leaves the footer band empty while the stub dialog is open.
+func (s *Stub) LayoutFooter(layout.Context) {}

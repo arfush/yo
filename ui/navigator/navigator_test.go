@@ -27,6 +27,8 @@ type fakeDialog struct{}
 
 func (f *fakeDialog) Layout(layout.Context) {}
 
+func (f *fakeDialog) LayoutFooter(layout.Context) {}
+
 type fakeInstaller struct {
 	screen shell.Screen
 	dialog shell.Dialog
