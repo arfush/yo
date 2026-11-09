@@ -1,48 +1,16 @@
 package resource
 
 import (
+	"bytes"
 	"fmt"
+	"os"
 	"testing"
-	"testing/fstest"
 )
-
-func TestPluralForm(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		code string
-		n    int
-		want string
-	}{
-		{"en one", "en", 1, "one"},
-		{"en zero", "en", 0, "other"},
-		{"en few", "en", 3, "other"},
-		{"en negative one", "en", -1, "one"},
-		{"ru one", "ru", 1, "one"},
-		{"ru twenty one", "ru", 21, "one"},
-		{"ru eleven", "ru", 11, "many"},
-		{"ru two", "ru", 2, "few"},
-		{"ru twenty four", "ru", 24, "few"},
-		{"ru twelve", "ru", 12, "many"},
-		{"ru twenty five", "ru", 25, "many"},
-		{"ru zero", "ru", 0, "many"},
-		{"ru negative three", "ru", -3, "few"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if got := pluralForm(tt.code, tt.n); got != tt.want {
-				t.Fatalf("pluralForm(%q, %d) = %q; want %q", tt.code, tt.n, got, tt.want)
-			}
-		})
-	}
-}
 
 func TestTextSequenceCycles(t *testing.T) {
 	t.Parallel()
 
-	l := testLang(t, "en", `{"phrase":{"variants":["a","b","c"]}}`)
+	l := testLang(t, "en")
 	for i, want := range []string{"a", "b", "c", "a"} {
 		if got := l.Text("phrase"); got != want {
 			t.Fatalf("call %d = %q; want %q", i+1, got, want)
@@ -53,9 +21,9 @@ func TestTextSequenceCycles(t *testing.T) {
 func TestTextRandomPicksVariant(t *testing.T) {
 	t.Parallel()
 
-	l := testLang(t, "en", `{"phrase":{"sort":"random","variants":["a","b"]}}`)
+	l := testLang(t, "en")
 	for i := 0; i < 20; i++ {
-		if got := l.Text("phrase"); got != "a" && got != "b" {
+		if got := l.Text("random.phrase"); got != "a" && got != "b" {
 			t.Fatalf("call %d = %q; want one of the variants", i+1, got)
 		}
 	}
@@ -64,7 +32,7 @@ func TestTextRandomPicksVariant(t *testing.T) {
 func TestTextfFormats(t *testing.T) {
 	t.Parallel()
 
-	l := testLang(t, "en", `{"greeting":"Hello, %s"}`)
+	l := testLang(t, "en")
 	if got := l.Textf("greeting", "world"); got != "Hello, world" {
 		t.Fatalf("Textf = %q; want %q", got, "Hello, world")
 	}
@@ -73,18 +41,20 @@ func TestTextfFormats(t *testing.T) {
 func TestTextPluralLooksUpFormKey(t *testing.T) {
 	t.Parallel()
 
-	l := testLang(t, "ru", `{
-		"episode.one":"%d серия",
-		"episode.few":"%d серии",
-		"episode.many":"%d серий"
-	}`)
+	l := testLang(t, "ru")
 	tests := []struct {
 		n    int
 		want string
 	}{
 		{1, "1 серия"},
-		{3, "3 серии"},
-		{5, "5 серий"},
+		{21, "21 серия"},
+		{11, "11 серий"},
+		{2, "2 серии"},
+		{24, "24 серии"},
+		{12, "12 серий"},
+		{25, "25 серий"},
+		{0, "0 серий"},
+		{-3, "-3 серии"},
 	}
 	for _, tt := range tests {
 		got := fmt.Sprintf(l.TextPlural("episode", tt.n), tt.n)
@@ -97,16 +67,12 @@ func TestTextPluralLooksUpFormKey(t *testing.T) {
 func TestTextPluralfFormats(t *testing.T) {
 	t.Parallel()
 
-	l := testLang(t, "ru", `{
-		"episode.one":"%d серия",
-		"episode.few":"%d серии",
-		"episode.many":"%d серий"
-	}`)
+	l := testLang(t, "ru")
 	if got := l.TextPluralf("episode", 3, 3); got != "3 серии" {
 		t.Fatalf("TextPluralf = %q; want %q", got, "3 серии")
 	}
 
-	plain := testLang(t, "en", `{"episode.one":"one episode","episode.other":"episodes"}`)
+	plain := testLang(t, "en")
 	if got := plain.TextPluralf("episode", 1); got != "one episode" {
 		t.Fatalf("TextPluralf without args = %q; want %q", got, "one episode")
 	}
@@ -115,37 +81,34 @@ func TestTextPluralfFormats(t *testing.T) {
 func TestMissingTextKeyPanics(t *testing.T) {
 	t.Parallel()
 
-	l := testLang(t, "en", `{}`)
+	l := testLang(t, "en")
 	assertPanics(t, func() { l.Text("missing") })
 }
 
 func TestMissingLangPanics(t *testing.T) {
 	t.Parallel()
 
-	r := newResource(fstest.MapFS{})
-	assertPanics(t, func() { r.Lang("en") })
+	assertPanics(t, func() { New().Lang("xx") })
 }
 
 func TestMissingFontPanics(t *testing.T) {
 	t.Parallel()
 
-	r := newResource(fstest.MapFS{})
-	assertPanics(t, func() { r.Font(FontRegular) })
+	assertPanics(t, func() { New().Font("missing") })
 }
 
 func TestMissingIconPanics(t *testing.T) {
 	t.Parallel()
 
-	r := newResource(fstest.MapFS{})
-	assertPanics(t, func() { r.Icon(IconPlay) })
+	assertPanics(t, func() { New().Icon("missing") })
 }
 
 func TestMissingAppIconPanics(t *testing.T) {
 	t.Parallel()
 
-	r := newResource(fstest.MapFS{})
-	assertPanics(t, func() { r.AppIcon(AppIconYobase) })
-	assertPanics(t, func() { r.AppIconICO(AppIconYobase) })
+	r := New()
+	assertPanics(t, func() { r.AppIcon("missing") })
+	assertPanics(t, func() { r.AppIconICO("missing") })
 }
 
 func TestEmbeddedAppIcons(t *testing.T) {
@@ -167,6 +130,18 @@ func TestEmbeddedAppIcons(t *testing.T) {
 	}
 }
 
+func TestAppIconICOReturnsCopy(t *testing.T) {
+	t.Parallel()
+
+	r := New()
+	first := r.AppIconICO(AppIconYobase)
+	original := bytes.Clone(first)
+	first[0] ^= 0xff
+	if got := r.AppIconICO(AppIconYobase); !bytes.Equal(got, original) {
+		t.Fatal("AppIconICO exposed the internal slice")
+	}
+}
+
 func TestEmbeddedLangs(t *testing.T) {
 	t.Parallel()
 
@@ -178,12 +153,16 @@ func TestEmbeddedLangs(t *testing.T) {
 	}
 }
 
-func testLang(t *testing.T, code, body string) Lang {
+func testLang(t *testing.T, code string) Lang {
 	t.Helper()
-	r := newResource(fstest.MapFS{
-		"lang/" + code + ".json": &fstest.MapFile{Data: []byte(body)},
-	})
-	return r.Lang(code)
+	return testResource(t).Lang(code)
+}
+
+// testResource loads the fixtures from testdata. The production constructor
+// embeds assets, so tests use the same loader with a directory instead.
+func testResource(t *testing.T) *Resource {
+	t.Helper()
+	return newResource(os.DirFS("testdata"))
 }
 
 func assertPanics(t *testing.T, fn func()) {

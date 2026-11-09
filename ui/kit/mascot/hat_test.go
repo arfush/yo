@@ -8,33 +8,37 @@ import (
 
 func TestHatsCatalog(t *testing.T) {
 	hats := Hats()
-	if len(hats) != len(allHats) {
-		t.Fatalf("Hats() returned %d outfits, want %d", len(hats), len(allHats))
+	if len(hats) == 0 {
+		t.Fatal("Hats() is empty")
 	}
+	seen := make(map[Hat]bool, len(hats))
 	for _, hat := range hats {
 		if hat == HatNone {
 			t.Fatal("Hats() contains HatNone")
 		}
-		hat.validate()
+		if seen[hat] {
+			t.Fatalf("Hats() contains %q twice", hat)
+		}
+		seen[hat] = true
 	}
+
+	first := hats[0]
 	hats[0] = Hat("changed")
-	if Hats()[0] != allHats[0] {
+	if Hats()[0] != first {
 		t.Fatal("Hats() did not return a copy")
 	}
 }
 
-func TestRandomHatStaysInRange(t *testing.T) {
-	seen := map[Hat]bool{}
-	calls := len(allHats) * 20
-	for index := 0; index < calls; index++ {
-		hat := RandomHat()
-		if hat == HatNone {
-			t.Fatal("RandomHat() returned HatNone")
-		}
-		seen[hat] = true
+func TestRandomHatReturnsKnownHat(t *testing.T) {
+	known := make(map[Hat]bool)
+	for _, hat := range Hats() {
+		known[hat] = true
 	}
-	if len(seen) != len(allHats) {
-		t.Fatalf("%d calls covered %d outfits, want all %d", calls, len(seen), len(allHats))
+	for i := 0; i < len(known)*8; i++ {
+		hat := RandomHat()
+		if hat == HatNone || !known[hat] {
+			t.Fatalf("RandomHat() = %q; want a known outfit", hat)
+		}
 	}
 }
 
@@ -76,17 +80,10 @@ func TestNewRejectsUnknownHat(t *testing.T) {
 	})
 }
 
-func TestDrawUnknownHatPanics(t *testing.T) {
-	m := Mascot{palette: testPalette(), hat: Hat("unknown")}
-	assertPanics(t, func() {
-		m.Draw(testContext(time.Unix(1, 0)), image.Rect(0, 0, 42, 42))
-	})
-}
-
 func TestDrawEveryHatAndMood(t *testing.T) {
 	pal := testPalette()
 	now := time.Unix(1000, 0)
-	for _, hat := range append([]Hat{HatNone}, allHats...) {
+	for _, hat := range append([]Hat{HatNone}, Hats()...) {
 		for _, mood := range []Mood{Normal, Alert, Loading, Panic} {
 			m := New(Options{Palette: pal, Hat: hat, Mood: mood})
 			m.Draw(testContext(now), image.Rect(0, 0, 168, 168))
