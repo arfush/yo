@@ -1,16 +1,12 @@
 package screen
 
 import (
-	"image"
-
 	"gioui.org/io/system"
 	"gioui.org/layout"
 	"gioui.org/unit"
 
 	"github.com/arfush/yo/core/stdx"
 	"github.com/arfush/yo/ui/appearance"
-	"github.com/arfush/yo/ui/kit"
-	"github.com/arfush/yo/ui/kit/mascot"
 	"github.com/arfush/yo/ui/navigator"
 )
 
@@ -51,39 +47,9 @@ func NewPanic(app stdx.ReadonlyHolder[appearance.Appearance], title, detail stri
 func (p Panic) Layout(gtx layout.Context) {
 	app := p.app.Value()
 	gtx.Locale = system.Locale{Language: app.Locale().Tag().String()}
-	palette := app.Palette()
-	typo := app.Typography()
-	m := mascot.New(mascot.Options{Palette: palette.Mascot, Mood: mascot.Panic})
-
 	layout.UniformInset(appearance.SpaceXXL).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-			size := min(min(gtx.Constraints.Max.X, gtx.Constraints.Max.Y), gtx.Dp(panicMascotMax))
-			gap := gtx.Dp(appearance.SpaceL)
-			textWidth := min(max(0, gtx.Constraints.Max.X-size-gap), gtx.Dp(panicTextMax))
-			head := size * panicHeadOffsetNum / panicHeadOffsetDen
-
-			return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Start}.Layout(gtx,
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					m.Draw(gtx, image.Rect(0, 0, size, size))
-					return layout.Dimensions{Size: image.Pt(size, size)}
-				}),
-				layout.Rigid(layout.Spacer{Width: appearance.SpaceL}.Layout),
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					gtx.Constraints.Max.X = textWidth
-					return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
-						layout.Rigid(func(layout.Context) layout.Dimensions {
-							return layout.Dimensions{Size: image.Pt(0, head)}
-						}),
-						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							return kit.Text(gtx, typo, appearance.RoleSubtitle, p.title, palette.Text)
-						}),
-						layout.Rigid(layout.Spacer{Height: appearance.SpaceM}.Layout),
-						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							return kit.TextBlock(gtx, typo, appearance.RoleBody, p.detail, palette.TextMuted)
-						}),
-					)
-				}),
-			)
+			return p.layoutRow(gtx, app)
 		})
 	})
 }
