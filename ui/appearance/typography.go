@@ -41,7 +41,7 @@ func newTypography(res *resource.Resource) Typography {
 		RoleSubtitle: {resource.FontMedium, 15},
 		RoleBody:     {resource.FontRegular, 12.5},
 		RoleLabel:    {resource.FontMedium, 13},
-		RoleCaption:  {resource.FontRegular, 11},
+		RoleCaption:  {resource.FontRegular, 12},
 	}
 
 	faces := make([]font.FontFace, 0, len(roles))
