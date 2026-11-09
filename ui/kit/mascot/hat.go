@@ -1,6 +1,7 @@
 package mascot
 
 import (
+	"image/color"
 	"math/rand/v2"
 	"time"
 
@@ -30,7 +31,9 @@ const (
 )
 
 // allHats is the catalog RandomHat chooses from. HatNone is intentionally
-// excluded. Keep it in sync with the Hat* constants.
+// excluded. It is a package-level mutable slice on purpose: the catalog is tiny
+// and static, so this is a deliberate exception to the no-package-vars rule.
+// Keep it in sync with the Hat* constants.
 var allHats = []Hat{
 	HatParty,
 	HatWitch,
@@ -90,10 +93,45 @@ func (h Hat) validate() {
 	}
 }
 
+// hatPalette is the fixed outfit color set. Hats do not follow the theme, so
+// these colors belong to the mascot instead of ui/appearance.
+type hatPalette struct {
+	Pink  color.NRGBA
+	White color.NRGBA
+	Cream color.NRGBA
+	Dark  color.NRGBA
+	Gold  color.NRGBA
+	Red   color.NRGBA
+	Teal  color.NRGBA
+	Sky   color.NRGBA
+	Brown color.NRGBA
+	Tan   color.NRGBA
+	Green color.NRGBA
+}
+
+// hatColors returns the fixed outfit colors. It is a function because Go has no
+// const structs with image/color values.
+func hatColors() hatPalette {
+	return hatPalette{
+		Pink:  color.NRGBA{R: 0xf2, G: 0x8f, B: 0xc2, A: 0xff},
+		White: color.NRGBA{R: 0xf7, G: 0xf3, B: 0xff, A: 0xff},
+		Cream: color.NRGBA{R: 0xe9, G: 0xde, B: 0xc6, A: 0xff},
+		Dark:  color.NRGBA{R: 0x3b, G: 0x2a, B: 0x63, A: 0xff},
+		Gold:  color.NRGBA{R: 0xf5, G: 0xc2, B: 0x5c, A: 0xff},
+		Red:   color.NRGBA{R: 0xd9, G: 0x4f, B: 0x6a, A: 0xff},
+		Teal:  color.NRGBA{R: 0x5f, G: 0xc7, B: 0xc0, A: 0xff},
+		Sky:   color.NRGBA{R: 0x6f, G: 0x9c, B: 0xf5, A: 0xff},
+		Brown: color.NRGBA{R: 0x7a, G: 0x5a, B: 0x4a, A: 0xff},
+		Tan:   color.NRGBA{R: 0xd8, G: 0xc3, B: 0xb0, A: 0xff},
+		Green: color.NRGBA{R: 0x6f, G: 0xb0, B: 0x79, A: 0xff},
+	}
+}
+
 // wardrobe bundles the geometry and colors every outfit draws with.
 type wardrobe struct {
-	g   grid
-	pal appearance.MascotPalette
+	g    grid
+	pal  appearance.MascotPalette
+	hats hatPalette
 }
 
 // draw paints the selected outfit above the face.
@@ -128,7 +166,7 @@ func (h Hat) draw(gtx layout.Context, w wardrobe) {
 }
 
 func drawPartyHat(gtx layout.Context, w wardrobe) {
-	g, h := w.g, w.pal.Hats
+	g, h := w.g, w.hats
 	fillPolygon(gtx, h.Pink, []f32.Point{
 		g.pt(-5.8, -12.4), g.pt(5.8, -12.4), g.pt(0.6, -21.2),
 	})
@@ -137,7 +175,7 @@ func drawPartyHat(gtx layout.Context, w wardrobe) {
 }
 
 func drawWitchHat(gtx layout.Context, w wardrobe) {
-	g, h := w.g, w.pal.Hats
+	g, h := w.g, w.hats
 	fillEllipse(gtx, h.Dark, g.rect(-10.5, -14.2, 10.5, -11.3))
 	fillPolygon(gtx, h.Dark, []f32.Point{
 		g.pt(-5.4, -12.8), g.pt(4.8, -12.8), g.pt(3.2, -17.5),
@@ -148,7 +186,7 @@ func drawWitchHat(gtx layout.Context, w wardrobe) {
 }
 
 func drawCrownHat(gtx layout.Context, w wardrobe) {
-	g, h := w.g, w.pal.Hats
+	g, h := w.g, w.hats
 	fillPolygon(gtx, h.Gold, []f32.Point{
 		g.pt(-6.8, -12.6), g.pt(-4.8, -16.8), g.pt(-2.4, -13.6),
 		g.pt(0, -18), g.pt(2.4, -13.6), g.pt(4.8, -16.8), g.pt(6.8, -12.6),
@@ -160,28 +198,28 @@ func drawCrownHat(gtx layout.Context, w wardrobe) {
 }
 
 func drawTopHat(gtx layout.Context, w wardrobe) {
-	g, h := w.g, w.pal.Hats
+	g, h := w.g, w.hats
 	fillEllipse(gtx, h.Dark, g.rect(-9.4, -13.6, 9.4, -11.3))
 	fillRound(gtx, h.Dark, g.rect(-5.8, -20.4, 5.8, -12), g.px(0.7))
 	fillRound(gtx, h.Red, g.rect(-5.8, -14.6, 5.8, -13), g.px(0.2))
 }
 
 func drawBeanieHat(gtx layout.Context, w wardrobe) {
-	g, h := w.g, w.pal.Hats
+	g, h := w.g, w.hats
 	fillEllipse(gtx, h.Teal, g.rect(-7.8, -16.8, 7.8, -11))
 	fillRound(gtx, h.White, g.rect(-8, -13.6, 8, -11.5), g.px(0.7))
 	fillCircle(gtx, h.White, g.point(0, -17.6), max(1, g.px(1.5)))
 }
 
 func drawCapHat(gtx layout.Context, w wardrobe) {
-	g, h := w.g, w.pal.Hats
+	g, h := w.g, w.hats
 	fillRound(gtx, h.Sky, g.rect(4, -13.6, 12.4, -12.2), g.px(0.7))
 	fillEllipse(gtx, h.Sky, g.rect(-7.6, -16.2, 7.6, -11.2))
 	fillCircle(gtx, h.White, g.point(0, -15.9), max(1, g.px(0.55)))
 }
 
 func drawSantaHat(gtx layout.Context, w wardrobe) {
-	g, h := w.g, w.pal.Hats
+	g, h := w.g, w.hats
 	fillPolygon(gtx, h.Red, []f32.Point{
 		g.pt(-6.8, -12.5), g.pt(6.8, -12.5), g.pt(1.6, -21.6),
 	})
@@ -190,7 +228,7 @@ func drawSantaHat(gtx layout.Context, w wardrobe) {
 }
 
 func drawGraduationHat(gtx layout.Context, w wardrobe) {
-	g, h := w.g, w.pal.Hats
+	g, h := w.g, w.hats
 	fillRound(gtx, h.Dark, g.rect(-5.4, -13.8, 5.4, -11.8), g.px(0.6))
 	fillPolygon(gtx, h.Dark, []f32.Point{
 		g.pt(-10, -13.2), g.pt(0, -17.2), g.pt(10, -13.2), g.pt(0, -11.2),
@@ -200,7 +238,7 @@ func drawGraduationHat(gtx layout.Context, w wardrobe) {
 }
 
 func drawUshankaHat(gtx layout.Context, w wardrobe) {
-	g, h := w.g, w.pal.Hats
+	g, h := w.g, w.hats
 	fillRound(gtx, h.Brown, g.rect(-8.7, -13.8, -5.2, -8.2), g.px(1.4))
 	fillRound(gtx, h.Brown, g.rect(5.2, -13.8, 8.7, -8.2), g.px(1.4))
 	fillEllipse(gtx, h.Brown, g.rect(-7.6, -16.6, 7.6, -11))
@@ -208,7 +246,7 @@ func drawUshankaHat(gtx layout.Context, w wardrobe) {
 }
 
 func drawFlowersHat(gtx layout.Context, w wardrobe) {
-	g, h := w.g, w.pal.Hats
+	g, h := w.g, w.hats
 	fillRound(gtx, h.Green, g.rect(-8.2, -12.8, 8.2, -11.6), g.px(0.4))
 	for index, x := range []float32{-6.2, -3.1, 0, 3.1, 6.2} {
 		petal := h.Pink
@@ -222,7 +260,7 @@ func drawFlowersHat(gtx layout.Context, w wardrobe) {
 
 // drawCypherHat paints the white fedora with the copper eye emblem.
 func drawCypherHat(gtx layout.Context, w wardrobe) {
-	g, h := w.g, w.pal.Hats
+	g, h := w.g, w.hats
 
 	// Wide brim with a warm underside and a copper front edge.
 	fillEllipse(gtx, h.Brown, g.rect(-15.2, -13.6, 15.2, -10))

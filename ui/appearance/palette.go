@@ -32,7 +32,6 @@ type MascotPalette struct {
 	Alert        MascotColors
 	Eye          color.NRGBA
 	EyeHighlight color.NRGBA
-	Hats         MascotHats
 	Glitch       MascotGlitch
 }
 
@@ -47,21 +46,6 @@ type MascotColors struct {
 	Blush      color.NRGBA
 	Dress      color.NRGBA
 	DressLight color.NRGBA
-}
-
-// MascotHats holds the hat colors used by the mascot.
-type MascotHats struct {
-	Pink  color.NRGBA
-	White color.NRGBA
-	Cream color.NRGBA
-	Dark  color.NRGBA
-	Gold  color.NRGBA
-	Red   color.NRGBA
-	Teal  color.NRGBA
-	Sky   color.NRGBA
-	Brown color.NRGBA
-	Tan   color.NRGBA
-	Green color.NRGBA
 }
 
 // MascotGlitch holds the two glitch overlay colors.
@@ -117,19 +101,6 @@ func newPalette() Palette {
 			},
 			Eye:          color.NRGBA{R: 0x2a, G: 0x1e, B: 0x46, A: 0xff},
 			EyeHighlight: color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff},
-			Hats: MascotHats{
-				Pink:  color.NRGBA{R: 0xf2, G: 0x8f, B: 0xc2, A: 0xff},
-				White: color.NRGBA{R: 0xf7, G: 0xf3, B: 0xff, A: 0xff},
-				Cream: color.NRGBA{R: 0xe9, G: 0xde, B: 0xc6, A: 0xff},
-				Dark:  color.NRGBA{R: 0x3b, G: 0x2a, B: 0x63, A: 0xff},
-				Gold:  color.NRGBA{R: 0xf5, G: 0xc2, B: 0x5c, A: 0xff},
-				Red:   color.NRGBA{R: 0xd9, G: 0x4f, B: 0x6a, A: 0xff},
-				Teal:  color.NRGBA{R: 0x5f, G: 0xc7, B: 0xc0, A: 0xff},
-				Sky:   color.NRGBA{R: 0x6f, G: 0x9c, B: 0xf5, A: 0xff},
-				Brown: color.NRGBA{R: 0x7a, G: 0x5a, B: 0x4a, A: 0xff},
-				Tan:   color.NRGBA{R: 0xd8, G: 0xc3, B: 0xb0, A: 0xff},
-				Green: color.NRGBA{R: 0x6f, G: 0xb0, B: 0x79, A: 0xff},
-			},
 			Glitch: MascotGlitch{
 				Cyan:    color.NRGBA{R: 0x7d, G: 0xf5, B: 0xff, A: 0x55},
 				Magenta: color.NRGBA{R: 0xff, G: 0x6f, B: 0xd0, A: 0x55},

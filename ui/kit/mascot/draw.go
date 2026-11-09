@@ -52,7 +52,7 @@ func (s scene) paint(gtx layout.Context, jitter float32) {
 	drawBody(gtx, s.g, c)
 	drawHead(gtx, s.g, c)
 	drawFace(gtx, s.g, c, s.pose, s.m.palette)
-	s.m.hat.draw(gtx, wardrobe{g: s.g, pal: s.m.palette})
+	s.m.hat.draw(gtx, wardrobe{g: s.g, pal: s.m.palette, hats: hatColors()})
 	left, right := s.hands()
 	drawArms(gtx, s.g, c, left, right)
 	drawPaw(gtx, s.g, left, c.Paw, c.HairShadow)
