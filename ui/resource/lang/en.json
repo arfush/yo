@@ -3,6 +3,7 @@
   "window.maximize": "Maximize",
   "window.unmaximize": "Restore",
   "window.close": "Close",
+  "panic.title": "Oops.. Something went wrong!",
   "format.group": ",",
   "format.decimal": ".",
   "format.percent": "%s%%",

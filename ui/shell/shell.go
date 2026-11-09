@@ -53,6 +53,7 @@ type Shell struct {
 	screen     Screen
 	dialog     Dialog
 	maximized  bool
+	frozen     bool
 	content    op.CallOp
 
 	siteState catalog.Site
@@ -110,9 +111,20 @@ func (s *Shell) typography() appearance.Typography { return s.appearance.Value()
 // locale returns the active language of the current appearance.
 func (s *Shell) locale() appearance.Locale { return s.appearance.Value().Locale() }
 
+// Freeze stops palette syncing from the site holder and disables the site
+// switcher. The composition root calls it after a recovered panic so the panic
+// screen stays on the neutral palette.
+func (s *Shell) Freeze() {
+	s.frozen = true
+	s.menu.close()
+}
+
 // syncPalette copies the active site palette into the shared appearance. It runs
 // before layout, so a site change requested by the core is visible next frame.
 func (s *Shell) syncPalette() {
+	if s.frozen {
+		return
+	}
 	site := s.site.Value()
 	if site == s.siteState {
 		return

@@ -22,6 +22,9 @@ import (
 const (
 	windowTitle     = "yo"
 	defaultLanguage = "ru"
+
+	panicTitleKey     resource.TextKey = "panic.title"
+	defaultPanicTitle                  = "Oops.. Something went wrong!"
 )
 
 // root owns the application object graph and the window lifecycle.
@@ -35,6 +38,7 @@ type root struct {
 	journal     *log.Journal
 	logger      *log.Logger
 	windowShown bool
+	panicked    bool
 	stopOnce    sync.Once
 }
 

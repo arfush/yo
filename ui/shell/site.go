@@ -58,7 +58,7 @@ func (m *siteMenu) toggle(anchor image.Rectangle) {
 
 // siteSwitchable reports whether the header can open the site switcher.
 func (s *Shell) siteSwitchable() bool {
-	return s.dialog == nil && len(catalog.Sites()) > 1
+	return !s.frozen && s.dialog == nil && len(catalog.Sites()) > 1
 }
 
 // layoutSiteTrigger registers the click target of the site block.
@@ -84,6 +84,9 @@ func (s *Shell) layoutSiteTrigger(gtx layout.Context, trigger image.Rectangle) b
 // the next frame. A selection always restores the site palette, even when the
 // neutral fallback is showing for the same site.
 func (s *Shell) switchSite(site catalog.Site) {
+	if s.frozen {
+		return
+	}
 	s.menu.close()
 	s.siteDismissals = 0
 	if s.site.Value() == site {
