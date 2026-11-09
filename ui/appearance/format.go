@@ -9,6 +9,12 @@ import (
 	"github.com/arfush/yo/ui/resource"
 )
 
+// Duration conversion units.
+const (
+	minutesPerHour   = 60
+	secondsPerMinute = 60
+)
+
 // Number formats an integer with the locale grouping separator.
 func (l Locale) Number(n int64) string {
 	digits := strconv.FormatUint(magnitude(n), 10)
@@ -66,9 +72,9 @@ func (l Locale) Duration(d time.Duration) string {
 		d = 0
 	}
 	total := int64(d / time.Second)
-	hours := total / 3600
-	minutes := total / 60 % 60
-	seconds := total % 60
+	hours := total / (minutesPerHour * secondsPerMinute)
+	minutes := total / secondsPerMinute % minutesPerHour
+	seconds := total % secondsPerMinute
 	if hours > 0 {
 		return fmt.Sprintf(l.Text(resource.TextFormatDurationHours), hours, minutes, seconds)
 	}
