@@ -10,7 +10,7 @@ import (
 // keeps the native window title constant.
 func (r *root) newStartupScreen(navigator.Handler) navigator.Screen {
 	app := r.appearance.Value()
-	startup := screen.NewPanic(app, panicTitle(app), "")
+	startup := screen.NewPanic(r.appearance.Readonly(), panicTitle(app), "")
 	startup.ScreenTitle = windowTitle
 	return startup
 }

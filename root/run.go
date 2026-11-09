@@ -105,7 +105,7 @@ func (r *root) showPanic(v any) {
 	r.shell.Freeze()
 	r.shell.SetDialog(nil)
 	app := r.appearance.Value()
-	r.shell.SetScreen(screen.NewPanic(app, panicTitle(app), fmt.Sprint(v)))
+	r.shell.SetScreen(screen.NewPanic(r.appearance.Readonly(), panicTitle(app), fmt.Sprint(v)))
 	r.shell.SetTitle(windowTitle)
 	r.window.Invalidate()
 }
