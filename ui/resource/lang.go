@@ -13,6 +13,24 @@ import (
 // Plural keys use the "<key>.<form>" suffix, e.g. "episode.one".
 type TextKey string
 
+// Text* declares the embedded translation keys.
+const (
+	TextWindowMinimize   TextKey = "window.minimize"
+	TextWindowMaximize   TextKey = "window.maximize"
+	TextWindowUnmaximize TextKey = "window.unmaximize"
+	TextWindowClose      TextKey = "window.close"
+
+	TextFormatGroup         TextKey = "format.group"
+	TextFormatDecimal       TextKey = "format.decimal"
+	TextFormatPercent       TextKey = "format.percent"
+	TextFormatDate          TextKey = "format.date"
+	TextFormatDateTime      TextKey = "format.datetime"
+	TextFormatDurationMin   TextKey = "format.duration.minutes"
+	TextFormatDurationHours TextKey = "format.duration.hours"
+
+	TextPanicTitle TextKey = "panic.title"
+)
+
 // Lang is a translation language bound to a Resource. Use Resource.Lang to get
 // a value; the zero value is invalid and its methods panic.
 type Lang struct {

@@ -55,14 +55,6 @@ const (
 	siteMenuOverhang  unit.Dp = 4
 )
 
-// Window-control accessibility labels.
-const (
-	labelMinimize   resource.TextKey = "window.minimize"
-	labelMaximize   resource.TextKey = "window.maximize"
-	labelUnmaximize resource.TextKey = "window.unmaximize"
-	labelClose      resource.TextKey = "window.close"
-)
-
 // geometry holds every chrome measurement converted to pixels for the current
 // frame.
 type geometry struct {
@@ -183,11 +175,11 @@ func (s *Shell) layoutHeader(gtx layout.Context, g geometry) {
 	palette := s.palette()
 	maximizeIcon := s.icon(resource.IconMaximize)
 	maximizeAction := system.ActionMaximize
-	maximizeLabel := labelMaximize
+	maximizeLabel := resource.TextWindowMaximize
 	if s.maximized {
 		maximizeIcon = s.icon(resource.IconUnmaximize)
 		maximizeAction = system.ActionUnmaximize
-		maximizeLabel = labelUnmaximize
+		maximizeLabel = resource.TextWindowUnmaximize
 	}
 	common := windowControl{
 		iconSize: controlIconSize,
@@ -199,7 +191,7 @@ func (s *Shell) layoutHeader(gtx layout.Context, g geometry) {
 	minimize.click = &s.minimize
 	minimize.icon = s.icon(resource.IconMinimize)
 	minimize.action = system.ActionMinimize
-	minimize.label = labelMinimize
+	minimize.label = resource.TextWindowMinimize
 	s.layoutControl(gtx, minimize)
 
 	maximize := common
@@ -217,7 +209,7 @@ func (s *Shell) layoutHeader(gtx layout.Context, g geometry) {
 	closeControl.action = system.ActionClose
 	closeControl.iconSize = closeIconSize
 	closeControl.hover = palette.Danger
-	closeControl.label = labelClose
+	closeControl.label = resource.TextWindowClose
 	s.layoutControl(gtx, closeControl)
 }
 

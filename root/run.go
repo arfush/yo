@@ -13,6 +13,7 @@ import (
 
 	"github.com/arfush/yo/core/platform"
 	"github.com/arfush/yo/ui/appearance"
+	"github.com/arfush/yo/ui/resource"
 	"github.com/arfush/yo/ui/screen"
 )
 
@@ -118,5 +119,5 @@ func panicTitle(app appearance.Appearance) (title string) {
 			title = defaultPanicTitle
 		}
 	}()
-	return app.Locale().Text(panicTitleKey)
+	return app.Locale().Text(resource.TextPanicTitle)
 }

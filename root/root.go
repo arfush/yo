@@ -23,8 +23,7 @@ const (
 	windowTitle     = "yo"
 	defaultLanguage = "ru"
 
-	panicTitleKey     resource.TextKey = "panic.title"
-	defaultPanicTitle                  = "Oops.. Something went wrong!"
+	defaultPanicTitle = "Oops.. Something went wrong!"
 )
 
 // root owns the application object graph and the window lifecycle.

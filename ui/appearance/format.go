@@ -9,22 +9,10 @@ import (
 	"github.com/arfush/yo/ui/resource"
 )
 
-// Format keys are private to appearance; they are resolved through the active
-// language and never hardcoded in screens.
-const (
-	formatGroup         resource.TextKey = "format.group"
-	formatDecimal       resource.TextKey = "format.decimal"
-	formatPercent       resource.TextKey = "format.percent"
-	formatDate          resource.TextKey = "format.date"
-	formatDateTime      resource.TextKey = "format.datetime"
-	formatDurationMin   resource.TextKey = "format.duration.minutes"
-	formatDurationHours resource.TextKey = "format.duration.hours"
-)
-
 // Number formats an integer with the locale grouping separator.
 func (l Locale) Number(n int64) string {
 	digits := strconv.FormatUint(magnitude(n), 10)
-	grouped := groupDigits(digits, l.Text(formatGroup))
+	grouped := groupDigits(digits, l.Text(resource.TextFormatGroup))
 	if n < 0 {
 		return "-" + grouped
 	}
@@ -46,9 +34,9 @@ func (l Locale) Decimal(v float64, places int) string {
 	negative := strings.HasPrefix(formatted, "-")
 	formatted = strings.TrimPrefix(formatted, "-")
 	integer, fraction, hasFraction := strings.Cut(formatted, ".")
-	integer = groupDigits(integer, l.Text(formatGroup))
+	integer = groupDigits(integer, l.Text(resource.TextFormatGroup))
 	if hasFraction {
-		integer += l.Text(formatDecimal) + fraction
+		integer += l.Text(resource.TextFormatDecimal) + fraction
 	}
 	if negative {
 		return "-" + integer
@@ -58,17 +46,17 @@ func (l Locale) Decimal(v float64, places int) string {
 
 // Percent formats ratio as a percentage, e.g. 0.126 -> "12.6%".
 func (l Locale) Percent(ratio float64, places int) string {
-	return fmt.Sprintf(l.Text(formatPercent), l.Decimal(ratio*100, places))
+	return fmt.Sprintf(l.Text(resource.TextFormatPercent), l.Decimal(ratio*100, places))
 }
 
 // Date formats t with the locale date pattern.
 func (l Locale) Date(t time.Time) string {
-	return t.Format(l.Text(formatDate))
+	return t.Format(l.Text(resource.TextFormatDate))
 }
 
 // DateTime formats t with the locale date and time pattern.
 func (l Locale) DateTime(t time.Time) string {
-	return t.Format(l.Text(formatDateTime))
+	return t.Format(l.Text(resource.TextFormatDateTime))
 }
 
 // Duration formats d as M:SS below one hour and H:MM:SS from one hour. Zero
@@ -82,9 +70,9 @@ func (l Locale) Duration(d time.Duration) string {
 	minutes := total / 60 % 60
 	seconds := total % 60
 	if hours > 0 {
-		return fmt.Sprintf(l.Text(formatDurationHours), hours, minutes, seconds)
+		return fmt.Sprintf(l.Text(resource.TextFormatDurationHours), hours, minutes, seconds)
 	}
-	return fmt.Sprintf(l.Text(formatDurationMin), minutes, seconds)
+	return fmt.Sprintf(l.Text(resource.TextFormatDurationMin), minutes, seconds)
 }
 
 // magnitude returns the unsigned magnitude of n without overflowing on
