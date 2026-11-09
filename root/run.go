@@ -5,8 +5,11 @@ import (
 	"os/signal"
 
 	"gioui.org/app"
+	"gioui.org/io/event"
 	"gioui.org/io/system"
 	"gioui.org/op"
+
+	"github.com/arfush/yo/core/platform"
 )
 
 // Run starts the application and blocks until the window is closed.
@@ -52,6 +55,8 @@ func Run() {
 			gtx := app.NewContext(new(op.Ops), e)
 			r.shell.Layout(gtx)
 			e.Frame(gtx.Ops)
+		case event.Event:
+			platform.HandleViewEvent(e, r.appearance.Value().Palette().Border)
 		}
 	}
 }
