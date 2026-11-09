@@ -2,6 +2,7 @@ package navigator
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/arfush/yo/ui/shell"
 )
@@ -15,11 +16,13 @@ type Installer interface {
 }
 
 // Options configures a navigator. Installer, Invalidate and Startup are
-// required; future screens and dialogs add their own factories here.
+// required; future screens and dialogs add their own factories here. A nil
+// logger discards navigation logs.
 type Options struct {
 	Installer  Installer
 	Invalidate func()
 	Startup    ScreenFactory
+	Logger     *slog.Logger
 }
 
 var _ Handler = (*Navigator)(nil)
@@ -29,6 +32,7 @@ var _ Handler = (*Navigator)(nil)
 type Navigator struct {
 	installer  Installer
 	invalidate func()
+	logger     *slog.Logger
 	entries    []Screen
 	dialogs    []shell.Dialog
 	pending    []Intent
@@ -51,6 +55,10 @@ func New(opts Options) *Navigator {
 	n := &Navigator{
 		installer:  opts.Installer,
 		invalidate: opts.Invalidate,
+		logger:     opts.Logger,
+	}
+	if n.logger == nil {
+		n.logger = slog.New(slog.DiscardHandler)
 	}
 	startup := opts.Startup(n)
 	if startup == nil {
@@ -95,6 +103,7 @@ func (n *Navigator) Close() {
 		return
 	}
 	n.closed = true
+	n.logger.Debug("navigator closed", "screens", len(n.entries))
 	if n.active {
 		if current := n.current(); current != nil {
 			current.OnHidden()
@@ -137,6 +146,7 @@ func (n *Navigator) push(screen Screen) {
 	n.install(screen)
 	n.active = true
 	screen.OnShown()
+	n.logger.Debug("screen pushed", "screen", screen.Title())
 }
 
 // back closes the top dialog. When no dialog is open it returns to the previous
@@ -145,6 +155,7 @@ func (n *Navigator) back() {
 	if len(n.dialogs) > 0 {
 		n.dialogs = n.dialogs[:len(n.dialogs)-1]
 		n.installDialog()
+		n.logger.Debug("dialog closed")
 		return
 	}
 	if len(n.entries) <= 1 {
@@ -157,6 +168,7 @@ func (n *Navigator) back() {
 	next := n.current()
 	n.install(next)
 	next.OnShown()
+	n.logger.Debug("screen popped", "screen", top.Title())
 }
 
 // openDialog pushes a dialog above the active screen.
@@ -166,6 +178,7 @@ func (n *Navigator) openDialog(dialog shell.Dialog) {
 	}
 	n.dialogs = append(n.dialogs, dialog)
 	n.installer.SetDialog(dialog)
+	n.logger.Debug("dialog opened")
 }
 
 // installDialog makes the top dialog visible, or clears the shell when the

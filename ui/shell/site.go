@@ -89,11 +89,13 @@ func (s *Shell) switchSite(site catalog.Site) {
 	}
 	s.menu.close()
 	s.siteDismissals = 0
-	if s.site.Value() == site {
+	previous := s.site.Value()
+	if previous == site {
 		s.applySitePalette(site)
 		return
 	}
 	s.site.Update(func(v *catalog.Site) { *v = site })
+	s.logger.Info("site switched", "site", site.String(), "previous", previous.String())
 	s.syncPalette()
 }
 

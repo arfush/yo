@@ -2,6 +2,7 @@ package shell
 
 import (
 	"image"
+	"log/slog"
 
 	"gioui.org/app"
 	"gioui.org/gpu/headless"
@@ -40,6 +41,7 @@ type Options struct {
 	Appearance *stdx.Holder[appearance.Appearance]
 	Resource   *resource.Resource
 	Version    string
+	Logger     *slog.Logger // nil discards logs
 }
 
 // Shell is the application window frame. Use New to construct it, SetScreen to
@@ -50,6 +52,7 @@ type Shell struct {
 	appearance *stdx.Holder[appearance.Appearance]
 	resource   *resource.Resource
 	version    string
+	logger     *slog.Logger
 	screen     Screen
 	dialog     Dialog
 	maximized  bool
@@ -80,7 +83,8 @@ type Shell struct {
 }
 
 // New returns a shell with the given chrome. A nil screen, site holder or
-// appearance holder is a programmer error and panics.
+// appearance holder is a programmer error and panics. A nil logger discards
+// shell logs.
 func New(opts Options) *Shell {
 	if opts.Screen == nil {
 		panic("shell: nil screen")
@@ -91,12 +95,17 @@ func New(opts Options) *Shell {
 	if opts.Appearance == nil {
 		panic("shell: nil appearance holder")
 	}
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.New(slog.DiscardHandler)
+	}
 	return &Shell{
 		window:     opts.Window,
 		site:       opts.Site,
 		appearance: opts.Appearance,
 		resource:   opts.Resource,
 		version:    opts.Version,
+		logger:     logger,
 		screen:     opts.Screen,
 		siteItems:  make([]widget.Clickable, len(catalog.Sites())),
 	}

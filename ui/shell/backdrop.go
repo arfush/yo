@@ -31,6 +31,7 @@ func (s *Shell) captureBackdrop(content op.CallOp, size image.Point, background 
 		s.releaseBlurWindow()
 		window, err := headless.NewWindow(size.X, size.Y)
 		if err != nil {
+			s.logger.Warn("blur window unavailable", "width", size.X, "height", size.Y, "error", err)
 			return paint.ImageOp{}, false
 		}
 		s.blurWindow = window
@@ -41,12 +42,14 @@ func (s *Shell) captureBackdrop(content op.CallOp, size image.Point, background 
 	paint.Fill(&ops, background)
 	content.Add(&ops)
 	if err := s.blurWindow.Frame(&ops); err != nil {
+		s.logger.Warn("blur frame failed", "width", size.X, "height", size.Y, "error", err)
 		s.releaseBlurWindow()
 		return paint.ImageOp{}, false
 	}
 
 	img := image.NewRGBA(image.Rectangle{Max: size})
 	if err := s.blurWindow.Screenshot(img); err != nil {
+		s.logger.Warn("blur screenshot failed", "width", size.X, "height", size.Y, "error", err)
 		s.releaseBlurWindow()
 		return paint.ImageOp{}, false
 	}

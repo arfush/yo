@@ -80,6 +80,7 @@ func (r *root) initShell() {
 		Appearance: r.appearance,
 		Resource:   r.resource,
 		Version:    "v" + version.Ver,
+		Logger:     r.journal.Logger(log.SourceShell),
 	})
 	r.logger.Info("shell ready")
 }
@@ -93,6 +94,7 @@ func (r *root) initNavigator() {
 		Installer:  r.shell,
 		Invalidate: r.window.Invalidate,
 		Startup:    r.newStartupScreen,
+		Logger:     r.journal.Logger(log.SourceNavigator),
 	})
 	r.logger.Info("navigator ready")
 }
