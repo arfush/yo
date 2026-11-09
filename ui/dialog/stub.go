@@ -9,6 +9,7 @@
 package dialog
 
 import (
+	"gioui.org/io/event"
 	"gioui.org/io/key"
 	"gioui.org/layout"
 
@@ -31,15 +32,19 @@ func NewStub(handler navigator.Handler) *Stub {
 
 // Layout handles the Escape key; the shell owns the surface behind the dialog.
 func (s *Stub) Layout(gtx layout.Context) {
+	event.Op(gtx.Ops, &s.tag)
 	if !gtx.Focused(&s.tag) {
 		gtx.Execute(key.FocusCmd{Tag: &s.tag})
 	}
 	for {
-		ev, ok := gtx.Event(key.Filter{Focus: &s.tag, Name: key.NameEscape})
+		ev, ok := gtx.Event(
+			key.FocusFilter{Target: &s.tag},
+			key.Filter{Focus: &s.tag, Name: key.NameEscape},
+		)
 		if !ok {
 			break
 		}
-		if event, ok := ev.(key.Event); ok && event.State == key.Press {
+		if press, ok := ev.(key.Event); ok && press.State == key.Press {
 			s.handler.Navigate(navigator.Back{})
 			return
 		}
