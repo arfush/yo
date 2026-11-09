@@ -28,12 +28,15 @@ func Run() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 	defer signal.Stop(interrupt)
+	done := make(chan struct{})
+	defer close(done)
 	go func() {
-		<-interrupt
-		signal.Stop(interrupt)
-		r.logger.Info("interrupt received")
-		r.stop()
-		r.window.Perform(system.ActionClose)
+		select {
+		case <-interrupt:
+			r.logger.Info("interrupt received")
+			r.window.Perform(system.ActionClose)
+		case <-done:
+		}
 	}()
 
 	for {

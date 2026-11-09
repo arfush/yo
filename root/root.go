@@ -107,9 +107,9 @@ func (r *root) initLog() {
 	}
 }
 
-// stop shuts the application down. It may be called from the window event loop
-// and from the interrupt handler, so it must be idempotent. Future teardown
-// belongs here as well.
+// stop shuts the application down. It runs on the UI goroutine; the interrupt
+// handler only requests a window close. It is idempotent because the destroy
+// path and the deferred call can both reach it. Future teardown belongs here.
 func (r *root) stop() {
 	r.stopOnce.Do(func() {
 		if r.navigator != nil {
