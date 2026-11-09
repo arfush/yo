@@ -7,7 +7,8 @@
 //
 // Invariants: a screen is never nil; New and SetScreen panic on nil. Layout
 // draws the screen only inside the content rectangle and its footer only inside
-// the footer band. Only the UI goroutine calls the shell.
+// the footer band. A dialog, when set, is drawn over the body; nil clears it.
+// Only the UI goroutine calls the shell.
 package shell
 
 import (
@@ -17,6 +18,7 @@ import (
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
+	"gioui.org/op/paint"
 	"gioui.org/widget"
 
 	"github.com/arfush/yo/ui/appearance"
@@ -28,6 +30,12 @@ import (
 type Screen interface {
 	Layout(layout.Context)
 	LayoutFooter(layout.Context)
+}
+
+// Dialog is the modal content contract. The shell dims the screen body, then
+// draws the dialog over it. The shell never imports a concrete dialog.
+type Dialog interface {
+	Layout(layout.Context)
 }
 
 // Options configures the shell chrome.
@@ -49,6 +57,7 @@ type Shell struct {
 	title      string
 	version    string
 	screen     Screen
+	dialog     Dialog
 	maximized  bool
 
 	minimize widget.Clickable
@@ -87,6 +96,12 @@ func (s *Shell) SetTitle(title string) {
 	s.title = title
 }
 
+// SetDialog installs or clears the modal dialog. A nil dialog closes the modal;
+// the navigator calls it when the dialog stack changes.
+func (s *Shell) SetDialog(dialog Dialog) {
+	s.dialog = dialog
+}
+
 // SetConfig updates the window state used by the maximize glyph. The
 // composition root forwards app.ConfigEvent values here.
 func (s *Shell) SetConfig(cfg app.Config) {
@@ -101,8 +116,9 @@ func (s *Shell) Layout(gtx layout.Context) {
 	g := newGeometry(gtx, s.maximized)
 	s.layoutFrame(gtx, g)
 	s.layoutHeader(gtx, g)
-	s.layoutScreen(gtx, g)
+	content := s.layoutScreen(gtx, g)
 	s.layoutFooter(gtx, g)
+	s.layoutDialog(gtx, g, content)
 }
 
 // layoutFrame paints the window border, the rounded inner surface, the header
@@ -141,18 +157,26 @@ func (s *Shell) layoutFrame(gtx layout.Context, g geometry) {
 	))
 }
 
-// layoutScreen lays the active screen out in the clipped content rectangle.
-func (s *Shell) layoutScreen(gtx layout.Context, g geometry) {
+// layoutScreen records the active screen in the clipped content rectangle and
+// draws it once. The recorded call lets the dialog layer replay the content for
+// the blur without laying the screen out again.
+func (s *Shell) layoutScreen(gtx layout.Context, g geometry) op.CallOp {
 	bounds := g.contentRect()
 	if bounds.Empty() {
-		return
+		return op.CallOp{}
 	}
+	macro := op.Record(gtx.Ops)
 	offset := op.Offset(bounds.Min).Push(gtx.Ops)
-	defer offset.Pop()
-	gtx.Constraints = layout.Exact(bounds.Size())
-	clipStack := clip.Rect(image.Rectangle{Max: bounds.Size()}).Push(gtx.Ops)
-	defer clipStack.Pop()
-	s.screen.Layout(gtx)
+	screenGtx := gtx
+	screenGtx.Constraints = layout.Exact(bounds.Size())
+	s.screen.Layout(screenGtx)
+	offset.Pop()
+	call := macro.Stop()
+
+	clipStack := clip.Rect(bounds).Push(gtx.Ops)
+	call.Add(gtx.Ops)
+	clipStack.Pop()
+	return call
 }
 
 // layoutFooter lets the active screen fill the common footer band.
@@ -167,4 +191,43 @@ func (s *Shell) layoutFooter(gtx layout.Context, g geometry) {
 	clipStack := clip.Rect(image.Rectangle{Max: bounds.Size()}).Push(gtx.Ops)
 	defer clipStack.Pop()
 	s.screen.LayoutFooter(gtx)
+}
+
+// layoutDialog dims the body and draws the modal above it. The blur replays the
+// recorded screen five times with small offsets and low opacity, clipped to the
+// body, then the palette overlay and the dialog are painted on top.
+func (s *Shell) layoutDialog(gtx layout.Context, g geometry, content op.CallOp) {
+	if s.dialog == nil {
+		return
+	}
+	bounds := g.contentRect()
+	if bounds.Empty() {
+		return
+	}
+
+	clipStack := clip.Rect(bounds).Push(gtx.Ops)
+	defer clipStack.Pop()
+
+	radius := g.px(3)
+	taps := [...]image.Point{
+		{},
+		{X: radius},
+		{X: -radius},
+		{Y: radius},
+		{Y: -radius},
+	}
+	for _, tap := range taps {
+		offset := op.Offset(tap).Push(gtx.Ops)
+		opacity := paint.PushOpacity(gtx.Ops, 0.2)
+		content.Add(gtx.Ops)
+		opacity.Pop()
+		offset.Pop()
+	}
+	fill(gtx, s.appearance.Palette().Overlay, bounds)
+
+	offset := op.Offset(bounds.Min).Push(gtx.Ops)
+	defer offset.Pop()
+	dialogGtx := gtx
+	dialogGtx.Constraints = layout.Exact(bounds.Size())
+	s.dialog.Layout(dialogGtx)
 }
