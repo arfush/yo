@@ -48,8 +48,8 @@ const (
 	badgePaddingX   unit.Dp = 7
 	markRadius      unit.Dp = 7
 	markInset       unit.Dp = 4
-	siteChevronSize unit.Dp = 12
-	siteChevronGap  unit.Dp = 6
+	siteChevronSize unit.Dp = 10
+	siteChevronGap  unit.Dp = 10
 )
 
 // Window-control accessibility labels.
