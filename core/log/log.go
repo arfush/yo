@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Source names the module that wrote a journal entry.
@@ -16,6 +17,11 @@ const (
 	// SourceRoot is the composition root: startup, window creation and
 	// configuration, shutdown and process-level failures.
 	SourceRoot Source = "root"
+	// SourcePlatform is OS integration: the native window frame.
+	SourcePlatform Source = "platform"
+	// SourceJournal is the journal itself. A failure that cannot be written to
+	// the journal file is reported on stderr under this source.
+	SourceJournal Source = "journal"
 )
 
 // String returns the source name written to the journal.
@@ -145,7 +151,9 @@ func (j *Journal) console(level slog.Level) io.Writer {
 func (j *Journal) writeLocked(entry Entry) error {
 	writers := make([]io.Writer, 0, 2)
 	if j.file != nil {
-		if err := j.rotateLocked(); err == nil {
+		if err := j.rotateLocked(); err != nil {
+			j.dropFileLocked(err)
+		} else {
 			writers = append(writers, j.file)
 		}
 	}
@@ -160,6 +168,29 @@ func (j *Journal) writeLocked(entry Entry) error {
 		}
 	}
 	return first
+}
+
+// dropFileLocked disables a file that cannot rotate and reports the failure to
+// stderr, because the journal cannot write it to the broken file. The journal
+// keeps working on the console and in the ring.
+func (j *Journal) dropFileLocked(err error) {
+	if j.file != nil {
+		_ = j.file.Close()
+		j.file = nil
+	}
+	if j.stderr == nil {
+		return
+	}
+	var record slog.Record
+	record.Add("path", j.path, "error", err)
+	entry := Entry{
+		Time:    time.Now(),
+		Level:   slog.LevelWarn,
+		Source:  SourceJournal,
+		Message: "journal rotation failed",
+		Detail:  formatAttrs(nil, nil, record),
+	}
+	_, _ = io.WriteString(j.stderr, entry.formatLine()+"\n")
 }
 
 func (j *Journal) rotateLocked() error {

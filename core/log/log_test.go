@@ -78,6 +78,45 @@ func TestRotation(t *testing.T) {
 	}
 }
 
+func TestRotationFailureReportsToStderr(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "yo.log")
+	// A non-empty directory in the backup slots makes the rename steps fail.
+	if err := os.MkdirAll(filepath.Join(path+".2", "busy"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.Mkdir(path+".1", 0o755); err != nil {
+		t.Fatalf("Mkdir: %v", err)
+	}
+	var stderr bytes.Buffer
+	j, err := Open(Options{Path: path, Stderr: &stderr, MaxFileSize: 1})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = j.Close() })
+
+	logger := j.Logger(SourceRoot)
+	logger.Info("one")
+	logger.Info("two")
+
+	got := stderr.String()
+	if !strings.Contains(got, "warn journal: journal rotation failed") {
+		t.Fatalf("stderr = %q; want the rotation failure", got)
+	}
+	if !strings.Contains(got, "path=") || !strings.Contains(got, "error=") {
+		t.Fatalf("stderr = %q; want path and error attributes", got)
+	}
+	if j.file != nil {
+		t.Fatal("file is still open after a failed rotation")
+	}
+
+	logger.Info("three")
+	if got := len(j.Recent()); got != 3 {
+		t.Fatalf("Recent = %d entries; want 3", got)
+	}
+}
+
 func TestRingAndClear(t *testing.T) {
 	t.Parallel()
 

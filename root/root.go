@@ -35,13 +35,16 @@ type root struct {
 	navigator   *navigator.Navigator
 	journal     *log.Journal
 	logger      *log.Logger
+	platformLog *log.Logger
 	windowShown bool
+	focused     bool
 	panicked    bool
 	stopOnce    sync.Once
 }
 
 func (r *root) initResource() {
 	r.resource = resource.New()
+	r.logger.Info("resources ready")
 }
 
 func (r *root) initAppearance() {
@@ -105,6 +108,7 @@ func (r *root) initLog() {
 	journal, openErr := log.Open(opts)
 	r.journal = journal
 	r.logger = journal.Logger(log.SourceRoot)
+	r.platformLog = journal.Logger(log.SourcePlatform)
 	switch {
 	case pathErr != nil:
 		r.logger.Warn("journal path unavailable", "error", pathErr)
@@ -123,9 +127,11 @@ func (r *root) stop() {
 		if r.navigator != nil {
 			r.navigator.Close()
 		}
-		r.logger.Info("application stopped")
 		if err := r.journal.Close(); err != nil {
 			r.logger.Error("close journal", "error", err)
+		} else {
+			r.logger.Info("journal closed")
 		}
+		r.logger.Info("application stopped")
 	})
 }

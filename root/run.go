@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime"
 	"runtime/debug"
 
 	"gioui.org/app"
@@ -15,6 +16,7 @@ import (
 	"github.com/arfush/yo/ui/appearance"
 	"github.com/arfush/yo/ui/resource"
 	"github.com/arfush/yo/ui/screen"
+	"github.com/arfush/yo/version"
 )
 
 // Run starts the application and blocks until the window is closed.
@@ -23,7 +25,8 @@ func Run() {
 	r.initLog()
 	defer r.stop()
 
-	r.logger.Info("application started")
+	r.logger.Info("application started",
+		"version", version.Ver, "os", runtime.GOOS, "arch", runtime.GOARCH)
 	r.initResource()
 	r.initAppearance()
 	r.initSite()
@@ -56,13 +59,23 @@ func Run() {
 			r.stop()
 			return
 		case app.ConfigEvent:
-			r.shell.SetConfig(e.Config)
+			r.applyConfig(e.Config)
 		case app.FrameEvent:
 			r.frame(e)
 		case event.Event:
-			platform.HandleViewEvent(e, r.appearance.Value().Palette().Border)
+			platform.HandleViewEvent(e, r.appearance.Value().Palette().Border, r.platformLog)
 		}
 	}
+}
+
+// applyConfig forwards the window configuration to the shell and logs focus
+// changes. Resizes arrive as config events too, so only focus is logged.
+func (r *root) applyConfig(cfg app.Config) {
+	if r.focused != cfg.Focused {
+		r.focused = cfg.Focused
+		r.logger.Debug("window focus changed", "focused", cfg.Focused)
+	}
+	r.shell.SetConfig(cfg)
 }
 
 // frame draws one event loop frame. A panic anywhere in the frame is recovered
