@@ -13,14 +13,11 @@ import (
 // Plural keys use the "<key>.<form>" suffix, e.g. "episode.one".
 type TextKey string
 
-// Lang is a translation language. Implementations resolve strings through
-// Resource.Text and own formatting and plural rules.
-type Lang interface {
-	Code() string
-	Text(key TextKey) string
-	Textf(key TextKey, args ...any) string
-	TextPlural(key TextKey, n int) string
-	TextPluralf(key TextKey, n int, args ...any) string
+// Lang is a translation language bound to a Resource. Use Resource.Lang to get
+// a value; the zero value is invalid and its methods panic.
+type Lang struct {
+	res  *Resource
+	code string
 }
 
 // Lang returns the embedded language for code. An unknown code panics: the
@@ -29,7 +26,7 @@ func (r *Resource) Lang(code string) Lang {
 	if _, ok := r.lexicons[code]; !ok {
 		panic("resource: lang \"" + code + "\" is not embedded")
 	}
-	return lang{res: r, code: code}
+	return Lang{res: r, code: code}
 }
 
 // Text returns the translation for key in lang. A plain entry has one variant;
@@ -37,8 +34,8 @@ func (r *Resource) Lang(code string) Lang {
 // Text once per presentation, not every frame: sequential entries advance per
 // call. A missing key panics.
 func (r *Resource) Text(lang Lang, key TextKey) string {
-	if lang == nil {
-		panic("resource: lang is nil")
+	if lang.res == nil {
+		panic("resource: lang is zero")
 	}
 	if key == "" {
 		panic("resource: text key is empty")
@@ -69,17 +66,14 @@ func (r *Resource) Text(lang Lang, key TextKey) string {
 	return entry.variants[int(index%uint64(len(entry.variants)))]
 }
 
-// lang is the built-in Lang implementation.
-type lang struct {
-	res  *Resource
-	code string
-}
+// Code returns the language code.
+func (l Lang) Code() string { return l.code }
 
-func (l lang) Code() string { return l.code }
+// Text returns the translation for key.
+func (l Lang) Text(key TextKey) string { return l.res.Text(l, key) }
 
-func (l lang) Text(key TextKey) string { return l.res.Text(l, key) }
-
-func (l lang) Textf(key TextKey, args ...any) string {
+// Textf returns the translation for key formatted with args.
+func (l Lang) Textf(key TextKey, args ...any) string {
 	value := l.Text(key)
 	if len(args) == 0 {
 		return value
@@ -89,13 +83,13 @@ func (l lang) Textf(key TextKey, args ...any) string {
 
 // TextPlural returns the translation for the CLDR form key "<key>.<form>". The
 // translation carries its own placeholder, so the caller formats the result.
-func (l lang) TextPlural(key TextKey, n int) string {
+func (l Lang) TextPlural(key TextKey, n int) string {
 	return l.Text(TextKey(string(key) + "." + pluralForm(l.code, n)))
 }
 
 // TextPluralf returns the plural form and formats it with args. n selects the
 // form; pass n in args when the translation contains a count placeholder.
-func (l lang) TextPluralf(key TextKey, n int, args ...any) string {
+func (l Lang) TextPluralf(key TextKey, n int, args ...any) string {
 	return fmt.Sprintf(l.TextPlural(key, n), args...)
 }
 
