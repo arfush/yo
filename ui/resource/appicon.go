@@ -37,14 +37,16 @@ func (r *Resource) AppIcon(key AppIconKey) image.Image {
 	return icon.image
 }
 
-// AppIconICO returns the raw ICO bytes for the key. The slice is shared and
-// must not be modified. A missing icon panics.
+// AppIconICO returns a copy of the raw ICO bytes for the key. A missing icon
+// panics.
 func (r *Resource) AppIconICO(key AppIconKey) []byte {
 	icon, ok := r.appIcons[key]
 	if !ok || len(icon.ico) == 0 {
 		panic("resource: app icon \"" + string(key) + "\" is not embedded")
 	}
-	return icon.ico
+	out := make([]byte, len(icon.ico))
+	copy(out, icon.ico)
+	return out
 }
 
 func (r *Resource) loadAppIcons(fsys fs.FS) {

@@ -24,6 +24,8 @@ type Resource struct {
 	appIcons map[AppIconKey]appIcon
 	lexicons map[string]lexicon
 
+	// mu guards next, the per-key cursors for sequential translations. The
+	// asset maps are read-only after New.
 	mu   sync.Mutex
 	next map[variantCursor]uint64
 }

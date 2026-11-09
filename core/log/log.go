@@ -53,6 +53,8 @@ type Options struct {
 // Journal owns the file, console streams and in-memory ring. It is safe for
 // concurrent use and must not be copied.
 type Journal struct {
+	// mu guards file, ring, sequence and lastErr. maxFileSize, ringSize, path
+	// and the console writers are immutable after Open.
 	mu          sync.Mutex
 	path        string
 	maxFileSize int64
