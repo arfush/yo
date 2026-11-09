@@ -1,15 +1,14 @@
 package root
 
 import (
-	"fmt"
 	"os"
-	"path/filepath"
 	"sync"
 
 	"gioui.org/app"
 	"gioui.org/unit"
 
 	"github.com/arfush/yo/core/log"
+	"github.com/arfush/yo/core/platform"
 	"github.com/arfush/yo/core/stdx"
 	"github.com/arfush/yo/ui/appearance"
 	"github.com/arfush/yo/ui/navigator"
@@ -90,7 +89,7 @@ func (r *root) initNavigator() {
 // journal file failure does not abort startup: console and the ring still work.
 func (r *root) initLog() {
 	opts := log.Options{Stdout: os.Stdout, Stderr: os.Stderr}
-	path, pathErr := journalPath()
+	path, pathErr := platform.JournalPath()
 	if pathErr == nil {
 		opts.Path = path
 	}
@@ -120,18 +119,4 @@ func (r *root) stop() {
 			r.logger.Error("close journal", "error", err)
 		}
 	})
-}
-
-// journalPath resolves the journal location next to the future database:
-// %APPDATA%\yo\yo.log on Windows.
-func journalPath() (string, error) {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		return "", fmt.Errorf("user config dir: %w", err)
-	}
-	dir = filepath.Join(dir, "yo")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", fmt.Errorf("create journal directory: %w", err)
-	}
-	return filepath.Join(dir, "yo.log"), nil
 }
