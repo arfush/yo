@@ -7,6 +7,7 @@ import (
 	"gioui.org/app"
 	"gioui.org/unit"
 
+	"github.com/arfush/yo/catalog"
 	"github.com/arfush/yo/core/log"
 	"github.com/arfush/yo/core/platform"
 	"github.com/arfush/yo/core/stdx"
@@ -28,6 +29,7 @@ type root struct {
 	window      *app.Window
 	resources   *resource.Resource
 	appearance  *stdx.Holder[appearance.Appearance]
+	site        *stdx.Holder[catalog.Site]
 	shell       *shell.Shell
 	navigator   *navigator.Navigator
 	journal     *log.Journal
@@ -48,6 +50,11 @@ func (r *root) initAppearance() {
 	r.logger.Info("appearance ready", "language", defaultLanguage)
 }
 
+func (r *root) initSite() {
+	r.site = stdx.NewHolder(catalog.SiteYoanime)
+	r.logger.Info("site ready", "site", catalog.SiteYoanime.String())
+}
+
 func (r *root) initWindowOptions() {
 	r.window.Option(
 		app.Title(windowTitle),
@@ -64,10 +71,10 @@ func (r *root) initShell() {
 	r.shell = shell.New(shell.Options{
 		Screen:     screen.NewStub(windowTitle),
 		Window:     r.window,
-		Appearance: r.appearance.Value(),
+		Site:       r.site,
+		Appearance: r.appearance,
 		Resources:  r.resources,
-		Title:      windowTitle,
-		Version:    version.Ver,
+		Version:    "v" + version.Ver,
 	})
 	r.logger.Info("shell ready")
 }

@@ -21,6 +21,7 @@ func Run() {
 	r.logger.Info("application started")
 	r.initResource()
 	r.initAppearance()
+	r.initSite()
 	r.initWindowOptions()
 	r.initShell()
 	r.initNavigator()

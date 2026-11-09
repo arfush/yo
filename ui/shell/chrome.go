@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/color"
 
+	"gioui.org/f32"
 	"gioui.org/io/pointer"
 	"gioui.org/io/semantic"
 	"gioui.org/io/system"
@@ -39,12 +40,14 @@ const (
 	closeIconSize   unit.Dp = 28
 	controlsInset   unit.Dp = 12
 	logoInset       unit.Dp = 16
-	logoSize        unit.Dp = 22
+	logoSize        unit.Dp = 28
 	labelGap        unit.Dp = 10
 	contentGap      unit.Dp = 14
-	badgeHeight     unit.Dp = 20
-	badgePaddingX   unit.Dp = 7
-	badgeGap        unit.Dp = 12
+	versionGap      unit.Dp = 12
+	markRadius      unit.Dp = 7
+	markInset       unit.Dp = 4
+	siteChevronSize unit.Dp = 12
+	siteChevronGap  unit.Dp = 6
 )
 
 // Window-control accessibility labels.
@@ -149,17 +152,27 @@ func (s *Shell) newGeometry(gtx layout.Context) geometry {
 	return g
 }
 
+// brandLayout is the measured site block. It is built before the drag regions
+// so the site trigger can be excluded from them.
+type brandLayout struct {
+	label     op.CallOp
+	labelSize image.Point
+	chevron   image.Rectangle
+	trigger   image.Rectangle
+}
+
 // layoutHeader paints the draggable regions, the brand and the window controls.
 func (s *Shell) layoutHeader(gtx layout.Context, g geometry) {
 	if g.inner.Empty() {
 		return
 	}
-	// Drag regions come first, so the controls added later sit above them and
-	// receive pointer input.
-	s.layoutDragRegions(gtx, g)
-	s.layoutBrand(gtx, g)
+	brand := s.brandLayout(gtx, g)
+	// Drag regions come first, so the trigger and the controls added later sit
+	// above them and receive pointer input.
+	s.layoutDragRegions(gtx, g, brand.trigger)
+	s.layoutBrand(gtx, g, brand)
 
-	palette := s.appearance.Palette()
+	palette := s.palette()
 	maximizeIcon := s.icon(resource.IconMaximize)
 	maximizeAction := system.ActionMaximize
 	maximizeLabel := labelMaximize
@@ -200,50 +213,88 @@ func (s *Shell) layoutHeader(gtx layout.Context, g geometry) {
 	s.layoutControl(gtx, closeControl)
 }
 
-// layoutBrand paints the torii mark, the active title and the version badge.
-func (s *Shell) layoutBrand(gtx layout.Context, g geometry) {
-	palette := s.appearance.Palette()
-	typo := s.appearance.Typography()
+// brandLayout measures the site block and records its label.
+func (s *Shell) brandLayout(gtx layout.Context, g geometry) brandLayout {
+	palette := s.palette()
+	typo := s.typography()
 	if typo.Shaper() == nil {
+		return brandLayout{}
+	}
+	label := s.site.Value().String()
+	reserve := gtx.Dp(contentGap)
+	if s.siteSwitchable() {
+		reserve += gtx.Dp(siteChevronGap) + gtx.Dp(siteChevronSize)
+	}
+	maxWidth := max(1, g.controls.minimize.Min.X-g.titleX-reserve)
+	labelGtx := gtx
+	labelGtx.Constraints = layout.Constraints{Max: image.Pt(maxWidth, g.headerClickEnd)}
+	macro := op.Record(gtx.Ops)
+	dims := kit.Text(labelGtx, typo, appearance.RoleSubtitle, label, palette.Text)
+	call := macro.Stop()
+
+	b := brandLayout{label: call, labelSize: dims.Size}
+	labelRight := g.titleX + dims.Size.X
+	if s.siteSwitchable() {
+		size := gtx.Dp(siteChevronSize)
+		left := labelRight + gtx.Dp(siteChevronGap)
+		top := g.headerCenterY - size/2
+		b.chevron = rect(left, top, left+size, top+size)
+	}
+	b.trigger = rect(g.logo.Min.X, 0, max(labelRight, b.chevron.Max.X), g.headerClickEnd)
+	return b
+}
+
+// layoutBrand paints the site mark, the active site name, the switcher chevron
+// and the version.
+func (s *Shell) layoutBrand(gtx layout.Context, g geometry, b brandLayout) {
+	palette := s.palette()
+	s.layoutSiteMark(gtx, g, palette)
+	if b.labelSize.X <= 0 {
 		return
 	}
-	drawIcon(gtx, s.icon(resource.IconTorii), g.logo, palette.Accent)
+	if s.siteSwitchable() && !b.trigger.Empty() && s.layoutSiteTrigger(gtx, b.trigger) {
+		s.menu.toggle(b.trigger)
+	}
 
-	maxWidth := max(1, g.controls.minimize.Min.X-g.titleX-gtx.Dp(contentGap))
-	titleGtx := gtx
-	titleGtx.Constraints = layout.Constraints{Max: image.Pt(maxWidth, g.headerClickEnd)}
-	macro := op.Record(gtx.Ops)
-	dims := kit.Text(titleGtx, typo, appearance.RoleSubtitle, s.title, palette.Text)
-	call := macro.Stop()
-	stack := op.Offset(image.Pt(g.titleX, g.headerCenterY-dims.Size.Y/2)).Push(gtx.Ops)
-	call.Add(gtx.Ops)
+	stack := op.Offset(image.Pt(g.titleX, g.headerCenterY-b.labelSize.Y/2)).Push(gtx.Ops)
+	b.label.Add(gtx.Ops)
 	stack.Pop()
 
+	if !b.chevron.Empty() {
+		drawChevron(gtx, b.chevron, palette.TextMuted, s.menu.open)
+	}
 	if s.version != "" {
-		s.layoutBadge(gtx, g, g.titleX+dims.Size.X+gtx.Dp(badgeGap))
+		right := max(g.titleX+b.labelSize.X, b.chevron.Max.X)
+		s.layoutVersion(gtx, g, right+gtx.Dp(versionGap))
 	}
 }
 
-// layoutBadge paints the version pill after the title. The shell never formats
-// the version text.
-func (s *Shell) layoutBadge(gtx layout.Context, g geometry, left int) {
-	palette := s.appearance.Palette()
-	typo := s.appearance.Typography()
-	maxWidth := max(1, g.controls.minimize.Min.X-left)
+// layoutSiteMark paints the vector site tile: a dim rounded edge, the
+// alternative surface and the torii in the site accent.
+func (s *Shell) layoutSiteMark(gtx layout.Context, g geometry, palette appearance.Palette) {
+	line := max(1, gtx.Dp(1))
+	radius := gtx.Dp(markRadius)
+	fillRounded(gtx, withAlpha(palette.AccentMuted, 0x40), g.logo, radius)
+	inner := g.logo.Inset(line)
+	fillRounded(gtx, palette.SurfaceAlt, inner, max(0, radius-line))
+	drawIcon(gtx, s.icon(resource.IconTorii), inner.Inset(gtx.Dp(markInset)), palette.Accent)
+}
+
+// layoutVersion paints the version after the site block. The shell never
+// formats the version text.
+func (s *Shell) layoutVersion(gtx layout.Context, g geometry, left int) {
+	palette := s.palette()
+	typo := s.typography()
+	maxWidth := max(1, g.controls.minimize.Min.X-left-gtx.Dp(contentGap))
 	textGtx := gtx
 	textGtx.Constraints = layout.Constraints{Max: image.Pt(maxWidth, g.headerClickEnd)}
 	macro := op.Record(gtx.Ops)
 	dims := kit.Text(textGtx, typo, appearance.RoleCaption, s.version, palette.TextMuted)
 	call := macro.Stop()
-
-	width := dims.Size.X + 2*gtx.Dp(badgePaddingX)
-	height := gtx.Dp(badgeHeight)
-	pill := rect(left, g.headerCenterY-height/2, left+width, g.headerCenterY+height/2)
-	if pill.Empty() || pill.Max.X > g.controls.minimize.Min.X-gtx.Dp(contentGap) {
+	if dims.Size.X <= 0 || left+dims.Size.X > g.controls.minimize.Min.X-gtx.Dp(contentGap) {
 		return
 	}
-	fillRounded(gtx, palette.SurfaceAlt, pill, height/2)
-	stack := op.Offset(image.Pt(left+gtx.Dp(badgePaddingX), g.headerCenterY-dims.Size.Y/2)).Push(gtx.Ops)
+	stack := op.Offset(image.Pt(left, g.headerCenterY-dims.Size.Y/2)).Push(gtx.Ops)
 	call.Add(gtx.Ops)
 	stack.Pop()
 }
@@ -263,7 +314,7 @@ func (s *Shell) layoutControl(gtx layout.Context, c windowControl) {
 	controlGtx.Constraints = layout.Exact(c.bounds.Size())
 	clipStack := clip.Rect(image.Rectangle{Max: c.bounds.Size()}).Push(gtx.Ops)
 	defer clipStack.Pop()
-	label := s.appearance.Locale().Text(c.label)
+	label := s.locale().Text(c.label)
 	c.click.Layout(controlGtx, func(gtx layout.Context) layout.Dimensions {
 		pointer.CursorPointer.Add(gtx.Ops)
 		semantic.Button.Add(gtx.Ops)
@@ -286,15 +337,24 @@ func (s *Shell) layoutControl(gtx layout.Context, c windowControl) {
 }
 
 // layoutDragRegions installs system.ActionMove over every header area outside
-// the window controls, so dragging the empty surface moves the window.
-func (s *Shell) layoutDragRegions(gtx layout.Context, g geometry) {
+// the site trigger and the window controls, so dragging the empty surface moves
+// the window.
+func (s *Shell) layoutDragRegions(gtx layout.Context, g geometry, trigger image.Rectangle) {
 	minimize, maximize, close := g.controls.minimize, g.controls.maximize, g.controls.close
-	regions := [...]image.Rectangle{
-		rect(g.inner.Min.X, 0, minimize.Min.X, g.headerClickEnd),
+	regions := make([]image.Rectangle, 0, 5)
+	if trigger.Empty() {
+		regions = append(regions, rect(g.inner.Min.X, 0, minimize.Min.X, g.headerClickEnd))
+	} else {
+		regions = append(regions,
+			rect(g.inner.Min.X, 0, trigger.Min.X, g.headerClickEnd),
+			rect(trigger.Max.X, 0, minimize.Min.X, g.headerClickEnd),
+		)
+	}
+	regions = append(regions,
 		rect(minimize.Max.X, 0, maximize.Min.X, g.headerClickEnd),
 		rect(maximize.Max.X, 0, close.Min.X, g.headerClickEnd),
 		rect(close.Max.X, 0, g.size.X, g.headerClickEnd),
-	}
+	)
 	for _, region := range regions {
 		if region.Empty() {
 			continue
@@ -320,6 +380,13 @@ func fill(gtx layout.Context, col color.NRGBA, r image.Rectangle) {
 	paint.FillShape(gtx.Ops, col, clip.Rect(r).Op())
 }
 
+// withAlpha returns col with its alpha replaced, so a token can be used as a
+// dim tint over the surface below.
+func withAlpha(col color.NRGBA, alpha uint8) color.NRGBA {
+	col.A = alpha
+	return col
+}
+
 func fillRounded(gtx layout.Context, col color.NRGBA, r image.Rectangle, radius int) {
 	if r.Empty() {
 		return
@@ -342,6 +409,36 @@ func drawIcon(gtx layout.Context, icon *widget.Icon, r image.Rectangle, col colo
 	iconGtx := gtx
 	iconGtx.Constraints = layout.Exact(target.Size())
 	icon.Layout(iconGtx, col)
+}
+
+// drawChevron paints the switcher arrow as a vector polygon, so the chrome does
+// not depend on an embedded chevron asset. It points down when closed and up
+// when open.
+func drawChevron(gtx layout.Context, r image.Rectangle, col color.NRGBA, open bool) {
+	if r.Empty() {
+		return
+	}
+	x, y := float32(r.Min.X), float32(r.Min.Y)
+	w, h := float32(r.Dx()), float32(r.Dy())
+	var path clip.Path
+	path.Begin(gtx.Ops)
+	if open {
+		path.MoveTo(f32.Pt(x, y+h*0.62))
+		path.LineTo(f32.Pt(x+w*0.5, y+h*0.3))
+		path.LineTo(f32.Pt(x+w, y+h*0.62))
+		path.LineTo(f32.Pt(x+w, y+h*0.82))
+		path.LineTo(f32.Pt(x+w*0.5, y+h*0.5))
+		path.LineTo(f32.Pt(x, y+h*0.82))
+	} else {
+		path.MoveTo(f32.Pt(x, y+h*0.38))
+		path.LineTo(f32.Pt(x+w*0.5, y+h*0.7))
+		path.LineTo(f32.Pt(x+w, y+h*0.38))
+		path.LineTo(f32.Pt(x+w, y+h*0.58))
+		path.LineTo(f32.Pt(x+w*0.5, y+h*0.9))
+		path.LineTo(f32.Pt(x, y+h*0.58))
+	}
+	path.Close()
+	paint.FillShape(gtx.Ops, col, clip.Outline{Path: path.End()}.Op())
 }
 
 func rect(x0, y0, x1, y1 int) image.Rectangle {

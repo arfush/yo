@@ -11,6 +11,8 @@ import (
 	"gioui.org/op/paint"
 	"gioui.org/widget"
 
+	"github.com/arfush/yo/catalog"
+	"github.com/arfush/yo/core/stdx"
 	"github.com/arfush/yo/ui/appearance"
 	"github.com/arfush/yo/ui/resource"
 )
@@ -34,9 +36,9 @@ type Dialog interface {
 type Options struct {
 	Screen     Screen
 	Window     *app.Window
-	Appearance appearance.Appearance
+	Site       *stdx.Holder[catalog.Site]
+	Appearance *stdx.Holder[appearance.Appearance]
 	Resources  *resource.Resource
-	Title      string
 	Version    string
 }
 
@@ -44,14 +46,20 @@ type Options struct {
 // replace the content and Layout to draw a frame.
 type Shell struct {
 	window     *app.Window
-	appearance appearance.Appearance
+	site       *stdx.Holder[catalog.Site]
+	appearance *stdx.Holder[appearance.Appearance]
 	resources  *resource.Resource
-	title      string
 	version    string
 	screen     Screen
 	dialog     Dialog
 	maximized  bool
 	content    op.CallOp
+
+	siteState catalog.Site
+	siteClick widget.Clickable
+	siteItems []widget.Clickable
+	menu      siteMenu
+	scrim     siteScrim
 
 	backdrop      paint.ImageOp
 	backdropSize  image.Point
@@ -65,20 +73,48 @@ type Shell struct {
 	close    widget.Clickable
 }
 
-// New returns a shell with the given chrome. A nil screen is a programmer error
-// and panics: the shell always has content.
+// New returns a shell with the given chrome. A nil screen, site holder or
+// appearance holder is a programmer error and panics.
 func New(opts Options) *Shell {
 	if opts.Screen == nil {
 		panic("shell: nil screen")
 	}
+	if opts.Site == nil {
+		panic("shell: nil site holder")
+	}
+	if opts.Appearance == nil {
+		panic("shell: nil appearance holder")
+	}
 	return &Shell{
 		window:     opts.Window,
+		site:       opts.Site,
 		appearance: opts.Appearance,
 		resources:  opts.Resources,
-		title:      opts.Title,
 		version:    opts.Version,
 		screen:     opts.Screen,
+		siteItems:  make([]widget.Clickable, len(catalog.Sites())),
 	}
+}
+
+// palette returns the colors of the current appearance.
+func (s *Shell) palette() appearance.Palette { return s.appearance.Value().Palette() }
+
+// typography returns the text shaper and role scale of the current appearance.
+func (s *Shell) typography() appearance.Typography { return s.appearance.Value().Typography() }
+
+// locale returns the active language of the current appearance.
+func (s *Shell) locale() appearance.Locale { return s.appearance.Value().Locale() }
+
+// syncPalette copies the active site palette into the shared appearance. It runs
+// before layout, so a site change requested by the core is visible next frame.
+func (s *Shell) syncPalette() {
+	site := s.site.Value()
+	if site == s.siteState {
+		return
+	}
+	palette := appearance.PaletteFor(site)
+	s.appearance.Update(func(a *appearance.Appearance) { a.SetPalette(palette) })
+	s.siteState = site
 }
 
 // SetScreen replaces the content of the window. A nil screen is a programmer
@@ -88,19 +124,24 @@ func (s *Shell) SetScreen(content Screen) {
 		panic("shell: nil screen")
 	}
 	s.screen = content
+	s.menu.close()
 	s.invalidateBackdrop()
 }
 
-// SetTitle replaces the header title. The navigator calls it with the active
-// screen title. An empty title clears the label but leaves the brand mark.
+// SetTitle replaces the native window title. The navigator calls it with the
+// active screen title. The header itself shows the active site.
 func (s *Shell) SetTitle(title string) {
-	s.title = title
+	if s.window == nil {
+		return
+	}
+	s.window.Option(app.Title(title))
 }
 
 // SetDialog installs or clears the modal dialog. A nil dialog closes the modal;
 // the navigator calls it when the dialog stack changes.
 func (s *Shell) SetDialog(dialog Dialog) {
 	s.dialog = dialog
+	s.menu.close()
 	s.invalidateBackdrop()
 }
 
@@ -127,6 +168,7 @@ func (s *Shell) Prepare(gtx layout.Context) {
 	if s.screen == nil {
 		panic("shell: no screen installed")
 	}
+	s.syncPalette()
 	g := s.newGeometry(gtx)
 	s.content = s.layoutScreen(gtx, g)
 	s.prepareBackdrop(gtx, g)
@@ -146,6 +188,7 @@ func (s *Shell) Layout(gtx layout.Context) {
 	} else {
 		s.layoutDialog(gtx, g, s.content)
 	}
+	s.layoutSiteMenu(gtx, g)
 }
 
 // prepareBackdrop captures the recorded screen once per dialog and size. The
@@ -162,7 +205,7 @@ func (s *Shell) prepareBackdrop(gtx layout.Context, g geometry) {
 	if s.backdropTried && s.backdropSize == size {
 		return
 	}
-	img, ok := s.captureBackdrop(s.content, size, s.appearance.Palette().Canvas, gtx.Dp(blurRadiusDp))
+	img, ok := s.captureBackdrop(s.content, size, s.palette().Canvas, gtx.Dp(blurRadiusDp))
 	s.backdropTried = true
 	s.backdropSize = size
 	s.backdropReady = ok
@@ -174,7 +217,7 @@ func (s *Shell) prepareBackdrop(gtx layout.Context, g geometry) {
 // layoutFrame paints the window border, the rounded inner surface, the header
 // band and the footer band with its dividers.
 func (s *Shell) layoutFrame(gtx layout.Context, g geometry) {
-	palette := s.appearance.Palette()
+	palette := s.palette()
 	fill(gtx, palette.Border, image.Rectangle{Max: g.size})
 	if g.inner.Empty() {
 		return
@@ -275,7 +318,7 @@ func (s *Shell) layoutDialog(gtx layout.Context, g geometry, content op.CallOp) 
 	}
 	offset.Pop()
 
-	fill(gtx, s.appearance.Palette().Overlay, bounds)
+	fill(gtx, s.palette().Overlay, bounds)
 
 	dialogOffset := op.Offset(bounds.Min).Push(gtx.Ops)
 	defer dialogOffset.Pop()
