@@ -11,35 +11,14 @@ import (
 // icon/<name>.iconvg.
 type IconKey string
 
-// Icon* declares the embedded vector glyphs.
+// Icon* declares the embedded vector glyphs. Keep this list in sync with the
+// .iconvg files in icon/: Icon panics on a key that has no asset.
 const (
-	IconBell         IconKey = "bell"
-	IconCheck        IconKey = "check"
-	IconChevron      IconKey = "chevron"
-	IconChevronHeavy IconKey = "chevron_heavy"
-	IconChevronLeft  IconKey = "chevron_left"
-	IconChevronRight IconKey = "chevron_right"
-	IconChevronThick IconKey = "chevron_thick"
-	IconChevronThin  IconKey = "chevron_thin"
-	IconChevronUp    IconKey = "chevron_up"
-	IconClose        IconKey = "close"
-	IconConfig       IconKey = "config"
-	IconCopy         IconKey = "copy"
-	IconKeyboard     IconKey = "keyboard"
-	IconLink         IconKey = "link"
-	IconLog          IconKey = "log"
-	IconMaximize     IconKey = "maximize"
-	IconMinimize     IconKey = "minimize"
-	IconPause        IconKey = "pause"
-	IconPeople       IconKey = "people"
-	IconPlay         IconKey = "play"
-	IconScroll       IconKey = "scroll"
-	IconSearch       IconKey = "search"
-	IconTorii        IconKey = "torii"
-	IconTrash        IconKey = "trash"
-	IconUndo         IconKey = "undo"
-	IconUnmaximize   IconKey = "unmaximize"
-	IconUpdate       IconKey = "update"
+	IconClose      IconKey = "close"
+	IconMaximize   IconKey = "maximize"
+	IconMinimize   IconKey = "minimize"
+	IconTorii      IconKey = "torii"
+	IconUnmaximize IconKey = "unmaximize"
 )
 
 // Icon returns the cached vector icon for the key. A missing icon panics: the
