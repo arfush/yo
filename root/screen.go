@@ -8,7 +8,7 @@ import (
 // newStartupScreen builds the temporary main screen, a placeholder until the
 // real main screen exists. It reuses the panic screen layout with no detail and
 // keeps the native window title constant.
-func (r *root) newStartupScreen(navigator.Handler) navigator.Screen {
+func (r *root) newStartupScreen() navigator.Screen {
 	app := r.appearance.Value()
 	startup := screen.NewPanic(r.appearance.Readonly(), panicTitle(app), "")
 	startup.ScreenTitle = windowTitle

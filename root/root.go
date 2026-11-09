@@ -74,7 +74,7 @@ func (r *root) initWindowOptions() {
 // placeholder. The navigator installs the same screen before the first frame.
 func (r *root) initShell() {
 	r.shell = shell.New(shell.Options{
-		Screen:     r.newStartupScreen(nil),
+		Screen:     r.newStartupScreen(),
 		Window:     r.window,
 		Site:       r.site,
 		Appearance: r.appearance,

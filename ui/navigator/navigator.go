@@ -21,7 +21,7 @@ type Installer interface {
 type Options struct {
 	Installer  Installer
 	Invalidate func()
-	Startup    ScreenFactory
+	Startup    func() Screen
 	Logger     *slog.Logger
 }
 
@@ -60,7 +60,7 @@ func New(opts Options) *Navigator {
 	if n.logger == nil {
 		n.logger = slog.New(slog.DiscardHandler)
 	}
-	startup := opts.Startup(n)
+	startup := opts.Startup()
 	if startup == nil {
 		panic("navigator: nil startup screen")
 	}

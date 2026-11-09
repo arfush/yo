@@ -49,7 +49,7 @@ func testNavigator(t *testing.T) (*Navigator, *fakeScreen, *fakeDialog, *fakeIns
 	nav := New(Options{
 		Installer:  installer,
 		Invalidate: func() {},
-		Startup:    func(Handler) Screen { return startup },
+		Startup:    func() Screen { return startup },
 	})
 	return nav, startup, dialog, installer
 }
@@ -194,7 +194,7 @@ func TestNavigateAfterCloseIsIgnored(t *testing.T) {
 	nav := New(Options{
 		Installer:  &fakeInstaller{},
 		Invalidate: func() { invalidated++ },
-		Startup:    func(Handler) Screen { return startup },
+		Startup:    func() Screen { return startup },
 	})
 	nav.Close()
 

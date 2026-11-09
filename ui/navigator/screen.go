@@ -36,6 +36,3 @@ func (ScreenBase) OnHidden() {}
 
 // OnClose is a no-op.
 func (ScreenBase) OnClose() {}
-
-// ScreenFactory builds a screen with the handler it uses to request navigation.
-type ScreenFactory func(Handler) Screen
