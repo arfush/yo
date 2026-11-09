@@ -61,6 +61,11 @@ type Shell struct {
 	menu      siteMenu
 	scrim     siteScrim
 
+	// siteDismissals counts consecutive user dismissals of the site menu
+	// without a switch. At siteMenuBasePaletteAfter the chrome falls back to
+	// the neutral yobase palette until the next selection.
+	siteDismissals int
+
 	backdrop      paint.ImageOp
 	backdropSize  image.Point
 	backdropReady bool
@@ -112,9 +117,19 @@ func (s *Shell) syncPalette() {
 	if site == s.siteState {
 		return
 	}
-	palette := appearance.PaletteFor(site)
-	s.appearance.Update(func(a *appearance.Appearance) { a.SetPalette(palette) })
+	s.applySitePalette(site)
+}
+
+// applySitePalette writes the site palette into the shared appearance and
+// records the site it belongs to.
+func (s *Shell) applySitePalette(site catalog.Site) {
+	s.applyPalette(appearance.PaletteFor(site))
 	s.siteState = site
+}
+
+// applyPalette replaces the chrome palette without changing the active site.
+func (s *Shell) applyPalette(palette appearance.Palette) {
+	s.appearance.Update(func(a *appearance.Appearance) { a.SetPalette(palette) })
 }
 
 // SetScreen replaces the content of the window. A nil screen is a programmer
@@ -155,9 +170,17 @@ func (s *Shell) invalidateBackdrop() {
 }
 
 // SetConfig updates the window state used by the maximize glyph. The
-// composition root forwards app.ConfigEvent values here.
+// composition root forwards app.ConfigEvent values here. Losing focus closes the
+// site menu, like a native dropdown.
 func (s *Shell) SetConfig(cfg app.Config) {
 	s.maximized = cfg.Mode != app.Windowed
+	if cfg.Focused || !s.menu.open {
+		return
+	}
+	s.dismissSiteMenu()
+	if s.window != nil {
+		s.window.Invalidate()
+	}
 }
 
 // Prepare records the active screen and refreshes the modal backdrop. It must

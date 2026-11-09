@@ -4,6 +4,7 @@ import (
 	"image"
 	"testing"
 
+	"gioui.org/app"
 	"gioui.org/layout"
 
 	"github.com/arfush/yo/catalog"
@@ -34,6 +35,55 @@ func TestSwitchSite(t *testing.T) {
 	want := appearance.PaletteFor(catalog.SiteYomanga)
 	if got := apps.Value().Palette().Accent; got != want.Accent {
 		t.Fatal("switchSite did not sync the site palette")
+	}
+}
+
+func TestSiteMenuDismissFallback(t *testing.T) {
+	t.Parallel()
+
+	apps := stdx.NewHolder(appearance.New(appearance.Options{
+		Resources: resource.New(),
+		Language:  "ru",
+	}))
+	sites := stdx.NewHolder(catalog.SiteYoanime)
+	shell := New(Options{Screen: testScreen{}, Site: sites, Appearance: apps})
+	shell.syncPalette()
+
+	for range siteMenuBasePaletteAfter {
+		shell.menu.toggle(image.Rect(0, 0, 10, 10))
+		shell.dismissSiteMenu()
+	}
+	if got := apps.Value().Palette(); got != appearance.BasePalette() {
+		t.Fatal("repeated dismissals did not fall back to yobase")
+	}
+
+	shell.switchSite(catalog.SiteYoanime)
+	if got := apps.Value().Palette(); got != appearance.PaletteFor(catalog.SiteYoanime) {
+		t.Fatal("selecting a site did not restore its palette")
+	}
+	if shell.siteDismissals != 0 {
+		t.Fatalf("dismissal counter = %d; want 0", shell.siteDismissals)
+	}
+}
+
+func TestSetConfigFocusLossClosesSiteMenu(t *testing.T) {
+	t.Parallel()
+
+	apps := stdx.NewHolder(appearance.New(appearance.Options{
+		Resources: resource.New(),
+		Language:  "ru",
+	}))
+	sites := stdx.NewHolder(catalog.SiteYoanime)
+	shell := New(Options{Screen: testScreen{}, Site: sites, Appearance: apps})
+	shell.menu.toggle(image.Rect(0, 0, 10, 10))
+
+	shell.SetConfig(app.Config{Focused: false})
+
+	if shell.menu.open {
+		t.Fatal("focus loss left the site menu open")
+	}
+	if shell.siteDismissals != 1 {
+		t.Fatalf("dismissal counter = %d; want 1", shell.siteDismissals)
 	}
 }
 

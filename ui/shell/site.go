@@ -3,13 +3,12 @@ package shell
 import (
 	"image"
 
-	"gioui.org/io/event"
 	"gioui.org/io/pointer"
 	"gioui.org/io/semantic"
 	"gioui.org/layout"
 	"gioui.org/op"
-	"gioui.org/op/clip"
 	"gioui.org/unit"
+	"gioui.org/widget"
 
 	"github.com/arfush/yo/catalog"
 	"github.com/arfush/yo/ui/appearance"
@@ -29,6 +28,10 @@ const (
 	siteMenuItemPad    unit.Dp = 7
 	siteMenuItemGapX   unit.Dp = 10
 )
+
+// siteMenuBasePaletteAfter is the number of consecutive user dismissals of the
+// site menu, without a switch, after which the chrome falls back to yobase.
+const siteMenuBasePaletteAfter = 5
 
 // siteMenu is the state of the anchored site switcher. The zero value is closed
 // and valid.
@@ -78,14 +81,38 @@ func (s *Shell) layoutSiteTrigger(gtx layout.Context, trigger image.Rectangle) b
 
 // switchSite applies a selection from the header switcher. The shell updates
 // the holder because it owns the writable site source; the palette follows on
-// the next frame.
+// the next frame. A selection always restores the site palette, even when the
+// neutral fallback is showing for the same site.
 func (s *Shell) switchSite(site catalog.Site) {
 	s.menu.close()
+	s.siteDismissals = 0
 	if s.site.Value() == site {
+		s.applySitePalette(site)
 		return
 	}
 	s.site.Update(func(v *catalog.Site) { *v = site })
 	s.syncPalette()
+}
+
+// dismissSiteMenu closes an open menu after a user action and counts it toward
+// the neutral fallback. Navigation and dialog changes close the menu directly:
+// only a dismissal without a switch may reset the chrome to yobase.
+func (s *Shell) dismissSiteMenu() {
+	if !s.menu.open {
+		return
+	}
+	s.menu.close()
+	s.noteSiteMenuDismissed()
+}
+
+// noteSiteMenuDismissed counts a menu close that did not switch sites. After
+// siteMenuBasePaletteAfter consecutive dismissals the chrome falls back to the
+// neutral palette until the next selection.
+func (s *Shell) noteSiteMenuDismissed() {
+	s.siteDismissals++
+	if s.siteDismissals == siteMenuBasePaletteAfter {
+		s.applyPalette(appearance.BasePalette())
+	}
 }
 
 // layoutSiteMenu paints the switcher after the content, so the dropdown sits
@@ -124,11 +151,14 @@ func (s *Shell) layoutSiteMenu(gtx layout.Context, g geometry) {
 		gtx.Execute(op.InvalidateCmd{})
 		return
 	}
-	if s.scrim.dismissed(gtx, menu) {
-		s.menu.close()
+	if s.scrim.dismissed(gtx) {
+		s.dismissSiteMenu()
 		gtx.Execute(op.InvalidateCmd{})
 		return
 	}
+	// The blocking scrim covers the whole window before the menu rows, so the
+	// next press only dismisses the menu and never reaches the header or the
+	// content below.
 	s.scrim.layout(gtx, bounds)
 
 	palette := s.palette()
@@ -214,9 +244,9 @@ func (s *Shell) layoutSiteItem(
 	return clicked
 }
 
-// siteMenuAnchor widens the trigger leftwards so the menu ends at the chevron
-// while its first row content lines up with the header brand. It never extends
-// past the chevron or the window margin.
+// siteMenuAnchor widens the trigger leftwards so the menu ends just past the
+// chevron while its first row content lines up with the header brand. It clamps
+// the result into the window margin.
 func siteMenuAnchor(trigger image.Rectangle, contentInset, minWidth, margin int, bounds image.Rectangle) image.Rectangle {
 	right := min(trigger.Max.X, bounds.Max.X-margin)
 	left := max(trigger.Min.X-contentInset, bounds.Min.X+margin)
@@ -260,42 +290,29 @@ func placeSiteMenu(anchor image.Rectangle, width, height, gap, margin int, bound
 	return menu
 }
 
-// siteScrim dismisses the open menu on a press outside it. It passes pointer
-// events through, so the window controls and content keep working.
+// siteScrim is the invisible full-window click target behind the open menu. It
+// blocks the content below, so the next press only dismisses the menu.
 type siteScrim struct {
-	tag bool
+	click widget.Clickable
 }
 
-// dismissed consumes queued presses and reports whether one landed outside
-// menu.
-func (s *siteScrim) dismissed(gtx layout.Context, menu image.Rectangle) bool {
-	for {
-		ev, ok := gtx.Event(pointer.Filter{Target: &s.tag, Kinds: pointer.Press})
-		if !ok {
-			return false
-		}
-		press, ok := ev.(pointer.Event)
-		if !ok || press.Kind != pointer.Press {
-			continue
-		}
-		if press.Source == pointer.Mouse && !press.Buttons.Contain(pointer.ButtonPrimary) {
-			continue
-		}
-		if press.Position.Round().In(menu) {
-			continue
-		}
-		return true
-	}
+// dismissed reports a queued click on the scrim. It must run before layout:
+// Clickable.Layout drains the click events.
+func (s *siteScrim) dismissed(gtx layout.Context) bool {
+	return s.click.Clicked(gtx)
 }
 
-// layout installs the pass-through press target over bounds.
+// layout installs the blocking click target over bounds. The menu rows are laid
+// out after it, so they receive the pointer first.
 func (s *siteScrim) layout(gtx layout.Context, bounds image.Rectangle) {
 	if bounds.Empty() {
 		return
 	}
-	stack := clip.Rect(bounds).Push(gtx.Ops)
+	stack := op.Offset(bounds.Min).Push(gtx.Ops)
 	defer stack.Pop()
-	pass := pointer.PassOp{}.Push(gtx.Ops)
-	defer pass.Pop()
-	event.Op(gtx.Ops, &s.tag)
+	local := gtx
+	local.Constraints = layout.Exact(bounds.Size())
+	s.click.Layout(local, func(gtx layout.Context) layout.Dimensions {
+		return layout.Dimensions{Size: bounds.Size()}
+	})
 }
