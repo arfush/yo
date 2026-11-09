@@ -1,8 +1,6 @@
 // Package appearance owns how the UI looks and reads: palette, typography,
 // language and formatting.
 //
-// Imports: std, catalog, gioui.org/font, gioui.org/text, gioui.org/unit,
-// golang.org/x/text/language, ui/resource.
 // Must not import: core/*, root, ui/* except ui/resource.
 //
 // Invariants: Appearance is a value stored in stdx.Holder. The composition

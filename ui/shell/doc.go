@@ -2,9 +2,6 @@
 // footer band and window controls. It owns where the active screen and dialog
 // are drawn.
 //
-// Imports: std, catalog, core/stdx, gioui.org/app, gioui.org/gpu/headless,
-// gioui.org/io/semantic, gioui.org/layout, gioui.org/op, gioui.org/op/clip,
-// gioui.org/op/paint, gioui.org/widget, ui/appearance, ui/kit, ui/resource.
 // Must not import: core/* except core/stdx, root, ui/navigator, ui/screen,
 // ui/dialog.
 //
