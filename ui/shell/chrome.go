@@ -313,9 +313,9 @@ func (s *Shell) layoutSiteMark(gtx layout.Context, r image.Rectangle, palette ap
 	}
 	line := max(1, gtx.Dp(appearance.Hairline))
 	radius := gtx.Dp(markRadius)
-	fillRounded(gtx, withAlpha(palette.AccentMuted, accentTintAlpha), r, radius)
+	kit.FillRounded(gtx, kit.WithAlpha(palette.AccentMuted, accentTintAlpha), r, radius)
 	inner := r.Inset(line)
-	fillRounded(gtx, palette.SurfaceAlt, inner, max(0, radius-line))
+	kit.FillRounded(gtx, palette.SurfaceAlt, inner, max(0, radius-line))
 	iconRect := inner.Inset(gtx.Dp(markInset)).Add(image.Pt(0, gtx.Dp(markIconDrop)))
 	drawIcon(gtx, s.icon(resource.IconTorii), iconRect, palette.Accent)
 }
@@ -343,9 +343,9 @@ func (s *Shell) layoutVersion(gtx layout.Context, g geometry, left int) {
 	if pill.Max.X > g.controls.minimize.Min.X-gtx.Dp(contentGap) {
 		return
 	}
-	fillRounded(gtx, palette.Edge, pill, radius)
+	kit.FillRounded(gtx, palette.Edge, pill, radius)
 	inner := pill.Inset(line)
-	fillRounded(gtx, palette.Badge, inner, max(0, radius-line))
+	kit.FillRounded(gtx, palette.Badge, inner, max(0, radius-line))
 	text := image.Pt(left+line+padding, g.headerCenterY-dims.Size.Y/2)
 	stack := op.Offset(text).Push(gtx.Ops)
 	call.Add(gtx.Ops)
@@ -424,28 +424,6 @@ func (s *Shell) icon(key resource.IconKey) *widget.Icon {
 		return nil
 	}
 	return s.resource.Icon(key)
-}
-
-func fill(gtx layout.Context, col color.NRGBA, r image.Rectangle) {
-	if r.Empty() {
-		return
-	}
-	paint.FillShape(gtx.Ops, col, clip.Rect(r).Op())
-}
-
-// withAlpha returns col with its alpha replaced, so a token can be used as a
-// dim tint over the surface below.
-func withAlpha(col color.NRGBA, alpha uint8) color.NRGBA {
-	col.A = alpha
-	return col
-}
-
-func fillRounded(gtx layout.Context, col color.NRGBA, r image.Rectangle, radius int) {
-	if r.Empty() {
-		return
-	}
-	radius = max(0, min(radius, min(r.Dx(), r.Dy())/2))
-	paint.FillShape(gtx.Ops, col, clip.UniformRRect(r, radius).Op(gtx.Ops))
 }
 
 func drawIcon(gtx layout.Context, icon *widget.Icon, r image.Rectangle, col color.NRGBA) {

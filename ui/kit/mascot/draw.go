@@ -12,6 +12,7 @@ import (
 	"gioui.org/op/paint"
 
 	"github.com/arfush/yo/ui/appearance"
+	"github.com/arfush/yo/ui/kit"
 )
 
 // Motion periods, in seconds, and Alert hand geometry, in design units.
@@ -106,13 +107,6 @@ func (g grid) point(x, y float32) image.Point {
 	return image.Pt(g.center.X+g.px(x), g.center.Y+g.px(y))
 }
 
-func fillRound(gtx layout.Context, col color.NRGBA, r image.Rectangle, radius int) {
-	if r.Empty() {
-		return
-	}
-	paint.FillShape(gtx.Ops, col, clip.UniformRRect(r, radius).Op(gtx.Ops))
-}
-
 func fillEllipse(gtx layout.Context, col color.NRGBA, r image.Rectangle) {
 	if r.Empty() {
 		return
@@ -121,7 +115,7 @@ func fillEllipse(gtx layout.Context, col color.NRGBA, r image.Rectangle) {
 }
 
 func fillCircle(gtx layout.Context, col color.NRGBA, center image.Point, radius int) {
-	fillRound(gtx, col, image.Rect(
+	kit.FillRounded(gtx, col, image.Rect(
 		center.X-radius, center.Y-radius,
 		center.X+radius, center.Y+radius,
 	), radius)
@@ -195,17 +189,12 @@ func arcPoint(center f32.Point, radius, angle float32) f32.Point {
 	)
 }
 
-func withAlpha(col color.NRGBA, alpha uint8) color.NRGBA {
-	col.A = alpha
-	return col
-}
-
 // drawRing paints the Loading spinner: a faint full track plus a bright arc.
 func drawRing(gtx layout.Context, g grid, phase float64, col color.NRGBA) {
 	center := g.pt(0, 0)
 	radius := 18.4 * g.scale
 	width := max(float32(1.6), float32(g.px(1.8)))
-	strokeCircle(gtx, center, radius, width, withAlpha(col, 0x33))
+	strokeCircle(gtx, center, radius, width, kit.WithAlpha(col, 0x33))
 	turn := math.Mod(phase, loadingRingPeriod) / loadingRingPeriod
 	strokeArc(gtx, center, radius, float32(turn*2*math.Pi)-math.Pi/2, float32(1.5*math.Pi), width, col)
 }
@@ -229,7 +218,7 @@ func drawArms(gtx layout.Context, g grid, c appearance.MascotColors, left, right
 func drawBody(gtx layout.Context, g grid, c appearance.MascotColors) {
 	body := g.rect(-8.5, 4.5, 8.5, 16.5)
 	fillGradient(gtx, body, g.px(5), c.Hair, c.Dress)
-	fillRound(gtx, c.DressLight, g.rect(-7.2, 12, 7.2, 12.9), g.px(0.45))
+	kit.FillRounded(gtx, c.DressLight, g.rect(-7.2, 12, 7.2, 12.9), g.px(0.45))
 }
 
 func drawHead(gtx layout.Context, g grid, c appearance.MascotColors) {
@@ -248,7 +237,7 @@ func drawHead(gtx layout.Context, g grid, c appearance.MascotColors) {
 	})
 
 	fillEllipse(gtx, c.Face, g.rect(-8.2, -8.7, 8.2, 5.2))
-	fillRound(gtx, c.Paw, g.rect(-3.6, 4.9, 3.6, 6.6), g.px(0.9))
+	kit.FillRounded(gtx, c.Paw, g.rect(-3.6, 4.9, 3.6, 6.6), g.px(0.9))
 	fillCircle(gtx, c.Hair, image.Pt(g.center.X, g.center.Y+g.px(5.8)), max(1, g.px(0.5)))
 
 	fillEllipse(gtx, c.Hair, g.rect(-9.5, -7.5, -5.4, -0.5))
@@ -256,7 +245,7 @@ func drawHead(gtx layout.Context, g grid, c appearance.MascotColors) {
 	fillEllipse(gtx, c.Hair, g.rect(-7.6, -10.2, -0.4, -3.1))
 	fillEllipse(gtx, c.Hair, g.rect(-0.6, -10.2, 7.6, -3.1))
 	fillEllipse(gtx, c.Hair, g.rect(-4.6, -11, 0.8, -4.2))
-	fillEllipse(gtx, withAlpha(c.HairLight, 0x9a), g.rect(-7.2, -8.1, -3.6, -6.1))
+	fillEllipse(gtx, kit.WithAlpha(c.HairLight, 0x9a), g.rect(-7.2, -8.1, -3.6, -6.1))
 }
 
 func drawFace(gtx layout.Context, g grid, c appearance.MascotColors, pose moodPose, pal appearance.MascotPalette) {
@@ -300,7 +289,7 @@ func drawPaw(gtx layout.Context, g grid, center f32.Point, paw, toes color.NRGBA
 	defer stack.Pop()
 	fillCircle(gtx, paw, base, radius)
 	pad := max(1, int(math.Round(float64(0.7*g.scale))))
-	toe := withAlpha(toes, 0xb0)
+	toe := kit.WithAlpha(toes, 0xb0)
 	spread := int(math.Round(float64(1.1 * g.scale)))
 	fillCircle(gtx, toe, image.Pt(base.X-spread, base.Y+pad), pad)
 	fillCircle(gtx, toe, image.Pt(base.X+spread, base.Y+pad), pad)

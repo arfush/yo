@@ -15,6 +15,7 @@ import (
 	"github.com/arfush/yo/catalog"
 	"github.com/arfush/yo/core/stdx"
 	"github.com/arfush/yo/ui/appearance"
+	"github.com/arfush/yo/ui/kit"
 	"github.com/arfush/yo/ui/resource"
 )
 
@@ -262,7 +263,7 @@ func (s *Shell) prepareBackdrop(gtx layout.Context, g geometry) {
 // band and the footer band with its dividers.
 func (s *Shell) layoutFrame(gtx layout.Context, g geometry) {
 	palette := s.palette()
-	fill(gtx, palette.Border, image.Rectangle{Max: g.size})
+	kit.FillRect(gtx, palette.Border, image.Rectangle{Max: g.size})
 	if g.inner.Empty() {
 		return
 	}
@@ -276,20 +277,20 @@ func (s *Shell) layoutFrame(gtx layout.Context, g geometry) {
 	}.Push(gtx.Ops)
 	defer clipStack.Pop()
 
-	fill(gtx, palette.Canvas, g.inner)
-	fill(gtx, palette.Surface, rect(
+	kit.FillRect(gtx, palette.Canvas, g.inner)
+	kit.FillRect(gtx, palette.Surface, rect(
 		g.inner.Min.X, g.inner.Min.Y, g.inner.Max.X, g.headerDivider,
 	))
-	fill(gtx, palette.Divider, rect(
+	kit.FillRect(gtx, palette.Divider, rect(
 		g.inner.Min.X, g.headerDivider, g.inner.Max.X, g.contentTop,
 	))
-	fill(gtx, palette.Divider, rect(
+	kit.FillRect(gtx, palette.Divider, rect(
 		g.inner.Min.X, g.footerDivider, g.inner.Max.X, g.footerTop,
 	))
-	fill(gtx, palette.Surface, rect(
+	kit.FillRect(gtx, palette.Surface, rect(
 		g.inner.Min.X, g.footerTop, g.inner.Max.X, g.footerBottom,
 	))
-	fill(gtx, palette.Canvas, rect(
+	kit.FillRect(gtx, palette.Canvas, rect(
 		g.inner.Min.X, g.stripTop, g.inner.Max.X, g.inner.Max.Y,
 	))
 }
@@ -362,7 +363,7 @@ func (s *Shell) layoutDialog(gtx layout.Context, g geometry, content op.CallOp) 
 	}
 	offset.Pop()
 
-	fill(gtx, s.palette().Overlay, bounds)
+	kit.FillRect(gtx, s.palette().Overlay, bounds)
 
 	dialogOffset := op.Offset(bounds.Min).Push(gtx.Ops)
 	defer dialogOffset.Pop()

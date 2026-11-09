@@ -168,8 +168,8 @@ func (s *Shell) layoutSiteMenu(gtx layout.Context, g geometry) {
 	palette := s.palette()
 	typo := s.typography()
 	radius := gtx.Dp(appearance.RadiusS)
-	fillRounded(gtx, palette.Border, menu, radius)
-	fillRounded(gtx, palette.Surface, menu.Inset(line), max(0, radius-line))
+	kit.FillRounded(gtx, palette.Border, menu, radius)
+	kit.FillRounded(gtx, palette.Surface, menu.Inset(line), max(0, radius-line))
 	inner := menu.Inset(line + pad)
 	if inner.Empty() {
 		s.menu.close()
@@ -219,7 +219,7 @@ func (s *Shell) layoutSiteItem(
 		semantic.Button.Add(gtx.Ops)
 		size := bounds.Size()
 		if hovered {
-			fillRounded(gtx, palette.SurfaceAlt,
+			kit.FillRounded(gtx, palette.SurfaceAlt,
 				image.Rectangle{Max: size}, gtx.Dp(siteMenuItemRadius))
 		}
 
