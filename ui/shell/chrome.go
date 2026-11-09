@@ -15,6 +15,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 
+	"github.com/arfush/yo/catalog"
 	"github.com/arfush/yo/ui/appearance"
 	"github.com/arfush/yo/ui/kit"
 	"github.com/arfush/yo/ui/resource"
@@ -31,25 +32,27 @@ const (
 
 // Chrome geometry, in device-independent dp.
 const (
-	headerHeight    unit.Dp = 48
-	footerHeight    unit.Dp = 45
-	innerRadius     unit.Dp = 8
-	controlWidth    unit.Dp = 30
-	controlGap      unit.Dp = 12
-	controlIconSize unit.Dp = 24
-	closeIconSize   unit.Dp = 28
-	controlsInset   unit.Dp = 12
-	logoInset       unit.Dp = 16
-	logoSize        unit.Dp = 25
-	labelGap        unit.Dp = 10
-	contentGap      unit.Dp = 14
-	versionGap      unit.Dp = 14
-	badgeHeight     unit.Dp = 20
-	badgePaddingX   unit.Dp = 7
-	markRadius      unit.Dp = 6
-	markInset       unit.Dp = 3
-	siteChevronSize unit.Dp = 10
-	siteChevronGap  unit.Dp = 10
+	headerHeight      unit.Dp = 48
+	footerHeight      unit.Dp = 45
+	innerRadius       unit.Dp = 8
+	controlWidth      unit.Dp = 30
+	controlGap        unit.Dp = 12
+	controlIconSize   unit.Dp = 24
+	closeIconSize     unit.Dp = 28
+	controlsInset     unit.Dp = 12
+	logoInset         unit.Dp = 16
+	logoSize          unit.Dp = 25
+	labelGap          unit.Dp = 10
+	contentGap        unit.Dp = 14
+	versionGap        unit.Dp = 14
+	badgeHeight       unit.Dp = 20
+	badgePaddingX     unit.Dp = 7
+	markRadius        unit.Dp = 6
+	markInset         unit.Dp = 3
+	siteChevronSize   unit.Dp = 8
+	siteChevronGap    unit.Dp = 10
+	siteChevronStroke unit.Dp = 1.7
+	siteMenuOverhang  unit.Dp = 4
 )
 
 // Window-control accessibility labels.
@@ -155,12 +158,15 @@ func (s *Shell) newGeometry(gtx layout.Context) geometry {
 }
 
 // brandLayout is the measured site block. It is built before the drag regions
-// so the site trigger can be excluded from them.
+// so the site trigger can be excluded from them. The chevron and the version
+// badge sit at anchors reserved for the widest site name, so switching sites
+// never moves them.
 type brandLayout struct {
 	label     op.CallOp
 	labelSize image.Point
 	chevron   image.Rectangle
 	trigger   image.Rectangle
+	versionX  int
 }
 
 // layoutHeader paints the draggable regions, the brand and the window controls.
@@ -185,8 +191,8 @@ func (s *Shell) layoutHeader(gtx layout.Context, g geometry) {
 	}
 	common := windowControl{
 		iconSize: controlIconSize,
-		normal:   palette.TextMuted,
-		hover:    palette.Text,
+		normal:   palette.ControlIcon,
+		hover:    palette.ControlIconHover,
 	}
 	minimize := common
 	minimize.bounds = g.controls.minimize
@@ -215,35 +221,64 @@ func (s *Shell) layoutHeader(gtx layout.Context, g geometry) {
 	s.layoutControl(gtx, closeControl)
 }
 
-// brandLayout measures the site block and records its label.
+// brandLayout measures the site block and records its label. The chevron is
+// anchored after the widest catalog name, not after the active one, so every
+// site keeps the same chevron and version position.
 func (s *Shell) brandLayout(gtx layout.Context, g geometry) brandLayout {
 	palette := s.palette()
 	typo := s.typography()
 	if typo.Shaper() == nil {
 		return brandLayout{}
 	}
-	label := s.site.Value().String()
+	chevronSize := gtx.Dp(siteChevronSize)
+	chevronGap := gtx.Dp(siteChevronGap)
 	reserve := gtx.Dp(contentGap)
 	if s.siteSwitchable() {
-		reserve += gtx.Dp(siteChevronGap) + gtx.Dp(siteChevronSize)
+		reserve += chevronGap + chevronSize
 	}
 	maxWidth := max(1, g.controls.minimize.Min.X-g.titleX-reserve)
-	labelGtx := gtx
-	labelGtx.Constraints = layout.Constraints{Max: image.Pt(maxWidth, g.headerClickEnd)}
-	macro := op.Record(gtx.Ops)
-	dims := kit.Text(labelGtx, typo, appearance.RoleLabel, label, palette.Text)
-	call := macro.Stop()
+	textGtx := gtx
+	textGtx.Constraints = layout.Constraints{Max: image.Pt(maxWidth, g.headerClickEnd)}
 
-	b := brandLayout{label: call, labelSize: dims.Size}
-	labelRight := g.titleX + dims.Size.X
-	if s.siteSwitchable() {
-		size := gtx.Dp(siteChevronSize)
-		left := labelRight + gtx.Dp(siteChevronGap)
-		top := g.headerCenterY - size/2
-		b.chevron = rect(left, top, left+size, top+size)
+	var b brandLayout
+	macro := op.Record(gtx.Ops)
+	dims := kit.Text(textGtx, typo, appearance.RoleLabel, s.site.Value().String(), palette.Text)
+	b.label = macro.Stop()
+	b.labelSize = dims.Size
+	if b.labelSize.X <= 0 {
+		return b
 	}
-	b.trigger = rect(g.logo.Min.X, 0, max(labelRight, b.chevron.Max.X), g.headerClickEnd)
+
+	anchorWidth := b.labelSize.X
+	if s.siteSwitchable() {
+		for _, site := range catalog.Sites() {
+			if width := measureLabel(gtx, textGtx, typo, site.String(), palette.Text); width > anchorWidth {
+				anchorWidth = width
+			}
+		}
+	}
+	anchorWidth = min(anchorWidth, maxWidth)
+	b.versionX = g.titleX + anchorWidth + gtx.Dp(versionGap)
+	if s.siteSwitchable() {
+		left := g.titleX + anchorWidth + chevronGap
+		top := g.headerCenterY - chevronSize/2
+		b.chevron = rect(left, top, left+chevronSize, top+chevronSize)
+		right := b.chevron.Max.X + gtx.Dp(siteMenuOverhang)
+		b.trigger = rect(g.logo.Min.X, 0, right, g.headerClickEnd)
+		b.versionX = b.chevron.Max.X + gtx.Dp(versionGap)
+	} else {
+		b.trigger = rect(g.logo.Min.X, 0, g.titleX+b.labelSize.X, g.headerClickEnd)
+	}
 	return b
+}
+
+// measureLabel returns the width kit.Text would use for label at the site
+// name role without leaving the measurement in the frame.
+func measureLabel(gtx, textGtx layout.Context, typo appearance.Typography, label string, col color.NRGBA) int {
+	macro := op.Record(gtx.Ops)
+	dims := kit.Text(textGtx, typo, appearance.RoleLabel, label, col)
+	macro.Stop()
+	return dims.Size.X
 }
 
 // layoutBrand paints the site mark, the active site name, the switcher chevron
@@ -255,7 +290,11 @@ func (s *Shell) layoutBrand(gtx layout.Context, g geometry, b brandLayout) {
 		return
 	}
 	if s.siteSwitchable() && !b.trigger.Empty() && s.layoutSiteTrigger(gtx, b.trigger) {
-		s.menu.toggle(b.trigger)
+		if s.menu.open {
+			s.dismissSiteMenu()
+		} else {
+			s.menu.toggle(b.trigger)
+		}
 		gtx.Execute(op.InvalidateCmd{})
 	}
 
@@ -264,11 +303,10 @@ func (s *Shell) layoutBrand(gtx layout.Context, g geometry, b brandLayout) {
 	stack.Pop()
 
 	if !b.chevron.Empty() {
-		drawChevron(gtx, b.chevron, palette.TextMuted, s.menu.open)
+		drawChevron(gtx, b.chevron, palette.ControlIcon, s.menu.open)
 	}
 	if s.version != "" {
-		right := max(g.titleX+b.labelSize.X, b.chevron.Max.X)
-		s.layoutVersion(gtx, g, right+gtx.Dp(versionGap))
+		s.layoutVersion(gtx, g, b.versionX)
 	}
 }
 
@@ -430,7 +468,7 @@ func drawIcon(gtx layout.Context, icon *widget.Icon, r image.Rectangle, col colo
 	icon.Layout(iconGtx, col)
 }
 
-// drawChevron paints the switcher arrow as a vector polygon, so the chrome does
+// drawChevron paints the switcher arrow as a stroked vector, so the chrome does
 // not depend on an embedded chevron asset. It points down when closed and up
 // when open.
 func drawChevron(gtx layout.Context, r image.Rectangle, col color.NRGBA, open bool) {
@@ -442,22 +480,18 @@ func drawChevron(gtx layout.Context, r image.Rectangle, col color.NRGBA, open bo
 	var path clip.Path
 	path.Begin(gtx.Ops)
 	if open {
-		path.MoveTo(f32.Pt(x, y+h*0.62))
+		path.MoveTo(f32.Pt(x+w*0.12, y+h*0.64))
 		path.LineTo(f32.Pt(x+w*0.5, y+h*0.3))
-		path.LineTo(f32.Pt(x+w, y+h*0.62))
-		path.LineTo(f32.Pt(x+w, y+h*0.82))
-		path.LineTo(f32.Pt(x+w*0.5, y+h*0.5))
-		path.LineTo(f32.Pt(x, y+h*0.82))
+		path.LineTo(f32.Pt(x+w*0.88, y+h*0.64))
 	} else {
-		path.MoveTo(f32.Pt(x, y+h*0.38))
+		path.MoveTo(f32.Pt(x+w*0.12, y+h*0.36))
 		path.LineTo(f32.Pt(x+w*0.5, y+h*0.7))
-		path.LineTo(f32.Pt(x+w, y+h*0.38))
-		path.LineTo(f32.Pt(x+w, y+h*0.58))
-		path.LineTo(f32.Pt(x+w*0.5, y+h*0.9))
-		path.LineTo(f32.Pt(x, y+h*0.58))
+		path.LineTo(f32.Pt(x+w*0.88, y+h*0.36))
 	}
-	path.Close()
-	paint.FillShape(gtx.Ops, col, clip.Outline{Path: path.End()}.Op())
+	width := max(1, float32(gtx.Metric.PxPerDp)*float32(siteChevronStroke))
+	stack := clip.Stroke{Path: path.End(), Width: width}.Op().Push(gtx.Ops)
+	paint.Fill(gtx.Ops, col)
+	stack.Pop()
 }
 
 func rect(x0, y0, x1, y1 int) image.Rectangle {
