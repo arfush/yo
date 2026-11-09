@@ -21,7 +21,6 @@ const (
 	siteMenuGap        unit.Dp = 6
 	siteMenuMargin     unit.Dp = 4
 	siteMenuPadding    unit.Dp = 4
-	siteMenuRadius     unit.Dp = 8
 	siteMenuItemHeight unit.Dp = 42
 	siteMenuItemGap    unit.Dp = 2
 	siteMenuItemRadius unit.Dp = 6
@@ -138,7 +137,7 @@ func (s *Shell) layoutSiteMenu(gtx layout.Context, g geometry) {
 		return
 	}
 
-	line := max(1, gtx.Dp(1))
+	line := max(1, gtx.Dp(appearance.Hairline))
 	pad := gtx.Dp(siteMenuPadding)
 	itemPad := gtx.Dp(siteMenuItemPad)
 	itemHeight := gtx.Dp(siteMenuItemHeight)
@@ -168,7 +167,7 @@ func (s *Shell) layoutSiteMenu(gtx layout.Context, g geometry) {
 
 	palette := s.palette()
 	typo := s.typography()
-	radius := gtx.Dp(siteMenuRadius)
+	radius := gtx.Dp(appearance.RadiusS)
 	fillRounded(gtx, palette.Border, menu, radius)
 	fillRounded(gtx, palette.Surface, menu.Inset(line), max(0, radius-line))
 	inner := menu.Inset(line + pad)

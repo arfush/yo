@@ -34,7 +34,6 @@ const (
 const (
 	headerHeight      unit.Dp = 48
 	footerHeight      unit.Dp = 42
-	innerRadius       unit.Dp = 8
 	controlWidth      unit.Dp = 30
 	controlGap        unit.Dp = 12
 	controlIconSize   unit.Dp = 24
@@ -54,6 +53,9 @@ const (
 	siteChevronStroke unit.Dp = 1.7
 	siteMenuOverhang  unit.Dp = 4
 )
+
+// accentTintAlpha dims AccentMuted behind the brand mark.
+const accentTintAlpha uint8 = 0x40
 
 // geometry holds every chrome measurement converted to pixels for the current
 // frame.
@@ -114,7 +116,7 @@ func (g geometry) footerRect() image.Rectangle {
 // newGeometry converts the chrome measurements for the current frame.
 func (s *Shell) newGeometry(gtx layout.Context) geometry {
 	size := gtx.Constraints.Max
-	line := max(1, gtx.Dp(1))
+	line := max(1, gtx.Dp(appearance.Hairline))
 
 	g := geometry{size: size}
 	g.border = line
@@ -131,7 +133,7 @@ func (s *Shell) newGeometry(gtx layout.Context) geometry {
 	g.stripTop = g.footerBottom
 	g.headerClickEnd = g.headerDivider
 	if !s.maximized {
-		g.cornerRadius = gtx.Dp(innerRadius)
+		g.cornerRadius = gtx.Dp(appearance.RadiusS)
 	}
 	g.headerCenterY = (g.border + g.headerDivider) / 2
 
@@ -308,9 +310,9 @@ func (s *Shell) layoutSiteMark(gtx layout.Context, r image.Rectangle, palette ap
 	if r.Empty() {
 		return
 	}
-	line := max(1, gtx.Dp(1))
+	line := max(1, gtx.Dp(appearance.Hairline))
 	radius := gtx.Dp(markRadius)
-	fillRounded(gtx, withAlpha(palette.AccentMuted, 0x40), r, radius)
+	fillRounded(gtx, withAlpha(palette.AccentMuted, accentTintAlpha), r, radius)
 	inner := r.Inset(line)
 	fillRounded(gtx, palette.SurfaceAlt, inner, max(0, radius-line))
 	drawIcon(gtx, s.icon(resource.IconTorii), inner.Inset(gtx.Dp(markInset)), palette.Accent)
@@ -321,7 +323,7 @@ func (s *Shell) layoutSiteMark(gtx layout.Context, r image.Rectangle, palette ap
 func (s *Shell) layoutVersion(gtx layout.Context, g geometry, left int) {
 	palette := s.palette()
 	typo := s.typography()
-	line := max(1, gtx.Dp(1))
+	line := max(1, gtx.Dp(appearance.Hairline))
 	padding := gtx.Dp(badgePaddingX)
 	maxWidth := max(1, g.controls.minimize.Min.X-left-gtx.Dp(contentGap)-2*(padding+line))
 	textGtx := gtx

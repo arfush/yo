@@ -6,6 +6,9 @@ import (
 	"gioui.org/unit"
 )
 
+// Hairline is the thinnest visible line, in density-independent pixels.
+const Hairline unit.Dp = 1
+
 // Spacing scale in density-independent pixels.
 const (
 	SpaceXS      unit.Dp = 4

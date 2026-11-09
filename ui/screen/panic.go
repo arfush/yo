@@ -16,11 +16,13 @@ import (
 
 // Panic screen geometry, in device-independent dp.
 const (
-	panicInset     unit.Dp = 32
 	panicMascotMax unit.Dp = 253
-	panicMascotGap unit.Dp = 16
 	panicTextMax   unit.Dp = 460
-	panicTitleGap  unit.Dp = 12
+
+	// panicHeadOffsetNum and panicHeadOffsetDen place the visible head inside
+	// the mascot slot: (21 - 18.5) / 42 = 5 / 84 of the slot height.
+	panicHeadOffsetNum = 5
+	panicHeadOffsetDen = 84
 )
 
 // Panic is the fallback screen shown after a recovered UI panic. It draws the
@@ -53,21 +55,19 @@ func (p Panic) Layout(gtx layout.Context) {
 	typo := app.Typography()
 	m := mascot.New(mascot.Options{Palette: palette.Mascot, Mood: mascot.Panic})
 
-	layout.UniformInset(panicInset).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+	layout.UniformInset(appearance.SpaceXXL).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 			size := min(min(gtx.Constraints.Max.X, gtx.Constraints.Max.Y), gtx.Dp(panicMascotMax))
-			gap := gtx.Dp(panicMascotGap)
+			gap := gtx.Dp(appearance.SpaceL)
 			textWidth := min(max(0, gtx.Constraints.Max.X-size-gap), gtx.Dp(panicTextMax))
-			// The visible head starts 2.5 of 42 design units below the mascot
-			// slot top: (21 - 18.5) / 42 = 5 / 84.
-			head := size * 5 / 84
+			head := size * panicHeadOffsetNum / panicHeadOffsetDen
 
 			return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Start}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					m.Draw(gtx, image.Rect(0, 0, size, size))
 					return layout.Dimensions{Size: image.Pt(size, size)}
 				}),
-				layout.Rigid(layout.Spacer{Width: panicMascotGap}.Layout),
+				layout.Rigid(layout.Spacer{Width: appearance.SpaceL}.Layout),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					gtx.Constraints.Max.X = textWidth
 					return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
@@ -77,7 +77,7 @@ func (p Panic) Layout(gtx layout.Context) {
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 							return kit.Text(gtx, typo, appearance.RoleSubtitle, p.title, palette.Text)
 						}),
-						layout.Rigid(layout.Spacer{Height: panicTitleGap}.Layout),
+						layout.Rigid(layout.Spacer{Height: appearance.SpaceM}.Layout),
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 							return kit.TextBlock(gtx, typo, appearance.RoleBody, p.detail, palette.TextMuted)
 						}),
