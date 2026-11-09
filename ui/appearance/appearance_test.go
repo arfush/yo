@@ -50,12 +50,18 @@ func TestPaletteFor(t *testing.T) {
 	if base == (appearance.Palette{}) {
 		t.Fatal("PaletteFor(yoanime) returned the zero palette")
 	}
+	if base.Badge.A == 0 || base.Edge.A == 0 || base.Ink.A == 0 {
+		t.Fatal("PaletteFor(yoanime) returned an empty badge chrome")
+	}
 	seen := []appearance.Palette{base}
 	for _, site := range catalog.Sites()[1:] {
 		p := appearance.PaletteFor(site)
 		for _, prev := range seen {
 			if p.Accent == prev.Accent {
 				t.Fatalf("PaletteFor(%q) reuses an accent", site)
+			}
+			if p.Badge == prev.Badge || p.Ink == prev.Ink {
+				t.Fatalf("PaletteFor(%q) reuses badge chrome", site)
 			}
 		}
 		seen = append(seen, p)

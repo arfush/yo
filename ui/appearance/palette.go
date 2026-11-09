@@ -19,6 +19,9 @@ type Palette struct {
 	OnAccent    color.NRGBA
 	Accent      color.NRGBA
 	AccentMuted color.NRGBA
+	Badge       color.NRGBA
+	Edge        color.NRGBA
+	Ink         color.NRGBA
 	Danger      color.NRGBA
 	Warning     color.NRGBA
 	Success     color.NRGBA
@@ -62,6 +65,9 @@ type MascotGlitch struct {
 type accents struct {
 	accent      color.NRGBA
 	accentMuted color.NRGBA
+	badge       color.NRGBA
+	edge        color.NRGBA
+	ink         color.NRGBA
 	focus       color.NRGBA
 	selection   color.NRGBA
 	mascot      MascotColors
@@ -73,6 +79,9 @@ var siteAccents = map[catalog.Site]accents{
 	catalog.SiteYoanime: {
 		accent:      color.NRGBA{R: 0x8b, G: 0x5c, B: 0xf6, A: 0xff},
 		accentMuted: color.NRGBA{R: 0x6d, G: 0x28, B: 0xd9, A: 0xff},
+		badge:       color.NRGBA{R: 0x29, G: 0x22, B: 0x3e, A: 0xff},
+		edge:        color.NRGBA{R: 0x39, G: 0x30, B: 0x4f, A: 0xff},
+		ink:         color.NRGBA{R: 0x96, G: 0x83, B: 0xe7, A: 0xff},
 		focus:       color.NRGBA{R: 0x8b, G: 0x5c, B: 0xf6, A: 0xff},
 		selection:   color.NRGBA{R: 0x6d, G: 0x28, B: 0xd9, A: 0x66},
 		mascot: MascotColors{
@@ -90,6 +99,9 @@ var siteAccents = map[catalog.Site]accents{
 	catalog.SiteYomanga: {
 		accent:      color.NRGBA{R: 0xf0, G: 0x8a, B: 0x2c, A: 0xff},
 		accentMuted: color.NRGBA{R: 0xd4, G: 0x5f, B: 0x12, A: 0xff},
+		badge:       color.NRGBA{R: 0x38, G: 0x21, B: 0x17, A: 0xff},
+		edge:        color.NRGBA{R: 0x5c, G: 0x36, B: 0x1f, A: 0xff},
+		ink:         color.NRGBA{R: 0xf5, G: 0xa4, B: 0x5a, A: 0xff},
 		focus:       color.NRGBA{R: 0xf0, G: 0x8a, B: 0x2c, A: 0xff},
 		selection:   color.NRGBA{R: 0xd4, G: 0x5f, B: 0x12, A: 0x66},
 		mascot: MascotColors{
@@ -107,6 +119,9 @@ var siteAccents = map[catalog.Site]accents{
 	catalog.SiteYoranobe: {
 		accent:      color.NRGBA{R: 0x4c, G: 0x8d, B: 0xf6, A: 0xff},
 		accentMuted: color.NRGBA{R: 0x25, G: 0x63, B: 0xeb, A: 0xff},
+		badge:       color.NRGBA{R: 0x17, G: 0x22, B: 0x3b, A: 0xff},
+		edge:        color.NRGBA{R: 0x1e, G: 0x32, B: 0x63, A: 0xff},
+		ink:         color.NRGBA{R: 0x7b, G: 0xa6, B: 0xf9, A: 0xff},
 		focus:       color.NRGBA{R: 0x4c, G: 0x8d, B: 0xf6, A: 0xff},
 		selection:   color.NRGBA{R: 0x25, G: 0x63, B: 0xeb, A: 0x66},
 		mascot: MascotColors{
@@ -133,6 +148,9 @@ func PaletteFor(site catalog.Site) Palette {
 	p := newPalette()
 	p.Accent = a.accent
 	p.AccentMuted = a.accentMuted
+	p.Badge = a.badge
+	p.Edge = a.edge
+	p.Ink = a.ink
 	p.Focus = a.focus
 	p.Selection = a.selection
 	p.Mascot.Normal = a.mascot
@@ -152,6 +170,9 @@ func newPalette() Palette {
 		OnAccent:    color.NRGBA{R: 0x20, G: 0x1b, B: 0x2c, A: 0xff},
 		Accent:      color.NRGBA{R: 0xa9, G: 0xa2, B: 0xb9, A: 0xff},
 		AccentMuted: color.NRGBA{R: 0x6b, G: 0x65, B: 0x7a, A: 0xff},
+		Badge:       color.NRGBA{R: 0x25, G: 0x24, B: 0x30, A: 0xff},
+		Edge:        color.NRGBA{R: 0x37, G: 0x34, B: 0x3f, A: 0xff},
+		Ink:         color.NRGBA{R: 0xc9, G: 0xc4, B: 0xd6, A: 0xff},
 		Danger:      color.NRGBA{R: 0xf2, G: 0x7d, B: 0x8b, A: 0xff},
 		Warning:     color.NRGBA{R: 0xf2, G: 0xc9, B: 0x4c, A: 0xff},
 		Success:     color.NRGBA{R: 0x65, G: 0xd6, B: 0xa3, A: 0xff},
