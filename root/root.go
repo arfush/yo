@@ -27,19 +27,20 @@ const (
 
 // root owns the application object graph and the window lifecycle.
 type root struct {
-	window      *app.Window
-	resource    *resource.Resource
-	appearance  *stdx.Holder[appearance.Appearance]
-	site        *stdx.Holder[catalog.Site]
-	shell       *shell.Shell
-	navigator   *navigator.Navigator
-	journal     *log.Journal
-	logger      *log.Logger
-	platformLog *log.Logger
-	windowShown bool
-	focused     bool
-	panicked    bool
-	stopOnce    sync.Once
+	window         *app.Window
+	platformWindow *platform.Window
+	resource       *resource.Resource
+	appearance     *stdx.Holder[appearance.Appearance]
+	site           *stdx.Holder[catalog.Site]
+	shell          *shell.Shell
+	navigator      *navigator.Navigator
+	journal        *log.Journal
+	logger         *log.Logger
+	platformLog    *log.Logger
+	windowShown    bool
+	focused        bool
+	panicked       bool
+	stopOnce       sync.Once
 }
 
 func (r *root) initResource() {
@@ -111,6 +112,7 @@ func (r *root) initLog() {
 	r.journal = journal
 	r.logger = journal.Logger(log.SourceRoot)
 	r.platformLog = journal.Logger(log.SourcePlatform)
+	r.platformWindow = platform.NewWindow(r.platformLog)
 	switch {
 	case pathErr != nil:
 		r.logger.Warn("journal path unavailable", "error", pathErr)
@@ -126,6 +128,9 @@ func (r *root) initLog() {
 // path and the deferred call can both reach it. Future teardown belongs here.
 func (r *root) stop() {
 	r.stopOnce.Do(func() {
+		if r.platformWindow != nil {
+			r.platformWindow.Close()
+		}
 		if r.navigator != nil {
 			r.navigator.Close()
 		}

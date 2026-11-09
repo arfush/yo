@@ -12,7 +12,6 @@ import (
 	"gioui.org/io/system"
 	"gioui.org/op"
 
-	"github.com/arfush/yo/core/platform"
 	"github.com/arfush/yo/ui/appearance"
 	"github.com/arfush/yo/ui/navigator"
 	"github.com/arfush/yo/ui/resource"
@@ -63,7 +62,7 @@ func Run() {
 		case app.FrameEvent:
 			r.frame(e)
 		case event.Event:
-			platform.HandleViewEvent(e, r.appearance.Value().Palette().Border, r.platformLog)
+			r.platformWindow.HandleViewEvent(e, r.appearance.Value().Palette().Border)
 		}
 	}
 }
