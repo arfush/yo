@@ -44,6 +44,8 @@ const (
 	labelGap        unit.Dp = 10
 	contentGap      unit.Dp = 14
 	versionGap      unit.Dp = 12
+	badgeHeight     unit.Dp = 20
+	badgePaddingX   unit.Dp = 7
 	markRadius      unit.Dp = 7
 	markInset       unit.Dp = 4
 	siteChevronSize unit.Dp = 12
@@ -280,21 +282,29 @@ func (s *Shell) layoutSiteMark(gtx layout.Context, g geometry, palette appearanc
 	drawIcon(gtx, s.icon(resource.IconTorii), inner.Inset(gtx.Dp(markInset)), palette.Accent)
 }
 
-// layoutVersion paints the version after the site block. The shell never
+// layoutVersion paints the version pill after the site block. The shell never
 // formats the version text.
 func (s *Shell) layoutVersion(gtx layout.Context, g geometry, left int) {
 	palette := s.palette()
 	typo := s.typography()
-	maxWidth := max(1, g.controls.minimize.Min.X-left-gtx.Dp(contentGap))
+	padding := gtx.Dp(badgePaddingX)
+	maxWidth := max(1, g.controls.minimize.Min.X-left-gtx.Dp(contentGap)-2*padding)
 	textGtx := gtx
 	textGtx.Constraints = layout.Constraints{Max: image.Pt(maxWidth, g.headerClickEnd)}
 	macro := op.Record(gtx.Ops)
 	dims := kit.Text(textGtx, typo, appearance.RoleCaption, s.version, palette.TextMuted)
 	call := macro.Stop()
-	if dims.Size.X <= 0 || left+dims.Size.X > g.controls.minimize.Min.X-gtx.Dp(contentGap) {
+	if dims.Size.X <= 0 {
 		return
 	}
-	stack := op.Offset(image.Pt(left, g.headerCenterY-dims.Size.Y/2)).Push(gtx.Ops)
+	height := gtx.Dp(badgeHeight)
+	pill := rect(left, g.headerCenterY-height/2,
+		left+dims.Size.X+2*padding, g.headerCenterY+(height+1)/2)
+	if pill.Max.X > g.controls.minimize.Min.X-gtx.Dp(contentGap) {
+		return
+	}
+	fillRounded(gtx, palette.SurfaceAlt, pill, height/2)
+	stack := op.Offset(image.Pt(left+padding, g.headerCenterY-dims.Size.Y/2)).Push(gtx.Ops)
 	call.Add(gtx.Ops)
 	stack.Pop()
 }
