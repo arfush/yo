@@ -48,6 +48,7 @@ const (
 	badgePaddingX     unit.Dp = 7
 	markRadius        unit.Dp = 6
 	markInset         unit.Dp = 3
+	markIconDrop      unit.Dp = 1
 	siteChevronSize   unit.Dp = 8
 	siteChevronGap    unit.Dp = 10
 	siteChevronStroke unit.Dp = 1.7
@@ -315,7 +316,8 @@ func (s *Shell) layoutSiteMark(gtx layout.Context, r image.Rectangle, palette ap
 	fillRounded(gtx, withAlpha(palette.AccentMuted, accentTintAlpha), r, radius)
 	inner := r.Inset(line)
 	fillRounded(gtx, palette.SurfaceAlt, inner, max(0, radius-line))
-	drawIcon(gtx, s.icon(resource.IconTorii), inner.Inset(gtx.Dp(markInset)), palette.Accent)
+	iconRect := inner.Inset(gtx.Dp(markInset)).Add(image.Pt(0, gtx.Dp(markIconDrop)))
+	drawIcon(gtx, s.icon(resource.IconTorii), iconRect, palette.Accent)
 }
 
 // layoutVersion paints the version pill after the site block. Its fill is
