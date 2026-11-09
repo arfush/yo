@@ -67,13 +67,9 @@ func Run() {
 	}
 }
 
-// applyConfig forwards the window configuration to the shell and logs focus
-// changes. Resizes arrive as config events too, so only focus is logged.
+// applyConfig forwards the window configuration to the shell. Resizes arrive as
+// config events too, so nothing here is logged per event.
 func (r *root) applyConfig(cfg app.Config) {
-	if r.focused != cfg.Focused {
-		r.focused = cfg.Focused
-		r.logger.Debug("window focus changed", "focused", cfg.Focused)
-	}
 	r.shell.SetConfig(cfg)
 }
 

@@ -38,7 +38,6 @@ type root struct {
 	logger         *log.Logger
 	platformLog    *log.Logger
 	windowShown    bool
-	focused        bool
 	panicked       bool
 	stopOnce       sync.Once
 }
