@@ -33,7 +33,7 @@ const (
 // Chrome geometry, in device-independent dp.
 const (
 	headerHeight      unit.Dp = 48
-	footerHeight      unit.Dp = 45
+	footerHeight      unit.Dp = 42
 	innerRadius       unit.Dp = 8
 	controlWidth      unit.Dp = 30
 	controlGap        unit.Dp = 12
