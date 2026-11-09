@@ -152,8 +152,8 @@ func TestNegativeDecimalPlacesPanics(t *testing.T) {
 func testLocales(t *testing.T) (appearance.Locale, appearance.Locale) {
 	t.Helper()
 	app := appearance.New(appearance.Options{
-		Resources: resource.New(),
-		Language:  "en",
+		Resource: resource.New(),
+		Language: "en",
 	})
 	en := app.Locale()
 	app.SetLanguage("ru")

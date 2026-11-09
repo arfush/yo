@@ -22,14 +22,14 @@ func TestSwitchSite(t *testing.T) {
 	t.Parallel()
 
 	apps := stdx.NewHolder(appearance.New(appearance.Options{
-		Resources: resource.New(),
-		Language:  "ru",
+		Resource: resource.New(),
+		Language: "ru",
 	}))
-	sites := stdx.NewHolder(catalog.SiteYoanime)
-	shell := New(Options{Screen: testScreen{}, Site: sites, Appearance: apps})
+	site := stdx.NewHolder(catalog.SiteYoanime)
+	shell := New(Options{Screen: testScreen{}, Site: site, Appearance: apps})
 
 	shell.switchSite(catalog.SiteYomanga)
-	if got := sites.Value(); got != catalog.SiteYomanga {
+	if got := site.Value(); got != catalog.SiteYomanga {
 		t.Fatalf("site holder = %q; want %q", got, catalog.SiteYomanga)
 	}
 	want := appearance.PaletteFor(catalog.SiteYomanga)
@@ -42,11 +42,11 @@ func TestSiteMenuDismissFallback(t *testing.T) {
 	t.Parallel()
 
 	apps := stdx.NewHolder(appearance.New(appearance.Options{
-		Resources: resource.New(),
-		Language:  "ru",
+		Resource: resource.New(),
+		Language: "ru",
 	}))
-	sites := stdx.NewHolder(catalog.SiteYoanime)
-	shell := New(Options{Screen: testScreen{}, Site: sites, Appearance: apps})
+	site := stdx.NewHolder(catalog.SiteYoanime)
+	shell := New(Options{Screen: testScreen{}, Site: site, Appearance: apps})
 	shell.syncPalette()
 
 	for range siteMenuBasePaletteAfter {
@@ -70,11 +70,11 @@ func TestSetConfigFocusLossClosesSiteMenu(t *testing.T) {
 	t.Parallel()
 
 	apps := stdx.NewHolder(appearance.New(appearance.Options{
-		Resources: resource.New(),
-		Language:  "ru",
+		Resource: resource.New(),
+		Language: "ru",
 	}))
-	sites := stdx.NewHolder(catalog.SiteYoanime)
-	shell := New(Options{Screen: testScreen{}, Site: sites, Appearance: apps})
+	site := stdx.NewHolder(catalog.SiteYoanime)
+	shell := New(Options{Screen: testScreen{}, Site: site, Appearance: apps})
 	shell.menu.toggle(image.Rect(0, 0, 10, 10))
 
 	shell.SetConfig(app.Config{Focused: false})

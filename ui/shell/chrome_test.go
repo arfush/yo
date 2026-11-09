@@ -18,11 +18,11 @@ func TestSiteAnchorsStayStatic(t *testing.T) {
 	t.Parallel()
 
 	apps := stdx.NewHolder(appearance.New(appearance.Options{
-		Resources: resource.New(),
-		Language:  "ru",
+		Resource: resource.New(),
+		Language: "ru",
 	}))
-	sites := stdx.NewHolder(catalog.SiteYoanime)
-	shell := New(Options{Screen: testScreen{}, Site: sites, Appearance: apps})
+	site := stdx.NewHolder(catalog.SiteYoanime)
+	shell := New(Options{Screen: testScreen{}, Site: site, Appearance: apps})
 	gtx := layout.Context{
 		Ops:         new(op.Ops),
 		Metric:      unit.Metric{PxPerDp: 1, PxPerSp: 1},
@@ -31,7 +31,7 @@ func TestSiteAnchorsStayStatic(t *testing.T) {
 	g := shell.newGeometry(gtx)
 	first := shell.brandLayout(gtx, g)
 
-	sites.Update(func(v *catalog.Site) { *v = catalog.SiteYoranobe })
+	site.Update(func(v *catalog.Site) { *v = catalog.SiteYoranobe })
 	second := shell.brandLayout(gtx, g)
 
 	if first.chevron != second.chevron {

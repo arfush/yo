@@ -14,7 +14,7 @@ import (
 func TestNew(t *testing.T) {
 	t.Parallel()
 
-	app := appearance.New(appearance.Options{Resources: resource.New(), Language: "ru"})
+	app := appearance.New(appearance.Options{Resource: resource.New(), Language: "ru"})
 	if got := app.Locale().Code(); got != "ru" {
 		t.Fatalf("Locale().Code() = %q; want ru", got)
 	}
@@ -32,7 +32,7 @@ func TestNew(t *testing.T) {
 func TestSetLanguage(t *testing.T) {
 	t.Parallel()
 
-	app := appearance.New(appearance.Options{Resources: resource.New(), Language: "ru"})
+	app := appearance.New(appearance.Options{Resource: resource.New(), Language: "ru"})
 	app.SetLanguage("en")
 
 	if got := app.Locale().Code(); got != "en" {
@@ -78,7 +78,7 @@ func TestPaletteFor(t *testing.T) {
 func TestSetPalette(t *testing.T) {
 	t.Parallel()
 
-	app := appearance.New(appearance.Options{Resources: resource.New(), Language: "ru"})
+	app := appearance.New(appearance.Options{Resource: resource.New(), Language: "ru"})
 	want := appearance.PaletteFor(catalog.SiteYomanga)
 	app.SetPalette(want)
 	if got := app.Palette(); got != want {
@@ -94,8 +94,8 @@ func TestTypographyRoles(t *testing.T) {
 	t.Parallel()
 
 	typo := appearance.New(appearance.Options{
-		Resources: resource.New(),
-		Language:  "en",
+		Resource: resource.New(),
+		Language: "en",
 	}).Typography()
 
 	tests := []struct {
@@ -133,8 +133,8 @@ func TestNewPanics(t *testing.T) {
 		opts appearance.Options
 	}{
 		{"nil resources", appearance.Options{Language: "ru"}},
-		{"empty language", appearance.Options{Resources: res}},
-		{"unknown language", appearance.Options{Resources: res, Language: "xx"}},
+		{"empty language", appearance.Options{Resource: res}},
+		{"unknown language", appearance.Options{Resource: res, Language: "xx"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -148,7 +148,7 @@ func TestSetLanguagePanics(t *testing.T) {
 	t.Parallel()
 
 	res := resource.New()
-	app := appearance.New(appearance.Options{Resources: res, Language: "ru"})
+	app := appearance.New(appearance.Options{Resource: res, Language: "ru"})
 	tests := []struct {
 		name string
 		call func()
@@ -176,8 +176,8 @@ func TestUnknownTextRolePanics(t *testing.T) {
 	t.Parallel()
 
 	typo := appearance.New(appearance.Options{
-		Resources: resource.New(),
-		Language:  "ru",
+		Resource: resource.New(),
+		Language: "ru",
 	}).Typography()
 	for _, role := range []appearance.TextRole{appearance.RoleCaption + 1, 255} {
 		assertPanics(t, func() { typo.Font(role) })

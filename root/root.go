@@ -27,7 +27,7 @@ const (
 // root owns the application object graph and the window lifecycle.
 type root struct {
 	window      *app.Window
-	resources   *resource.Resource
+	resource    *resource.Resource
 	appearance  *stdx.Holder[appearance.Appearance]
 	site        *stdx.Holder[catalog.Site]
 	shell       *shell.Shell
@@ -39,13 +39,13 @@ type root struct {
 }
 
 func (r *root) initResource() {
-	r.resources = resource.New()
+	r.resource = resource.New()
 }
 
 func (r *root) initAppearance() {
 	r.appearance = stdx.NewHolder(appearance.New(appearance.Options{
-		Resources: r.resources,
-		Language:  defaultLanguage,
+		Resource: r.resource,
+		Language: defaultLanguage,
 	}))
 	r.logger.Info("appearance ready", "language", defaultLanguage)
 }
@@ -73,7 +73,7 @@ func (r *root) initShell() {
 		Window:     r.window,
 		Site:       r.site,
 		Appearance: r.appearance,
-		Resources:  r.resources,
+		Resource:   r.resource,
 		Version:    "v" + version.Ver,
 	})
 	r.logger.Info("shell ready")

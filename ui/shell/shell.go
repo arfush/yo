@@ -38,7 +38,7 @@ type Options struct {
 	Window     *app.Window
 	Site       *stdx.Holder[catalog.Site]
 	Appearance *stdx.Holder[appearance.Appearance]
-	Resources  *resource.Resource
+	Resource   *resource.Resource
 	Version    string
 }
 
@@ -48,7 +48,7 @@ type Shell struct {
 	window     *app.Window
 	site       *stdx.Holder[catalog.Site]
 	appearance *stdx.Holder[appearance.Appearance]
-	resources  *resource.Resource
+	resource   *resource.Resource
 	version    string
 	screen     Screen
 	dialog     Dialog
@@ -94,7 +94,7 @@ func New(opts Options) *Shell {
 		window:     opts.Window,
 		site:       opts.Site,
 		appearance: opts.Appearance,
-		resources:  opts.Resources,
+		resource:   opts.Resource,
 		version:    opts.Version,
 		screen:     opts.Screen,
 		siteItems:  make([]widget.Clickable, len(catalog.Sites())),

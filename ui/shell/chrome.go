@@ -424,10 +424,10 @@ func (s *Shell) layoutDragRegions(gtx layout.Context, g geometry, trigger image.
 
 // icon returns the embedded icon or nil when the shell has no resources.
 func (s *Shell) icon(key resource.IconKey) *widget.Icon {
-	if s.resources == nil {
+	if s.resource == nil {
 		return nil
 	}
-	return s.resources.Icon(key)
+	return s.resource.Icon(key)
 }
 
 func fill(gtx layout.Context, col color.NRGBA, r image.Rectangle) {
