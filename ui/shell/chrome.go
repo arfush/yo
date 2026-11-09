@@ -43,7 +43,7 @@ const (
 	logoSize        unit.Dp = 25
 	labelGap        unit.Dp = 10
 	contentGap      unit.Dp = 14
-	versionGap      unit.Dp = 12
+	versionGap      unit.Dp = 14
 	badgeHeight     unit.Dp = 20
 	badgePaddingX   unit.Dp = 7
 	markRadius      unit.Dp = 6
@@ -291,24 +291,29 @@ func (s *Shell) layoutSiteMark(gtx layout.Context, r image.Rectangle, palette ap
 func (s *Shell) layoutVersion(gtx layout.Context, g geometry, left int) {
 	palette := s.palette()
 	typo := s.typography()
+	line := max(1, gtx.Dp(1))
 	padding := gtx.Dp(badgePaddingX)
-	maxWidth := max(1, g.controls.minimize.Min.X-left-gtx.Dp(contentGap)-2*padding)
+	maxWidth := max(1, g.controls.minimize.Min.X-left-gtx.Dp(contentGap)-2*(padding+line))
 	textGtx := gtx
 	textGtx.Constraints = layout.Constraints{Max: image.Pt(maxWidth, g.headerClickEnd)}
 	macro := op.Record(gtx.Ops)
-	dims := kit.Text(textGtx, typo, appearance.RoleCaption, s.version, palette.TextMuted)
+	dims := kit.Text(textGtx, typo, appearance.RoleCaption, s.version, palette.Ink)
 	call := macro.Stop()
 	if dims.Size.X <= 0 {
 		return
 	}
 	height := gtx.Dp(badgeHeight)
+	radius := height / 2
 	pill := rect(left, g.headerCenterY-height/2,
-		left+dims.Size.X+2*padding, g.headerCenterY+(height+1)/2)
+		left+dims.Size.X+2*(padding+line), g.headerCenterY+(height+1)/2)
 	if pill.Max.X > g.controls.minimize.Min.X-gtx.Dp(contentGap) {
 		return
 	}
-	fillRounded(gtx, withAlpha(palette.AccentMuted, 0x40), pill, height/2)
-	stack := op.Offset(image.Pt(left+padding, g.headerCenterY-dims.Size.Y/2)).Push(gtx.Ops)
+	fillRounded(gtx, palette.Edge, pill, radius)
+	inner := pill.Inset(line)
+	fillRounded(gtx, palette.Badge, inner, max(0, radius-line))
+	text := image.Pt(left+line+padding, g.headerCenterY-dims.Size.Y/2)
+	stack := op.Offset(text).Push(gtx.Ops)
 	call.Add(gtx.Ops)
 	stack.Pop()
 }

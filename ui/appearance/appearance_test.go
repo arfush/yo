@@ -103,7 +103,7 @@ func TestTypographyRoles(t *testing.T) {
 		{"subtitle", appearance.RoleSubtitle, font.Medium, 15},
 		{"body", appearance.RoleBody, font.Normal, 12.5},
 		{"label", appearance.RoleLabel, font.Medium, 13},
-		{"caption", appearance.RoleCaption, font.Normal, 12},
+		{"caption", appearance.RoleCaption, font.Medium, 11},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
