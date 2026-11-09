@@ -1,15 +1,16 @@
-package navigator
+package navigator_test
 
 import (
 	"testing"
 
 	"gioui.org/layout"
 
+	"github.com/arfush/yo/ui/navigator"
 	"github.com/arfush/yo/ui/shell"
 )
 
 type fakeScreen struct {
-	ScreenBase
+	navigator.ScreenBase
 	shown  int
 	hidden int
 	closed int
@@ -41,15 +42,15 @@ func (f *fakeInstaller) SetTitle(title string) { f.title = title }
 
 func (f *fakeInstaller) SetDialog(dialog shell.Dialog) { f.dialog = dialog }
 
-func testNavigator(t *testing.T) (*Navigator, *fakeScreen, *fakeDialog, *fakeInstaller) {
+func testNavigator(t *testing.T) (*navigator.Navigator, *fakeScreen, *fakeDialog, *fakeInstaller) {
 	t.Helper()
-	startup := &fakeScreen{ScreenBase: ScreenBase{ScreenTitle: "start"}}
+	startup := &fakeScreen{ScreenBase: navigator.ScreenBase{ScreenTitle: "start"}}
 	dialog := &fakeDialog{}
 	installer := &fakeInstaller{}
-	nav := New(Options{
+	nav := navigator.New(navigator.Options{
 		Installer:  installer,
 		Invalidate: func() {},
-		Startup:    func() Screen { return startup },
+		Startup:    func() navigator.Screen { return startup },
 	})
 	return nav, startup, dialog, installer
 }
@@ -76,40 +77,11 @@ func TestNewInstallsStartup(t *testing.T) {
 	}
 }
 
-func TestBackReturnsToPreviousScreen(t *testing.T) {
-	nav, startup, _, installer := testNavigator(t)
-	child := &fakeScreen{ScreenBase: ScreenBase{ScreenTitle: "child"}}
-	nav.Apply()
-
-	nav.push(child)
-	if installer.screen != child {
-		t.Fatal("push did not install the child screen")
-	}
-	if startup.hidden != 1 || child.shown != 1 {
-		t.Fatalf("startup.OnHidden = %d, child.OnShown = %d; want 1, 1", startup.hidden, child.shown)
-	}
-
-	nav.Navigate(Back{})
-	nav.Apply()
-	if installer.screen != startup {
-		t.Fatal("Back did not install the previous screen")
-	}
-	if installer.title != "start" {
-		t.Fatalf("title = %q; want start", installer.title)
-	}
-	if child.hidden != 1 || child.closed != 1 {
-		t.Fatalf("child.OnHidden = %d, child.OnClose = %d; want 1, 1", child.hidden, child.closed)
-	}
-	if startup.shown != 2 {
-		t.Fatalf("startup.OnShown = %d; want 2", startup.shown)
-	}
-}
-
 func TestBackAtRootDoesNothing(t *testing.T) {
 	nav, startup, _, installer := testNavigator(t)
 	nav.Apply()
 
-	nav.Navigate(Back{})
+	nav.Navigate(navigator.Back{})
 	nav.Apply()
 	if installer.screen != startup {
 		t.Fatal("Back replaced the root screen")
@@ -119,52 +91,9 @@ func TestBackAtRootDoesNothing(t *testing.T) {
 	}
 }
 
-func TestDialogOpens(t *testing.T) {
-	nav, startup, dialog, installer := testNavigator(t)
-	nav.Apply()
-
-	nav.openDialog(dialog)
-	if installer.dialog != dialog {
-		t.Fatal("openDialog did not install the dialog")
-	}
-	if startup.hidden != 0 {
-		t.Fatalf("startup.OnHidden = %d while the dialog is open; want 0", startup.hidden)
-	}
-}
-
-func TestBackClosesDialogBeforeScreen(t *testing.T) {
-	nav, startup, _, installer := testNavigator(t)
-	child := &fakeScreen{ScreenBase: ScreenBase{ScreenTitle: "child"}}
-	nav.Apply()
-	nav.push(child)
-	nav.openDialog(&fakeDialog{})
-
-	nav.Navigate(Back{})
-	nav.Apply()
-	if installer.dialog != nil {
-		t.Fatal("Back did not close the dialog")
-	}
-	if installer.screen != child {
-		t.Fatal("Back closed the screen together with the dialog")
-	}
-	if child.hidden != 0 {
-		t.Fatalf("child.OnHidden = %d after closing the dialog; want 0", child.hidden)
-	}
-
-	nav.Navigate(Back{})
-	nav.Apply()
-	if installer.screen != startup {
-		t.Fatal("second Back did not return to the previous screen")
-	}
-	if child.hidden != 1 || child.closed != 1 {
-		t.Fatalf("child.OnHidden = %d, child.OnClose = %d; want 1, 1", child.hidden, child.closed)
-	}
-}
-
-func TestCloseClearsDialogAndScreens(t *testing.T) {
+func TestCloseClosesScreens(t *testing.T) {
 	nav, startup, _, installer := testNavigator(t)
 	nav.Apply()
-	nav.openDialog(&fakeDialog{})
 
 	nav.Close()
 	nav.Close()
@@ -191,14 +120,14 @@ func TestUnknownIntentPanics(t *testing.T) {
 func TestNavigateAfterCloseIsIgnored(t *testing.T) {
 	invalidated := 0
 	startup := &fakeScreen{}
-	nav := New(Options{
+	nav := navigator.New(navigator.Options{
 		Installer:  &fakeInstaller{},
 		Invalidate: func() { invalidated++ },
-		Startup:    func() Screen { return startup },
+		Startup:    func() navigator.Screen { return startup },
 	})
 	nav.Close()
 
-	nav.Navigate(Back{})
+	nav.Navigate(navigator.Back{})
 	if invalidated != 0 {
 		t.Fatalf("invalidate calls after Close = %d; want 0", invalidated)
 	}
