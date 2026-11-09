@@ -47,7 +47,7 @@ const (
 	badgeHeight     unit.Dp = 20
 	badgePaddingX   unit.Dp = 7
 	markRadius      unit.Dp = 7
-	markInset       unit.Dp = 4
+	markInset       unit.Dp = 3
 	siteChevronSize unit.Dp = 10
 	siteChevronGap  unit.Dp = 10
 )
