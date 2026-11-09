@@ -1,8 +1,7 @@
 // Package log owns the application journal: structured slog output to a
 // rotating file, console streams and a bounded in-memory ring.
 //
-// Imports: std only.
-// Must not import: catalog, core/*, ui/*, root.
+// Must not import: catalog, other core packages, UI, root.
 //
 // Invariants: one Journal per process, created by root and closed on exit.
 // Journal is safe for concurrent use. Each module gets its own logger from

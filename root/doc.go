@@ -1,7 +1,6 @@
 // Package root is the composition root of yo.
 //
-// Imports: catalog, core/*, ui/*.
-// Imported by: cmd/yo. Must not be imported by core/* or ui/*.
+// Imported only by cmd/yo; core and UI must not import root.
 //
 // Invariants: creates concrete types and screens, owns lifecycle, and passes
 // screen factories to ui/navigator. It contains no business logic or
