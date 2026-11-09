@@ -115,12 +115,23 @@ func TestSiteMenuAnchor(t *testing.T) {
 	}
 }
 
+func menuBox(anchor image.Rectangle, width, height, gap, margin int, bounds image.Rectangle) siteMenuBox {
+	return siteMenuBox{
+		anchor: anchor,
+		width:  width,
+		height: height,
+		gap:    gap,
+		margin: margin,
+		bounds: bounds,
+	}
+}
+
 func TestPlaceSiteMenuBelow(t *testing.T) {
 	t.Parallel()
 
 	bounds := image.Rect(0, 0, 800, 600)
 	anchor := image.Rect(16, 0, 120, 52)
-	got := placeSiteMenu(anchor, 200, 90, 6, 8, bounds)
+	got := placeSiteMenu(menuBox(anchor, 200, 90, 6, 8, bounds))
 	want := image.Rect(16, 58, 216, 148)
 	if got != want {
 		t.Fatalf("placeSiteMenu() = %v; want %v", got, want)
@@ -132,7 +143,7 @@ func TestPlaceSiteMenuFlipsAbove(t *testing.T) {
 
 	bounds := image.Rect(0, 0, 800, 600)
 	anchor := image.Rect(16, 500, 120, 552)
-	got := placeSiteMenu(anchor, 200, 90, 6, 8, bounds)
+	got := placeSiteMenu(menuBox(anchor, 200, 90, 6, 8, bounds))
 	want := image.Rect(16, 404, 216, 494)
 	if got != want {
 		t.Fatalf("placeSiteMenu() = %v; want %v", got, want)
@@ -144,7 +155,7 @@ func TestPlaceSiteMenuClampsRight(t *testing.T) {
 
 	bounds := image.Rect(0, 0, 800, 600)
 	anchor := image.Rect(700, 0, 760, 52)
-	got := placeSiteMenu(anchor, 200, 90, 6, 8, bounds)
+	got := placeSiteMenu(menuBox(anchor, 200, 90, 6, 8, bounds))
 	want := image.Rect(592, 58, 792, 148)
 	if got != want {
 		t.Fatalf("placeSiteMenu() = %v; want %v", got, want)
@@ -170,7 +181,7 @@ func TestPlaceSiteMenuEmpty(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := placeSiteMenu(anchor, tt.width, tt.height, 6, 8, tt.bounds); !got.Empty() {
+			if got := placeSiteMenu(menuBox(anchor, tt.width, tt.height, 6, 8, tt.bounds)); !got.Empty() {
 				t.Fatalf("placeSiteMenu() = %v; want empty", got)
 			}
 		})

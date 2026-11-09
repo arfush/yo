@@ -149,7 +149,14 @@ func (s *Shell) layoutSiteMenu(gtx layout.Context, g geometry) {
 
 	anchor := siteMenuAnchor(s.menu.anchor, line+pad+itemPad,
 		gtx.Dp(siteMenuMinWidth), margin, bounds)
-	menu := placeSiteMenu(anchor, anchor.Dx(), height, gtx.Dp(siteMenuGap), margin, bounds)
+	menu := placeSiteMenu(siteMenuBox{
+		anchor: anchor,
+		width:  anchor.Dx(),
+		height: height,
+		gap:    gtx.Dp(siteMenuGap),
+		margin: margin,
+		bounds: bounds,
+	})
 	if menu.Empty() {
 		s.menu.close()
 		gtx.Execute(op.InvalidateCmd{})
@@ -184,8 +191,8 @@ func (s *Shell) layoutSiteMenu(gtx layout.Context, g geometry) {
 			continue
 		}
 		top := inner.Min.Y + slot*(itemHeight+itemGap)
-		item := rect(inner.Min.X, top, inner.Max.X, top+itemHeight)
-		if s.layoutSiteItem(gtx, item, index, site, palette, typo) {
+		row := rect(inner.Min.X, top, inner.Max.X, top+itemHeight)
+		if s.layoutSiteItem(gtx, siteMenuItem{bounds: row, index: index, site: site}, palette, typo) {
 			s.switchSite(site)
 			gtx.Execute(op.InvalidateCmd{})
 		}
@@ -193,20 +200,26 @@ func (s *Shell) layoutSiteMenu(gtx layout.Context, g geometry) {
 	}
 }
 
+// siteMenuItem identifies one switcher row.
+type siteMenuItem struct {
+	bounds image.Rectangle
+	index  int
+	site   catalog.Site
+}
+
 // layoutSiteItem paints one switcher row and reports a click. The icon uses the
 // target site accent, so the row previews the palette the site will adopt.
 func (s *Shell) layoutSiteItem(
 	gtx layout.Context,
-	bounds image.Rectangle,
-	index int,
-	site catalog.Site,
+	item siteMenuItem,
 	palette appearance.Palette,
 	typo appearance.Typography,
 ) bool {
-	if bounds.Empty() || index < 0 || index >= len(s.siteItems) {
+	bounds := item.bounds
+	if bounds.Empty() || item.index < 0 || item.index >= len(s.siteItems) {
 		return false
 	}
-	click := &s.siteItems[index]
+	click := &s.siteItems[item.index]
 	clicked := click.Clicked(gtx)
 	hovered := click.Hovered()
 
@@ -223,7 +236,7 @@ func (s *Shell) layoutSiteItem(
 				image.Rectangle{Max: size}, gtx.Dp(siteMenuItemRadius))
 		}
 
-		target := appearance.PaletteFor(site)
+		target := appearance.PaletteFor(item.site)
 		iconSize := gtx.Dp(logoSize)
 		pad := gtx.Dp(siteMenuItemPad)
 		gap := gtx.Dp(siteMenuItemGapX)
@@ -237,7 +250,7 @@ func (s *Shell) layoutSiteItem(
 			size.Y,
 		)}
 		macro := op.Record(gtx.Ops)
-		dims := kit.Text(textGtx, typo, appearance.RoleLabel, site.String(), palette.Text)
+		dims := kit.Text(textGtx, typo, appearance.RoleLabel, item.site.String(), palette.Text)
 		call := macro.Stop()
 		at := image.Pt(pad+iconSize+gap, (size.Y-dims.Size.Y)/2)
 		textStack := op.Offset(at).Push(gtx.Ops)
@@ -261,34 +274,44 @@ func siteMenuAnchor(trigger image.Rectangle, contentInset, minWidth, margin int,
 	return image.Rect(left, trigger.Min.Y, right, trigger.Max.Y)
 }
 
+// siteMenuBox is the pixel geometry placeSiteMenu fits into bounds.
+type siteMenuBox struct {
+	anchor image.Rectangle
+	width  int
+	height int
+	gap    int
+	margin int
+	bounds image.Rectangle
+}
+
 // placeSiteMenu aligns the menu with its anchor, prefers the space below it,
 // then clamps the result into bounds. An impossible placement is empty.
-func placeSiteMenu(anchor image.Rectangle, width, height, gap, margin int, bounds image.Rectangle) image.Rectangle {
-	if width <= 0 || height <= 0 || bounds.Empty() {
+func placeSiteMenu(box siteMenuBox) image.Rectangle {
+	if box.width <= 0 || box.height <= 0 || box.bounds.Empty() {
 		return image.Rectangle{}
 	}
-	margin = min(margin, max(0, min(bounds.Dx(), bounds.Dy())/2))
+	margin := min(box.margin, max(0, min(box.bounds.Dx(), box.bounds.Dy())/2))
 
-	x := anchor.Min.X
-	if x+width > bounds.Max.X-margin {
-		x = bounds.Max.X - margin - width
+	x := box.anchor.Min.X
+	if x+box.width > box.bounds.Max.X-margin {
+		x = box.bounds.Max.X - margin - box.width
 	}
-	x = max(x, bounds.Min.X+margin)
+	x = max(x, box.bounds.Min.X+margin)
 
-	y := anchor.Max.Y + gap
-	if y+height > bounds.Max.Y-margin {
-		above := anchor.Min.Y - gap - height
-		if above >= bounds.Min.Y+margin {
+	y := box.anchor.Max.Y + box.gap
+	if y+box.height > box.bounds.Max.Y-margin {
+		above := box.anchor.Min.Y - box.gap - box.height
+		if above >= box.bounds.Min.Y+margin {
 			y = above
 		} else {
-			y = bounds.Max.Y - margin - height
+			y = box.bounds.Max.Y - margin - box.height
 		}
 	}
-	y = max(y, bounds.Min.Y+margin)
+	y = max(y, box.bounds.Min.Y+margin)
 
-	menu := image.Rect(x, y, x+width, y+height)
-	if menu.Min.X < bounds.Min.X || menu.Min.Y < bounds.Min.Y ||
-		menu.Max.X > bounds.Max.X || menu.Max.Y > bounds.Max.Y {
+	menu := image.Rect(x, y, x+box.width, y+box.height)
+	if menu.Min.X < box.bounds.Min.X || menu.Min.Y < box.bounds.Min.Y ||
+		menu.Max.X > box.bounds.Max.X || menu.Max.Y > box.bounds.Max.Y {
 		return image.Rectangle{}
 	}
 	return menu
