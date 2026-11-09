@@ -7,11 +7,15 @@ import (
 	"sync"
 
 	"gioui.org/app"
+	"gioui.org/unit"
 
 	"github.com/arfush/yo/core/log"
 	"github.com/arfush/yo/core/stdx"
 	"github.com/arfush/yo/ui/appearance"
 	"github.com/arfush/yo/ui/resource"
+	"github.com/arfush/yo/ui/screen"
+	"github.com/arfush/yo/ui/shell"
+	"github.com/arfush/yo/version"
 )
 
 const (
@@ -24,6 +28,7 @@ type root struct {
 	window      *app.Window
 	resources   *resource.Resource
 	appearance  *stdx.Holder[appearance.Appearance]
+	shell       *shell.Shell
 	journal     *log.Journal
 	logger      *log.Logger
 	windowShown bool
@@ -43,8 +48,27 @@ func (r *root) initAppearance() {
 }
 
 func (r *root) initWindowOptions() {
-	r.window.Option(app.Title(windowTitle))
+	r.window.Option(
+		app.Title(windowTitle),
+		app.Size(unit.Dp(shell.InitialWidth), unit.Dp(shell.InitialHeight)),
+		app.MinSize(unit.Dp(shell.MinimumWidth), unit.Dp(shell.MinimumHeight)),
+		app.Decorated(false),
+	)
 	r.logger.Info("window configured", "title", windowTitle)
+}
+
+// initShell builds the window chrome and installs the fallback screen. The
+// navigator replaces it with the first route in the next stage.
+func (r *root) initShell() {
+	r.shell = shell.New(shell.Options{
+		Screen:     screen.NewStub(),
+		Window:     r.window,
+		Appearance: r.appearance.Value(),
+		Resources:  r.resources,
+		Title:      windowTitle,
+		Version:    version.Ver,
+	})
+	r.logger.Info("shell ready")
 }
 
 // initLog creates the process journal and the composition root logger. A

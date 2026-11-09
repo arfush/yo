@@ -19,6 +19,7 @@ func Run() {
 	r.initResource()
 	r.initAppearance()
 	r.initWindowOptions()
+	r.initShell()
 
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
@@ -41,12 +42,15 @@ func Run() {
 			}
 			r.stop()
 			return
+		case app.ConfigEvent:
+			r.shell.SetConfig(e.Config)
 		case app.FrameEvent:
 			if !r.windowShown {
 				r.logger.Info("window shown", "size", e.Size)
 				r.windowShown = true
 			}
 			gtx := app.NewContext(new(op.Ops), e)
+			r.shell.Layout(gtx)
 			e.Frame(gtx.Ops)
 		}
 	}
