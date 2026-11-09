@@ -102,7 +102,7 @@ func (r *root) frame(e app.FrameEvent) {
 // showPanic freezes the application on the base palette and installs the panic
 // screen. The full stack goes to the journal; the screen shows the panic value.
 func (r *root) showPanic(v any) {
-	r.logger.Error("ui panic", "panic", fmt.Sprint(v), "stack", string(debug.Stack()))
+	r.logger.Error("ui panic", "type", fmt.Sprintf("%T", v), "stack", string(debug.Stack()))
 	if r.panicked {
 		r.window.Invalidate()
 		return
@@ -110,7 +110,7 @@ func (r *root) showPanic(v any) {
 	r.panicked = true
 	defer func() {
 		if again := recover(); again != nil {
-			r.logger.Error("panic screen failed", "panic", fmt.Sprint(again), "stack", string(debug.Stack()))
+			r.logger.Error("panic screen failed", "type", fmt.Sprintf("%T", again), "stack", string(debug.Stack()))
 		}
 	}()
 	r.appearance.Update(func(a *appearance.Appearance) { a.SetPalette(appearance.BasePalette()) })

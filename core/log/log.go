@@ -2,6 +2,7 @@ package log
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -99,7 +100,7 @@ func Open(opts Options) (*Journal, error) {
 	}
 	file, err := os.OpenFile(j.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
-		return j, err
+		return j, fmt.Errorf("open journal: %w", err)
 	}
 	j.file = file
 	return j, nil
@@ -153,10 +154,11 @@ func (j *Journal) console(level slog.Level) io.Writer {
 }
 
 func (j *Journal) writeLocked(entry Entry) error {
+	var first error
 	writers := make([]io.Writer, 0, 2)
 	if j.file != nil {
 		if err := j.rotateLocked(); err != nil {
-			j.dropFileLocked(err)
+			first = j.dropFileLocked(err)
 		} else {
 			writers = append(writers, j.file)
 		}
@@ -165,7 +167,6 @@ func (j *Journal) writeLocked(entry Entry) error {
 		writers = append(writers, dst)
 	}
 	line := entry.Line + "\n"
-	var first error
 	for _, dst := range writers {
 		if _, err := io.WriteString(dst, line); err != nil && first == nil {
 			first = err
@@ -177,13 +178,15 @@ func (j *Journal) writeLocked(entry Entry) error {
 // dropFileLocked disables a file that cannot rotate and reports the failure to
 // stderr, because the journal cannot write it to the broken file. The journal
 // keeps working on the console and in the ring.
-func (j *Journal) dropFileLocked(err error) {
+func (j *Journal) dropFileLocked(err error) error {
 	if j.file != nil {
-		_ = j.file.Close()
+		if closeErr := j.file.Close(); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		}
 		j.file = nil
 	}
 	if j.stderr == nil {
-		return
+		return err
 	}
 	var record slog.Record
 	record.Add("path", j.path, "error", err)
@@ -194,7 +197,10 @@ func (j *Journal) dropFileLocked(err error) {
 		Message: "journal rotation failed",
 		Detail:  formatAttrs(nil, nil, record),
 	}
-	_, _ = io.WriteString(j.stderr, entry.formatLine()+"\n")
+	if _, writeErr := io.WriteString(j.stderr, entry.formatLine()+"\n"); writeErr != nil {
+		return errors.Join(err, writeErr)
+	}
+	return nil
 }
 
 func (j *Journal) rotateLocked() error {
@@ -214,7 +220,9 @@ func (j *Journal) rotateLocked() error {
 	}
 	j.file = nil
 	backup := j.path + ".1"
-	_ = os.Remove(j.path + ".2")
+	if err := os.Remove(j.path + ".2"); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 	if err := os.Rename(backup, j.path+".2"); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}

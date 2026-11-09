@@ -117,9 +117,9 @@ func (r *root) initLog() {
 	case pathErr != nil:
 		r.logger.Warn("journal path unavailable", "error", pathErr)
 	case openErr != nil:
-		r.logger.Warn("journal file disabled", "path", path, "error", openErr)
+		r.logger.Warn("journal file disabled", "error", openErr)
 	default:
-		r.logger.Info("journal opened", "path", path)
+		r.logger.Info("journal opened")
 	}
 }
 
