@@ -73,15 +73,15 @@ func (r *root) initShell() {
 	r.logger.Info("shell ready")
 }
 
-// initNavigator installs the screen stack above the shell. No routes are
-// registered until the first real destination exists.
+// initNavigator installs the screen and dialog stacks above the shell. The
+// startup screen and the fallback dialog are the only destinations until the
+// first feature registers its own factories.
 func (r *root) initNavigator() {
 	r.navigator = navigator.New(navigator.Options{
 		Installer:  r.shell,
 		Invalidate: r.window.Invalidate,
-		Startup: func(navigator.Handler) navigator.Screen {
-			return screen.NewStub(windowTitle)
-		},
+		Startup:    r.newStubScreen,
+		StubDialog: r.newStubDialog,
 	})
 	r.logger.Info("navigator ready")
 }
