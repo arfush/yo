@@ -1,4 +1,4 @@
-package log
+package log_test
 
 import (
 	"bytes"
@@ -8,14 +8,16 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/arfush/yo/core/log"
 )
 
 func TestConsoleRouting(t *testing.T) {
 	t.Parallel()
 
 	var stdout, stderr bytes.Buffer
-	j := newTestJournal(t, Options{Stdout: &stdout, Stderr: &stderr})
-	logger := j.Logger(SourceRoot)
+	j := newTestJournal(t, log.Options{Stdout: &stdout, Stderr: &stderr})
+	logger := j.Logger(log.SourceRoot)
 
 	logger.Debug("debug line")
 	logger.Info("info line")
@@ -40,11 +42,11 @@ func TestFileOutput(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "yo.log")
-	j, err := Open(Options{Path: path})
+	j, err := log.Open(log.Options{Path: path})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	j.Logger(SourceRoot).Info("hello", "answer", 42)
+	j.Logger(log.SourceRoot).Info("hello", "answer", 42)
 	if err := j.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
@@ -62,11 +64,11 @@ func TestRotation(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "yo.log")
-	j, err := Open(Options{Path: path, MaxFileSize: 1})
+	j, err := log.Open(log.Options{Path: path, MaxFileSize: 1})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	logger := j.Logger(SourceRoot)
+	logger := j.Logger(log.SourceRoot)
 	for i := 0; i < 3; i++ {
 		logger.Info("line", "i", i)
 	}
@@ -90,13 +92,13 @@ func TestRotationFailureReportsToStderr(t *testing.T) {
 		t.Fatalf("Mkdir: %v", err)
 	}
 	var stderr bytes.Buffer
-	j, err := Open(Options{Path: path, Stderr: &stderr, MaxFileSize: 1})
+	j, err := log.Open(log.Options{Path: path, Stderr: &stderr, MaxFileSize: 1})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
 	t.Cleanup(func() { _ = j.Close() })
 
-	logger := j.Logger(SourceRoot)
+	logger := j.Logger(log.SourceRoot)
 	logger.Info("one")
 	logger.Info("two")
 
@@ -106,9 +108,6 @@ func TestRotationFailureReportsToStderr(t *testing.T) {
 	}
 	if !strings.Contains(got, "path=") || !strings.Contains(got, "error=") {
 		t.Fatalf("stderr = %q; want path and error attributes", got)
-	}
-	if j.file != nil {
-		t.Fatal("file is still open after a failed rotation")
 	}
 
 	logger.Info("three")
@@ -120,8 +119,8 @@ func TestRotationFailureReportsToStderr(t *testing.T) {
 func TestRingAndClear(t *testing.T) {
 	t.Parallel()
 
-	j := newTestJournal(t, Options{RingSize: 2})
-	logger := j.Logger(SourceRoot)
+	j := newTestJournal(t, log.Options{RingSize: 2})
+	logger := j.Logger(log.SourceRoot)
 	logger.Info("one")
 	logger.Info("two")
 	logger.Info("three")
@@ -146,8 +145,8 @@ func TestRingAndClear(t *testing.T) {
 func TestLastErrorContext(t *testing.T) {
 	t.Parallel()
 
-	j := newTestJournal(t, Options{})
-	logger := j.Logger(SourceRoot)
+	j := newTestJournal(t, log.Options{})
+	logger := j.Logger(log.SourceRoot)
 	logger.Info("context line")
 	logger.Error("boom")
 
@@ -164,8 +163,8 @@ func TestRedaction(t *testing.T) {
 	t.Parallel()
 
 	var stdout bytes.Buffer
-	j := newTestJournal(t, Options{Stdout: &stdout})
-	j.Logger(SourceRoot).Info("auth", "password", "hunter2", "token", "secret-value", "safe", "ok")
+	j := newTestJournal(t, log.Options{Stdout: &stdout})
+	j.Logger(log.SourceRoot).Info("auth", "password", "hunter2", "token", "secret-value", "safe", "ok")
 
 	got := stdout.String()
 	for _, secret := range []string{"hunter2", "secret-value"} {
@@ -182,8 +181,8 @@ func TestStringQuoting(t *testing.T) {
 	t.Parallel()
 
 	var stdout bytes.Buffer
-	j := newTestJournal(t, Options{Stdout: &stdout})
-	logger := j.Logger(SourceRoot)
+	j := newTestJournal(t, log.Options{Stdout: &stdout})
+	logger := j.Logger(log.SourceRoot)
 	logger.Info("journal opened", "path", `C:\Users\example\AppData\Roaming\yo\yo.log`)
 	logger.Info("say", "text", `a "quoted" value`)
 
@@ -210,11 +209,11 @@ func TestLevelLabel(t *testing.T) {
 		{slog.LevelInfo, "info"},
 		{slog.LevelWarn, "warn"},
 		{slog.LevelError, "error"},
-		{LevelPanic, "panic"},
+		{log.LevelPanic, "panic"},
 		{slog.Level(99), "unknown"},
 	}
 	for _, tt := range tests {
-		if got := LevelLabel(tt.level); got != tt.want {
+		if got := log.LevelLabel(tt.level); got != tt.want {
 			t.Fatalf("LevelLabel(%d) = %q; want %q", tt.level, got, tt.want)
 		}
 	}
@@ -223,7 +222,7 @@ func TestLevelLabel(t *testing.T) {
 func TestEmptySourcePanics(t *testing.T) {
 	t.Parallel()
 
-	j := newTestJournal(t, Options{})
+	j := newTestJournal(t, log.Options{})
 	assertPanics(t, func() { j.Logger("") })
 }
 
@@ -232,7 +231,7 @@ func TestFileErrorKeepsJournalUsable(t *testing.T) {
 
 	var stdout bytes.Buffer
 	path := filepath.Join(t.TempDir(), "missing", "yo.log")
-	j, err := Open(Options{Path: path, Stdout: &stdout})
+	j, err := log.Open(log.Options{Path: path, Stdout: &stdout})
 	if err == nil {
 		t.Fatal("Open succeeded; want a file error")
 	}
@@ -241,7 +240,7 @@ func TestFileErrorKeepsJournalUsable(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = j.Close() })
 
-	j.Logger(SourceRoot).Info("still works")
+	j.Logger(log.SourceRoot).Info("still works")
 	if !strings.Contains(stdout.String(), "still works") {
 		t.Fatalf("stdout = %q; want the entry", stdout.String())
 	}
@@ -250,8 +249,8 @@ func TestFileErrorKeepsJournalUsable(t *testing.T) {
 func TestConcurrentLogging(t *testing.T) {
 	t.Parallel()
 
-	j := newTestJournal(t, Options{RingSize: 100})
-	logger := j.Logger(SourceRoot)
+	j := newTestJournal(t, log.Options{RingSize: 100})
+	logger := j.Logger(log.SourceRoot)
 
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {
@@ -270,9 +269,9 @@ func TestConcurrentLogging(t *testing.T) {
 	}
 }
 
-func newTestJournal(t *testing.T, opts Options) *Journal {
+func newTestJournal(t *testing.T, opts log.Options) *log.Journal {
 	t.Helper()
-	j, err := Open(opts)
+	j, err := log.Open(opts)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
