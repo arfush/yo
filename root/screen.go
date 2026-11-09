@@ -14,3 +14,9 @@ func (r *root) newStartupScreen(navigator.Handler) navigator.Screen {
 	startup.ScreenTitle = windowTitle
 	return startup
 }
+
+// newPanicScreen builds the panic screen. It implements navigator.PanicFactory:
+// the screen takes no Handler because it never navigates.
+func (r *root) newPanicScreen(title, detail string) navigator.Screen {
+	return screen.NewPanic(r.appearance.Readonly(), title, detail)
+}

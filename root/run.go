@@ -14,8 +14,8 @@ import (
 
 	"github.com/arfush/yo/core/platform"
 	"github.com/arfush/yo/ui/appearance"
+	"github.com/arfush/yo/ui/navigator"
 	"github.com/arfush/yo/ui/resource"
-	"github.com/arfush/yo/ui/screen"
 	"github.com/arfush/yo/version"
 )
 
@@ -118,7 +118,8 @@ func (r *root) showPanic(v any) {
 	r.shell.Freeze()
 	r.shell.SetDialog(nil)
 	app := r.appearance.Value()
-	r.shell.SetScreen(screen.NewPanic(r.appearance.Readonly(), panicTitle(app), fmt.Sprint(v)))
+	var build navigator.PanicFactory = r.newPanicScreen
+	r.shell.SetScreen(build(panicTitle(app), fmt.Sprint(v)))
 	r.shell.SetTitle(windowTitle)
 	r.window.Invalidate()
 }
