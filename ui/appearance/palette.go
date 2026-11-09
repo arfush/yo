@@ -22,13 +22,18 @@ type Palette struct {
 	Badge       color.NRGBA
 	Edge        color.NRGBA
 	Ink         color.NRGBA
-	Danger      color.NRGBA
-	Warning     color.NRGBA
-	Success     color.NRGBA
-	Info        color.NRGBA
-	Focus       color.NRGBA
-	Overlay     color.NRGBA
-	Selection   color.NRGBA
+	// ControlIcon is the muted tone of the window controls and the site
+	// chevron. It stays neutral across sites.
+	ControlIcon color.NRGBA
+	// ControlIconHover is the accent-lifted tone of a hovered window control.
+	ControlIconHover color.NRGBA
+	Danger           color.NRGBA
+	Warning          color.NRGBA
+	Success          color.NRGBA
+	Info             color.NRGBA
+	Focus            color.NRGBA
+	Overlay          color.NRGBA
+	Selection        color.NRGBA
 
 	Mascot MascotPalette
 }
@@ -153,13 +158,19 @@ func PaletteFor(site catalog.Site) Palette {
 	p.Ink = a.ink
 	p.Focus = a.focus
 	p.Selection = a.selection
+	p.ControlIconHover = mix(a.accent, p.Text, 0.55)
 	p.Mascot.Normal = a.mascot
 	return p
 }
 
+// BasePalette returns the neutral yobase palette. The shell falls back to it
+// when the site switcher is dismissed without a selection; PaletteFor extends
+// the same colors with a site accent.
+func BasePalette() Palette { return newPalette() }
+
 // newPalette builds the neutral palette that every site palette extends.
 func newPalette() Palette {
-	return Palette{
+	p := Palette{
 		Canvas:      color.NRGBA{R: 0x0d, G: 0x0e, B: 0x14, A: 0xff},
 		Surface:     color.NRGBA{R: 0x11, G: 0x12, B: 0x19, A: 0xff},
 		SurfaceAlt:  color.NRGBA{R: 0x20, G: 0x1f, B: 0x28, A: 0xff},
@@ -173,6 +184,7 @@ func newPalette() Palette {
 		Badge:       color.NRGBA{R: 0x25, G: 0x24, B: 0x30, A: 0xff},
 		Edge:        color.NRGBA{R: 0x37, G: 0x34, B: 0x3f, A: 0xff},
 		Ink:         color.NRGBA{R: 0xc9, G: 0xc4, B: 0xd6, A: 0xff},
+		ControlIcon: color.NRGBA{R: 0x78, G: 0x73, B: 0x8d, A: 0xff},
 		Danger:      color.NRGBA{R: 0xf2, G: 0x7d, B: 0x8b, A: 0xff},
 		Warning:     color.NRGBA{R: 0xf2, G: 0xc9, B: 0x4c, A: 0xff},
 		Success:     color.NRGBA{R: 0x65, G: 0xd6, B: 0xa3, A: 0xff},
@@ -211,5 +223,20 @@ func newPalette() Palette {
 				Magenta: color.NRGBA{R: 0xff, G: 0x6f, B: 0xd0, A: 0x55},
 			},
 		},
+	}
+	p.ControlIconHover = mix(p.Accent, p.Text, 0.55)
+	return p
+}
+
+// mix linearly interpolates between a and b without leaving the uint8 range.
+func mix(a, b color.NRGBA, t float32) color.NRGBA {
+	lerp := func(x, y uint8) uint8 {
+		return uint8(float32(x) + (float32(y)-float32(x))*t)
+	}
+	return color.NRGBA{
+		R: lerp(a.R, b.R),
+		G: lerp(a.G, b.G),
+		B: lerp(a.B, b.B),
+		A: lerp(a.A, b.A),
 	}
 }

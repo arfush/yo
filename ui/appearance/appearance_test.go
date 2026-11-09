@@ -53,6 +53,12 @@ func TestPaletteFor(t *testing.T) {
 	if base.Badge.A == 0 || base.Edge.A == 0 || base.Ink.A == 0 {
 		t.Fatal("PaletteFor(yoanime) returned an empty badge chrome")
 	}
+	if base.ControlIcon.A == 0 || base.ControlIconHover.A == 0 {
+		t.Fatal("PaletteFor(yoanime) returned empty control icons")
+	}
+	if got := appearance.BasePalette(); got.ControlIcon.A == 0 || got.Accent == base.Accent {
+		t.Fatal("BasePalette did not return the neutral chrome")
+	}
 	seen := []appearance.Palette{base}
 	for _, site := range catalog.Sites()[1:] {
 		p := appearance.PaletteFor(site)
@@ -102,7 +108,7 @@ func TestTypographyRoles(t *testing.T) {
 		{"title", appearance.RoleTitle, font.SemiBold, 23.5},
 		{"subtitle", appearance.RoleSubtitle, font.Medium, 15},
 		{"body", appearance.RoleBody, font.Normal, 12.5},
-		{"label", appearance.RoleLabel, font.Medium, 13},
+		{"label", appearance.RoleLabel, font.Bold, 13.2},
 		{"caption", appearance.RoleCaption, font.Medium, 11},
 	}
 	for _, tt := range tests {

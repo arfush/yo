@@ -40,7 +40,7 @@ func newTypography(res *resource.Resource) Typography {
 		RoleTitle:    {resource.FontSemiBold, 23.5},
 		RoleSubtitle: {resource.FontMedium, 15},
 		RoleBody:     {resource.FontRegular, 12.5},
-		RoleLabel:    {resource.FontMedium, 13},
+		RoleLabel:    {resource.FontBold, 13.2},
 		RoleCaption:  {resource.FontMedium, 11},
 	}
 
