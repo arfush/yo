@@ -1,13 +1,13 @@
-// Package navigator owns the screen stack and the route vocabulary. A screen
-// requests a change through Handler; the navigator resolves the route through
-// a factory supplied by the composition root and installs the built screen
-// into the shell.
+// Package navigator owns the screen stack, the dialog stack and the route
+// vocabulary. A screen requests a change through Handler; the navigator
+// resolves the intent through a factory supplied by the composition root and
+// installs the built screen or dialog into the shell.
 //
-// Imports: gioui.org/layout, ui/shell.
-// Must not import: root, ui/screen, core/*.
+// Imports: fmt, ui/shell.
+// Must not import: root, ui/screen, ui/dialog, core/*.
 // Invariants: Navigate only queues and invalidates; Apply runs on the UI
-// goroutine at frame start before layout. A screen is never nil, and the
-// navigator never imports a concrete screen. Close is idempotent.
+// goroutine at frame start before layout. A screen is never nil, Back closes
+// the top dialog before it pops a screen, and Close is idempotent.
 package navigator
 
 import (
@@ -17,41 +17,35 @@ import (
 )
 
 // Installer is the navigator's narrow view of the window frame. The shell
-// implements it; the navigator only installs the visible screen and its title.
+// implements it; the navigator only installs the visible content and its title.
 type Installer interface {
 	SetScreen(shell.Screen)
 	SetTitle(string)
+	SetDialog(shell.Dialog)
 }
 
-// Options configures a navigator. Installer, Invalidate and Startup are
-// required; Routes maps the destinations known to the composition root.
+// Options configures a navigator. Installer, Invalidate, Startup and StubDialog
+// are required; future screens and dialogs add their own factories here.
 type Options struct {
 	Installer  Installer
 	Invalidate func()
 	Startup    ScreenFactory
-	Routes     map[Route]ScreenFactory
+	StubDialog StubDialogFactory
 }
 
 var _ Handler = (*Navigator)(nil)
 
-// Navigator owns the ordered screen stack. It builds screens only through the
-// factories supplied in Options and never draws them.
+// Navigator owns the ordered screen and dialog stacks. It builds screens only
+// through the factories supplied in Options and never draws them.
 type Navigator struct {
 	installer  Installer
 	invalidate func()
-	routes     map[Route]ScreenFactory
-	entries    []entry
+	stubDialog StubDialogFactory
+	entries    []Screen
+	dialogs    []shell.Dialog
 	pending    []Intent
-	nextID     uint64
 	active     bool
 	closed     bool
-}
-
-// entry is one stack frame. The id lets Apply detect a change without
-// comparing Screen interface values, which may hold non-comparable types.
-type entry struct {
-	screen Screen
-	id     uint64
 }
 
 // New builds the navigator, creates the startup screen and installs it. The
@@ -66,22 +60,25 @@ func New(opts Options) *Navigator {
 	if opts.Startup == nil {
 		panic("navigator: nil startup factory")
 	}
+	if opts.StubDialog == nil {
+		panic("navigator: nil stub dialog factory")
+	}
 	n := &Navigator{
 		installer:  opts.Installer,
 		invalidate: opts.Invalidate,
-		routes:     opts.Routes,
+		stubDialog: opts.StubDialog,
 	}
 	startup := opts.Startup(n)
 	if startup == nil {
 		panic("navigator: nil startup screen")
 	}
-	n.entries = append(n.entries, n.newEntry(startup))
+	n.entries = append(n.entries, startup)
 	n.install(startup)
 	return n
 }
 
-// Navigate queues an intent and asks the window for the next frame. The stack
-// changes only when Apply runs.
+// Navigate queues an intent and asks the window for the next frame. The stacks
+// change only when Apply runs.
 func (n *Navigator) Navigate(intent Intent) {
 	if n.closed {
 		return
@@ -90,43 +87,25 @@ func (n *Navigator) Navigate(intent Intent) {
 	n.invalidate()
 }
 
-// Apply runs every queued intent, installs the visible screen and runs the
-// lifecycle. It must run on the UI goroutine before the frame is laid out.
+// Apply shows the startup screen and runs every queued intent. It must run on
+// the UI goroutine before the frame is laid out.
 func (n *Navigator) Apply() {
 	if n.closed {
 		return
 	}
+	n.present()
 	if len(n.pending) == 0 {
-		n.present()
 		return
 	}
-	beforeID := n.currentID()
-	before := n.current()
 	pending := n.pending
 	n.pending = nil
-
-	screens := make([]Screen, 0, len(pending))
 	for _, intent := range pending {
-		screens = append(screens, n.build(intent))
+		n.apply(intent)
 	}
-	for _, screen := range screens {
-		n.entries = append(n.entries, n.newEntry(screen))
-	}
-
-	after := n.current()
-	if n.currentID() == beforeID {
-		return
-	}
-	if n.active && before != nil {
-		before.OnHidden()
-	}
-	n.install(after)
-	n.active = true
-	after.OnShown()
 }
 
-// Close hides the active screen and closes every screen on the stack. It is
-// idempotent and discards queued intents.
+// Close hides the active screen, clears the dialog stack and closes every
+// screen on the stack. It is idempotent and discards queued intents.
 func (n *Navigator) Close() {
 	if n.closed {
 		return
@@ -138,25 +117,83 @@ func (n *Navigator) Close() {
 		}
 		n.active = false
 	}
-	for _, entry := range n.entries {
-		entry.screen.OnClose()
+	if len(n.dialogs) > 0 {
+		n.dialogs = nil
+		n.installer.SetDialog(nil)
+	}
+	for _, screen := range n.entries {
+		screen.OnClose()
 	}
 	n.entries = nil
 	n.pending = nil
 }
 
-// build resolves a route and constructs its screen. An unknown route or a nil
-// screen is a composition error and panics.
-func (n *Navigator) build(intent Intent) Screen {
-	factory, ok := n.routes[intent.Route]
-	if !ok {
-		panic(fmt.Sprintf("navigator: unknown route %q", intent.Route))
+// apply performs one queued intent. An unknown intent is a composition error
+// and panics.
+func (n *Navigator) apply(intent Intent) {
+	switch intent.(type) {
+	case Back:
+		n.back()
+	case StubDialog:
+		n.openDialog(n.stubDialog(n))
+	default:
+		panic(fmt.Sprintf("navigator: unknown intent %T", intent))
 	}
-	screen := factory(n)
+}
+
+// push installs a screen above the active one and runs its lifecycle.
+func (n *Navigator) push(screen Screen) {
 	if screen == nil {
-		panic(fmt.Sprintf("navigator: nil screen for route %q", intent.Route))
+		panic("navigator: nil screen")
 	}
-	return screen
+	if n.active {
+		if current := n.current(); current != nil {
+			current.OnHidden()
+		}
+	}
+	n.entries = append(n.entries, screen)
+	n.install(screen)
+	n.active = true
+	screen.OnShown()
+}
+
+// back closes the top dialog. When no dialog is open it returns to the previous
+// screen; at the root screen it does nothing.
+func (n *Navigator) back() {
+	if len(n.dialogs) > 0 {
+		n.dialogs = n.dialogs[:len(n.dialogs)-1]
+		n.installDialog()
+		return
+	}
+	if len(n.entries) <= 1 {
+		return
+	}
+	top := n.current()
+	top.OnHidden()
+	n.entries = n.entries[:len(n.entries)-1]
+	top.OnClose()
+	next := n.current()
+	n.install(next)
+	next.OnShown()
+}
+
+// openDialog pushes a dialog above the active screen.
+func (n *Navigator) openDialog(dialog shell.Dialog) {
+	if dialog == nil {
+		panic("navigator: nil dialog")
+	}
+	n.dialogs = append(n.dialogs, dialog)
+	n.installer.SetDialog(dialog)
+}
+
+// installDialog makes the top dialog visible, or clears the shell when the
+// dialog stack is empty.
+func (n *Navigator) installDialog() {
+	if len(n.dialogs) == 0 {
+		n.installer.SetDialog(nil)
+		return
+	}
+	n.installer.SetDialog(n.dialogs[len(n.dialogs)-1])
 }
 
 // present shows the current screen once, on the first frame.
@@ -181,17 +218,5 @@ func (n *Navigator) current() Screen {
 	if len(n.entries) == 0 {
 		return nil
 	}
-	return n.entries[len(n.entries)-1].screen
-}
-
-func (n *Navigator) currentID() uint64 {
-	if len(n.entries) == 0 {
-		return 0
-	}
-	return n.entries[len(n.entries)-1].id
-}
-
-func (n *Navigator) newEntry(screen Screen) entry {
-	n.nextID++
-	return entry{screen: screen, id: n.nextID}
+	return n.entries[len(n.entries)-1]
 }

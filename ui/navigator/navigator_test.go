@@ -23,8 +23,13 @@ func (f *fakeScreen) OnHidden() { f.hidden++ }
 
 func (f *fakeScreen) OnClose() { f.closed++ }
 
+type fakeDialog struct{}
+
+func (f *fakeDialog) Layout(layout.Context) {}
+
 type fakeInstaller struct {
 	screen shell.Screen
+	dialog shell.Dialog
 	title  string
 }
 
@@ -32,26 +37,33 @@ func (f *fakeInstaller) SetScreen(content shell.Screen) { f.screen = content }
 
 func (f *fakeInstaller) SetTitle(title string) { f.title = title }
 
-func testNavigator(t *testing.T) (*Navigator, *fakeScreen, *fakeInstaller) {
+func (f *fakeInstaller) SetDialog(dialog shell.Dialog) { f.dialog = dialog }
+
+func testNavigator(t *testing.T) (*Navigator, *fakeScreen, *fakeDialog, *fakeInstaller) {
 	t.Helper()
 	startup := &fakeScreen{ScreenBase: ScreenBase{ScreenTitle: "start"}}
+	dialog := &fakeDialog{}
 	installer := &fakeInstaller{}
 	nav := New(Options{
 		Installer:  installer,
 		Invalidate: func() {},
 		Startup:    func(Handler) Screen { return startup },
+		StubDialog: func(Handler) shell.Dialog { return dialog },
 	})
-	return nav, startup, installer
+	return nav, startup, dialog, installer
 }
 
 func TestNewInstallsStartup(t *testing.T) {
-	nav, startup, installer := testNavigator(t)
+	nav, startup, _, installer := testNavigator(t)
 
 	if installer.screen != startup {
 		t.Fatal("New did not install the startup screen")
 	}
 	if installer.title != "start" {
 		t.Fatalf("title = %q; want start", installer.title)
+	}
+	if installer.dialog != nil {
+		t.Fatal("New installed a dialog")
 	}
 	if startup.shown != 0 {
 		t.Fatalf("startup.OnShown = %d before Apply; want 0", startup.shown)
@@ -63,62 +75,119 @@ func TestNewInstallsStartup(t *testing.T) {
 	}
 }
 
-func TestNavigatePushesScreen(t *testing.T) {
+func TestBackReturnsToPreviousScreen(t *testing.T) {
+	nav, startup, _, installer := testNavigator(t)
 	child := &fakeScreen{ScreenBase: ScreenBase{ScreenTitle: "child"}}
-	startup := &fakeScreen{ScreenBase: ScreenBase{ScreenTitle: "start"}}
-	installer := &fakeInstaller{}
-	invalidated := 0
-	nav := New(Options{
-		Installer:  installer,
-		Invalidate: func() { invalidated++ },
-		Startup:    func(Handler) Screen { return startup },
-		Routes: map[Route]ScreenFactory{
-			"child": func(Handler) Screen { return child },
-		},
-	})
 	nav.Apply()
 
-	nav.Navigate(Intent{Route: "child"})
-	if invalidated != 1 {
-		t.Fatalf("invalidate calls = %d; want 1", invalidated)
-	}
-	if installer.screen != startup {
-		t.Fatal("Navigate installed the screen before Apply")
-	}
-
-	nav.Apply()
+	nav.push(child)
 	if installer.screen != child {
-		t.Fatal("Apply did not install the pushed screen")
-	}
-	if installer.title != "child" {
-		t.Fatalf("title = %q; want child", installer.title)
+		t.Fatal("push did not install the child screen")
 	}
 	if startup.hidden != 1 || child.shown != 1 {
 		t.Fatalf("startup.OnHidden = %d, child.OnShown = %d; want 1, 1", startup.hidden, child.shown)
 	}
-}
 
-func TestUnknownRoutePanics(t *testing.T) {
-	nav, _, _ := testNavigator(t)
-	nav.Navigate(Intent{Route: "missing"})
-
-	defer func() {
-		if recover() == nil {
-			t.Fatal("unknown route did not panic")
-		}
-	}()
+	nav.Navigate(Back{})
 	nav.Apply()
+	if installer.screen != startup {
+		t.Fatal("Back did not install the previous screen")
+	}
+	if installer.title != "start" {
+		t.Fatalf("title = %q; want start", installer.title)
+	}
+	if child.hidden != 1 || child.closed != 1 {
+		t.Fatalf("child.OnHidden = %d, child.OnClose = %d; want 1, 1", child.hidden, child.closed)
+	}
+	if startup.shown != 2 {
+		t.Fatalf("startup.OnShown = %d; want 2", startup.shown)
+	}
 }
 
-func TestCloseRunsLifecycle(t *testing.T) {
-	nav, startup, _ := testNavigator(t)
+func TestBackAtRootDoesNothing(t *testing.T) {
+	nav, startup, _, installer := testNavigator(t)
+	nav.Apply()
+
+	nav.Navigate(Back{})
+	nav.Apply()
+	if installer.screen != startup {
+		t.Fatal("Back replaced the root screen")
+	}
+	if startup.hidden != 0 || startup.closed != 0 {
+		t.Fatalf("startup.OnHidden = %d, startup.OnClose = %d; want 0, 0", startup.hidden, startup.closed)
+	}
+}
+
+func TestStubDialogOpens(t *testing.T) {
+	nav, startup, dialog, installer := testNavigator(t)
+	nav.Apply()
+
+	nav.Navigate(StubDialog{})
+	nav.Apply()
+	if installer.dialog != dialog {
+		t.Fatal("StubDialog did not install the dialog")
+	}
+	if startup.hidden != 0 {
+		t.Fatalf("startup.OnHidden = %d while the dialog is open; want 0", startup.hidden)
+	}
+}
+
+func TestBackClosesDialogBeforeScreen(t *testing.T) {
+	nav, startup, _, installer := testNavigator(t)
+	child := &fakeScreen{ScreenBase: ScreenBase{ScreenTitle: "child"}}
+	nav.Apply()
+	nav.push(child)
+	nav.Navigate(StubDialog{})
+	nav.Apply()
+
+	nav.Navigate(Back{})
+	nav.Apply()
+	if installer.dialog != nil {
+		t.Fatal("Back did not close the dialog")
+	}
+	if installer.screen != child {
+		t.Fatal("Back closed the screen together with the dialog")
+	}
+	if child.hidden != 0 {
+		t.Fatalf("child.OnHidden = %d after closing the dialog; want 0", child.hidden)
+	}
+
+	nav.Navigate(Back{})
+	nav.Apply()
+	if installer.screen != startup {
+		t.Fatal("second Back did not return to the previous screen")
+	}
+	if child.hidden != 1 || child.closed != 1 {
+		t.Fatalf("child.OnHidden = %d, child.OnClose = %d; want 1, 1", child.hidden, child.closed)
+	}
+}
+
+func TestCloseClearsDialogAndScreens(t *testing.T) {
+	nav, startup, _, installer := testNavigator(t)
+	nav.Apply()
+	nav.Navigate(StubDialog{})
 	nav.Apply()
 
 	nav.Close()
 	nav.Close()
+	if installer.dialog != nil {
+		t.Fatal("Close left the dialog installed")
+	}
 	if startup.hidden != 1 || startup.closed != 1 {
 		t.Fatalf("startup.OnHidden = %d, startup.OnClose = %d; want 1, 1", startup.hidden, startup.closed)
 	}
+}
+
+func TestUnknownIntentPanics(t *testing.T) {
+	nav, _, _, _ := testNavigator(t)
+	nav.Navigate(struct{}{})
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("unknown intent did not panic")
+		}
+	}()
+	nav.Apply()
 }
 
 func TestNavigateAfterCloseIsIgnored(t *testing.T) {
@@ -128,10 +197,11 @@ func TestNavigateAfterCloseIsIgnored(t *testing.T) {
 		Installer:  &fakeInstaller{},
 		Invalidate: func() { invalidated++ },
 		Startup:    func(Handler) Screen { return startup },
+		StubDialog: func(Handler) shell.Dialog { return &fakeDialog{} },
 	})
 	nav.Close()
 
-	nav.Navigate(Intent{Route: "child"})
+	nav.Navigate(StubDialog{})
 	if invalidated != 0 {
 		t.Fatalf("invalidate calls after Close = %d; want 0", invalidated)
 	}
