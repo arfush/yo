@@ -5,11 +5,13 @@ import (
 	"image/color"
 
 	"gioui.org/io/pointer"
+	"gioui.org/io/semantic"
 	"gioui.org/io/system"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
+	"gioui.org/unit"
 	"gioui.org/widget"
 
 	"github.com/arfush/yo/ui/appearance"
@@ -20,36 +22,43 @@ import (
 // Window sizes. The designed size is also the smallest usable size: the chrome
 // and the screens are verified at exactly this width and height.
 const (
-	InitialWidth  = 833
-	InitialHeight = 545
-	MinimumWidth  = InitialWidth
-	MinimumHeight = InitialHeight
+	InitialWidth  unit.Dp = 833
+	InitialHeight unit.Dp = 545
+	MinimumWidth          = InitialWidth
+	MinimumHeight         = InitialHeight
 )
 
 // Chrome geometry, in device-independent dp.
 const (
-	headerHeight    = 52
-	footerHeight    = 49
-	innerRadius     = 8
-	controlWidth    = 30
-	controlGap      = 12
-	controlIconSize = 24
-	closeIconSize   = 28
-	controlsInset   = 12
-	logoInset       = 16
-	logoSize        = 22
-	labelGap        = 10
-	contentGap      = 14
-	badgeHeight     = 20
-	badgePaddingX   = 7
-	badgeGap        = 12
+	headerHeight    unit.Dp = 52
+	footerHeight    unit.Dp = 49
+	innerRadius     unit.Dp = 8
+	controlWidth    unit.Dp = 30
+	controlGap      unit.Dp = 12
+	controlIconSize unit.Dp = 24
+	closeIconSize   unit.Dp = 28
+	controlsInset   unit.Dp = 12
+	logoInset       unit.Dp = 16
+	logoSize        unit.Dp = 22
+	labelGap        unit.Dp = 10
+	contentGap      unit.Dp = 14
+	badgeHeight     unit.Dp = 20
+	badgePaddingX   unit.Dp = 7
+	badgeGap        unit.Dp = 12
+)
+
+// Window-control accessibility labels.
+const (
+	labelMinimize   resource.TextKey = "window.minimize"
+	labelMaximize   resource.TextKey = "window.maximize"
+	labelUnmaximize resource.TextKey = "window.unmaximize"
+	labelClose      resource.TextKey = "window.close"
 )
 
 // geometry holds every chrome measurement converted to pixels for the current
 // frame.
 type geometry struct {
-	size  image.Point
-	scale float32
+	size image.Point
 
 	border         int
 	inner          image.Rectangle
@@ -73,15 +82,16 @@ type controlGeometry struct {
 	minimize, maximize, close image.Rectangle
 }
 
-func (g geometry) px(v float32) int {
-	return int(float32(v) * g.scale)
-}
-
-func (g geometry) leastPx(v float32) int {
-	if n := g.px(v); n > 0 {
-		return n
-	}
-	return 1
+// windowControl groups one window-control hitbox with its icon and look.
+type windowControl struct {
+	bounds   image.Rectangle
+	click    *widget.Clickable
+	icon     *widget.Icon
+	action   system.Action
+	iconSize unit.Dp
+	normal   color.NRGBA
+	hover    color.NRGBA
+	label    resource.TextKey
 }
 
 // contentRect returns the drawable area between the header and the footer. It
@@ -102,40 +112,37 @@ func (g geometry) footerRect() image.Rectangle {
 }
 
 // newGeometry converts the chrome measurements for the current frame.
-func newGeometry(gtx layout.Context, maximized bool) geometry {
+func (s *Shell) newGeometry(gtx layout.Context) geometry {
 	size := gtx.Constraints.Max
-	scale := gtx.Metric.PxPerDp
-	if scale <= 0 {
-		scale = 1
-	}
+	line := max(1, gtx.Dp(1))
 
-	g := geometry{size: size, scale: scale}
-	g.border = g.leastPx(1)
+	g := geometry{size: size}
+	g.border = line
 	if size.X > 2*g.border && size.Y > 2*g.border {
 		g.inner = image.Rect(g.border, g.border, size.X-g.border, size.Y-g.border)
 	}
 
-	g.headerDivider = g.border + g.px(headerHeight-1)
-	g.contentTop = g.headerDivider + g.leastPx(1)
-	g.footerBottom = size.Y - g.border - g.leastPx(1)
-	g.footerTop = g.footerBottom - g.px(footerHeight)
-	g.footerDivider = g.footerTop - g.leastPx(1)
+	g.headerDivider = g.border + gtx.Dp(headerHeight-1)
+	g.contentTop = g.headerDivider + line
+	g.footerBottom = size.Y - g.border - line
+	g.footerTop = g.footerBottom - gtx.Dp(footerHeight)
+	g.footerDivider = g.footerTop - line
 	g.contentBottom = g.footerDivider
 	g.stripTop = g.footerBottom
 	g.headerClickEnd = g.headerDivider
-	if !maximized {
-		g.cornerRadius = g.px(innerRadius)
+	if !s.maximized {
+		g.cornerRadius = gtx.Dp(innerRadius)
 	}
 	g.headerCenterY = (g.border + g.headerDivider) / 2
 
-	logo := g.px(logoSize)
+	logo := gtx.Dp(logoSize)
 	logoTop := g.headerCenterY - logo/2
-	g.logo = rect(g.px(logoInset), logoTop, g.px(logoInset)+logo, logoTop+logo)
-	g.titleX = g.logo.Max.X + g.px(labelGap)
+	g.logo = rect(gtx.Dp(logoInset), logoTop, gtx.Dp(logoInset)+logo, logoTop+logo)
+	g.titleX = g.logo.Max.X + gtx.Dp(labelGap)
 
-	right := size.X - g.border - g.px(controlsInset)
-	width := g.px(controlWidth)
-	gap := g.px(controlGap)
+	right := size.X - g.border - gtx.Dp(controlsInset)
+	width := gtx.Dp(controlWidth)
+	gap := gtx.Dp(controlGap)
 	g.controls.close = rect(right-width, 0, right, g.headerClickEnd)
 	g.controls.maximize = g.controls.close.Add(image.Pt(-(width + gap), 0))
 	g.controls.minimize = g.controls.maximize.Add(image.Pt(-(width + gap), 0))
@@ -155,19 +162,42 @@ func (s *Shell) layoutHeader(gtx layout.Context, g geometry) {
 	palette := s.appearance.Palette()
 	maximizeIcon := s.icon(resource.IconMaximize)
 	maximizeAction := system.ActionMaximize
+	maximizeLabel := labelMaximize
 	if s.maximized {
 		maximizeIcon = s.icon(resource.IconUnmaximize)
 		maximizeAction = system.ActionUnmaximize
+		maximizeLabel = labelUnmaximize
 	}
-	s.layoutControl(gtx, g, g.controls.minimize, &s.minimize,
-		s.icon(resource.IconMinimize), system.ActionMinimize, controlIconSize,
-		palette.TextMuted, palette.Text)
-	s.layoutControl(gtx, g, g.controls.maximize, &s.maximize,
-		maximizeIcon, maximizeAction, controlIconSize,
-		palette.TextMuted, palette.Text)
-	s.layoutControl(gtx, g, g.controls.close, &s.close,
-		s.icon(resource.IconClose), system.ActionClose, closeIconSize,
-		palette.TextMuted, palette.Danger)
+	common := windowControl{
+		iconSize: controlIconSize,
+		normal:   palette.TextMuted,
+		hover:    palette.Text,
+	}
+	minimize := common
+	minimize.bounds = g.controls.minimize
+	minimize.click = &s.minimize
+	minimize.icon = s.icon(resource.IconMinimize)
+	minimize.action = system.ActionMinimize
+	minimize.label = labelMinimize
+	s.layoutControl(gtx, minimize)
+
+	maximize := common
+	maximize.bounds = g.controls.maximize
+	maximize.click = &s.maximize
+	maximize.icon = maximizeIcon
+	maximize.action = maximizeAction
+	maximize.label = maximizeLabel
+	s.layoutControl(gtx, maximize)
+
+	closeControl := common
+	closeControl.bounds = g.controls.close
+	closeControl.click = &s.close
+	closeControl.icon = s.icon(resource.IconClose)
+	closeControl.action = system.ActionClose
+	closeControl.iconSize = closeIconSize
+	closeControl.hover = palette.Danger
+	closeControl.label = labelClose
+	s.layoutControl(gtx, closeControl)
 }
 
 // layoutBrand paints the torii mark, the active title and the version badge.
@@ -179,7 +209,7 @@ func (s *Shell) layoutBrand(gtx layout.Context, g geometry) {
 	}
 	drawIcon(gtx, s.icon(resource.IconTorii), g.logo, palette.Accent)
 
-	maxWidth := max(1, g.controls.minimize.Min.X-g.titleX-contentGap)
+	maxWidth := max(1, g.controls.minimize.Min.X-g.titleX-gtx.Dp(contentGap))
 	titleGtx := gtx
 	titleGtx.Constraints = layout.Constraints{Max: image.Pt(maxWidth, g.headerClickEnd)}
 	macro := op.Record(gtx.Ops)
@@ -190,7 +220,7 @@ func (s *Shell) layoutBrand(gtx layout.Context, g geometry) {
 	stack.Pop()
 
 	if s.version != "" {
-		s.layoutBadge(gtx, g, g.titleX+dims.Size.X+badgeGap)
+		s.layoutBadge(gtx, g, g.titleX+dims.Size.X+gtx.Dp(badgeGap))
 	}
 }
 
@@ -206,48 +236,52 @@ func (s *Shell) layoutBadge(gtx layout.Context, g geometry, left int) {
 	dims := kit.Text(textGtx, typo, appearance.RoleCaption, s.version, palette.TextMuted)
 	call := macro.Stop()
 
-	width := dims.Size.X + 2*g.px(badgePaddingX)
-	height := g.px(badgeHeight)
+	width := dims.Size.X + 2*gtx.Dp(badgePaddingX)
+	height := gtx.Dp(badgeHeight)
 	pill := rect(left, g.headerCenterY-height/2, left+width, g.headerCenterY+height/2)
-	if pill.Empty() || pill.Max.X > g.controls.minimize.Min.X-contentGap {
+	if pill.Empty() || pill.Max.X > g.controls.minimize.Min.X-gtx.Dp(contentGap) {
 		return
 	}
 	fillRounded(gtx, palette.SurfaceAlt, pill, height/2)
-	stack := op.Offset(image.Pt(left+g.px(badgePaddingX), g.headerCenterY-dims.Size.Y/2)).Push(gtx.Ops)
+	stack := op.Offset(image.Pt(left+gtx.Dp(badgePaddingX), g.headerCenterY-dims.Size.Y/2)).Push(gtx.Ops)
 	call.Add(gtx.Ops)
 	stack.Pop()
 }
 
-// layoutControl registers one window-control hitbox and paints its icon.
-func (s *Shell) layoutControl(gtx layout.Context, g geometry, bounds image.Rectangle,
-	click *widget.Clickable, icon *widget.Icon, action system.Action,
-	iconSize float32, normal, hover color.NRGBA) {
-	if bounds.Empty() {
+// layoutControl registers one window-control hitbox, its accessibility label
+// and paints its icon.
+func (s *Shell) layoutControl(gtx layout.Context, c windowControl) {
+	if c.bounds.Empty() {
 		return
 	}
-	clicked := click.Clicked(gtx)
-	hovered := click.Hovered()
+	clicked := c.click.Clicked(gtx)
+	hovered := c.click.Hovered()
 
-	stack := op.Offset(bounds.Min).Push(gtx.Ops)
+	stack := op.Offset(c.bounds.Min).Push(gtx.Ops)
 	defer stack.Pop()
 	controlGtx := gtx
-	controlGtx.Constraints = layout.Exact(bounds.Size())
-	click.Layout(controlGtx, func(gtx layout.Context) layout.Dimensions {
+	controlGtx.Constraints = layout.Exact(c.bounds.Size())
+	clipStack := clip.Rect(image.Rectangle{Max: c.bounds.Size()}).Push(gtx.Ops)
+	defer clipStack.Pop()
+	label := s.appearance.Locale().Text(c.label)
+	c.click.Layout(controlGtx, func(gtx layout.Context) layout.Dimensions {
 		pointer.CursorPointer.Add(gtx.Ops)
-		col := normal
+		semantic.Button.Add(gtx.Ops)
+		semantic.DescriptionOp(label).Add(gtx.Ops)
+		col := c.normal
 		if hovered {
-			col = hover
+			col = c.hover
 		}
-		size := min(g.px(iconSize), min(bounds.Dx(), bounds.Dy()))
+		size := min(gtx.Dp(c.iconSize), min(c.bounds.Dx(), c.bounds.Dy()))
 		iconRect := image.Rect(0, 0, size, size).Add(image.Pt(
-			(bounds.Dx()-size)/2,
-			(bounds.Dy()-size)/2,
+			(c.bounds.Dx()-size)/2,
+			(c.bounds.Dy()-size)/2,
 		))
-		drawIcon(gtx, icon, iconRect, col)
-		return layout.Dimensions{Size: bounds.Size()}
+		drawIcon(gtx, c.icon, iconRect, col)
+		return layout.Dimensions{Size: c.bounds.Size()}
 	})
 	if clicked && s.window != nil {
-		s.window.Perform(action)
+		s.window.Perform(c.action)
 	}
 }
 

@@ -1,4 +1,8 @@
 {
+  "window.minimize": "Свернуть",
+  "window.maximize": "Развернуть",
+  "window.unmaximize": "Восстановить",
+  "window.close": "Закрыть",
   "format.group": "\u00a0",
   "format.decimal": ",",
   "format.percent": "%s\u00a0%%",

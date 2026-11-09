@@ -1,4 +1,8 @@
 {
+  "window.minimize": "Minimize",
+  "window.maximize": "Maximize",
+  "window.unmaximize": "Restore",
+  "window.close": "Close",
   "format.group": ",",
   "format.decimal": ".",
   "format.percent": "%s%%",
