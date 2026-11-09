@@ -1,6 +1,10 @@
 package appearance
 
-import "image/color"
+import (
+	"image/color"
+
+	"github.com/arfush/yo/catalog"
+)
 
 // Palette is the semantic color set of the application. Screens must use these
 // tokens instead of raw colors.
@@ -54,8 +58,88 @@ type MascotGlitch struct {
 	Magenta color.NRGBA
 }
 
-// newPalette builds the neutral palette from the reference sources. Site
-// palettes and the catalog do not exist yet, so this is the base look.
+// accents is the part of a palette a site overrides on top of the neutral base.
+type accents struct {
+	accent      color.NRGBA
+	accentMuted color.NRGBA
+	focus       color.NRGBA
+	selection   color.NRGBA
+	mascot      MascotColors
+}
+
+// siteAccents maps every catalog site to the colors that carry its identity.
+// The map is explicit so adding a site without a palette is a startup error.
+var siteAccents = map[catalog.Site]accents{
+	catalog.SiteYoanime: {
+		accent:      color.NRGBA{R: 0x8b, G: 0x5c, B: 0xf6, A: 0xff},
+		accentMuted: color.NRGBA{R: 0x6d, G: 0x28, B: 0xd9, A: 0xff},
+		focus:       color.NRGBA{R: 0x8b, G: 0x5c, B: 0xf6, A: 0xff},
+		selection:   color.NRGBA{R: 0x6d, G: 0x28, B: 0xd9, A: 0x66},
+		mascot: MascotColors{
+			Hair:       color.NRGBA{R: 0x8b, G: 0x5c, B: 0xf6, A: 0xff},
+			HairShadow: color.NRGBA{R: 0x6d, G: 0x28, B: 0xd9, A: 0xff},
+			HairLight:  color.NRGBA{R: 0x96, G: 0x83, B: 0xe7, A: 0xff},
+			Face:       color.NRGBA{R: 0xe7, G: 0xe0, B: 0xf9, A: 0xff},
+			EarInner:   color.NRGBA{R: 0xd2, G: 0xc2, B: 0xf8, A: 0xff},
+			Paw:        color.NRGBA{R: 0xe1, G: 0xd7, B: 0xf9, A: 0xff},
+			Blush:      color.NRGBA{R: 0xf0, G: 0xa8, B: 0xcf, A: 0xa0},
+			Dress:      color.NRGBA{R: 0x6d, G: 0x28, B: 0xd9, A: 0xff},
+			DressLight: color.NRGBA{R: 0x96, G: 0x83, B: 0xe7, A: 0xff},
+		},
+	},
+	catalog.SiteYomanga: {
+		accent:      color.NRGBA{R: 0xf0, G: 0x8a, B: 0x2c, A: 0xff},
+		accentMuted: color.NRGBA{R: 0xd4, G: 0x5f, B: 0x12, A: 0xff},
+		focus:       color.NRGBA{R: 0xf0, G: 0x8a, B: 0x2c, A: 0xff},
+		selection:   color.NRGBA{R: 0xd4, G: 0x5f, B: 0x12, A: 0x66},
+		mascot: MascotColors{
+			Hair:       color.NRGBA{R: 0xf0, G: 0x8a, B: 0x2c, A: 0xff},
+			HairShadow: color.NRGBA{R: 0xd4, G: 0x5f, B: 0x12, A: 0xff},
+			HairLight:  color.NRGBA{R: 0xf5, G: 0xa4, B: 0x5a, A: 0xff},
+			Face:       color.NRGBA{R: 0xf3, G: 0xe5, B: 0xe1, A: 0xff},
+			EarInner:   color.NRGBA{R: 0xf2, G: 0xd0, B: 0xb8, A: 0xff},
+			Paw:        color.NRGBA{R: 0xf3, G: 0xdf, B: 0xd4, A: 0xff},
+			Blush:      color.NRGBA{R: 0xf0, G: 0xa8, B: 0xcf, A: 0xa0},
+			Dress:      color.NRGBA{R: 0xd4, G: 0x5f, B: 0x12, A: 0xff},
+			DressLight: color.NRGBA{R: 0xf5, G: 0xa4, B: 0x5a, A: 0xff},
+		},
+	},
+	catalog.SiteYoranobe: {
+		accent:      color.NRGBA{R: 0x4c, G: 0x8d, B: 0xf6, A: 0xff},
+		accentMuted: color.NRGBA{R: 0x25, G: 0x63, B: 0xeb, A: 0xff},
+		focus:       color.NRGBA{R: 0x4c, G: 0x8d, B: 0xf6, A: 0xff},
+		selection:   color.NRGBA{R: 0x25, G: 0x63, B: 0xeb, A: 0x66},
+		mascot: MascotColors{
+			Hair:       color.NRGBA{R: 0x4c, G: 0x8d, B: 0xf6, A: 0xff},
+			HairShadow: color.NRGBA{R: 0x25, G: 0x63, B: 0xeb, A: 0xff},
+			HairLight:  color.NRGBA{R: 0x7b, G: 0xa6, B: 0xf9, A: 0xff},
+			Face:       color.NRGBA{R: 0xdf, G: 0xe5, B: 0xf9, A: 0xff},
+			EarInner:   color.NRGBA{R: 0xbe, G: 0xd1, B: 0xf8, A: 0xff},
+			Paw:        color.NRGBA{R: 0xd5, G: 0xdf, B: 0xf9, A: 0xff},
+			Blush:      color.NRGBA{R: 0xf0, G: 0xa8, B: 0xcf, A: 0xa0},
+			Dress:      color.NRGBA{R: 0x25, G: 0x63, B: 0xeb, A: 0xff},
+			DressLight: color.NRGBA{R: 0x7b, G: 0xa6, B: 0xf9, A: 0xff},
+		},
+	},
+}
+
+// PaletteFor returns the palette of site. A zero or unknown site is a
+// programmer error and panics instead of silently keeping the neutral base.
+func PaletteFor(site catalog.Site) Palette {
+	a, ok := siteAccents[site]
+	if !ok {
+		panic("appearance: unknown site \"" + string(site) + "\"")
+	}
+	p := newPalette()
+	p.Accent = a.accent
+	p.AccentMuted = a.accentMuted
+	p.Focus = a.focus
+	p.Selection = a.selection
+	p.Mascot.Normal = a.mascot
+	return p
+}
+
+// newPalette builds the neutral palette that every site palette extends.
 func newPalette() Palette {
 	return Palette{
 		Canvas:      color.NRGBA{R: 0x0d, G: 0x0e, B: 0x14, A: 0xff},

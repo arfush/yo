@@ -41,6 +41,19 @@ func (a Appearance) Typography() Typography { return a.typography }
 // Locale returns the active language, strings and formatting.
 func (a Appearance) Locale() Locale { return a.locale }
 
+// SetPalette replaces the active color set in place. The shell calls it inside
+// stdx.Holder.Update when the active site changes. A zero palette is a
+// programmer error and panics.
+func (a *Appearance) SetPalette(p Palette) {
+	if a == nil {
+		panic("appearance: nil appearance")
+	}
+	if p == (Palette{}) {
+		panic("appearance: empty palette")
+	}
+	a.palette = p
+}
+
 // SetLanguage replaces the active locale in place. It is for the composition
 // root, which calls it inside stdx.Holder.Update. It panics on an empty or
 // unknown code.

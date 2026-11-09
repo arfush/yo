@@ -6,6 +6,7 @@ import (
 	"gioui.org/font"
 	"gioui.org/unit"
 
+	"github.com/arfush/yo/catalog"
 	"github.com/arfush/yo/ui/appearance"
 	"github.com/arfush/yo/ui/resource"
 )
@@ -40,6 +41,41 @@ func TestSetLanguage(t *testing.T) {
 	if got := app.Locale().Tag().String(); got != "en" {
 		t.Fatalf("Locale().Tag() = %q; want en", got)
 	}
+}
+
+func TestPaletteFor(t *testing.T) {
+	t.Parallel()
+
+	base := appearance.PaletteFor(catalog.SiteYoanime)
+	if base == (appearance.Palette{}) {
+		t.Fatal("PaletteFor(yoanime) returned the zero palette")
+	}
+	seen := []appearance.Palette{base}
+	for _, site := range catalog.Sites()[1:] {
+		p := appearance.PaletteFor(site)
+		for _, prev := range seen {
+			if p.Accent == prev.Accent {
+				t.Fatalf("PaletteFor(%q) reuses an accent", site)
+			}
+		}
+		seen = append(seen, p)
+	}
+	assertPanics(t, func() { appearance.PaletteFor(catalog.Site("unknown")) })
+}
+
+func TestSetPalette(t *testing.T) {
+	t.Parallel()
+
+	app := appearance.New(appearance.Options{Resources: resource.New(), Language: "ru"})
+	want := appearance.PaletteFor(catalog.SiteYomanga)
+	app.SetPalette(want)
+	if got := app.Palette(); got != want {
+		t.Fatal("SetPalette did not replace the palette")
+	}
+
+	var nilApp *appearance.Appearance
+	assertPanics(t, func() { nilApp.SetPalette(want) })
+	assertPanics(t, func() { app.SetPalette(appearance.Palette{}) })
 }
 
 func TestTypographyRoles(t *testing.T) {
