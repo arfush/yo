@@ -119,7 +119,7 @@ func (r *root) initLog() {
 	case openErr != nil:
 		r.logger.Warn("journal file disabled", "error", openErr)
 	default:
-		r.logger.Info("journal opened")
+		r.logger.Info("journal opened", "path", path)
 	}
 }
 
