@@ -81,8 +81,10 @@ func NewDependencyInstallation(
 	}
 }
 
-// Layout centers the card in the dialog body.
+// Layout centers the card in the dialog body. Clicks are polled before the
+// buttons are laid out: laying a Clickable out consumes its pointer events.
 func (d *DependencyInstallation) Layout(gtx layout.Context) {
+	d.handleClicks(gtx)
 	app := d.app.Value()
 	gtx.Locale = system.Locale{Language: app.Locale().Tag().String()}
 	layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
@@ -118,7 +120,6 @@ func (d *DependencyInstallation) layoutCard(gtx layout.Context, app appearance.A
 	call.Add(gtx.Ops)
 	offset.Pop()
 
-	d.handleClicks(gtx)
 	return layout.Dimensions{Size: image.Pt(width, height)}
 }
 
@@ -192,8 +193,8 @@ func (d *DependencyInstallation) layoutActions(
 	)
 }
 
-// handleClicks turns button presses into navigation. It runs after the body is
-// laid out, so the clickables have already received their pointer events.
+// handleClicks turns button presses into navigation. It runs before the body is
+// laid out so the clickables still hold this frame's pointer events.
 func (d *DependencyInstallation) handleClicks(gtx layout.Context) {
 	if d.showLater && d.later.Click.Clicked(gtx) {
 		d.handler.Navigate(navigator.Back{})
