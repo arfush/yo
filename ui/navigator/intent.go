@@ -14,3 +14,7 @@ type Handler interface {
 
 // Back closes the top dialog or returns to the previous screen.
 type Back struct{}
+
+// DependencyInstallation opens the dialog that asks for a missing external
+// component. The dialog is built by the factory supplied in Options.
+type DependencyInstallation struct{}

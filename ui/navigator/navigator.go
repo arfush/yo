@@ -19,10 +19,11 @@ type Installer interface {
 // required; future screens and dialogs add their own factories here. A nil
 // logger discards navigation logs.
 type Options struct {
-	Installer  Installer
-	Invalidate func()
-	Startup    func() Screen
-	Logger     *slog.Logger
+	Installer              Installer
+	Invalidate             func()
+	Startup                func() Screen
+	DependencyInstallation DependencyInstallationFactory
+	Logger                 *slog.Logger
 }
 
 var _ Handler = (*Navigator)(nil)
@@ -30,14 +31,15 @@ var _ Handler = (*Navigator)(nil)
 // Navigator owns the ordered screen and dialog stacks. It builds screens only
 // through the factories supplied in Options and never draws them.
 type Navigator struct {
-	installer  Installer
-	invalidate func()
-	logger     *slog.Logger
-	entries    []Screen
-	dialogs    []shell.Dialog
-	pending    []Intent
-	active     bool
-	closed     bool
+	installer              Installer
+	invalidate             func()
+	logger                 *slog.Logger
+	dependencyInstallation DependencyInstallationFactory
+	entries                []Screen
+	dialogs                []shell.Dialog
+	pending                []Intent
+	active                 bool
+	closed                 bool
 }
 
 // New builds the navigator, creates the startup screen and installs it. The
@@ -53,9 +55,10 @@ func New(opts Options) *Navigator {
 		panic("navigator: nil startup factory")
 	}
 	n := &Navigator{
-		installer:  opts.Installer,
-		invalidate: opts.Invalidate,
-		logger:     opts.Logger,
+		installer:              opts.Installer,
+		invalidate:             opts.Invalidate,
+		logger:                 opts.Logger,
+		dependencyInstallation: opts.DependencyInstallation,
 	}
 	if n.logger == nil {
 		n.logger = slog.New(slog.DiscardHandler)
@@ -127,6 +130,8 @@ func (n *Navigator) apply(intent Intent) {
 	switch intent.(type) {
 	case Back:
 		n.back()
+	case DependencyInstallation:
+		n.openDependencyInstallation()
 	default:
 		panic(fmt.Sprintf("navigator: unknown intent %T", intent))
 	}
@@ -169,6 +174,15 @@ func (n *Navigator) back() {
 	n.install(next)
 	next.OnShown()
 	n.logger.Debug("screen popped", "screen", top.Title())
+}
+
+// openDependencyInstallation builds and shows the dependency installation
+// dialog. A missing factory is a composition error and panics.
+func (n *Navigator) openDependencyInstallation() {
+	if n.dependencyInstallation == nil {
+		panic("navigator: nil dependency installation factory")
+	}
+	n.openDialog(n.dependencyInstallation())
 }
 
 // openDialog pushes a dialog above the active screen.

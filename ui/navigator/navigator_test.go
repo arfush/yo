@@ -91,6 +91,37 @@ func TestBackAtRootDoesNothing(t *testing.T) {
 	}
 }
 
+func TestDependencyInstallationOpensOverStartupAndBackCloses(t *testing.T) {
+	startup := &fakeScreen{ScreenBase: navigator.ScreenBase{ScreenTitle: "start"}}
+	dialog := &fakeDialog{}
+	installer := &fakeInstaller{}
+	nav := navigator.New(navigator.Options{
+		Installer:              installer,
+		Invalidate:             func() {},
+		Startup:                func() navigator.Screen { return startup },
+		DependencyInstallation: func() shell.Dialog { return dialog },
+	})
+	nav.Apply()
+
+	nav.Navigate(navigator.DependencyInstallation{})
+	nav.Apply()
+	if installer.dialog != dialog {
+		t.Fatal("DependencyInstallation did not install the dialog")
+	}
+	if installer.screen != startup {
+		t.Fatal("DependencyInstallation replaced the screen under the dialog")
+	}
+
+	nav.Navigate(navigator.Back{})
+	nav.Apply()
+	if installer.dialog != nil {
+		t.Fatal("Back did not close the dialog")
+	}
+	if installer.screen != startup || startup.hidden != 0 || startup.closed != 0 {
+		t.Fatal("Back closed the screen under the dialog")
+	}
+}
+
 func TestCloseClosesScreens(t *testing.T) {
 	nav, startup, _, installer := testNavigator(t)
 	nav.Apply()
