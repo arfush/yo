@@ -26,7 +26,6 @@ const (
 
 	dependencyShadowLayers       = 12
 	dependencyShadowAlpha  uint8 = 8
-	dependencyIconTint     uint8 = 0x40
 )
 
 // DependencyOptions configures the dependency installation dialog. Resource and
@@ -146,16 +145,13 @@ func (d *DependencyInstallation) layoutBody(gtx layout.Context, app appearance.A
 	)
 }
 
-// layoutIcon paints the download tile: a tinted edge, the alternative surface
-// and the glyph in the site accent.
+// layoutIcon paints the download tile: the badge surface and the glyph in the
+// site accent.
 func (d *DependencyInstallation) layoutIcon(gtx layout.Context, palette appearance.Palette) layout.Dimensions {
 	size := gtx.Dp(dependencyIconTile)
 	bounds := image.Rect(0, 0, size, size)
 	radius := gtx.Dp(dependencyIconRadius)
-	line := max(1, gtx.Dp(appearance.Hairline))
-	tint := kit.WithAlpha(palette.AccentMuted, dependencyIconTint)
-	kit.FillRounded(gtx, tint, bounds, radius)
-	kit.FillRounded(gtx, palette.SurfaceAlt, bounds.Inset(line), max(0, radius-line))
+	kit.FillRounded(gtx, palette.Badge, bounds, radius)
 
 	glyph := gtx.Dp(dependencyIconSize)
 	at := image.Pt((size-glyph)/2, (size-glyph)/2)
@@ -175,6 +171,7 @@ func (d *DependencyInstallation) layoutActions(
 	palette appearance.Palette,
 ) layout.Dimensions {
 	d.download.Label = d.app.Value().Locale().Text(resource.TextDependencyDownload)
+	d.download.Icon = d.resource.Icon(resource.IconDownload)
 	if !d.showLater {
 		return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
 			layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
@@ -185,7 +182,7 @@ func (d *DependencyInstallation) layoutActions(
 
 	d.later.Label = d.app.Value().Locale().Text(resource.TextDependencyLater)
 	return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
-		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return d.later.LayoutNeutral(gtx, typo)
 		}),
 		layout.Rigid(layout.Spacer{Width: appearance.SpaceS}.Layout),
@@ -213,7 +210,7 @@ func (d *DependencyInstallation) drawCard(gtx layout.Context, palette appearance
 	d.drawShadow(gtx, palette, bounds, radius)
 	line := max(1, gtx.Dp(appearance.Hairline))
 	kit.FillRounded(gtx, palette.Border, bounds, radius)
-	kit.FillRounded(gtx, palette.Surface, bounds.Inset(line), max(0, radius-line))
+	kit.FillRounded(gtx, palette.SurfaceAlt, bounds.Inset(line), max(0, radius-line))
 }
 
 // drawShadow stacks translucent rounded layers around the card. More layers
