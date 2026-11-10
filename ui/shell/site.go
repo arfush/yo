@@ -57,7 +57,7 @@ func (m *siteMenu) toggle(anchor image.Rectangle) {
 
 // siteSwitchable reports whether the header can open the site switcher.
 func (s *Shell) siteSwitchable() bool {
-	return !s.frozen && s.dialog == nil && len(catalog.Sites()) > 1
+	return !s.frozen && len(catalog.Sites()) > 1
 }
 
 // layoutSiteTrigger registers the click target of the site block.
