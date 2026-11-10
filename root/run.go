@@ -32,6 +32,7 @@ func Run() {
 	r.initWindowOptions()
 	r.initShell()
 	r.initNavigator()
+	r.syncAppIcon()
 
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
@@ -64,7 +65,19 @@ func Run() {
 		case event.Event:
 			r.platformWindow.HandleViewEvent(e, r.appearance.Value().Palette().Border)
 		}
+		r.syncAppIcon()
 	}
+}
+
+// syncAppIcon applies the application icon of the active palette when it
+// changes. The platform keeps the bytes until the native window exists.
+func (r *root) syncAppIcon() {
+	key := r.appearance.Value().AppIcon()
+	if key == r.iconKey {
+		return
+	}
+	r.iconKey = key
+	r.platformWindow.SetIcon(r.resource.AppIconICO(key))
 }
 
 // applyConfig forwards the window configuration to the shell. Resizes arrive as
@@ -109,7 +122,10 @@ func (r *root) showPanic(v any) {
 			r.logger.Error("panic screen failed", "type", fmt.Sprintf("%T", again), "stack", string(debug.Stack()))
 		}
 	}()
-	r.appearance.Update(func(a *appearance.Appearance) { a.SetPalette(appearance.BasePalette()) })
+	r.appearance.Update(func(a *appearance.Appearance) {
+		a.SetPalette(appearance.BasePalette())
+		a.SetAppIcon(resource.AppIconYobase)
+	})
 	r.shell.Freeze()
 	r.shell.SetDialog(nil)
 	app := r.appearance.Value()

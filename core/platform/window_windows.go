@@ -3,7 +3,13 @@
 package platform
 
 import (
+	"bytes"
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"image"
 	"image/color"
+	"image/png"
 	"log/slog"
 	"sync/atomic"
 	"time"
@@ -23,6 +29,10 @@ const (
 
 	vkLeftButton = 0x01
 
+	wmSetIcon = 0x0080
+	iconSmall = 0
+	iconBig   = 1
+
 	// heldFrameInterval matches the mascot's animation clock.
 	heldFrameInterval = time.Second / 60
 )
@@ -35,9 +45,17 @@ type Window struct {
 	handle atomic.Uintptr
 	cancel chan struct{}
 
-	procGetAsyncKeyState *windows.LazyProc
-	procInvalidateRect   *windows.LazyProc
-	procIsWindow         *windows.LazyProc
+	icon      []byte
+	iconSmall windows.Handle
+	iconBig   windows.Handle
+	stale     []windows.Handle
+
+	procCreateIconFromResourceEx *windows.LazyProc
+	procDestroyIcon              *windows.LazyProc
+	procGetAsyncKeyState         *windows.LazyProc
+	procInvalidateRect           *windows.LazyProc
+	procIsWindow                 *windows.LazyProc
+	procPostMessageW             *windows.LazyProc
 }
 
 // NewWindow builds the native frame for one application window. A nil logger
@@ -48,10 +66,13 @@ func NewWindow(logger *slog.Logger) *Window {
 	}
 	user32 := windows.NewLazySystemDLL("user32.dll")
 	return &Window{
-		logger:               logger,
-		procGetAsyncKeyState: user32.NewProc("GetAsyncKeyState"),
-		procInvalidateRect:   user32.NewProc("InvalidateRect"),
-		procIsWindow:         user32.NewProc("IsWindow"),
+		logger:                       logger,
+		procCreateIconFromResourceEx: user32.NewProc("CreateIconFromResourceEx"),
+		procDestroyIcon:              user32.NewProc("DestroyIcon"),
+		procGetAsyncKeyState:         user32.NewProc("GetAsyncKeyState"),
+		procInvalidateRect:           user32.NewProc("InvalidateRect"),
+		procIsWindow:                 user32.NewProc("IsWindow"),
+		procPostMessageW:             user32.NewProc("PostMessageW"),
 	}
 }
 
@@ -66,11 +87,174 @@ func (w *Window) HandleViewEvent(e event.Event, border color.NRGBA) {
 	hwnd := windows.HWND(view.HWND)
 	if previous := w.handle.Swap(view.HWND); previous != view.HWND {
 		w.logger.Debug("window handle ready", "hwnd", view.HWND)
+		w.applyIcon(hwnd)
 		w.startHeldRepaint(hwnd)
 	}
 	w.setIntAttribute(hwnd, dwmwaUseImmersiveDarkMode, 1)
 	w.setIntAttribute(hwnd, dwmwaWindowCornerPreference, dwmwcpRound)
 	w.setColorAttribute(hwnd, dwmwaBorderColor, border)
+}
+
+// SetIcon stores the ICO bytes and applies them to the window. Before Gio
+// reports the HWND the bytes wait for HandleViewEvent.
+func (w *Window) SetIcon(ico []byte) {
+	w.icon = append(w.icon[:0], ico...)
+	if hwnd := windows.HWND(w.handle.Load()); hwnd != 0 {
+		w.applyIcon(hwnd)
+	}
+}
+
+// applyIcon replaces the small and big window icons with the 16x16 and 32x32
+// images of the stored ICO. A broken ICO is logged and leaves the old icon.
+func (w *Window) applyIcon(hwnd windows.HWND) {
+	if len(w.icon) == 0 {
+		return
+	}
+	smallDIB, bigDIB, err := iconDIBs(w.icon)
+	if err != nil {
+		w.logger.Warn("window icon decode failed", "error", err)
+		return
+	}
+	small, err := w.createIcon(smallDIB)
+	if err != nil {
+		w.logger.Warn("window small icon failed", "error", err)
+		return
+	}
+	big, err := w.createIcon(bigDIB)
+	if err != nil {
+		w.destroyIcon(small)
+		w.logger.Warn("window big icon failed", "error", err)
+		return
+	}
+	// Gio owns the window on its own locked OS thread, so a synchronous
+	// SendMessageW from the UI goroutine deadlocks: that thread is blocked
+	// handing the next event to the UI goroutine and cannot pump the queue.
+	// PostMessageW returns immediately and the window thread applies the icon.
+	//
+	// The previous pair may still be attached to the window until it drains
+	// the posted messages, so destroy it only on the next switch.
+	w.destroyIcons(w.stale)
+	w.stale = append(w.stale[:0], w.iconSmall, w.iconBig)
+	w.procPostMessageW.Call(uintptr(hwnd), wmSetIcon, iconSmall, uintptr(small))
+	w.procPostMessageW.Call(uintptr(hwnd), wmSetIcon, iconBig, uintptr(big))
+	w.iconSmall, w.iconBig = small, big
+}
+
+func (w *Window) createIcon(dib []byte) (windows.Handle, error) {
+	if len(dib) == 0 {
+		return 0, errors.New("empty icon bitmap")
+	}
+	result, _, callErr := w.procCreateIconFromResourceEx.Call(
+		uintptr(unsafe.Pointer(&dib[0])),
+		uintptr(len(dib)),
+		1, // fIcon
+		0x00030000,
+		0,
+		0,
+		0, // LR_DEFAULTCOLOR
+	)
+	if result == 0 {
+		if callErr == nil {
+			callErr = errors.New("unknown error")
+		}
+		return 0, fmt.Errorf("CreateIconFromResourceEx: %w", callErr)
+	}
+	return windows.Handle(result), nil
+}
+
+func (w *Window) destroyIcon(icon windows.Handle) {
+	if icon == 0 {
+		return
+	}
+	w.procDestroyIcon.Call(uintptr(icon))
+}
+
+func (w *Window) destroyIcons(icons []windows.Handle) {
+	for _, icon := range icons {
+		w.destroyIcon(icon)
+	}
+}
+
+// iconDIBs extracts the 16x16 and 32x32 PNG entries of an ICO and converts
+// them to icon bitmaps.
+func iconDIBs(ico []byte) (small, big []byte, err error) {
+	if len(ico) < 6 {
+		return nil, nil, errors.New("truncated ICO header")
+	}
+	if binary.LittleEndian.Uint16(ico[0:2]) != 0 || binary.LittleEndian.Uint16(ico[2:4]) != 1 {
+		return nil, nil, errors.New("invalid ICO header")
+	}
+	count := int(binary.LittleEndian.Uint16(ico[4:6]))
+	if count == 0 || len(ico) < 6+16*count {
+		return nil, nil, errors.New("invalid ICO directory")
+	}
+	for i := 0; i < count; i++ {
+		entry := ico[6+16*i:]
+		size := int(entry[0])
+		if size == 0 {
+			size = 256
+		}
+		if size != int(entry[1]) {
+			continue
+		}
+		bytesInRes := int(binary.LittleEndian.Uint32(entry[8:12]))
+		offset := int(binary.LittleEndian.Uint32(entry[12:16]))
+		if bytesInRes <= 0 || offset < 0 || offset+bytesInRes > len(ico) {
+			continue
+		}
+		if size != 16 && size != 32 {
+			continue
+		}
+		img, decodeErr := png.Decode(bytes.NewReader(ico[offset : offset+bytesInRes]))
+		if decodeErr != nil {
+			continue
+		}
+		dib, dibErr := dibFromImage(img)
+		if dibErr != nil {
+			continue
+		}
+		if size == 16 {
+			small = dib
+		} else {
+			big = dib
+		}
+	}
+	if len(small) == 0 || len(big) == 0 {
+		return nil, nil, errors.New("ICO has no 16x16 and 32x32 entries")
+	}
+	return small, big, nil
+}
+
+// dibFromImage builds a 32-bit icon bitmap: a BITMAPINFOHEADER, bottom-up BGRA
+// pixels and a zero AND mask. The alpha channel carries transparency.
+func dibFromImage(img image.Image) ([]byte, error) {
+	bounds := img.Bounds()
+	width, height := bounds.Dx(), bounds.Dy()
+	if width <= 0 || height <= 0 {
+		return nil, errors.New("empty icon image")
+	}
+	maskStride := ((width + 31) / 32) * 4
+	imageSize := width*height*4 + maskStride*height
+	const headerSize = 40
+	buf := make([]byte, headerSize+imageSize)
+	binary.LittleEndian.PutUint32(buf[0:4], headerSize)
+	binary.LittleEndian.PutUint32(buf[4:8], uint32(width))
+	binary.LittleEndian.PutUint32(buf[8:12], uint32(height*2))
+	binary.LittleEndian.PutUint16(buf[12:14], 1)
+	binary.LittleEndian.PutUint16(buf[14:16], 32)
+	binary.LittleEndian.PutUint32(buf[20:24], uint32(imageSize))
+	offset := headerSize
+	for y := height - 1; y >= 0; y-- {
+		for x := 0; x < width; x++ {
+			c := color.NRGBAModel.Convert(img.At(bounds.Min.X+x, bounds.Min.Y+y)).(color.NRGBA)
+			buf[offset+0] = c.B
+			buf[offset+1] = c.G
+			buf[offset+2] = c.R
+			buf[offset+3] = c.A
+			offset += 4
+		}
+	}
+	return buf, nil
 }
 
 // Close stops the repaint loop. It is idempotent and runs on the UI goroutine.

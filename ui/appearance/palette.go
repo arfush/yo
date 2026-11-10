@@ -4,6 +4,7 @@ import (
 	"image/color"
 
 	"github.com/arfush/yo/catalog"
+	"github.com/arfush/yo/ui/resource"
 )
 
 // Palette is the semantic color set of the application. Screens must use these
@@ -68,6 +69,7 @@ type MascotGlitch struct {
 
 // accents is the part of a palette a site overrides on top of the neutral base.
 type accents struct {
+	appIcon     resource.AppIconKey
 	accent      color.NRGBA
 	accentMuted color.NRGBA
 	badge       color.NRGBA
@@ -82,6 +84,7 @@ type accents struct {
 // The map is explicit so adding a site without a palette is a startup error.
 var siteAccents = map[catalog.Site]accents{
 	catalog.SiteYoanime: {
+		appIcon:     resource.AppIconYoanime,
 		accent:      color.NRGBA{R: 0x8b, G: 0x5c, B: 0xf6, A: 0xff},
 		accentMuted: color.NRGBA{R: 0x6d, G: 0x28, B: 0xd9, A: 0xff},
 		badge:       color.NRGBA{R: 0x29, G: 0x22, B: 0x3e, A: 0xff},
@@ -102,6 +105,7 @@ var siteAccents = map[catalog.Site]accents{
 		},
 	},
 	catalog.SiteYomanga: {
+		appIcon:     resource.AppIconYomanga,
 		accent:      color.NRGBA{R: 0xf0, G: 0x8a, B: 0x2c, A: 0xff},
 		accentMuted: color.NRGBA{R: 0xd4, G: 0x5f, B: 0x12, A: 0xff},
 		badge:       color.NRGBA{R: 0x38, G: 0x21, B: 0x17, A: 0xff},
@@ -122,6 +126,7 @@ var siteAccents = map[catalog.Site]accents{
 		},
 	},
 	catalog.SiteYoranobe: {
+		appIcon:     resource.AppIconYoranobe,
 		accent:      color.NRGBA{R: 0x4c, G: 0x8d, B: 0xf6, A: 0xff},
 		accentMuted: color.NRGBA{R: 0x25, G: 0x63, B: 0xeb, A: 0xff},
 		badge:       color.NRGBA{R: 0x17, G: 0x22, B: 0x3b, A: 0xff},
@@ -161,6 +166,17 @@ func PaletteFor(site catalog.Site) Palette {
 	p.ControlIconHover = mix(a.accent, p.Text, 0.55)
 	p.Mascot.Normal = a.mascot
 	return p
+}
+
+// AppIconFor returns the application icon that identifies site. A zero or
+// unknown site is a programmer error and panics instead of silently keeping the
+// neutral icon.
+func AppIconFor(site catalog.Site) resource.AppIconKey {
+	a, ok := siteAccents[site]
+	if !ok {
+		panic("appearance: unknown site \"" + string(site) + "\"")
+	}
+	return a.appIcon
 }
 
 // BasePalette returns the neutral yobase palette. The shell falls back to it

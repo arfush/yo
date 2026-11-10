@@ -19,6 +19,7 @@ func New(opts Options) Appearance {
 	return Appearance{
 		resource:   opts.Resource,
 		palette:    newPalette(),
+		appIcon:    resource.AppIconYobase,
 		typography: newTypography(opts.Resource),
 		locale:     newLocale(opts.Resource, opts.Language),
 	}
@@ -28,12 +29,16 @@ func New(opts Options) Appearance {
 type Appearance struct {
 	resource   *resource.Resource
 	palette    Palette
+	appIcon    resource.AppIconKey
 	typography Typography
 	locale     Locale
 }
 
 // Palette returns the semantic colors of the application.
 func (a Appearance) Palette() Palette { return a.palette }
+
+// AppIcon returns the application icon that matches the active palette.
+func (a Appearance) AppIcon() resource.AppIconKey { return a.appIcon }
 
 // Typography returns the text shaper and the role scale.
 func (a Appearance) Typography() Typography { return a.typography }
@@ -52,6 +57,19 @@ func (a *Appearance) SetPalette(p Palette) {
 		panic("appearance: empty palette")
 	}
 	a.palette = p
+}
+
+// SetAppIcon replaces the application icon in place. The shell sets it together
+// with the palette when the active site changes. An empty key is a programmer
+// error and panics.
+func (a *Appearance) SetAppIcon(key resource.AppIconKey) {
+	if a == nil {
+		panic("appearance: nil appearance")
+	}
+	if key == "" {
+		panic("appearance: empty app icon")
+	}
+	a.appIcon = key
 }
 
 // SetLanguage replaces the active locale in place. It is for the composition

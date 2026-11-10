@@ -18,5 +18,8 @@ func NewWindow(*slog.Logger) *Window { return &Window{} }
 // HandleViewEvent ignores every event.
 func (*Window) HandleViewEvent(event.Event, color.NRGBA) {}
 
+// SetIcon ignores the icon where the native frame is not managed by DWM.
+func (*Window) SetIcon([]byte) {}
+
 // Close does nothing.
 func (*Window) Close() {}

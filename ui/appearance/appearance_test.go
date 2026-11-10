@@ -90,6 +90,38 @@ func TestSetPalette(t *testing.T) {
 	assertPanics(t, func() { app.SetPalette(appearance.Palette{}) })
 }
 
+func TestAppIcon(t *testing.T) {
+	t.Parallel()
+
+	for site, want := range map[catalog.Site]resource.AppIconKey{
+		catalog.SiteYoanime:  resource.AppIconYoanime,
+		catalog.SiteYomanga:  resource.AppIconYomanga,
+		catalog.SiteYoranobe: resource.AppIconYoranobe,
+	} {
+		if got := appearance.AppIconFor(site); got != want {
+			t.Fatalf("AppIconFor(%q) = %q; want %q", site, got, want)
+		}
+	}
+	assertPanics(t, func() { appearance.AppIconFor(catalog.Site("unknown")) })
+}
+
+func TestSetAppIcon(t *testing.T) {
+	t.Parallel()
+
+	app := appearance.New(appearance.Options{Resource: resource.New(), Language: "ru"})
+	if got := app.AppIcon(); got != resource.AppIconYobase {
+		t.Fatalf("AppIcon() = %q; want %q", got, resource.AppIconYobase)
+	}
+	app.SetAppIcon(resource.AppIconYomanga)
+	if got := app.AppIcon(); got != resource.AppIconYomanga {
+		t.Fatalf("AppIcon() = %q; want %q", got, resource.AppIconYomanga)
+	}
+
+	var nilApp *appearance.Appearance
+	assertPanics(t, func() { nilApp.SetAppIcon(resource.AppIconYobase) })
+	assertPanics(t, func() { app.SetAppIcon("") })
+}
+
 func TestTypographyRoles(t *testing.T) {
 	t.Parallel()
 

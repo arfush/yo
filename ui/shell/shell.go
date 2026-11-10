@@ -142,16 +142,24 @@ func (s *Shell) syncPalette() {
 	s.applySitePalette(site)
 }
 
-// applySitePalette writes the site palette into the shared appearance and
-// records the site it belongs to.
+// applySitePalette writes the site palette and icon into the shared appearance
+// and records the site they belong to.
 func (s *Shell) applySitePalette(site catalog.Site) {
-	s.applyPalette(appearance.PaletteFor(site))
+	s.updateAppearance(appearance.PaletteFor(site), appearance.AppIconFor(site))
 	s.siteState = site
 }
 
-// applyPalette replaces the chrome palette without changing the active site.
+// applyPalette resets the chrome to a neutral palette and the base icon.
 func (s *Shell) applyPalette(palette appearance.Palette) {
-	s.appearance.Update(func(a *appearance.Appearance) { a.SetPalette(palette) })
+	s.updateAppearance(palette, resource.AppIconYobase)
+}
+
+// updateAppearance replaces the shared palette and application icon together.
+func (s *Shell) updateAppearance(palette appearance.Palette, icon resource.AppIconKey) {
+	s.appearance.Update(func(a *appearance.Appearance) {
+		a.SetPalette(palette)
+		a.SetAppIcon(icon)
+	})
 }
 
 // SetScreen replaces the content of the window. A nil screen is a programmer
