@@ -1,6 +1,6 @@
 module github.com/arfush/yo
 
-go 1.24.5
+go 1.27.4
 
 require (
 	gioui.org v0.10.3
