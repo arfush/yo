@@ -2,6 +2,7 @@ package dialog
 
 import (
 	"image"
+	"image/color"
 
 	"gioui.org/io/system"
 	"gioui.org/layout"
@@ -20,13 +21,17 @@ const (
 	dependencyWidth      unit.Dp = 464
 	dependencyPadding    unit.Dp = 28
 	dependencyIconTile   unit.Dp = 38
-	dependencyIconSize   unit.Dp = 20
-	dependencyIconRadius unit.Dp = appearance.RadiusM
+	dependencyIconSize   unit.Dp = 17
+	dependencyIconRadius unit.Dp = appearance.RadiusS
 	dependencyShadow     unit.Dp = 16
 
 	dependencyShadowLayers       = 12
 	dependencyShadowAlpha  uint8 = 8
 )
+
+// dependencyIconSurface is the fixed tile fill from the reference; unlike the
+// card it does not follow the site palette.
+var dependencyIconSurface = color.NRGBA{R: 0x22, G: 0x23, B: 0x2c, A: 0xff}
 
 // DependencyOptions configures the dependency installation dialog. Resource and
 // Handler are required. ShowLater controls whether the neutral "not now" button
@@ -131,7 +136,7 @@ func (d *DependencyInstallation) layoutBody(gtx layout.Context, app appearance.A
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return d.layoutIcon(gtx, palette)
 		}),
-		layout.Rigid(layout.Spacer{Height: appearance.SpaceXL}.Layout),
+		layout.Rigid(layout.Spacer{Height: appearance.SpaceM}.Layout),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return kit.Text(gtx, typo, appearance.RoleTitle, d.title, palette.Text)
 		}),
@@ -152,7 +157,7 @@ func (d *DependencyInstallation) layoutIcon(gtx layout.Context, palette appearan
 	size := gtx.Dp(dependencyIconTile)
 	bounds := image.Rect(0, 0, size, size)
 	radius := gtx.Dp(dependencyIconRadius)
-	kit.FillRounded(gtx, palette.Badge, bounds, radius)
+	kit.FillRounded(gtx, dependencyIconSurface, bounds, radius)
 
 	glyph := gtx.Dp(dependencyIconSize)
 	at := image.Pt((size-glyph)/2, (size-glyph)/2)

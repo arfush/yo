@@ -18,7 +18,7 @@ import (
 const (
 	buttonHeight   unit.Dp = 35
 	buttonPaddingX unit.Dp = 14
-	buttonIconSize unit.Dp = 16
+	buttonIconSize unit.Dp = 13
 	buttonIconGap  unit.Dp = 8
 )
 
