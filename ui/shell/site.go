@@ -99,8 +99,8 @@ func (s *Shell) switchSite(site catalog.Site) {
 }
 
 // dismissSiteMenu closes an open menu after a user action and counts it toward
-// the neutral fallback. Navigation and dialog changes close the menu directly:
-// only a dismissal without a switch may reset the chrome to yobase.
+// the neutral fallback. Navigation changes close the menu directly: only a
+// dismissal without a switch may reset the chrome to yobase.
 func (s *Shell) dismissSiteMenu() {
 	if !s.menu.open {
 		return

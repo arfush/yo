@@ -127,7 +127,6 @@ func (r *root) showPanic(v any) {
 		a.SetAppIcon(resource.AppIconYobase)
 	})
 	r.shell.Freeze()
-	r.shell.SetDialog(nil)
 	app := r.appearance.Value()
 	var build navigator.PanicFactory = r.newPanicScreen
 	r.shell.SetScreen(build(panicTitle(app), fmt.Sprint(v)))

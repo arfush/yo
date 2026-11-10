@@ -1,12 +1,11 @@
-// Package navigator owns the screen stack, the dialog stack and the route
-// vocabulary. A screen requests a change through Handler; the navigator
-// resolves the intent through a factory supplied by the composition root and
-// installs the built screen or dialog into the shell. Per-screen factory types
-// live in factory.go.
+// Package navigator owns the screen stack and the route vocabulary. A screen
+// requests a change through Handler; the navigator resolves the intent through a
+// factory supplied by the composition root and installs the built screen into
+// the shell. Per-screen factory types live in factory.go.
 //
-// Must not import: core/*, root, ui/screen, ui/dialog.
+// Must not import: core/*, root, ui/screen.
 //
 // Invariants: Navigate only queues and invalidates; Apply runs on the UI
-// goroutine at frame start before layout. A screen is never nil, Back closes
-// the top dialog before it pops a screen, and Close is idempotent.
+// goroutine at frame start before layout. A screen is never nil, Back returns to
+// the previous screen, and Close is idempotent.
 package navigator

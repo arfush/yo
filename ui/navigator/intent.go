@@ -6,15 +6,11 @@ package navigator
 // data the destination needs, never a screen or a stack operation.
 type Intent any
 
-// Handler is the navigation surface a screen or dialog receives. The navigator
-// implements it; a screen never touches the stack directly.
+// Handler is the navigation surface a screen receives. The navigator implements
+// it; a screen never touches the stack directly.
 type Handler interface {
 	Navigate(Intent)
 }
 
-// Back closes the top dialog or returns to the previous screen.
+// Back returns to the previous screen. At the root screen it does nothing.
 type Back struct{}
-
-// DependencyInstallation opens the dialog that asks for a missing external
-// component. The dialog is built by the factory supplied in Options.
-type DependencyInstallation struct{}

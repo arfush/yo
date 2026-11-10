@@ -86,16 +86,15 @@ func (r *root) initShell() {
 	r.logger.Info("shell ready")
 }
 
-// initNavigator installs the screen and dialog stacks above the shell. The
-// temporary main screen placeholder is the only screen until the first feature
-// registers its own factory; the dependency dialog is the first real dialog.
+// initNavigator installs the screen stack above the shell. The temporary main
+// screen placeholder is the only screen until the first feature registers its
+// own factory.
 func (r *root) initNavigator() {
 	r.navigator = navigator.New(navigator.Options{
-		Installer:              r.shell,
-		Invalidate:             r.window.Invalidate,
-		Startup:                r.newStartupScreen,
-		DependencyInstallation: r.newDependencyInstallation,
-		Logger:                 r.journal.Logger(log.SourceNavigator),
+		Installer:  r.shell,
+		Invalidate: r.window.Invalidate,
+		Startup:    r.newStartupScreen,
+		Logger:     r.journal.Logger(log.SourceNavigator),
 	})
 	r.logger.Info("navigator ready")
 }

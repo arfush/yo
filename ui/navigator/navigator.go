@@ -12,34 +12,30 @@ import (
 type Installer interface {
 	SetScreen(shell.Screen)
 	SetTitle(string)
-	SetDialog(shell.Dialog)
 }
 
 // Options configures a navigator. Installer, Invalidate and Startup are
-// required; future screens and dialogs add their own factories here. A nil
-// logger discards navigation logs.
+// required; future screens add their own factories here. A nil logger discards
+// navigation logs.
 type Options struct {
-	Installer              Installer
-	Invalidate             func()
-	Startup                func() Screen
-	DependencyInstallation DependencyInstallationFactory
-	Logger                 *slog.Logger
+	Installer  Installer
+	Invalidate func()
+	Startup    func() Screen
+	Logger     *slog.Logger
 }
 
 var _ Handler = (*Navigator)(nil)
 
-// Navigator owns the ordered screen and dialog stacks. It builds screens only
-// through the factories supplied in Options and never draws them.
+// Navigator owns the ordered screen stack. It builds screens only through the
+// factories supplied in Options and never draws them.
 type Navigator struct {
-	installer              Installer
-	invalidate             func()
-	logger                 *slog.Logger
-	dependencyInstallation DependencyInstallationFactory
-	entries                []Screen
-	dialogs                []shell.Dialog
-	pending                []Intent
-	active                 bool
-	closed                 bool
+	installer  Installer
+	invalidate func()
+	logger     *slog.Logger
+	entries    []Screen
+	pending    []Intent
+	active     bool
+	closed     bool
 }
 
 // New builds the navigator, creates the startup screen and installs it. The
@@ -55,10 +51,9 @@ func New(opts Options) *Navigator {
 		panic("navigator: nil startup factory")
 	}
 	n := &Navigator{
-		installer:              opts.Installer,
-		invalidate:             opts.Invalidate,
-		logger:                 opts.Logger,
-		dependencyInstallation: opts.DependencyInstallation,
+		installer:  opts.Installer,
+		invalidate: opts.Invalidate,
+		logger:     opts.Logger,
 	}
 	if n.logger == nil {
 		n.logger = slog.New(slog.DiscardHandler)
@@ -99,8 +94,8 @@ func (n *Navigator) Apply() {
 	}
 }
 
-// Close hides the active screen, clears the dialog stack and closes every
-// screen on the stack. It is idempotent and discards queued intents.
+// Close hides the active screen and closes every screen on the stack. It is
+// idempotent and discards queued intents.
 func (n *Navigator) Close() {
 	if n.closed {
 		return
@@ -112,10 +107,6 @@ func (n *Navigator) Close() {
 			current.OnHidden()
 		}
 		n.active = false
-	}
-	if len(n.dialogs) > 0 {
-		n.dialogs = nil
-		n.installer.SetDialog(nil)
 	}
 	for _, screen := range n.entries {
 		screen.OnClose()
@@ -130,8 +121,6 @@ func (n *Navigator) apply(intent Intent) {
 	switch intent.(type) {
 	case Back:
 		n.back()
-	case DependencyInstallation:
-		n.openDependencyInstallation()
 	default:
 		panic(fmt.Sprintf("navigator: unknown intent %T", intent))
 	}
@@ -154,15 +143,8 @@ func (n *Navigator) push(screen Screen) {
 	n.logger.Debug("screen pushed", "screen", screen.Title())
 }
 
-// back closes the top dialog. When no dialog is open it returns to the previous
-// screen; at the root screen it does nothing.
+// back returns to the previous screen. At the root screen it does nothing.
 func (n *Navigator) back() {
-	if len(n.dialogs) > 0 {
-		n.dialogs = n.dialogs[:len(n.dialogs)-1]
-		n.installDialog()
-		n.logger.Debug("dialog closed")
-		return
-	}
 	if len(n.entries) <= 1 {
 		return
 	}
@@ -174,35 +156,6 @@ func (n *Navigator) back() {
 	n.install(next)
 	next.OnShown()
 	n.logger.Debug("screen popped", "screen", top.Title())
-}
-
-// openDependencyInstallation builds and shows the dependency installation
-// dialog. A missing factory is a composition error and panics.
-func (n *Navigator) openDependencyInstallation() {
-	if n.dependencyInstallation == nil {
-		panic("navigator: nil dependency installation factory")
-	}
-	n.openDialog(n.dependencyInstallation())
-}
-
-// openDialog pushes a dialog above the active screen.
-func (n *Navigator) openDialog(dialog shell.Dialog) {
-	if dialog == nil {
-		panic("navigator: nil dialog")
-	}
-	n.dialogs = append(n.dialogs, dialog)
-	n.installer.SetDialog(dialog)
-	n.logger.Debug("dialog opened")
-}
-
-// installDialog makes the top dialog visible, or clears the shell when the
-// dialog stack is empty.
-func (n *Navigator) installDialog() {
-	if len(n.dialogs) == 0 {
-		n.installer.SetDialog(nil)
-		return
-	}
-	n.installer.SetDialog(n.dialogs[len(n.dialogs)-1])
 }
 
 // present shows the current screen once, on the first frame.

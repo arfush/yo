@@ -5,11 +5,9 @@ import (
 	"log/slog"
 
 	"gioui.org/app"
-	"gioui.org/gpu/headless"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
-	"gioui.org/op/paint"
 	"gioui.org/widget"
 
 	"github.com/arfush/yo/catalog"
@@ -22,14 +20,6 @@ import (
 // Screen is the content contract of the window. The shell never imports a
 // concrete screen: the navigator installs it through SetScreen.
 type Screen interface {
-	Layout(layout.Context)
-	LayoutFooter(layout.Context)
-}
-
-// Dialog is the modal content contract. The shell blurs the screen body, then
-// draws the dialog over it. A dialog may also replace the footer band, like a
-// screen does. The shell never imports a concrete dialog.
-type Dialog interface {
 	Layout(layout.Context)
 	LayoutFooter(layout.Context)
 }
@@ -55,7 +45,6 @@ type Shell struct {
 	version    string
 	logger     *slog.Logger
 	screen     Screen
-	dialog     Dialog
 	maximized  bool
 	frozen     bool
 	content    op.CallOp
@@ -70,13 +59,6 @@ type Shell struct {
 	// without a switch. At siteMenuBasePaletteAfter the chrome falls back to
 	// the neutral yobase palette until the next selection.
 	siteDismissals int
-
-	backdrop      paint.ImageOp
-	backdropSize  image.Point
-	backdropReady bool
-	backdropTried bool
-	blurWindow    *headless.Window
-	blurSize      image.Point
 
 	minimize widget.Clickable
 	maximize widget.Clickable
@@ -170,7 +152,6 @@ func (s *Shell) SetScreen(content Screen) {
 	}
 	s.screen = content
 	s.menu.close()
-	s.invalidateBackdrop()
 }
 
 // SetTitle replaces the native window title. The navigator calls it with the
@@ -180,23 +161,6 @@ func (s *Shell) SetTitle(title string) {
 		return
 	}
 	s.window.Option(app.Title(title))
-}
-
-// SetDialog installs or clears the modal dialog. A nil dialog closes the modal;
-// the navigator calls it when the dialog stack changes.
-func (s *Shell) SetDialog(dialog Dialog) {
-	s.dialog = dialog
-	s.menu.close()
-	s.invalidateBackdrop()
-}
-
-// invalidateBackdrop drops the cached blurred screen so the next dialog frame
-// captures it again.
-func (s *Shell) invalidateBackdrop() {
-	s.backdrop = paint.ImageOp{}
-	s.backdropSize = image.Point{}
-	s.backdropReady = false
-	s.backdropTried = false
 }
 
 // SetConfig updates the window state used by the maximize glyph. The
@@ -213,10 +177,9 @@ func (s *Shell) SetConfig(cfg app.Config) {
 	}
 }
 
-// Prepare records the active screen and refreshes the modal backdrop. It must
-// run once per frame on the UI goroutine before Layout, with the same context:
-// the recorded content is replayed by Layout. The offscreen render stays out of
-// Layout, so layout itself never blocks on the GPU.
+// Prepare records the active screen. It must run once per frame on the UI
+// goroutine before Layout, with the same context: the recorded content is
+// replayed by Layout.
 func (s *Shell) Prepare(gtx layout.Context) {
 	if s.screen == nil {
 		panic("shell: no screen installed")
@@ -224,7 +187,6 @@ func (s *Shell) Prepare(gtx layout.Context) {
 	s.syncPalette()
 	g := s.newGeometry(gtx)
 	s.content = s.layoutScreen(gtx, g)
-	s.prepareBackdrop(gtx, g)
 }
 
 // Layout draws one frame of the shell from the content recorded by Prepare.
@@ -236,35 +198,8 @@ func (s *Shell) Layout(gtx layout.Context) {
 	s.layoutFrame(gtx, g)
 	s.layoutHeader(gtx, g)
 	s.layoutFooter(gtx, g)
-	if s.dialog == nil {
-		s.layoutContent(gtx, g, s.content)
-	} else {
-		s.layoutDialog(gtx, g, s.content)
-	}
+	s.layoutContent(gtx, g, s.content)
 	s.layoutSiteMenu(gtx, g)
-}
-
-// prepareBackdrop captures the recorded screen once per dialog and size. The
-// result is cached until SetDialog, SetScreen or a resize invalidates it.
-func (s *Shell) prepareBackdrop(gtx layout.Context, g geometry) {
-	if s.dialog == nil {
-		return
-	}
-	bounds := g.contentRect()
-	if bounds.Empty() {
-		return
-	}
-	size := bounds.Size()
-	if s.backdropTried && s.backdropSize == size {
-		return
-	}
-	img, ok := s.captureBackdrop(s.content, size, s.palette().Canvas, gtx.Dp(blurRadiusDp))
-	s.backdropTried = true
-	s.backdropSize = size
-	s.backdropReady = ok
-	if ok {
-		s.backdrop = img
-	}
 }
 
 // layoutFrame paints the window border, the rounded inner surface, the header
@@ -304,8 +239,8 @@ func (s *Shell) layoutFrame(gtx layout.Context, g geometry) {
 }
 
 // layoutScreen records the active screen in content-local coordinates. The
-// recorded call lets the shell draw the content once, or replay it offscreen for
-// the modal backdrop, without laying the screen out again.
+// recorded call lets Layout draw the content without laying the screen out
+// again.
 func (s *Shell) layoutScreen(gtx layout.Context, g geometry) op.CallOp {
 	bounds := g.contentRect()
 	if bounds.Empty() {
@@ -331,8 +266,7 @@ func (s *Shell) layoutContent(gtx layout.Context, g geometry, content op.CallOp)
 	content.Add(gtx.Ops)
 }
 
-// layoutFooter lets the active dialog replace the footer band. Without a
-// dialog, the active screen fills the band.
+// layoutFooter draws the footer band of the active screen.
 func (s *Shell) layoutFooter(gtx layout.Context, g geometry) {
 	bounds := g.footerRect()
 	if bounds.Empty() {
@@ -343,39 +277,5 @@ func (s *Shell) layoutFooter(gtx layout.Context, g geometry) {
 	gtx.Constraints = layout.Exact(bounds.Size())
 	clipStack := clip.Rect(image.Rectangle{Max: bounds.Size()}).Push(gtx.Ops)
 	defer clipStack.Pop()
-	if s.dialog != nil {
-		s.dialog.LayoutFooter(gtx)
-		return
-	}
 	s.screen.LayoutFooter(gtx)
-}
-
-// layoutDialog replaces the body with the cached blurred snapshot of the
-// screen, dims it, then draws the modal above it. The snapshot itself is made
-// by Prepare; Layout only replays it.
-func (s *Shell) layoutDialog(gtx layout.Context, g geometry, content op.CallOp) {
-	bounds := g.contentRect()
-	if bounds.Empty() {
-		return
-	}
-
-	clipStack := clip.Rect(bounds).Push(gtx.Ops)
-	defer clipStack.Pop()
-
-	offset := op.Offset(bounds.Min).Push(gtx.Ops)
-	if s.backdropReady {
-		s.backdrop.Add(gtx.Ops)
-		paint.PaintOp{}.Add(gtx.Ops)
-	} else {
-		content.Add(gtx.Ops)
-	}
-	offset.Pop()
-
-	kit.FillRect(gtx, s.palette().Overlay, bounds)
-
-	dialogOffset := op.Offset(bounds.Min).Push(gtx.Ops)
-	defer dialogOffset.Pop()
-	dialogGtx := gtx
-	dialogGtx.Constraints = layout.Exact(bounds.Size())
-	s.dialog.Layout(dialogGtx)
 }
