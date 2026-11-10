@@ -33,7 +33,6 @@ type Palette struct {
 	Success          color.NRGBA
 	Info             color.NRGBA
 	Focus            color.NRGBA
-	Overlay          color.NRGBA
 	Selection        color.NRGBA
 
 	Mascot MascotPalette
@@ -206,7 +205,6 @@ func newPalette() Palette {
 		Success:     color.NRGBA{R: 0x65, G: 0xd6, B: 0xa3, A: 0xff},
 		Info:        color.NRGBA{R: 0xc9, G: 0xc4, B: 0xd6, A: 0xff},
 		Focus:       color.NRGBA{R: 0xc6, G: 0xbd, B: 0xd9, A: 0xff},
-		Overlay:     color.NRGBA{R: 0x0d, G: 0x0e, B: 0x14, A: 0xb8},
 		Selection:   color.NRGBA{R: 0x6b, G: 0x65, B: 0x7a, A: 0x66},
 
 		Mascot: MascotPalette{

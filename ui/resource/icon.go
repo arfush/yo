@@ -15,7 +15,6 @@ type IconKey string
 // .iconvg files in icon/: Icon panics on a key that has no asset.
 const (
 	IconClose      IconKey = "close"
-	IconDownload   IconKey = "download"
 	IconMaximize   IconKey = "maximize"
 	IconMinimize   IconKey = "minimize"
 	IconTorii      IconKey = "torii"

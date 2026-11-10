@@ -29,11 +29,6 @@ const (
 	TextFormatDurationHours TextKey = "format.duration.hours"
 
 	TextPanicTitle TextKey = "panic.title"
-
-	TextDependencyTitle       TextKey = "dependency.title"
-	TextDependencyDescription TextKey = "dependency.description"
-	TextDependencyDownload    TextKey = "dependency.download"
-	TextDependencyLater       TextKey = "dependency.later"
 )
 
 // Lang is a translation language bound to a Resource. Use Resource.Lang to get

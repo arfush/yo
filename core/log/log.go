@@ -20,9 +20,9 @@ const (
 	SourceRoot Source = "root"
 	// SourcePlatform is OS integration: the native window frame.
 	SourcePlatform Source = "platform"
-	// SourceShell is the window frame: site switching and the modal backdrop.
+	// SourceShell is the window frame: site switching and window chrome.
 	SourceShell Source = "shell"
-	// SourceNavigator is navigation: the screen and dialog stacks.
+	// SourceNavigator is navigation: the screen stack.
 	SourceNavigator Source = "navigator"
 	// SourceJournal is the journal itself. A failure that cannot be written to
 	// the journal file is reported on stderr under this source.
