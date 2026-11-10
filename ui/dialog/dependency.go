@@ -211,7 +211,7 @@ func (d *DependencyInstallation) drawCard(gtx layout.Context, palette appearance
 	d.drawShadow(gtx, palette, bounds, radius)
 	line := max(1, gtx.Dp(appearance.Hairline))
 	kit.FillRounded(gtx, palette.Border, bounds, radius)
-	kit.FillRounded(gtx, palette.SurfaceAlt, bounds.Inset(line), max(0, radius-line))
+	kit.FillRounded(gtx, palette.Surface, bounds.Inset(line), max(0, radius-line))
 }
 
 // drawShadow stacks translucent rounded layers around the card. More layers
