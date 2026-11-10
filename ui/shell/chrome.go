@@ -48,7 +48,6 @@ const (
 	badgePaddingX     unit.Dp = 7
 	markRadius        unit.Dp = 6
 	markInset         unit.Dp = 3
-	markIconDrop      unit.Dp = 1
 	siteChevronSize   unit.Dp = 8
 	siteChevronGap    unit.Dp = 10
 	siteChevronStroke unit.Dp = 1.7
@@ -316,7 +315,7 @@ func (s *Shell) layoutSiteMark(gtx layout.Context, r image.Rectangle, palette ap
 	kit.FillRounded(gtx, kit.WithAlpha(palette.AccentMuted, accentTintAlpha), r, radius)
 	inner := r.Inset(line)
 	kit.FillRounded(gtx, palette.SurfaceAlt, inner, max(0, radius-line))
-	iconRect := inner.Inset(gtx.Dp(markInset)).Add(image.Pt(0, gtx.Dp(markIconDrop)))
+	iconRect := inner.Inset(gtx.Dp(markInset))
 	drawIcon(gtx, s.icon(resource.IconTorii), iconRect, palette.Accent)
 }
 
