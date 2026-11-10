@@ -37,6 +37,7 @@ type buttonStyle struct {
 	border color.NRGBA
 	label  color.NRGBA
 	focus  color.NRGBA
+	hover  color.NRGBA
 }
 
 // LayoutNeutral draws the quiet outlined button. Its colors come from the
@@ -71,7 +72,7 @@ func (b *Button) draw(gtx layout.Context, typo appearance.Typography, style butt
 	macro := op.Record(gtx.Ops)
 	textGtx := gtx
 	textGtx.Constraints = layout.Constraints{Max: image.Pt(gtx.Constraints.Max.X, height)}
-	textDims := Text(textGtx, typo, appearance.RoleSubtitle, b.Label, style.label)
+	textDims := Text(textGtx, typo, appearance.RoleBody, b.Label, style.label)
 	label := macro.Stop()
 
 	padding := gtx.Dp(buttonPaddingX)
@@ -97,7 +98,7 @@ func (b *Button) draw(gtx layout.Context, typo appearance.Typography, style butt
 	inner := r.Inset(line)
 	FillRounded(gtx, style.fill, inner, max(0, radius-line))
 	if b.Click.Hovered() && !b.Click.Pressed() {
-		FillRounded(gtx, WithAlpha(style.label, 0x10), inner, max(0, radius-line))
+		FillRounded(gtx, style.hover, inner, max(0, radius-line))
 	}
 
 	x := (width - contentWidth) / 2
@@ -121,6 +122,7 @@ func neutralButtonStyle() buttonStyle {
 		border: p.Edge,
 		label:  p.Text,
 		focus:  p.Focus,
+		hover:  WithAlpha(p.Text, 0x08),
 	}
 }
 
@@ -131,6 +133,7 @@ func accentButtonStyle(p appearance.Palette) buttonStyle {
 		border: p.Accent,
 		label:  p.Text,
 		focus:  p.Focus,
+		hover:  WithAlpha(p.Text, 0x10),
 	}
 }
 
