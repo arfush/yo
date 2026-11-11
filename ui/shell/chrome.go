@@ -404,10 +404,10 @@ func (s *Shell) controlHovered(gtx layout.Context, c windowControl) bool {
 	if !c.click.Hovered() {
 		return false
 	}
-	if s.platform == nil || !s.platform.HoverPollingSupported() {
+	if s.cursor == nil || !s.cursor.HoverPollingSupported() {
 		return true
 	}
-	if !s.platform.CursorInRect(c.bounds) {
+	if !s.cursor.CursorInRect(c.bounds) {
 		return false
 	}
 	gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(hoverPollInterval)})

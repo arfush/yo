@@ -11,7 +11,6 @@ import (
 	"gioui.org/widget"
 
 	"github.com/arfush/yo/catalog"
-	"github.com/arfush/yo/core/platform"
 	"github.com/arfush/yo/core/stdx"
 	"github.com/arfush/yo/ui/appearance"
 	"github.com/arfush/yo/ui/kit"
@@ -25,11 +24,20 @@ type Screen interface {
 	LayoutFooter(layout.Context)
 }
 
+// CursorPoller reports the real system cursor position. Gio stops delivering
+// pointer events over the non-client header and when the cursor leaves the
+// window, so the shell needs it to clear a stale control hover. Root supplies
+// the platform implementation.
+type CursorPoller interface {
+	HoverPollingSupported() bool
+	CursorInRect(image.Rectangle) bool
+}
+
 // Options configures the shell chrome.
 type Options struct {
 	Screen     Screen
 	Window     *app.Window
-	Platform   *platform.Window // native frame; nil disables cursor polling
+	Cursor     CursorPoller // nil disables cursor polling
 	Site       *stdx.Holder[catalog.Site]
 	Appearance *stdx.Holder[appearance.Appearance]
 	Resource   *resource.Resource
@@ -41,7 +49,7 @@ type Options struct {
 // replace the content and Layout to draw a frame.
 type Shell struct {
 	window     *app.Window
-	platform   *platform.Window
+	cursor     CursorPoller
 	site       *stdx.Holder[catalog.Site]
 	appearance *stdx.Holder[appearance.Appearance]
 	resource   *resource.Resource
@@ -87,7 +95,7 @@ func New(opts Options) *Shell {
 	}
 	return &Shell{
 		window:     opts.Window,
-		platform:   opts.Platform,
+		cursor:     opts.Cursor,
 		site:       opts.Site,
 		appearance: opts.Appearance,
 		resource:   opts.Resource,
