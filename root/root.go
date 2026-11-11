@@ -77,6 +77,7 @@ func (r *root) initShell() {
 	r.shell = shell.New(shell.Options{
 		Screen:     r.newStartupScreen(),
 		Window:     r.window,
+		Platform:   r.platformWindow,
 		Site:       r.site,
 		Appearance: r.appearance,
 		Resource:   r.resource,

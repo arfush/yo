@@ -3,6 +3,7 @@
 package platform
 
 import (
+	"image"
 	"image/color"
 	"log/slog"
 
@@ -11,6 +12,12 @@ import (
 
 // Window is a no-op where the native frame is not managed by DWM.
 type Window struct{}
+
+// HoverPollingSupported reports false: hover follows Gio pointer events.
+func (*Window) HoverPollingSupported() bool { return false }
+
+// CursorInRect cannot read the cursor, so it leaves the hover state untouched.
+func (*Window) CursorInRect(image.Rectangle) bool { return true }
 
 // NewWindow returns a no-op window frame.
 func NewWindow(*slog.Logger) *Window { return &Window{} }

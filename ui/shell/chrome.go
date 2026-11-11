@@ -3,6 +3,7 @@ package shell
 import (
 	"image"
 	"image/color"
+	"time"
 
 	"gioui.org/f32"
 	"gioui.org/io/pointer"
@@ -56,6 +57,12 @@ const (
 
 // accentTintAlpha dims AccentMuted behind the brand mark.
 const accentTintAlpha uint8 = 0x40
+
+// hoverPollInterval is how often the chrome re-checks the real cursor position
+// while a window control paints its hover state. The header drag regions are
+// non-client, so moving a cursor from a control into them, or out of the
+// window, produces no Gio pointer event that would clear the hover.
+const hoverPollInterval = 40 * time.Millisecond
 
 // geometry holds every chrome measurement converted to pixels for the current
 // frame.
@@ -358,7 +365,7 @@ func (s *Shell) layoutControl(gtx layout.Context, c windowControl) {
 		return
 	}
 	clicked := c.click.Clicked(gtx)
-	hovered := c.click.Hovered()
+	hovered := s.controlHovered(gtx, c)
 
 	stack := op.Offset(c.bounds.Min).Push(gtx.Ops)
 	defer stack.Pop()
@@ -386,6 +393,25 @@ func (s *Shell) layoutControl(gtx layout.Context, c windowControl) {
 	if clicked && s.window != nil {
 		s.window.Perform(c.action)
 	}
+}
+
+// controlHovered reports whether a window control paints its hover state. Gio
+// only sees pointer events over client areas, so a cursor that moved into the
+// non-client header or left the window leaves Clickable.Hovered stuck. The
+// widget state is checked against the real cursor position, and while the
+// hover is active a repaint is scheduled to notice the cursor leaving.
+func (s *Shell) controlHovered(gtx layout.Context, c windowControl) bool {
+	if !c.click.Hovered() {
+		return false
+	}
+	if s.platform == nil || !s.platform.HoverPollingSupported() {
+		return true
+	}
+	if !s.platform.CursorInRect(c.bounds) {
+		return false
+	}
+	gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(hoverPollInterval)})
+	return true
 }
 
 // layoutDragRegions installs system.ActionMove over every header area outside

@@ -29,6 +29,8 @@ const (
 
 	vkLeftButton = 0x01
 
+	dpiAwarenessContextPerMonitorAwareV2 = ^uintptr(3) // -4
+
 	wmSetIcon = 0x0080
 	iconSmall = 0
 	iconBig   = 1
@@ -53,9 +55,12 @@ type Window struct {
 	procCreateIconFromResourceEx *windows.LazyProc
 	procDestroyIcon              *windows.LazyProc
 	procGetAsyncKeyState         *windows.LazyProc
+	procGetCursorPos             *windows.LazyProc
 	procInvalidateRect           *windows.LazyProc
 	procIsWindow                 *windows.LazyProc
 	procPostMessageW             *windows.LazyProc
+	procScreenToClient           *windows.LazyProc
+	procSetThreadDpiAwareness    *windows.LazyProc
 }
 
 // NewWindow builds the native frame for one application window. A nil logger
@@ -70,10 +75,47 @@ func NewWindow(logger *slog.Logger) *Window {
 		procCreateIconFromResourceEx: user32.NewProc("CreateIconFromResourceEx"),
 		procDestroyIcon:              user32.NewProc("DestroyIcon"),
 		procGetAsyncKeyState:         user32.NewProc("GetAsyncKeyState"),
+		procGetCursorPos:             user32.NewProc("GetCursorPos"),
 		procInvalidateRect:           user32.NewProc("InvalidateRect"),
 		procIsWindow:                 user32.NewProc("IsWindow"),
 		procPostMessageW:             user32.NewProc("PostMessageW"),
+		procScreenToClient:           user32.NewProc("ScreenToClient"),
+		procSetThreadDpiAwareness:    user32.NewProc("SetThreadDpiAwarenessContext"),
 	}
+}
+
+// winPoint mirrors the Win32 POINT layout.
+type winPoint struct {
+	X, Y int32
+}
+
+// HoverPollingSupported reports that the system cursor can be read directly.
+func (*Window) HoverPollingSupported() bool { return true }
+
+// CursorInRect reports whether the system cursor is inside r. r is in Gio's
+// device-pixel client coordinates, which match Win32 client coordinates for
+// this per-monitor DPI-aware window. The header drag regions are non-client,
+// so Gio stops delivering pointer events there and when the cursor leaves the
+// window; polling the real cursor is the only way to clear a stale hover.
+func (w *Window) CursorInRect(r image.Rectangle) bool {
+	handle := w.handle.Load()
+	if handle == 0 {
+		return true
+	}
+	// Gio makes only its window thread per-monitor DPI aware, while layout runs
+	// on another thread. Match the window's coordinate space for this call.
+	previous, _, _ := w.procSetThreadDpiAwareness.Call(dpiAwarenessContextPerMonitorAwareV2)
+	if previous != 0 {
+		defer w.procSetThreadDpiAwareness.Call(previous)
+	}
+	var point winPoint
+	if ok, _, _ := w.procGetCursorPos.Call(uintptr(unsafe.Pointer(&point))); ok == 0 {
+		return true
+	}
+	if ok, _, _ := w.procScreenToClient.Call(handle, uintptr(unsafe.Pointer(&point))); ok == 0 {
+		return true
+	}
+	return image.Pt(int(point.X), int(point.Y)).In(r)
 }
 
 // HandleViewEvent applies the application palette to the native window frame.
