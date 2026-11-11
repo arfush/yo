@@ -10,32 +10,77 @@ import (
 // Palette is the semantic color set of the application. Screens must use these
 // tokens instead of raw colors.
 type Palette struct {
-	Canvas      color.NRGBA
-	Surface     color.NRGBA
-	SurfaceAlt  color.NRGBA
-	Border      color.NRGBA
-	Divider     color.NRGBA
-	Text        color.NRGBA
-	TextMuted   color.NRGBA
-	OnAccent    color.NRGBA
-	Accent      color.NRGBA
-	AccentMuted color.NRGBA
-	Badge       color.NRGBA
-	Edge        color.NRGBA
-	Ink         color.NRGBA
-	// ControlIcon is the muted tone of the window controls and the site
-	// chevron. It stays neutral across sites.
-	ControlIcon color.NRGBA
-	// ControlIconHover is the accent-lifted tone of a hovered window control.
-	ControlIconHover color.NRGBA
-	Danger           color.NRGBA
-	Warning          color.NRGBA
-	Success          color.NRGBA
-	Info             color.NRGBA
-	Focus            color.NRGBA
-	Selection        color.NRGBA
+	// Surfaces.
+	Canvas     color.NRGBA // window background
+	Surface    color.NRGBA // header and footer
+	SurfaceAlt color.NRGBA // controls and cells
+	Panel      color.NRGBA // panels and dialogs
+	PanelDim   color.NRGBA // panel at 78% opacity
+	Tile       color.NRGBA // icon tile
+	Scrim      color.NRGBA // 25% dim
+
+	// Lines.
+	Border       color.NRGBA // base border
+	BorderStrong color.NRGBA // strong border
+	TileBorder   color.NRGBA // icon tile border
+	Divider      color.NRGBA // hairline; same as Panel
+
+	// Text.
+	Text      color.NRGBA // primary text
+	TextMuted color.NRGBA // secondary text
+	TextFaint color.NRGBA // tertiary text
+	White     color.NRGBA // contrast white
+
+	// Icons and controls.
+	AppIcon          color.NRGBA // application mark
+	ActionIcon       color.NRGBA // action icon
+	DeleteIcon       color.NRGBA // delete icon
+	DisabledIcon     color.NRGBA // disabled icon
+	Button           color.NRGBA // icon-button background (all buttons)
+	ButtonBorder     color.NRGBA // icon-button border
+	ControlIcon      color.NRGBA // window control icon
+	ControlIconHover color.NRGBA // hovered window control icon
+
+	// Site accent.
+	Accent      color.NRGBA // site accent
+	AccentMuted color.NRGBA // same as Accent
+	Ink         color.NRGBA // accent text and icons
+	Badge       color.NRGBA // accent background
+	Selection   color.NRGBA // selected row background
+	Edge        color.NRGBA // accent border
+	OnAccent    color.NRGBA // text on accent
+	Focus       color.NRGBA // same as Accent
+
+	ProgressTrack color.NRGBA // neutral progress track
+
+	// Statuses.
+	Danger   color.NRGBA // dangerous action
+	Warning  color.NRGBA // reserved; not in the current design
+	Info     color.NRGBA // announcement
+	InfoCard color.NRGBA // announcement card
+	Online   color.NRGBA // online
+	Success  color.NRGBA // completed
+
+	Watching StatusColors   // watching
+	Planned  StatusColors   // planned
+	Favorite StatusColors   // favorite
+	Dropped  StatusColors   // dropped
+	Provider ProviderColors // provider tag
 
 	Mascot MascotPalette
+}
+
+// StatusColors is one status token with text, background and border.
+type StatusColors struct {
+	Text       color.NRGBA
+	Background color.NRGBA
+	Border     color.NRGBA
+}
+
+// ProviderColors is the provider tag token.
+type ProviderColors struct {
+	Text       color.NRGBA
+	Background color.NRGBA
 }
 
 // MascotPalette is the complete color set the future ui/kit/mascot needs.
@@ -68,82 +113,44 @@ type MascotGlitch struct {
 
 // accents is the part of a palette a site overrides on top of the neutral base.
 type accents struct {
-	appIcon     resource.AppIconKey
-	accent      color.NRGBA
-	accentMuted color.NRGBA
-	badge       color.NRGBA
-	edge        color.NRGBA
-	ink         color.NRGBA
-	focus       color.NRGBA
-	selection   color.NRGBA
-	mascot      MascotColors
+	appIcon   resource.AppIconKey
+	accent    color.NRGBA
+	ink       color.NRGBA
+	badge     color.NRGBA
+	selection color.NRGBA
+	edge      color.NRGBA
+	onAccent  color.NRGBA
 }
 
 // siteAccents maps every catalog site to the colors that carry its identity.
 // The map is explicit so adding a site without a palette is a startup error.
 var siteAccents = map[catalog.Site]accents{
 	catalog.SiteYoanime: {
-		appIcon:     resource.AppIconYoanime,
-		accent:      color.NRGBA{R: 0x8b, G: 0x5c, B: 0xf6, A: 0xff},
-		accentMuted: color.NRGBA{R: 0x6d, G: 0x28, B: 0xd9, A: 0xff},
-		badge:       color.NRGBA{R: 0x29, G: 0x22, B: 0x3e, A: 0xff},
-		edge:        color.NRGBA{R: 0x39, G: 0x30, B: 0x4f, A: 0xff},
-		ink:         color.NRGBA{R: 0x96, G: 0x83, B: 0xe7, A: 0xff},
-		focus:       color.NRGBA{R: 0x8b, G: 0x5c, B: 0xf6, A: 0xff},
-		selection:   color.NRGBA{R: 0x6d, G: 0x28, B: 0xd9, A: 0x66},
-		mascot: MascotColors{
-			Hair:       color.NRGBA{R: 0x8b, G: 0x5c, B: 0xf6, A: 0xff},
-			HairShadow: color.NRGBA{R: 0x6d, G: 0x28, B: 0xd9, A: 0xff},
-			HairLight:  color.NRGBA{R: 0x96, G: 0x83, B: 0xe7, A: 0xff},
-			Face:       color.NRGBA{R: 0xe7, G: 0xe0, B: 0xf9, A: 0xff},
-			EarInner:   color.NRGBA{R: 0xd2, G: 0xc2, B: 0xf8, A: 0xff},
-			Paw:        color.NRGBA{R: 0xe1, G: 0xd7, B: 0xf9, A: 0xff},
-			Blush:      color.NRGBA{R: 0xf0, G: 0xa8, B: 0xcf, A: 0xa0},
-			Dress:      color.NRGBA{R: 0x6d, G: 0x28, B: 0xd9, A: 0xff},
-			DressLight: color.NRGBA{R: 0x96, G: 0x83, B: 0xe7, A: 0xff},
-		},
+		appIcon:   resource.AppIconYoanime,
+		accent:    color.NRGBA{R: 0x78, G: 0x50, B: 0xd5, A: 0xff},
+		ink:       color.NRGBA{R: 0x95, G: 0x6a, B: 0xf5, A: 0xff},
+		badge:     color.NRGBA{R: 0x2d, G: 0x24, B: 0x41, A: 0xff},
+		selection: color.NRGBA{R: 0x1d, G: 0x1b, B: 0x29, A: 0xff},
+		edge:      color.NRGBA{R: 0x42, G: 0x34, B: 0x54, A: 0xff},
+		onAccent:  color.NRGBA{R: 0xee, G: 0xed, B: 0xf4, A: 0xff},
 	},
 	catalog.SiteYomanga: {
-		appIcon:     resource.AppIconYomanga,
-		accent:      color.NRGBA{R: 0xf0, G: 0x8a, B: 0x2c, A: 0xff},
-		accentMuted: color.NRGBA{R: 0xd4, G: 0x5f, B: 0x12, A: 0xff},
-		badge:       color.NRGBA{R: 0x38, G: 0x21, B: 0x17, A: 0xff},
-		edge:        color.NRGBA{R: 0x5c, G: 0x36, B: 0x1f, A: 0xff},
-		ink:         color.NRGBA{R: 0xf5, G: 0xa4, B: 0x5a, A: 0xff},
-		focus:       color.NRGBA{R: 0xf0, G: 0x8a, B: 0x2c, A: 0xff},
-		selection:   color.NRGBA{R: 0xd4, G: 0x5f, B: 0x12, A: 0x66},
-		mascot: MascotColors{
-			Hair:       color.NRGBA{R: 0xf0, G: 0x8a, B: 0x2c, A: 0xff},
-			HairShadow: color.NRGBA{R: 0xd4, G: 0x5f, B: 0x12, A: 0xff},
-			HairLight:  color.NRGBA{R: 0xf5, G: 0xa4, B: 0x5a, A: 0xff},
-			Face:       color.NRGBA{R: 0xf3, G: 0xe5, B: 0xe1, A: 0xff},
-			EarInner:   color.NRGBA{R: 0xf2, G: 0xd0, B: 0xb8, A: 0xff},
-			Paw:        color.NRGBA{R: 0xf3, G: 0xdf, B: 0xd4, A: 0xff},
-			Blush:      color.NRGBA{R: 0xf0, G: 0xa8, B: 0xcf, A: 0xa0},
-			Dress:      color.NRGBA{R: 0xd4, G: 0x5f, B: 0x12, A: 0xff},
-			DressLight: color.NRGBA{R: 0xf5, G: 0xa4, B: 0x5a, A: 0xff},
-		},
+		appIcon:   resource.AppIconYomanga,
+		accent:    color.NRGBA{R: 0xe8, G: 0xa2, B: 0x66, A: 0xff},
+		ink:       color.NRGBA{R: 0xe8, G: 0xa2, B: 0x66, A: 0xff},
+		badge:     color.NRGBA{R: 0x30, G: 0x22, B: 0x18, A: 0xff},
+		selection: color.NRGBA{R: 0x30, G: 0x22, B: 0x18, A: 0xff},
+		edge:      color.NRGBA{R: 0x66, G: 0x43, B: 0x29, A: 0xff},
+		onAccent:  color.NRGBA{R: 0x11, G: 0x12, B: 0x16, A: 0xff},
 	},
 	catalog.SiteYoranobe: {
-		appIcon:     resource.AppIconYoranobe,
-		accent:      color.NRGBA{R: 0x4c, G: 0x8d, B: 0xf6, A: 0xff},
-		accentMuted: color.NRGBA{R: 0x25, G: 0x63, B: 0xeb, A: 0xff},
-		badge:       color.NRGBA{R: 0x17, G: 0x22, B: 0x3b, A: 0xff},
-		edge:        color.NRGBA{R: 0x1e, G: 0x32, B: 0x63, A: 0xff},
-		ink:         color.NRGBA{R: 0x7b, G: 0xa6, B: 0xf9, A: 0xff},
-		focus:       color.NRGBA{R: 0x4c, G: 0x8d, B: 0xf6, A: 0xff},
-		selection:   color.NRGBA{R: 0x25, G: 0x63, B: 0xeb, A: 0x66},
-		mascot: MascotColors{
-			Hair:       color.NRGBA{R: 0x4c, G: 0x8d, B: 0xf6, A: 0xff},
-			HairShadow: color.NRGBA{R: 0x25, G: 0x63, B: 0xeb, A: 0xff},
-			HairLight:  color.NRGBA{R: 0x7b, G: 0xa6, B: 0xf9, A: 0xff},
-			Face:       color.NRGBA{R: 0xdf, G: 0xe5, B: 0xf9, A: 0xff},
-			EarInner:   color.NRGBA{R: 0xbe, G: 0xd1, B: 0xf8, A: 0xff},
-			Paw:        color.NRGBA{R: 0xd5, G: 0xdf, B: 0xf9, A: 0xff},
-			Blush:      color.NRGBA{R: 0xf0, G: 0xa8, B: 0xcf, A: 0xa0},
-			Dress:      color.NRGBA{R: 0x25, G: 0x63, B: 0xeb, A: 0xff},
-			DressLight: color.NRGBA{R: 0x7b, G: 0xa6, B: 0xf9, A: 0xff},
-		},
+		appIcon:   resource.AppIconYoranobe,
+		accent:    color.NRGBA{R: 0x8a, G: 0xb4, B: 0xf8, A: 0xff},
+		ink:       color.NRGBA{R: 0x8a, G: 0xb4, B: 0xf8, A: 0xff},
+		badge:     color.NRGBA{R: 0x1b, G: 0x27, B: 0x3d, A: 0xff},
+		selection: color.NRGBA{R: 0x1b, G: 0x27, B: 0x3d, A: 0xff},
+		edge:      color.NRGBA{R: 0x3a, G: 0x52, B: 0x7a, A: 0xff},
+		onAccent:  color.NRGBA{R: 0x11, G: 0x12, B: 0x16, A: 0xff},
 	},
 }
 
@@ -156,14 +163,15 @@ func PaletteFor(site catalog.Site) Palette {
 	}
 	p := newPalette()
 	p.Accent = a.accent
-	p.AccentMuted = a.accentMuted
-	p.Badge = a.badge
-	p.Edge = a.edge
+	p.AccentMuted = a.accent
 	p.Ink = a.ink
-	p.Focus = a.focus
+	p.Badge = a.badge
 	p.Selection = a.selection
+	p.Edge = a.edge
+	p.OnAccent = a.onAccent
+	p.Focus = a.accent
 	p.ControlIconHover = mix(a.accent, p.Text, 0.55)
-	p.Mascot.Normal = a.mascot
+	p.Mascot.Normal = mascotColors(p.Accent, p.Ink, p.Text, p.Canvas)
 	return p
 }
 
@@ -186,51 +194,77 @@ func BasePalette() Palette { return newPalette() }
 // newPalette builds the neutral palette that every site palette extends.
 func newPalette() Palette {
 	p := Palette{
-		Canvas:      color.NRGBA{R: 0x0d, G: 0x0e, B: 0x14, A: 0xff},
-		Surface:     color.NRGBA{R: 0x11, G: 0x12, B: 0x19, A: 0xff},
-		SurfaceAlt:  color.NRGBA{R: 0x20, G: 0x1f, B: 0x28, A: 0xff},
-		Border:      color.NRGBA{R: 0x20, G: 0x21, B: 0x27, A: 0xff},
-		Divider:     color.NRGBA{R: 0x1b, G: 0x1c, B: 0x23, A: 0xff},
-		Text:        color.NRGBA{R: 0xf4, G: 0xf2, B: 0xfa, A: 0xff},
-		TextMuted:   color.NRGBA{R: 0xa9, G: 0xa2, B: 0xb9, A: 0xff},
-		OnAccent:    color.NRGBA{R: 0x20, G: 0x1b, B: 0x2c, A: 0xff},
-		Accent:      color.NRGBA{R: 0xa9, G: 0xa2, B: 0xb9, A: 0xff},
-		AccentMuted: color.NRGBA{R: 0x6b, G: 0x65, B: 0x7a, A: 0xff},
-		Badge:       color.NRGBA{R: 0x25, G: 0x24, B: 0x30, A: 0xff},
-		Edge:        color.NRGBA{R: 0x37, G: 0x34, B: 0x3f, A: 0xff},
-		Ink:         color.NRGBA{R: 0xc9, G: 0xc4, B: 0xd6, A: 0xff},
-		ControlIcon: color.NRGBA{R: 0x78, G: 0x73, B: 0x8d, A: 0xff},
-		Danger:      color.NRGBA{R: 0xf2, G: 0x7d, B: 0x8b, A: 0xff},
-		Warning:     color.NRGBA{R: 0xf2, G: 0xc9, B: 0x4c, A: 0xff},
-		Success:     color.NRGBA{R: 0x65, G: 0xd6, B: 0xa3, A: 0xff},
-		Info:        color.NRGBA{R: 0xc9, G: 0xc4, B: 0xd6, A: 0xff},
-		Focus:       color.NRGBA{R: 0xc6, G: 0xbd, B: 0xd9, A: 0xff},
-		Selection:   color.NRGBA{R: 0x6b, G: 0x65, B: 0x7a, A: 0x66},
+		Canvas:     color.NRGBA{R: 0x11, G: 0x12, B: 0x16, A: 0xff},
+		Surface:    color.NRGBA{R: 0x17, G: 0x18, B: 0x1e, A: 0xff},
+		SurfaceAlt: color.NRGBA{R: 0x22, G: 0x23, B: 0x2c, A: 0xff},
+		Panel:      color.NRGBA{R: 0x1b, G: 0x1c, B: 0x23, A: 0xff},
+		PanelDim:   color.NRGBA{R: 0x1b, G: 0x1c, B: 0x23, A: 0xc7},
+		Tile:       color.NRGBA{R: 0x14, G: 0x13, B: 0x19, A: 0xff},
+		Scrim:      color.NRGBA{A: 0x40},
+
+		Border:       color.NRGBA{R: 0x30, G: 0x31, B: 0x3c, A: 0xff},
+		BorderStrong: color.NRGBA{R: 0x40, G: 0x3d, B: 0x4d, A: 0xff},
+		TileBorder:   color.NRGBA{R: 0x37, G: 0x34, B: 0x3f, A: 0xff},
+		Divider:      color.NRGBA{R: 0x1b, G: 0x1c, B: 0x23, A: 0xff},
+
+		Text:      color.NRGBA{R: 0xee, G: 0xed, B: 0xf4, A: 0xff},
+		TextMuted: color.NRGBA{R: 0x9d, G: 0x9b, B: 0xaa, A: 0xff},
+		TextFaint: color.NRGBA{R: 0x73, G: 0x71, B: 0x7f, A: 0xff},
+		White:     color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff},
+
+		AppIcon:      color.NRGBA{R: 0xb5, G: 0xae, B: 0xc4, A: 0xff},
+		ActionIcon:   color.NRGBA{R: 0xab, G: 0xae, B: 0xb9, A: 0xff},
+		DeleteIcon:   color.NRGBA{R: 0xc3, G: 0xc5, B: 0xce, A: 0xff},
+		DisabledIcon: color.NRGBA{R: 0x68, G: 0x6a, B: 0x75, A: 0xff},
+		Button:       color.NRGBA{R: 0x26, G: 0x27, B: 0x2d, A: 0xff},
+		ButtonBorder: color.NRGBA{R: 0x39, G: 0x3a, B: 0x42, A: 0xff},
+		ControlIcon:  color.NRGBA{R: 0x9d, G: 0x9b, B: 0xaa, A: 0xff},
+
+		Accent:      color.NRGBA{R: 0x9d, G: 0x9b, B: 0xaa, A: 0xff},
+		AccentMuted: color.NRGBA{R: 0x9d, G: 0x9b, B: 0xaa, A: 0xff},
+		Ink:         color.NRGBA{R: 0xee, G: 0xed, B: 0xf4, A: 0xff},
+		Badge:       color.NRGBA{R: 0x22, G: 0x23, B: 0x2c, A: 0xff},
+		Selection:   color.NRGBA{R: 0x22, G: 0x23, B: 0x2c, A: 0xff},
+		Edge:        color.NRGBA{R: 0x40, G: 0x3d, B: 0x4d, A: 0xff},
+		OnAccent:    color.NRGBA{R: 0x11, G: 0x12, B: 0x16, A: 0xff},
+		Focus:       color.NRGBA{R: 0x9d, G: 0x9b, B: 0xaa, A: 0xff},
+
+		ProgressTrack: color.NRGBA{R: 0x34, G: 0x30, B: 0x3f, A: 0xff},
+
+		Danger:   color.NRGBA{R: 0xdf, G: 0x92, B: 0x9b, A: 0xff},
+		Warning:  color.NRGBA{R: 0xf2, G: 0xc9, B: 0x4c, A: 0xff},
+		Info:     color.NRGBA{R: 0x80, G: 0xc4, B: 0xd3, A: 0xff},
+		InfoCard: color.NRGBA{R: 0x5c, G: 0x96, B: 0xf5, A: 0xff},
+		Online:   color.NRGBA{R: 0x78, G: 0xc7, B: 0xa2, A: 0xff},
+		Success:  color.NRGBA{R: 0x78, G: 0xc8, B: 0xa0, A: 0xff},
+
+		Watching: StatusColors{
+			Text:       color.NRGBA{R: 0xf2, G: 0xbe, B: 0x87, A: 0xff},
+			Background: color.NRGBA{R: 0x34, G: 0x29, B: 0x1f, A: 0xff},
+			Border:     color.NRGBA{R: 0x66, G: 0x50, B: 0x3b, A: 0xff},
+		},
+		Planned: StatusColors{
+			Text:       color.NRGBA{R: 0x8a, G: 0xbc, B: 0xf0, A: 0xff},
+			Background: color.NRGBA{R: 0x1d, G: 0x2a, B: 0x3c, A: 0xff},
+			Border:     color.NRGBA{R: 0x30, G: 0x46, B: 0x5e, A: 0xff},
+		},
+		Favorite: StatusColors{
+			Text:       color.NRGBA{R: 0xf1, G: 0xa2, B: 0xad, A: 0xff},
+			Background: color.NRGBA{R: 0x36, G: 0x23, B: 0x29, A: 0xff},
+			Border:     color.NRGBA{R: 0x69, G: 0x41, B: 0x4b, A: 0xff},
+		},
+		Dropped: StatusColors{
+			Text:       color.NRGBA{R: 0xd8, G: 0x8a, B: 0xa8, A: 0xff},
+			Background: color.NRGBA{R: 0x34, G: 0x1b, B: 0x29, A: 0xff},
+			Border:     color.NRGBA{R: 0x71, G: 0x34, B: 0x4e, A: 0xff},
+		},
+		Provider: ProviderColors{
+			Text:       color.NRGBA{R: 0xd4, G: 0xb6, B: 0x7d, A: 0xff},
+			Background: color.NRGBA{R: 0x34, G: 0x2c, B: 0x1c, A: 0xff},
+		},
 
 		Mascot: MascotPalette{
-			Normal: MascotColors{
-				Hair:       color.NRGBA{R: 0xa9, G: 0xa2, B: 0xb9, A: 0xff},
-				HairShadow: color.NRGBA{R: 0x6b, G: 0x65, B: 0x7a, A: 0xff},
-				HairLight:  color.NRGBA{R: 0xc9, G: 0xc4, B: 0xd6, A: 0xff},
-				Face:       color.NRGBA{R: 0xeb, G: 0xe8, B: 0xf2, A: 0xff},
-				EarInner:   color.NRGBA{R: 0xdc, G: 0xd8, B: 0xe5, A: 0xff},
-				Paw:        color.NRGBA{R: 0xe6, G: 0xe3, B: 0xee, A: 0xff},
-				Blush:      color.NRGBA{R: 0xf0, G: 0xa8, B: 0xcf, A: 0xa0},
-				Dress:      color.NRGBA{R: 0x6b, G: 0x65, B: 0x7a, A: 0xff},
-				DressLight: color.NRGBA{R: 0xc9, G: 0xc4, B: 0xd6, A: 0xff},
-			},
-			Alert: MascotColors{
-				Hair:       color.NRGBA{R: 0xe9, G: 0x3b, B: 0x50, A: 0xff},
-				HairShadow: color.NRGBA{R: 0xa8, G: 0x22, B: 0x34, A: 0xff},
-				HairLight:  color.NRGBA{R: 0xff, G: 0xa6, B: 0xb0, A: 0xff},
-				Face:       color.NRGBA{R: 0xff, G: 0xe4, B: 0xe7, A: 0xff},
-				EarInner:   color.NRGBA{R: 0xff, G: 0xc4, B: 0xcb, A: 0xff},
-				Paw:        color.NRGBA{R: 0xff, G: 0xd6, B: 0xdb, A: 0xff},
-				Blush:      color.NRGBA{R: 0xff, G: 0x8a, B: 0x9c, A: 0xa0},
-				Dress:      color.NRGBA{R: 0xc6, G: 0x2c, B: 0x3e, A: 0xff},
-				DressLight: color.NRGBA{R: 0xff, G: 0x97, B: 0xa3, A: 0xff},
-			},
-			Eye:          color.NRGBA{R: 0x2a, G: 0x1e, B: 0x46, A: 0xff},
+			Eye:          color.NRGBA{R: 0x11, G: 0x12, B: 0x16, A: 0xff},
 			EyeHighlight: color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff},
 			Glitch: MascotGlitch{
 				Cyan:    color.NRGBA{R: 0x7d, G: 0xf5, B: 0xff, A: 0x55},
@@ -239,7 +273,29 @@ func newPalette() Palette {
 		},
 	}
 	p.ControlIconHover = mix(p.Accent, p.Text, 0.55)
+	p.Mascot.Normal = mascotColors(p.Accent, p.Ink, p.Text, p.Canvas)
+	p.Mascot.Alert = mascotColors(
+		p.Danger,
+		mix(p.Danger, p.White, 0.5),
+		mix(p.White, p.Danger, 0.12),
+		p.Canvas,
+	)
 	return p
+}
+
+// mascotColors derives one mascot mood from semantic palette colors.
+func mascotColors(accent, ink, face, canvas color.NRGBA) MascotColors {
+	return MascotColors{
+		Hair:       accent,
+		HairShadow: mix(accent, canvas, 0.55),
+		HairLight:  ink,
+		Face:       face,
+		EarInner:   mix(accent, face, 0.65),
+		Paw:        mix(accent, face, 0.8),
+		Blush:      color.NRGBA{R: 0xf0, G: 0xa8, B: 0xcf, A: 0xa0},
+		Dress:      accent,
+		DressLight: ink,
+	}
 }
 
 // mix linearly interpolates between a and b without leaving the uint8 range.
