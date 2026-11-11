@@ -6,6 +6,7 @@
 cmd/yo/     только main: root.Run()
 root/       composition root: сборка графа и lifecycle, создание экранов
 catalog/    DTO проекта
+stdx/       расширение стандартной библиотеки: generic, без домена и I/O
 core/       не-UI код: сайты, провайдеры, хранилище, playback, party, обновления
 ui/         весь Gio UI: shell, appearance, resource, kit, navigator, экраны
 version/    версия приложения
@@ -18,15 +19,16 @@ docs/       документация
 
 ```text
 catalog      → std
-core/stdx    → std
-core/*       → catalog, core/stdx, core/*
-ui/*         → catalog, core/*, ui/*
-root         → catalog, core/*, ui/*
+stdx         → std
+core/*       → catalog, stdx, core/*
+ui/*         → catalog, stdx, ui/*
+root         → catalog, core/*, stdx, ui/*
 cmd/yo       → root
 ```
 
-- `catalog` не импортирует `core` и `ui`.
+- `catalog` и `stdx` не импортируют `core`, `ui` и `root`.
 - `core` не импортирует `ui` и `root`.
+- `ui` не импортирует `core` и `root`: нужные зависимости передаёт `root` через интерфейсы потребителя.
 - Циклы запрещены. Если для связи нужен цикл — это ошибка границ, а не повод для интерфейса.
 
 ## Термины
@@ -45,11 +47,14 @@ cmd/yo       → root
 
 Только данные и валидация значений. Никаких ошибок, HTTP, SQL, UI. Один общий набор DTO; не дублируй `catalog.Title` другим `Title` в `core`. Если хранилищу нужны свои строки — держи их приватными в `core/store` и преобразуй на границе.
 
+### `stdx`
+
+Расширение стандартной библиотеки: только generic, только std, без предметной области и I/O. Если нужен `catalog` — код не отсюда. Модуль импортируют `core`, `ui` и `root`; сам он не импортирует другие модули проекта.
+
 ### `core`
 
 Не-UI код. Подпакеты — это фичи, а не слои:
 
-- `stdx` — расширение стандартной библиотеки: только generic, только std, без предметной области и I/O. Если нужен `catalog` — код не отсюда.
 - `log` — журнал.
 - `dependency` — установка внешних компонентов (Chromium, mpv).
 - `platform` — пути, окно, трей, single instance, установка.
@@ -74,7 +79,7 @@ cmd/yo       → root
 - `ui/navigator` — навигация: `Navigate()`, интенты, `Handler`, стек экранов; вызывает `ui/shell` для заголовка и notice.
 - `ui/screen` — экраны. Пакет плоский, без подпакетов: `<feature>.go` — состояние, обработчики и `Layout`; `<feature>_draw.go` — приватные draw-методы. `Layout` ничего не рисует сам, а вызывает их. Общие виджеты — в `ui/kit`.
 
-`ui/appearance` может импортировать `ui/resource`; обратное запрещено. `ui/navigator` импортирует `ui/shell`. Логика переходов живёт в `Navigate()`. `root` при сборке передаёт в `navigator` колбэки-фабрики экранов; пакеты экранов `navigator` не импортирует. `ui/shell` не импортирует `navigator`, экраны и `root`: его события передаются колбэками. Экраны не импортируют `root` и `shell`; переходы — через `ui/navigator`.
+`ui/appearance` может импортировать `ui/resource`; обратное запрещено. `ui/navigator` импортирует `ui/shell`. Логика переходов живёт в `Navigate()`. `root` при сборке передаёт в `navigator` колбэки-фабрики экранов; пакеты экранов `navigator` не импортирует. `ui/shell` не импортирует `navigator`, экраны, `core` и `root`: его события передаются колбэками. Экраны не импортируют `root` и `shell`; переходы — через `ui/navigator`.
 
 ## Контракт пакета
 
