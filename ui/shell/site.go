@@ -176,7 +176,7 @@ func (s *Shell) layoutSiteMenu(gtx layout.Context, g geometry) {
 	typo := s.typography()
 	radius := gtx.Dp(appearance.RadiusS)
 	kit.FillRounded(gtx, palette.Border, menu, radius)
-	kit.FillRounded(gtx, palette.Surface, menu.Inset(line), max(0, radius-line))
+	kit.FillRounded(gtx, palette.Panel, menu.Inset(line), max(0, radius-line))
 	inner := menu.Inset(line + pad)
 	if inner.Empty() {
 		s.menu.close()
