@@ -22,6 +22,9 @@ const (
 	dialogIconSize   unit.Dp = 24
 	dialogCloseSize  unit.Dp = 24
 	dialogCloseInset unit.Dp = 6
+	// The reference places the close frame outside the content box: its right
+	// edge is 4dp past content.Max.X and its top 4dp above content.Min.Y.
+	dialogCloseOffset unit.Dp = 4
 )
 
 // DialogOptions is the constructor input of Dialog.
@@ -126,7 +129,9 @@ func (d *Dialog) layoutHeader(gtx layout.Context, app appearance.Appearance, con
 // layoutClose registers a padded hitbox around the close glyph.
 func (d *Dialog) layoutClose(gtx layout.Context, app appearance.Appearance, content image.Rectangle) {
 	iconSize := gtx.Dp(dialogCloseSize)
-	iconRect := image.Rect(content.Max.X-iconSize, content.Min.Y, content.Max.X, content.Min.Y+iconSize)
+	offset := gtx.Dp(dialogCloseOffset)
+	iconRect := image.Rect(0, 0, iconSize, iconSize).Add(
+		image.Pt(content.Max.X-iconSize+offset, content.Min.Y-offset))
 	hit := iconRect.Inset(-gtx.Dp(dialogCloseInset))
 	clicked := d.close.Clicked(gtx)
 
