@@ -5,7 +5,7 @@ import (
 	"gioui.org/layout"
 	"gioui.org/unit"
 
-	"github.com/arfush/yo/core/stdx"
+	"github.com/arfush/yo/stdx"
 	"github.com/arfush/yo/ui/appearance"
 	"github.com/arfush/yo/ui/navigator"
 )

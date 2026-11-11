@@ -1,7 +1,7 @@
 // Package shell draws the undecorated application window: the border, header,
 // footer band and window controls. It owns where the active screen is drawn.
 //
-// Must not import: core/* except core/stdx, root, ui/navigator, ui/screen.
+// Must not import: core/*, root, ui/navigator, ui/screen.
 //
 // Invariants: a screen, site holder and appearance holder are never nil; New
 // and SetScreen panic on a nil screen. Prepare runs once per frame before Layout

@@ -11,7 +11,7 @@ import (
 	"gioui.org/widget"
 
 	"github.com/arfush/yo/catalog"
-	"github.com/arfush/yo/core/stdx"
+	"github.com/arfush/yo/stdx"
 	"github.com/arfush/yo/ui/appearance"
 	"github.com/arfush/yo/ui/kit"
 	"github.com/arfush/yo/ui/resource"

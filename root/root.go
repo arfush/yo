@@ -10,7 +10,7 @@ import (
 	"github.com/arfush/yo/catalog"
 	"github.com/arfush/yo/core/log"
 	"github.com/arfush/yo/core/platform"
-	"github.com/arfush/yo/core/stdx"
+	"github.com/arfush/yo/stdx"
 	"github.com/arfush/yo/ui/appearance"
 	"github.com/arfush/yo/ui/navigator"
 	"github.com/arfush/yo/ui/resource"

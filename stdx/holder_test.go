@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/arfush/yo/core/stdx"
+	"github.com/arfush/yo/stdx"
 )
 
 func TestHolderValueAndSet(t *testing.T) {
