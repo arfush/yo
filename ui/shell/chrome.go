@@ -38,7 +38,7 @@ const (
 	controlWidth      unit.Dp = 30
 	controlGap        unit.Dp = 12
 	controlIconSize   unit.Dp = 24
-	closeIconSize     unit.Dp = 28
+	closeIconSize     unit.Dp = 24
 	controlsInset     unit.Dp = 12
 	logoInset         unit.Dp = 16
 	logoSize          unit.Dp = 25

@@ -19,8 +19,8 @@ import (
 const (
 	dialogRadius     unit.Dp = 12
 	dialogTileSize   unit.Dp = 38
-	dialogIconSize   unit.Dp = 20
-	dialogCloseSize  unit.Dp = 16
+	dialogIconSize   unit.Dp = 24
+	dialogCloseSize  unit.Dp = 24
 	dialogCloseInset unit.Dp = 6
 )
 

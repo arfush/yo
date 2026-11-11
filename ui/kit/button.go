@@ -12,8 +12,9 @@ import (
 	"github.com/arfush/yo/ui/appearance"
 )
 
-// buttonIconSize is the icon size inside a button, in dp.
-const buttonIconSize unit.Dp = 16
+// buttonIconSize is the icon size inside a button, in dp. It equals the native
+// frame of the icon pack, so the 1.6 stroke is not scaled down.
+const buttonIconSize unit.Dp = 24
 
 // ButtonOptions is the constructor input of Button.
 type ButtonOptions struct {
