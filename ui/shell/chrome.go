@@ -323,7 +323,7 @@ func (s *Shell) layoutSiteMark(gtx layout.Context, r image.Rectangle, palette ap
 	inner := r.Inset(line)
 	kit.FillRounded(gtx, palette.SurfaceAlt, inner, max(0, radius-line))
 	iconRect := inner.Inset(gtx.Dp(markInset))
-	drawIcon(gtx, s.icon(resource.IconTorii), iconRect, palette.Accent)
+	kit.Icon(gtx, s.icon(resource.IconTorii), iconRect, palette.Accent)
 }
 
 // layoutVersion paints the version pill after the site block. Its fill is
@@ -387,7 +387,7 @@ func (s *Shell) layoutControl(gtx layout.Context, c windowControl) {
 			(c.bounds.Dx()-size)/2,
 			(c.bounds.Dy()-size)/2,
 		))
-		drawIcon(gtx, c.icon, iconRect, col)
+		kit.Icon(gtx, c.icon, iconRect, col)
 		return layout.Dimensions{Size: c.bounds.Size()}
 	})
 	if clicked && s.window != nil {
@@ -449,22 +449,6 @@ func (s *Shell) icon(key resource.IconKey) *widget.Icon {
 		return nil
 	}
 	return s.resource.Icon(key)
-}
-
-func drawIcon(gtx layout.Context, icon *widget.Icon, r image.Rectangle, col color.NRGBA) {
-	if icon == nil || r.Empty() {
-		return
-	}
-	size := min(r.Dx(), r.Dy())
-	if size <= 0 {
-		return
-	}
-	target := image.Rect(0, 0, size, size).Add(r.Min)
-	stack := op.Offset(target.Min).Push(gtx.Ops)
-	defer stack.Pop()
-	iconGtx := gtx
-	iconGtx.Constraints = layout.Exact(target.Size())
-	icon.Layout(iconGtx, col)
 }
 
 // drawChevron paints the switcher arrow as a stroked vector, so the chrome does
