@@ -20,6 +20,12 @@ const (
 	IconTorii      IconKey = "torii"
 	IconUnmaximize IconKey = "unmaximize"
 
+	// Variants of pack glyphs for a smaller optical box. The pack draws on a
+	// 24x24 grid with a 1.6px stroke; these keep the stroke and shrink only
+	// the glyph, because design.svg specifies the smaller box for them.
+	IconCloseDialog    IconKey = "close-dialog"
+	IconDownloadButton IconKey = "download-button"
+
 	IconArrowRight        IconKey = "arrow-right"
 	IconArrowUpRight      IconKey = "arrow-up-right"
 	IconBell              IconKey = "bell"
