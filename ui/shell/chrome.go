@@ -25,8 +25,8 @@ import (
 // Window sizes. The designed size is also the smallest usable size: the chrome
 // and the screens are verified at exactly this width and height.
 const (
-	InitialWidth  unit.Dp = 833
-	InitialHeight unit.Dp = 545
+	InitialWidth  unit.Dp = 840
+	InitialHeight unit.Dp = 550
 	MinimumWidth          = InitialWidth
 	MinimumHeight         = InitialHeight
 )
