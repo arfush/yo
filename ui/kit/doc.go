@@ -1,5 +1,5 @@
 // Package kit provides reusable widgets and drawing helpers shared by screens
-// and the shell.
+// and the shell. Screens draw their elements only through these widgets.
 //
 // Must not import: core/*, root, ui/navigator, ui/screen, ui/shell.
 //
