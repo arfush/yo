@@ -2,46 +2,43 @@ package kit
 
 import (
 	"image"
+	"math"
 
-	"gioui.org/io/pointer"
-	"gioui.org/io/semantic"
-	"gioui.org/layout"
-	"gioui.org/unit"
-	"gioui.org/widget"
+	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/ui/appearance"
+	"github.com/arfush/yo/ui/resource"
 )
 
-// buttonIconSize is the icon size inside a button, in dp. It equals the native
-// frame of the icon pack, so the 1.6 stroke is not scaled down.
-const buttonIconSize unit.Dp = 24
+// buttonIconSize is the icon size inside a button, in logical pixels. It equals
+// the native frame of the icon pack, so the glyph is not scaled down.
+const buttonIconSize float32 = 24
 
 // ButtonOptions is the constructor input of Button.
 type ButtonOptions struct {
-	Width, Height unit.Dp
-	Icon          *widget.Icon
+	Width, Height float32
+	Icon          resource.Path
 	Text          string
 	Accent        bool
 	OnClick       func()
 }
 
 // Button is a themed push button. Build it with NewButton; the zero value is
-// invalid. OnClick runs on the UI goroutine during Layout.
+// invalid. The caller draws it and calls Click when the user activates it.
 type Button struct {
-	click   widget.Clickable
-	width   unit.Dp
-	height  unit.Dp
-	icon    *widget.Icon
+	width   float32
+	height  float32
+	icon    resource.Path
 	text    string
 	accent  bool
 	onClick func()
 }
 
-// NewButton validates opts and builds a button. A nil icon or a non-positive
+// NewButton validates opts and builds a button. An empty icon or a non-positive
 // size is a programmer error and panics.
 func NewButton(opts ButtonOptions) Button {
-	if opts.Icon == nil {
-		panic("kit: nil button icon")
+	if opts.Icon == "" {
+		panic("kit: empty button icon")
 	}
 	if opts.Width <= 0 || opts.Height <= 0 {
 		panic("kit: non-positive button size")
@@ -56,56 +53,60 @@ func NewButton(opts ButtonOptions) Button {
 	}
 }
 
-// Layout draws the button and calls OnClick when the user clicks it.
-func (b *Button) Layout(gtx layout.Context, app appearance.Appearance) layout.Dimensions {
+// Size returns the button size in logical pixels.
+func (b *Button) Size() image.Point {
 	if b == nil {
 		panic("kit: nil button")
 	}
-	size := image.Pt(gtx.Dp(b.width), gtx.Dp(b.height))
-	gtx.Constraints = layout.Exact(size)
-	clicked := b.click.Clicked(gtx)
-	dims := b.click.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		pointer.CursorPointer.Add(gtx.Ops)
-		semantic.Button.Add(gtx.Ops)
-		if b.text != "" {
-			semantic.DescriptionOp(b.text).Add(gtx.Ops)
-		}
-		b.draw(gtx, app)
-		return layout.Dimensions{Size: size}
-	})
-	if clicked && b.onClick != nil {
-		b.onClick()
-	}
-	return dims
+	return image.Pt(
+		int(math.Round(float64(b.width))),
+		int(math.Round(float64(b.height))),
+	)
 }
 
-// draw paints the background and the centered icon and text. The accent
-// variant uses the site accent; the plain one uses the neutral button tokens.
-func (b *Button) draw(gtx layout.Context, app appearance.Appearance) {
+// Click runs the click callback.
+func (b *Button) Click() {
+	if b == nil {
+		panic("kit: nil button")
+	}
+	if b.onClick != nil {
+		b.onClick()
+	}
+}
+
+// Paint draws the button at the painter origin. The accent variant uses the
+// site accent; the plain one uses the neutral button tokens.
+func (b *Button) Paint(p *qt.QPainter, app appearance.Appearance) {
+	if b == nil {
+		panic("kit: nil button")
+	}
 	palette := app.Palette()
 	bg, border, content := palette.Button, palette.ButtonBorder, palette.Text
 	if b.accent {
 		bg, border, content = palette.Accent, palette.Accent, palette.OnAccent
 	}
 
-	size := gtx.Constraints.Max
+	size := b.Size()
 	r := image.Rectangle{Max: size}
-	line := max(1, gtx.Dp(appearance.Hairline))
-	radius := gtx.Dp(appearance.RadiusS)
-	FillRounded(gtx, border, r, radius)
-	FillRounded(gtx, bg, r.Inset(line), max(0, radius-line))
+	line := max(1, int(appearance.Hairline))
+	radius := float64(appearance.RadiusS)
+	FillRounded(p, border, r, radius)
+	FillRounded(p, bg, r.Inset(line), max(0, radius-float64(line)))
 
-	layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				iconSize := gtx.Dp(buttonIconSize)
-				Icon(gtx, b.icon, image.Rect(0, 0, iconSize, iconSize), content)
-				return layout.Dimensions{Size: image.Pt(iconSize, iconSize)}
-			}),
-			layout.Rigid(layout.Spacer{Width: appearance.SpaceS}.Layout),
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				return Text(gtx, app.Typography(), appearance.RoleLabel, b.text, content)
-			}),
+	iconSize := int(buttonIconSize)
+	gap := int(appearance.SpaceS)
+	label := MeasureText(app, appearance.RoleLabel, b.text)
+	x := (size.X - (iconSize + gap + label.X)) / 2
+	y := (size.Y - iconSize) / 2
+	Icon(p, b.icon, image.Rect(x, y, x+iconSize, y+iconSize), content)
+
+	if b.text != "" {
+		p.Save()
+		p.Translate2(
+			float64(x+iconSize+gap),
+			float64((size.Y-label.Y)/2),
 		)
-	})
+		Text(p, app, appearance.RoleLabel, b.text, content)
+		p.Restore()
+	}
 }

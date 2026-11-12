@@ -2,16 +2,16 @@ package kit
 
 import (
 	"image"
+	"math"
 
-	"gioui.org/layout"
-	"gioui.org/unit"
+	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/ui/appearance"
 )
 
 // ProgressBarOptions is the constructor input of ProgressBar.
 type ProgressBarOptions struct {
-	Width, Height unit.Dp
+	Width, Height float32
 	Percent       int
 	Text          string
 }
@@ -20,8 +20,8 @@ type ProgressBarOptions struct {
 // Build it with NewProgressBar; update the percent and text with the setters.
 // The zero value is invalid.
 type ProgressBar struct {
-	width   unit.Dp
-	height  unit.Dp
+	width   float32
+	height  float32
 	percent int
 	text    string
 }
@@ -56,30 +56,46 @@ func (p *ProgressBar) SetText(text string) {
 	p.text = text
 }
 
-// Layout draws the track, the accent fill and the centered text.
-func (p *ProgressBar) Layout(gtx layout.Context, app appearance.Appearance) layout.Dimensions {
+// Size returns the progress bar size in logical pixels.
+func (p *ProgressBar) Size() image.Point {
 	if p == nil {
 		panic("kit: nil progress bar")
 	}
-	size := image.Pt(gtx.Dp(p.width), gtx.Dp(p.height))
-	gtx.Constraints = layout.Exact(size)
+	return image.Pt(
+		int(math.Round(float64(p.width))),
+		int(math.Round(float64(p.height))),
+	)
+}
+
+// Paint draws the track, the accent fill and the centered text at the painter
+// origin.
+func (p *ProgressBar) Paint(q *qt.QPainter, app appearance.Appearance) {
+	if p == nil {
+		panic("kit: nil progress bar")
+	}
+	size := p.Size()
 	palette := app.Palette()
 	r := image.Rectangle{Max: size}
-	line := max(1, gtx.Dp(appearance.Hairline))
-	radius := min(gtx.Dp(appearance.RadiusS), size.Y/2)
-	FillRounded(gtx, palette.Border, r, radius)
-	FillRounded(gtx, palette.ProgressBar, r.Inset(line), max(0, radius-line))
+	line := max(1, int(appearance.Hairline))
+	radius := math.Min(float64(appearance.RadiusS), float64(size.Y)/2)
+	FillRounded(q, palette.Border, r, radius)
+	FillRounded(q, palette.ProgressBar, r.Inset(line), max(0, radius-float64(line)))
 
 	if p.percent > 0 {
 		fill := image.Rect(0, 0, size.X*p.percent/100, size.Y)
-		FillRounded(gtx, palette.Accent, fill, min(radius, fill.Dx()/2))
+		FillRounded(q, palette.Accent, fill, math.Min(radius, float64(fill.Dx())/2))
 	}
-	if p.text != "" {
-		layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-			return Text(gtx, app.Typography(), appearance.RoleLabel, p.text, palette.Text)
-		})
+	if p.text == "" {
+		return
 	}
-	return layout.Dimensions{Size: size}
+	label := MeasureText(app, appearance.RoleLabel, p.text)
+	q.Save()
+	q.Translate2(
+		float64((size.X-label.X)/2),
+		float64((size.Y-label.Y)/2),
+	)
+	Text(q, app, appearance.RoleLabel, p.text, palette.Text)
+	q.Restore()
 }
 
 // clampPercent keeps percent in the 0..100 range used by the fill.

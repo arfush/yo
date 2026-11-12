@@ -2,71 +2,62 @@ package kit
 
 import (
 	"image"
+	"math"
 
-	"gioui.org/io/pointer"
-	"gioui.org/io/semantic"
-	"gioui.org/layout"
-	"gioui.org/op"
-	"gioui.org/op/clip"
-	"gioui.org/unit"
-	"gioui.org/widget"
+	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/ui/appearance"
 	"github.com/arfush/yo/ui/resource"
 )
 
-// Dialog geometry, in device-independent dp.
+// Dialog geometry, in logical pixels.
 const (
-	dialogRadius     unit.Dp = 12
-	dialogTileSize   unit.Dp = 38
-	dialogIconSize   unit.Dp = 24
-	dialogCloseSize  unit.Dp = 24
-	dialogCloseInset unit.Dp = 6
-	// The reference places the close frame outside the content box: its right
-	// edge is 4dp past content.Max.X and its top 4dp above content.Min.Y.
-	dialogCloseOffset unit.Dp = 4
+	dialogRadius      float32 = 12
+	dialogTileSize    float32 = 38
+	dialogIconSize    float32 = 24
+	dialogCloseSize   float32 = 24
+	dialogCloseOffset float32 = 4
 )
 
 // DialogOptions is the constructor input of Dialog.
 type DialogOptions struct {
-	Width, Height unit.Dp
-	Icon          *widget.Icon
+	Width, Height float32
+	Icon          resource.Path
 	Title         string
 	Description   string
 	ShowClose     bool
-	CloseIcon     *widget.Icon
+	CloseIcon     resource.Path
 	OnClose       func()
 	Button        ButtonOptions
 }
 
 // Dialog is a fixed-size panel with an icon tile, a title, a description, an
 // optional close control and a button. Build it with NewDialog; the zero value
-// is invalid. Callbacks run on the UI goroutine during Layout.
+// is invalid.
 type Dialog struct {
-	close       widget.Clickable
-	width       unit.Dp
-	height      unit.Dp
-	icon        *widget.Icon
+	width       float32
+	height      float32
+	icon        resource.Path
 	title       string
 	description string
 	showClose   bool
-	closeIcon   *widget.Icon
+	closeIcon   resource.Path
 	onClose     func()
 	button      Button
 }
 
-// NewDialog validates opts and builds a dialog. A nil icon, a nil close icon
-// while ShowClose is set, a non-positive size or an invalid button is a
+// NewDialog validates opts and builds a dialog. An empty icon, an empty close
+// icon while ShowClose is set, a non-positive size or an invalid button is a
 // programmer error and panics.
 func NewDialog(opts DialogOptions) Dialog {
-	if opts.Icon == nil {
-		panic("kit: nil dialog icon")
+	if opts.Icon == "" {
+		panic("kit: empty dialog icon")
 	}
 	if opts.Width <= 0 || opts.Height <= 0 {
 		panic("kit: non-positive dialog size")
 	}
-	if opts.ShowClose && opts.CloseIcon == nil {
-		panic("kit: nil dialog close icon")
+	if opts.ShowClose && opts.CloseIcon == "" {
+		panic("kit: empty dialog close icon")
 	}
 	return Dialog{
 		width:       opts.Width,
@@ -81,111 +72,120 @@ func NewDialog(opts DialogOptions) Dialog {
 	}
 }
 
-// Layout draws the panel and its content at the current origin.
-func (d *Dialog) Layout(gtx layout.Context, app appearance.Appearance) layout.Dimensions {
+// Size returns the dialog size in logical pixels.
+func (d *Dialog) Size() image.Point {
 	if d == nil {
 		panic("kit: nil dialog")
 	}
-	size := image.Pt(gtx.Dp(d.width), gtx.Dp(d.height))
-	gtx.Constraints = layout.Exact(size)
-	palette := app.Palette()
-	r := image.Rectangle{Max: size}
-	line := max(1, gtx.Dp(appearance.Hairline))
-	radius := gtx.Dp(dialogRadius)
-	FillRounded(gtx, palette.Border, r, radius)
-	FillRounded(gtx, palette.Panel, r.Inset(line), max(0, radius-line))
-
-	padding := gtx.Dp(appearance.SpaceContent)
-	if size.X <= 2*padding || size.Y <= 2*padding {
-		return layout.Dimensions{Size: size}
-	}
-	content := image.Rect(padding, padding, size.X-padding, size.Y-padding)
-	clipStack := clip.Rect(r.Inset(line)).Push(gtx.Ops)
-	defer clipStack.Pop()
-
-	d.layoutHeader(gtx, app, content)
-	d.layoutText(gtx, app, content)
-	d.layoutButton(gtx, app, content)
-	return layout.Dimensions{Size: size}
+	return image.Pt(
+		int(math.Round(float64(d.width))),
+		int(math.Round(float64(d.height))),
+	)
 }
 
-// layoutHeader paints the icon tile and the optional close control.
-func (d *Dialog) layoutHeader(gtx layout.Context, app appearance.Appearance, content image.Rectangle) {
-	palette := app.Palette()
-	tile := gtx.Dp(dialogTileSize)
-	tileRect := image.Rect(content.Min.X, content.Min.Y, content.Min.X+tile, content.Min.Y+tile)
-	FillRounded(gtx, palette.SurfaceAlt, tileRect, gtx.Dp(appearance.RadiusS))
-
-	iconSize := gtx.Dp(dialogIconSize)
-	inset := (tile - iconSize) / 2
-	iconRect := image.Rect(0, 0, iconSize, iconSize).Add(tileRect.Min.Add(image.Pt(inset, inset)))
-	Icon(gtx, d.icon, iconRect, palette.Ink)
-
-	if d.showClose {
-		d.layoutClose(gtx, app, content)
+// Button returns the action button so the caller can forward activation.
+func (d *Dialog) Button() *Button {
+	if d == nil {
+		panic("kit: nil dialog")
 	}
+	return &d.button
 }
 
-// layoutClose registers a padded hitbox around the close glyph.
-func (d *Dialog) layoutClose(gtx layout.Context, app appearance.Appearance, content image.Rectangle) {
-	iconSize := gtx.Dp(dialogCloseSize)
-	offset := gtx.Dp(dialogCloseOffset)
-	iconRect := image.Rect(0, 0, iconSize, iconSize).Add(
-		image.Pt(content.Max.X-iconSize+offset, content.Min.Y-offset))
-	hit := iconRect.Inset(-gtx.Dp(dialogCloseInset))
-	clicked := d.close.Clicked(gtx)
-
-	stack := op.Offset(hit.Min).Push(gtx.Ops)
-	hitGtx := gtx
-	hitGtx.Constraints = layout.Exact(hit.Size())
-	d.close.Layout(hitGtx, func(gtx layout.Context) layout.Dimensions {
-		pointer.CursorPointer.Add(gtx.Ops)
-		semantic.Button.Add(gtx.Ops)
-		semantic.DescriptionOp(app.Locale().Text(resource.TextWindowClose)).Add(gtx.Ops)
-		return layout.Dimensions{Size: hit.Size()}
-	})
-	stack.Pop()
-
-	Icon(gtx, d.closeIcon, iconRect, app.Palette().ControlIcon)
-	if clicked && d.onClose != nil {
+// Close runs the close callback.
+func (d *Dialog) Close() {
+	if d == nil {
+		panic("kit: nil dialog")
+	}
+	if d.onClose != nil {
 		d.onClose()
 	}
 }
 
-// layoutText draws the title and the description above the button.
-func (d *Dialog) layoutText(gtx layout.Context, app appearance.Appearance, content image.Rectangle) {
+// Paint draws the panel and its content at the painter origin.
+func (d *Dialog) Paint(p *qt.QPainter, app appearance.Appearance) {
+	if d == nil {
+		panic("kit: nil dialog")
+	}
+	size := d.Size()
 	palette := app.Palette()
-	top := content.Min.Y + gtx.Dp(dialogTileSize) + gtx.Dp(appearance.SpaceXL)
-	buttonTop := content.Max.Y - gtx.Dp(d.button.height)
+	r := image.Rectangle{Max: size}
+	line := max(1, int(appearance.Hairline))
+	radius := float64(dialogRadius)
+	FillRounded(p, palette.Border, r, radius)
+	FillRounded(p, palette.Panel, r.Inset(line), max(0, radius-float64(line)))
+
+	padding := int(appearance.SpaceContent)
+	if size.X <= 2*padding || size.Y <= 2*padding {
+		return
+	}
+	content := image.Rect(padding, padding, size.X-padding, size.Y-padding)
+
+	p.Save()
+	clip := roundedPath(r.Inset(line), max(0, radius-float64(line)))
+	p.SetClipPath(clip)
+	d.paintHeader(p, app, content)
+	d.paintText(p, app, content)
+	d.paintButton(p, app, content)
+	p.Restore()
+	clip.Delete()
+}
+
+// paintHeader paints the icon tile and the optional close control.
+func (d *Dialog) paintHeader(p *qt.QPainter, app appearance.Appearance, content image.Rectangle) {
+	palette := app.Palette()
+	tile := int(dialogTileSize)
+	tileRect := image.Rect(content.Min.X, content.Min.Y, content.Min.X+tile, content.Min.Y+tile)
+	FillRounded(p, palette.SurfaceAlt, tileRect, float64(appearance.RadiusS))
+
+	iconSize := int(dialogIconSize)
+	inset := (tile - iconSize) / 2
+	Icon(p, d.icon, image.Rect(0, 0, iconSize, iconSize).Add(tileRect.Min.Add(image.Pt(inset, inset))), palette.Ink)
+
+	if !d.showClose {
+		return
+	}
+	closeSize := int(dialogCloseSize)
+	offset := int(dialogCloseOffset)
+	closeRect := image.Rect(0, 0, closeSize, closeSize).Add(
+		image.Pt(content.Max.X-closeSize+offset, content.Min.Y-offset))
+	Icon(p, d.closeIcon, closeRect, palette.ControlIcon)
+}
+
+// paintText draws the title and the description above the button.
+func (d *Dialog) paintText(p *qt.QPainter, app appearance.Appearance, content image.Rectangle) {
+	palette := app.Palette()
+	top := content.Min.Y + int(dialogTileSize) + int(appearance.SpaceXL)
+	buttonTop := content.Max.Y - d.button.Size().Y
 	if buttonTop < content.Min.Y {
 		buttonTop = content.Min.Y
 	}
-	clipStack := clip.Rect(image.Rect(content.Min.X, content.Min.Y, content.Max.X, buttonTop)).Push(gtx.Ops)
-	defer clipStack.Pop()
+	width := content.Dx()
 
-	textGtx := gtx
-	textGtx.Constraints = layout.Constraints{Max: image.Pt(content.Dx(), max(0, buttonTop-top))}
-	stack := op.Offset(image.Pt(content.Min.X, top)).Push(gtx.Ops)
-	title := TextBlock(textGtx, app.Typography(), appearance.RoleTitle, d.title, palette.Text)
-	stack.Pop()
+	p.Save()
+	p.SetClipRect2(content.Min.X, content.Min.Y, width, max(0, buttonTop-content.Min.Y))
+	p.Translate2(float64(content.Min.X), float64(top))
+	title := TextBlock(p, app, appearance.RoleTitle, d.title, palette.Text, width)
+	p.Restore()
 
-	top += title.Size.Y + gtx.Dp(appearance.SpaceM)
+	top += title.Y + int(appearance.SpaceM)
 	if top >= buttonTop {
 		return
 	}
-	textGtx.Constraints.Max.Y = max(0, buttonTop-top)
-	stack = op.Offset(image.Pt(content.Min.X, top)).Push(gtx.Ops)
-	TextBlock(textGtx, app.Typography(), appearance.RoleBody, d.description, palette.TextMuted)
-	stack.Pop()
+	p.Save()
+	p.SetClipRect2(content.Min.X, top, width, buttonTop-top)
+	p.Translate2(float64(content.Min.X), float64(top))
+	TextBlock(p, app, appearance.RoleBody, d.description, palette.TextMuted, width)
+	p.Restore()
 }
 
-// layoutButton pins the button to the bottom of the content area.
-func (d *Dialog) layoutButton(gtx layout.Context, app appearance.Appearance, content image.Rectangle) {
-	top := content.Max.Y - gtx.Dp(d.button.height)
+// paintButton pins the button to the bottom of the content area.
+func (d *Dialog) paintButton(p *qt.QPainter, app appearance.Appearance, content image.Rectangle) {
+	top := content.Max.Y - d.button.Size().Y
 	if top < content.Min.Y {
 		top = content.Min.Y
 	}
-	stack := op.Offset(image.Pt(content.Min.X, top)).Push(gtx.Ops)
-	d.button.Layout(gtx, app)
-	stack.Pop()
+	p.Save()
+	p.Translate2(float64(content.Min.X), float64(top))
+	d.button.Paint(p, app)
+	p.Restore()
 }

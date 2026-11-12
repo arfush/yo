@@ -3,6 +3,7 @@
 //
 // Must not import: core/*, root, ui/navigator, ui/screen, ui/shell.
 //
-// Invariants: helpers draw into the caller's layout.Context and return
-// dimensions; they never mutate application state.
+// Invariants: helpers draw into the caller's QPainter and never mutate
+// application state. Widgets draw at the painter origin and expose their size,
+// so callers own placement and hit-testing.
 package kit

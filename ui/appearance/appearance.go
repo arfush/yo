@@ -34,6 +34,9 @@ type Appearance struct {
 	locale     Locale
 }
 
+// Resource returns the embedded assets the appearance was built from.
+func (a Appearance) Resource() *resource.Resource { return a.resource }
+
 // Palette returns the semantic colors of the application.
 func (a Appearance) Palette() Palette { return a.palette }
 

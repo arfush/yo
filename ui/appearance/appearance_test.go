@@ -12,6 +12,9 @@ func TestNew(t *testing.T) {
 	t.Parallel()
 
 	app := appearance.New(appearance.Options{Resource: resource.New(), Language: "ru"})
+	if app.Resource() == nil {
+		t.Fatal("Resource() = nil")
+	}
 	if got := app.Locale().Code(); got != "ru" {
 		t.Fatalf("Locale().Code() = %q; want ru", got)
 	}
