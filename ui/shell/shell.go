@@ -291,14 +291,17 @@ func (s *Shell) setAppIcon(key resource.AppIconKey) {
 	}
 	nrgba := image.NewNRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
 	draw.Draw(nrgba, nrgba.Bounds(), img, bounds.Min, draw.Src)
-	source := qt.NewQImage6(&nrgba.Pix[0], bounds.Dx(), bounds.Dy(), int64(nrgba.Stride), qt.QImage__Format_RGBA8888)
-	owned := source.Copy()
-	pixmap := qt.QPixmap_FromImage(owned)
+	w, h := bounds.Dx(), bounds.Dy()
+	// QImage.Copy and QPixmap_FromImage register Go finalizers that delete the
+	// native objects again from a non-GUI goroutine. Convert without them and
+	// release both objects here, on the UI goroutine.
+	source := qt.NewQImage6(&nrgba.Pix[0], w, h, int64(nrgba.Stride), qt.QImage__Format_RGBA8888)
+	pixmap := qt.NewQPixmap2(w, h)
+	pixmap.ConvertFromImage(source)
 	icon := qt.NewQIcon2(pixmap)
 	s.widget.SetWindowIcon(icon)
 	icon.Delete()
 	pixmap.Delete()
-	owned.Delete()
 	source.Delete()
 }
 
