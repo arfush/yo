@@ -22,6 +22,7 @@ import (
 func Run() {
 	r := &root{window: new(app.Window)}
 	r.initLog()
+	r.initDemo()
 	defer r.stop()
 
 	r.logger.Info("application started",
@@ -99,6 +100,7 @@ func (r *root) frame(e app.FrameEvent) {
 		r.logger.Info("window shown", "size", e.Size)
 		r.windowShown = true
 	}
+	r.demoFrame()
 	gtx := app.NewContext(new(op.Ops), e)
 	if !r.panicked {
 		r.navigator.Apply()

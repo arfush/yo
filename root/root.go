@@ -39,6 +39,7 @@ type root struct {
 	platformLog    *log.Logger
 	windowShown    bool
 	panicked       bool
+	demo           demoState
 	iconKey        resource.AppIconKey
 	stopOnce       sync.Once
 }
