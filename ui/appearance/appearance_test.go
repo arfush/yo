@@ -3,9 +3,6 @@ package appearance_test
 import (
 	"testing"
 
-	"gioui.org/font"
-	"gioui.org/unit"
-
 	"github.com/arfush/yo/catalog"
 	"github.com/arfush/yo/ui/appearance"
 	"github.com/arfush/yo/ui/resource"
@@ -18,11 +15,8 @@ func TestNew(t *testing.T) {
 	if got := app.Locale().Code(); got != "ru" {
 		t.Fatalf("Locale().Code() = %q; want ru", got)
 	}
-	if got := app.Locale().Tag().String(); got != "ru" {
-		t.Fatalf("Locale().Tag() = %q; want ru", got)
-	}
-	if app.Typography().Shaper() == nil {
-		t.Fatal("Typography().Shaper() = nil")
+	if got := app.Typography().Font(appearance.RoleBody); got != resource.FontRegular {
+		t.Fatalf("Typography().Font(RoleBody) = %q; want %q", got, resource.FontRegular)
 	}
 	if got := app.Palette().Canvas.A; got == 0 {
 		t.Fatal("Palette().Canvas is fully transparent")
@@ -37,9 +31,6 @@ func TestSetLanguage(t *testing.T) {
 
 	if got := app.Locale().Code(); got != "en" {
 		t.Fatalf("Locale().Code() = %q; want en", got)
-	}
-	if got := app.Locale().Tag().String(); got != "en" {
-		t.Fatalf("Locale().Tag() = %q; want en", got)
 	}
 }
 
@@ -131,23 +122,23 @@ func TestTypographyRoles(t *testing.T) {
 	}).Typography()
 
 	tests := []struct {
-		name   string
-		role   appearance.TextRole
-		weight font.Weight
-		size   unit.Sp
+		name string
+		role appearance.TextRole
+		font resource.FontKey
+		size float32
 	}{
-		{"display", appearance.RoleDisplay, font.Bold, 26},
-		{"title", appearance.RoleTitle, font.SemiBold, 23.5},
-		{"subtitle", appearance.RoleSubtitle, font.Medium, 15},
-		{"body", appearance.RoleBody, font.Normal, 12.5},
-		{"label", appearance.RoleLabel, font.Bold, 13.2},
-		{"caption", appearance.RoleCaption, font.Medium, 11},
+		{"display", appearance.RoleDisplay, resource.FontBold, 26},
+		{"title", appearance.RoleTitle, resource.FontSemiBold, 23.5},
+		{"subtitle", appearance.RoleSubtitle, resource.FontMedium, 15},
+		{"body", appearance.RoleBody, resource.FontRegular, 12.5},
+		{"label", appearance.RoleLabel, resource.FontBold, 13.2},
+		{"caption", appearance.RoleCaption, resource.FontMedium, 11},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := typo.Font(tt.role).Weight; got != tt.weight {
-				t.Fatalf("Font(%s).Weight = %v; want %v", tt.name, got, tt.weight)
+			if got := typo.Font(tt.role); got != tt.font {
+				t.Fatalf("Font(%s) = %v; want %v", tt.name, got, tt.font)
 			}
 			if got := typo.TextSize(tt.role); got != tt.size {
 				t.Fatalf("TextSize(%s) = %v; want %v", tt.name, got, tt.size)

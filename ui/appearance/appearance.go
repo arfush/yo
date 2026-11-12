@@ -20,7 +20,7 @@ func New(opts Options) Appearance {
 		resource:   opts.Resource,
 		palette:    newPalette(),
 		appIcon:    resource.AppIconYobase,
-		typography: newTypography(opts.Resource),
+		typography: newTypography(),
 		locale:     newLocale(opts.Resource, opts.Language),
 	}
 }
@@ -40,7 +40,7 @@ func (a Appearance) Palette() Palette { return a.palette }
 // AppIcon returns the application icon that matches the active palette.
 func (a Appearance) AppIcon() resource.AppIconKey { return a.appIcon }
 
-// Typography returns the text shaper and the role scale.
+// Typography returns the font keys and the role scale.
 func (a Appearance) Typography() Typography { return a.typography }
 
 // Locale returns the active language, strings and formatting.

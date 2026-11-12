@@ -1,18 +1,20 @@
 package resource
 
 import (
+	"encoding/xml"
+	"errors"
 	"io/fs"
 	"strings"
-
-	"gioui.org/widget"
 )
 
-// IconKey is an icon selector: its value is the file name in
-// icon/<name>.iconvg.
+// IconKey is an icon selector: its value is the symbol id in icons.svg.
 type IconKey string
 
+// Path is the SVG path data of one icon, in a 24x24 box.
+type Path string
+
 // Icon* declares the embedded vector glyphs. Keep this list in sync with the
-// .iconvg files in icon/: Icon panics on a key that has no asset.
+// symbols in icons.svg: Icon panics on a key that has no symbol.
 const (
 	IconClose      IconKey = "close"
 	IconMaximize   IconKey = "maximize"
@@ -55,26 +57,52 @@ const (
 	IconUsers             IconKey = "users"
 )
 
-// Icon returns the cached vector icon for the key. A missing icon panics: the
-// embedded catalog is part of the build, not runtime data.
-func (r *Resource) Icon(key IconKey) *widget.Icon {
-	icon, ok := r.icons[key]
+// Icon returns the SVG path for the key. A missing icon panics: the embedded
+// catalog is part of the build, not runtime data.
+func (r *Resource) Icon(key IconKey) Path {
+	path, ok := r.icons[key]
 	if !ok {
 		panic("resource: icon \"" + string(key) + "\" is not embedded")
 	}
-	return icon
+	return path
+}
+
+type iconSprite struct {
+	Symbols []iconSymbol `xml:"symbol"`
+}
+
+type iconSymbol struct {
+	ID    string     `xml:"id,attr"`
+	Paths []iconPath `xml:"path"`
+}
+
+type iconPath struct {
+	D string `xml:"d,attr"`
 }
 
 func (r *Resource) loadIcons(fsys fs.FS) {
-	for _, entry := range readDir(fsys, "icon") {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".iconvg") {
-			continue
+	data, err := fs.ReadFile(fsys, "icons.svg")
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return
 		}
-		key := IconKey(strings.TrimSuffix(entry.Name(), ".iconvg"))
-		icon, err := widget.NewIcon(readFile(fsys, "icon/"+entry.Name()))
-		if err != nil {
-			panic("resource: build icon " + entry.Name() + ": " + err.Error())
+		panic("resource: read icons.svg: " + err.Error())
+	}
+	var sprite iconSprite
+	if err := xml.Unmarshal(data, &sprite); err != nil {
+		panic("resource: parse icons.svg: " + err.Error())
+	}
+	for _, symbol := range sprite.Symbols {
+		var d strings.Builder
+		for _, path := range symbol.Paths {
+			if d.Len() > 0 {
+				d.WriteByte(' ')
+			}
+			d.WriteString(path.D)
 		}
-		r.icons[key] = icon
+		if d.Len() == 0 {
+			panic("resource: icon \"" + symbol.ID + "\" has no path")
+		}
+		r.icons[IconKey(symbol.ID)] = Path(d.String())
 	}
 }

@@ -1,12 +1,6 @@
 package appearance
 
-import (
-	"gioui.org/font"
-	"gioui.org/text"
-	"gioui.org/unit"
-
-	"github.com/arfush/yo/ui/resource"
-)
+import "github.com/arfush/yo/ui/resource"
 
 // TextRole selects a point on the type scale.
 type TextRole uint8
@@ -21,20 +15,18 @@ const (
 	RoleCaption
 )
 
-// Typography owns the shared text shaper and the role scale. The shaper must
-// stay on the UI goroutine.
+// Typography owns the font keys and the role scale.
 type Typography struct {
-	shaper *text.Shaper
-	fonts  [6]font.Font
-	sizes  [6]unit.Sp
+	fonts [6]resource.FontKey
+	sizes [6]float32
 }
 
-// newTypography loads the four Inter faces and builds the shaper. A missing
-// embedded font panics through resource.Font.
-func newTypography(res *resource.Resource) Typography {
+// newTypography builds the role scale. The Qt backend resolves the font keys
+// against the embedded faces in resource.
+func newTypography() Typography {
 	roles := [...]struct {
 		key  resource.FontKey
-		size unit.Sp
+		size float32
 	}{
 		RoleDisplay:  {resource.FontBold, 26},
 		RoleTitle:    {resource.FontSemiBold, 23.5},
@@ -44,34 +36,24 @@ func newTypography(res *resource.Resource) Typography {
 		RoleCaption:  {resource.FontMedium, 11},
 	}
 
-	faces := make([]font.FontFace, 0, len(roles))
-	var fonts [6]font.Font
-	var sizes [6]unit.Sp
+	var fonts [6]resource.FontKey
+	var sizes [6]float32
 	for role, spec := range roles {
-		face := res.Font(spec.key)
-		faces = append(faces, face)
-		fonts[role] = face.Font
+		fonts[role] = spec.key
 		sizes[role] = spec.size
 	}
-	return Typography{
-		shaper: text.NewShaper(text.NoSystemFonts(), text.WithCollection(faces)),
-		fonts:  fonts,
-		sizes:  sizes,
-	}
+	return Typography{fonts: fonts, sizes: sizes}
 }
 
-// Shaper returns the shared shaper. It must stay on the UI goroutine.
-func (t Typography) Shaper() *text.Shaper { return t.shaper }
-
-// Font returns the face for role. An unknown role is a programmer error and
-// panics.
-func (t Typography) Font(role TextRole) font.Font {
+// Font returns the embedded face key for role. An unknown role is a programmer
+// error and panics.
+func (t Typography) Font(role TextRole) resource.FontKey {
 	return t.fonts[t.index(role)]
 }
 
-// TextSize returns the size for role. An unknown role is a programmer error
-// and panics.
-func (t Typography) TextSize(role TextRole) unit.Sp {
+// TextSize returns the size for role, in logical pixels. An unknown role is a
+// programmer error and panics.
+func (t Typography) TextSize(role TextRole) float32 {
 	return t.sizes[t.index(role)]
 }
 

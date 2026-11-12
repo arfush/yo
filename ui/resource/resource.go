@@ -5,22 +5,19 @@ import (
 	"errors"
 	"io/fs"
 	"sync"
-
-	"gioui.org/font"
-	"gioui.org/widget"
 )
 
 // assets is the embedded resource tree. The placeholders keep font/ and icon/
 // present while their assets are added; loaders skip files they do not own.
 //
-//go:embed all:font all:icon lang/*.json
+//go:embed all:font all:icon lang/*.json icons.svg
 var assets embed.FS
 
 // Resource owns the embedded assets loaded by New. It is safe to share across
 // the UI goroutine but must not be copied.
 type Resource struct {
-	fonts    map[FontKey]font.FontFace
-	icons    map[IconKey]*widget.Icon
+	fonts    map[FontKey][]byte
+	icons    map[IconKey]Path
 	appIcons map[AppIconKey]appIcon
 	lexicons map[string]lexicon
 
@@ -46,8 +43,8 @@ func New() *Resource {
 // passes the embedded one.
 func newResource(fsys fs.FS) *Resource {
 	r := &Resource{
-		fonts:    make(map[FontKey]font.FontFace),
-		icons:    make(map[IconKey]*widget.Icon),
+		fonts:    make(map[FontKey][]byte),
+		icons:    make(map[IconKey]Path),
 		appIcons: make(map[AppIconKey]appIcon),
 		lexicons: make(map[string]lexicon),
 		next:     make(map[variantCursor]uint64),

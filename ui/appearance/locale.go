@@ -1,16 +1,11 @@
 package appearance
 
-import (
-	"golang.org/x/text/language"
+import "github.com/arfush/yo/ui/resource"
 
-	"github.com/arfush/yo/ui/resource"
-)
-
-// Locale owns the active language: code, locale tag, strings and formatting.
+// Locale owns the active language: code, strings and formatting.
 type Locale struct {
 	lang resource.Lang
 	code string
-	tag  language.Tag
 }
 
 // newLocale resolves code in res. An empty or unknown code panics.
@@ -21,19 +16,11 @@ func newLocale(res *resource.Resource, code string) Locale {
 	if code == "" {
 		panic("appearance: language is empty")
 	}
-	lang := res.Lang(code)
-	tag, err := language.Parse(code)
-	if err != nil {
-		panic("appearance: parse language \"" + code + "\": " + err.Error())
-	}
-	return Locale{lang: lang, code: code, tag: tag}
+	return Locale{lang: res.Lang(code), code: code}
 }
 
 // Code returns the language code, e.g. "ru".
 func (l Locale) Code() string { return l.code }
-
-// Tag returns the tag Gio expects in layout.Context.Locale.
-func (l Locale) Tag() language.Tag { return l.tag }
 
 // Text returns the translation for key.
 func (l Locale) Text(key resource.TextKey) string { return l.lang.Text(key) }
