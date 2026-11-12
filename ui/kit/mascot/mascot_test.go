@@ -6,8 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"gioui.org/layout"
-	"gioui.org/op"
+	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/ui/appearance"
 )
@@ -33,8 +32,17 @@ func testPalette() appearance.MascotPalette {
 	}
 }
 
-func testContext(now time.Time) layout.Context {
-	return layout.Context{Ops: new(op.Ops), Now: now}
+// testPainter returns a painter over an offscreen image and cleans it up.
+func testPainter(t *testing.T) *qt.QPainter {
+	t.Helper()
+	img := qt.NewQImage3(168, 168, qt.QImage__Format_ARGB32_Premultiplied)
+	p := qt.NewQPainter2(img.QPaintDevice)
+	t.Cleanup(func() {
+		p.End()
+		p.Delete()
+		img.Delete()
+	})
+	return p
 }
 
 func assertPanics(t *testing.T, fn func()) {
@@ -56,13 +64,14 @@ func TestNewRejectsUnknownMood(t *testing.T) {
 }
 
 func TestZeroMascotDrawPanics(t *testing.T) {
+	p := testPainter(t)
 	assertPanics(t, func() {
-		(Mascot{}).Draw(testContext(time.Unix(1, 0)), image.Rect(0, 0, 42, 42))
+		(Mascot{}).Draw(p, image.Rect(0, 0, 42, 42), time.Unix(1, 0))
 	})
 }
 
 func TestZeroMascotEmptyRectIsIgnored(t *testing.T) {
-	(Mascot{}).Draw(testContext(time.Unix(1, 0)), image.Rectangle{})
+	(Mascot{}).Draw(testPainter(t), image.Rectangle{}, time.Unix(1, 0))
 }
 
 func TestSetMoodRejectsUnknownMood(t *testing.T) {
@@ -82,8 +91,9 @@ func TestDrawEveryMoodAndSlot(t *testing.T) {
 	for _, mood := range []Mood{Normal, Alert, Loading, Panic} {
 		for _, since := range []time.Time{{}, now.Add(-500 * time.Millisecond)} {
 			m := New(Options{Palette: pal, Mood: mood, MoodSince: since})
+			p := testPainter(t)
 			for _, rect := range rects {
-				m.Draw(testContext(now), rect)
+				m.Draw(p, rect, now)
 			}
 		}
 	}
@@ -93,5 +103,6 @@ func TestPanicGlitchDrawsDuringBurst(t *testing.T) {
 	// 100 ms into a cycle is inside the burst, so the glitch path repaints
 	// displaced slices.
 	now := time.Unix(0, int64(100*time.Millisecond))
-	New(Options{Palette: testPalette(), Mood: Panic}).Draw(testContext(now), image.Rect(0, 0, 168, 168))
+	New(Options{Palette: testPalette(), Mood: Panic}).
+		Draw(testPainter(t), image.Rect(0, 0, 168, 168), now)
 }

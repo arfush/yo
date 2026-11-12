@@ -5,11 +5,10 @@ import (
 	"math"
 	"time"
 
-	"gioui.org/layout"
-	"gioui.org/op/clip"
-	"gioui.org/op/paint"
+	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/ui/appearance"
+	"github.com/arfush/yo/ui/kit"
 )
 
 // Panic glitch timing. The character stays intact for most of the cycle, then a
@@ -29,10 +28,10 @@ type glitchScene struct {
 	phase  float64
 	px     func(float32) int
 	colors appearance.MascotGlitch
-	paint  func(layout.Context, float32)
+	paint  func(*qt.QPainter, float32)
 }
 
-func (g glitchScene) draw(gtx layout.Context) {
+func (g glitchScene) draw(p *qt.QPainter) {
 	if math.Mod(g.phase, glitchCycle.Seconds()) > glitchBurst.Seconds() {
 		return
 	}
@@ -51,9 +50,10 @@ func (g glitchScene) draw(gtx layout.Context) {
 			continue
 		}
 
-		stack := clip.Rect(band).Push(gtx.Ops)
-		g.paint(gtx, glitchShiftAmount(noise))
-		stack.Pop()
+		p.Save()
+		p.SetClipRect2(band.Min.X, band.Min.Y, band.Dx(), band.Dy())
+		g.paint(p, glitchShiftAmount(noise))
+		p.Restore()
 
 		tint := g.colors.Cyan
 		if index%2 == 1 {
@@ -65,7 +65,7 @@ func (g glitchScene) draw(gtx layout.Context) {
 			g.center.X+g.px(14),
 			band.Min.Y+max(1, g.px(0.35)),
 		)
-		paint.FillShape(gtx.Ops, tint, clip.Rect(line).Op())
+		kit.FillRect(p, tint, line)
 	}
 }
 

@@ -4,18 +4,12 @@ import (
 	"image"
 	"time"
 
-	"gioui.org/layout"
-	"gioui.org/op"
+	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/ui/appearance"
 )
 
-const (
-	designSize = 42
-
-	// frameInterval is how far ahead the mascot asks for the next frame.
-	frameInterval = time.Second / 60
-)
+const designSize = 42
 
 // Options is the constructor input.
 type Options struct {
@@ -61,9 +55,9 @@ func (m *Mascot) SetMood(mood Mood, since time.Time) {
 	m.since = since
 }
 
-// Draw paints the mascot centered in rect and requests the next frame. An empty
-// rect draws nothing.
-func (m Mascot) Draw(gtx layout.Context, rect image.Rectangle) {
+// Draw paints the mascot centered in rect at the given instant. An empty rect
+// draws nothing.
+func (m Mascot) Draw(p *qt.QPainter, rect image.Rectangle, now time.Time) {
 	if rect.Empty() {
 		return
 	}
@@ -72,16 +66,15 @@ func (m Mascot) Draw(gtx layout.Context, rect image.Rectangle) {
 	}
 	m.mood.validate()
 	m.hat.validate()
-	gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(frameInterval)})
 
 	s := scene{
 		m:     m,
 		g:     newGrid(rect),
-		phase: seconds(gtx.Now),
+		phase: seconds(now),
 		style: m.mood.style(m.palette),
-		pose:  m.mood.pose(m.elapsed(gtx.Now)),
+		pose:  m.mood.pose(m.elapsed(now)),
 	}
-	s.paint(gtx, 0)
+	s.paint(p, 0)
 	if m.mood == Panic {
 		glitchScene{
 			bounds: rect,
@@ -90,7 +83,7 @@ func (m Mascot) Draw(gtx layout.Context, rect image.Rectangle) {
 			px:     s.g.px,
 			colors: m.palette.Glitch,
 			paint:  s.paint,
-		}.draw(gtx)
+		}.draw(p)
 	}
 }
 
