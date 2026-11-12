@@ -3,6 +3,6 @@
 //
 // Must not import: core/*, root, ui/shell.
 //
-// Invariants: Layout never blocks or starts goroutines. Navigation goes through
+// Invariants: Paint never blocks or starts goroutines. Navigation goes through
 // the navigator handler passed at construction.
 package screen
