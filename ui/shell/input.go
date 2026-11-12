@@ -208,20 +208,24 @@ func (s *Shell) inScreen(l layout, pos image.Point) bool {
 	return pos.In(l.contentRect()) || pos.In(l.footerRect())
 }
 
-// onDoubleClick toggles maximize on the empty part of the header.
+// onDoubleClick toggles maximize on the empty part of the header. Anywhere else
+// the double click replaces the second press, which Qt never delivers, so it
+// goes through the regular press path and the following release completes the
+// click. Otherwise a second quick click on a control or a screen would be lost.
 func (s *Shell) onDoubleClick(e *qt.QMouseEvent) {
 	if e.Button() != qt.LeftButton {
 		return
 	}
 	pos := image.Pt(e.X(), e.Y())
 	l := s.computeLayout()
-	if pos.Y >= l.headerDivider {
+	emptyHeader := pos.Y < l.headerDivider &&
+		!pos.In(l.trigger) && !pos.In(l.minimize) &&
+		!pos.In(l.maximize) && !pos.In(l.close)
+	if emptyHeader {
+		s.toggleMaximize()
 		return
 	}
-	if pos.In(l.trigger) || pos.In(l.minimize) || pos.In(l.maximize) || pos.In(l.close) {
-		return
-	}
-	s.toggleMaximize()
+	s.onPress(e)
 }
 
 // toggleMaximize swaps between the maximized and normal window states.
