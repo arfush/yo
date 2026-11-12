@@ -17,8 +17,20 @@ const (
 	stubMoodPeriod = 5 * time.Second
 )
 
-// stubMoods is the cycle of moods the stub walks through.
-var stubMoods = []mascot.Mood{mascot.Normal, mascot.Alert, mascot.Loading, mascot.Panic}
+// stubMood returns the mood of one five-second slot. The cycle is Normal,
+// Alert, Loading, Panic.
+func stubMood(slot int) mascot.Mood {
+	switch slot % 4 {
+	case 1:
+		return mascot.Alert
+	case 2:
+		return mascot.Loading
+	case 3:
+		return mascot.Panic
+	default:
+		return mascot.Normal
+	}
+}
 
 // Stub is the temporary startup screen: the mascot standing in the middle of
 // the content area. It switches the mascot mood every five seconds. Not part of
@@ -49,7 +61,7 @@ func (s *Stub) Paint(p *qt.QPainter, content image.Rectangle, palette appearance
 	))
 	mascot.New(mascot.Options{
 		Palette:   palette.Mascot,
-		Mood:      stubMoods[int(periods)%len(stubMoods)],
+		Mood:      stubMood(int(periods)),
 		MoodSince: s.since.Add(periods * stubMoodPeriod),
 		Hat:       mascot.HatNone,
 	}).Draw(p, rect, now)
