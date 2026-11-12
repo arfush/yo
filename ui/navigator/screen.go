@@ -1,8 +1,11 @@
 package navigator
 
 import (
-	"gioui.org/layout"
+	"image"
 
+	qt "github.com/mappu/miqt/qt6"
+
+	"github.com/arfush/yo/ui/appearance"
 	"github.com/arfush/yo/ui/shell"
 )
 
@@ -17,7 +20,7 @@ type Screen interface {
 }
 
 // ScreenBase supplies the title and the no-op parts of Screen. A screen embeds
-// it and implements Layout itself.
+// it and implements Paint itself.
 type ScreenBase struct {
 	ScreenTitle string
 }
@@ -25,8 +28,8 @@ type ScreenBase struct {
 // Title returns the header title of the screen.
 func (b ScreenBase) Title() string { return b.ScreenTitle }
 
-// LayoutFooter draws nothing.
-func (ScreenBase) LayoutFooter(layout.Context) {}
+// PaintFooter draws nothing.
+func (ScreenBase) PaintFooter(*qt.QPainter, image.Rectangle, appearance.Palette) {}
 
 // OnShown is a no-op.
 func (ScreenBase) OnShown() {}

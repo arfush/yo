@@ -78,7 +78,7 @@ func (n *Navigator) Navigate(intent Intent) {
 }
 
 // Apply shows the startup screen and runs every queued intent. It must run on
-// the UI goroutine before the frame is laid out.
+// the UI goroutine before the next paint.
 func (n *Navigator) Apply() {
 	if n.closed {
 		return
