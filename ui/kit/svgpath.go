@@ -34,6 +34,9 @@ func iconPath(d resource.Path) *qt.QPainterPath {
 func parsePath(d string) *qt.QPainterPath {
 	tokens := tokenizePath(d)
 	path := qt.NewQPainterPath()
+	// SVG fills with the nonzero rule, which keeps overlapping subpaths solid.
+	// The default Qt rule is even-odd and punches holes where they overlap.
+	path.SetFillRule(qt.WindingFill)
 	var cx, cy, sx, sy float64
 	var cmd byte
 	i := 0
