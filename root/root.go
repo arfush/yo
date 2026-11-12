@@ -2,10 +2,6 @@ package root
 
 import (
 	"os"
-	"sync"
-
-	"gioui.org/app"
-	"gioui.org/unit"
 
 	"github.com/arfush/yo/catalog"
 	"github.com/arfush/yo/core/log"
@@ -21,27 +17,17 @@ import (
 const (
 	windowTitle     = "yo"
 	defaultLanguage = "ru"
-
-	defaultPanicTitle = "Oops.. Something went wrong!"
 )
 
 // root owns the application object graph and the window lifecycle.
 type root struct {
-	window         *app.Window
-	platformWindow *platform.Window
-	resource       *resource.Resource
-	appearance     *stdx.Holder[appearance.Appearance]
-	site           *stdx.Holder[catalog.Site]
-	shell          *shell.Shell
-	navigator      *navigator.Navigator
-	journal        *log.Journal
-	logger         *log.Logger
-	platformLog    *log.Logger
-	windowShown    bool
-	panicked       bool
-	demo           demoState
-	iconKey        resource.AppIconKey
-	stopOnce       sync.Once
+	resource   *resource.Resource
+	appearance *stdx.Holder[appearance.Appearance]
+	site       *stdx.Holder[catalog.Site]
+	shell      *shell.Shell
+	navigator  *navigator.Navigator
+	journal    *log.Journal
+	logger     *log.Logger
 }
 
 func (r *root) initResource() {
@@ -62,23 +48,11 @@ func (r *root) initSite() {
 	r.logger.Info("site ready", "site", catalog.SiteYoanime.String())
 }
 
-func (r *root) initWindowOptions() {
-	r.window.Option(
-		app.Title(windowTitle),
-		app.Size(unit.Dp(shell.InitialWidth), unit.Dp(shell.InitialHeight)),
-		app.MinSize(unit.Dp(shell.MinimumWidth), unit.Dp(shell.MinimumHeight)),
-		app.Decorated(false),
-	)
-	r.logger.Info("window configured", "title", windowTitle)
-}
-
 // initShell builds the window chrome and installs the temporary main screen
-// placeholder. The navigator installs the same screen before the first frame.
+// placeholder. The navigator installs the same screen before the first paint.
 func (r *root) initShell() {
 	r.shell = shell.New(shell.Options{
 		Screen:     r.newStartupScreen(),
-		Window:     r.window,
-		Cursor:     r.platformWindow,
 		Site:       r.site,
 		Appearance: r.appearance,
 		Resource:   r.resource,
@@ -94,7 +68,7 @@ func (r *root) initShell() {
 func (r *root) initNavigator() {
 	r.navigator = navigator.New(navigator.Options{
 		Installer:  r.shell,
-		Invalidate: r.window.Invalidate,
+		Invalidate: func() { r.shell.Widget().Update() },
 		Startup:    r.newStartupScreen,
 		Logger:     r.journal.Logger(log.SourceNavigator),
 	})
@@ -112,8 +86,6 @@ func (r *root) initLog() {
 	journal, openErr := log.Open(opts)
 	r.journal = journal
 	r.logger = journal.Logger(log.SourceRoot)
-	r.platformLog = journal.Logger(log.SourcePlatform)
-	r.platformWindow = platform.NewWindow(r.platformLog)
 	switch {
 	case pathErr != nil:
 		r.logger.Warn("journal path unavailable", "error", pathErr)
@@ -124,22 +96,16 @@ func (r *root) initLog() {
 	}
 }
 
-// stop shuts the application down. It runs on the UI goroutine; the interrupt
-// handler only requests a window close. It is idempotent because the destroy
-// path and the deferred call can both reach it. Future teardown belongs here.
+// stop shuts the application down after the Qt event loop returns. Future
+// teardown belongs here.
 func (r *root) stop() {
-	r.stopOnce.Do(func() {
-		if r.platformWindow != nil {
-			r.platformWindow.Close()
-		}
-		if r.navigator != nil {
-			r.navigator.Close()
-		}
-		if err := r.journal.Close(); err != nil {
-			r.logger.Error("close journal", "error", err)
-		} else {
-			r.logger.Info("journal closed")
-		}
-		r.logger.Info("application stopped")
-	})
+	if r.navigator != nil {
+		r.navigator.Close()
+	}
+	if err := r.journal.Close(); err != nil {
+		r.logger.Error("close journal", "error", err)
+	} else {
+		r.logger.Info("journal closed")
+	}
+	r.logger.Info("application stopped")
 }

@@ -1,22 +1,29 @@
 package root
 
 import (
+	qt "github.com/mappu/miqt/qt6"
+
 	"github.com/arfush/yo/ui/navigator"
 	"github.com/arfush/yo/ui/screen"
 )
 
+// stubFrameInterval is how often the placeholder asks for a repaint, in
+// milliseconds. It keeps the mascot animation smooth.
+const stubFrameInterval = 16
+
 // newStartupScreen builds the temporary main screen, a placeholder until the
-// real main screen exists. It reuses the panic screen layout with no detail and
-// keeps the native window title constant.
+// real main screen exists. It keeps the native window title constant.
 func (r *root) newStartupScreen() navigator.Screen {
-	app := r.appearance.Value()
-	startup := screen.NewPanic(r.appearance.Readonly(), panicTitle(app), "")
+	startup := screen.NewStub()
 	startup.ScreenTitle = windowTitle
 	return startup
 }
 
-// newPanicScreen builds the panic screen. It implements navigator.PanicFactory:
-// the screen takes no Handler because it never navigates.
-func (r *root) newPanicScreen(title, detail string) navigator.Screen {
-	return screen.NewPanic(r.appearance.Readonly(), title, detail)
+// startStubAnimation drives the placeholder mascot until screens own their own
+// invalidation. Temporary, like the stub itself.
+func (r *root) startStubAnimation() {
+	timer := qt.NewQTimer2(r.shell.Widget().QObject)
+	timer.SetInterval(stubFrameInterval)
+	timer.OnTimeout(func() { r.shell.Widget().Update() })
+	timer.Start2()
 }
