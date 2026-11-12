@@ -2,19 +2,19 @@ package resource
 
 import (
 	"encoding/xml"
-	"errors"
 	"io/fs"
 	"strings"
 )
 
-// IconKey is an icon selector: its value is the symbol id in icons.svg.
+// IconKey is an icon selector: its value is the SVG file name in icon/
+// without the extension.
 type IconKey string
 
 // Path is the SVG path data of one icon, in a 24x24 box.
 type Path string
 
 // Icon* declares the embedded vector glyphs. Keep this list in sync with the
-// symbols in icons.svg: Icon panics on a key that has no symbol.
+// SVG files in icon/: Icon panics on a key that has no file.
 const (
 	IconClose      IconKey = "close"
 	IconMaximize   IconKey = "maximize"
@@ -67,12 +67,8 @@ func (r *Resource) Icon(key IconKey) Path {
 	return path
 }
 
-type iconSprite struct {
-	Symbols []iconSymbol `xml:"symbol"`
-}
-
-type iconSymbol struct {
-	ID    string     `xml:"id,attr"`
+// iconFile is one SVG file in icon/: the path elements of a single glyph.
+type iconFile struct {
 	Paths []iconPath `xml:"path"`
 }
 
@@ -81,28 +77,29 @@ type iconPath struct {
 }
 
 func (r *Resource) loadIcons(fsys fs.FS) {
-	data, err := fs.ReadFile(fsys, "icons.svg")
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return
+	for _, entry := range readDir(fsys, "icon") {
+		if entry.IsDir() {
+			continue
 		}
-		panic("resource: read icons.svg: " + err.Error())
-	}
-	var sprite iconSprite
-	if err := xml.Unmarshal(data, &sprite); err != nil {
-		panic("resource: parse icons.svg: " + err.Error())
-	}
-	for _, symbol := range sprite.Symbols {
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".svg") {
+			continue
+		}
+		key := IconKey(strings.TrimSuffix(name, ".svg"))
+		var file iconFile
+		if err := xml.Unmarshal(readFile(fsys, "icon/"+name), &file); err != nil {
+			panic("resource: parse icon/" + name + ": " + err.Error())
+		}
 		var d strings.Builder
-		for _, path := range symbol.Paths {
+		for _, path := range file.Paths {
 			if d.Len() > 0 {
 				d.WriteByte(' ')
 			}
 			d.WriteString(path.D)
 		}
 		if d.Len() == 0 {
-			panic("resource: icon \"" + symbol.ID + "\" has no path")
+			panic("resource: icon \"" + string(key) + "\" has no path")
 		}
-		r.icons[IconKey(symbol.ID)] = Path(d.String())
+		r.icons[key] = Path(d.String())
 	}
 }

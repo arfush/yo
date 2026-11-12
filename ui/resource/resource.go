@@ -10,7 +10,7 @@ import (
 // assets is the embedded resource tree. The placeholders keep font/ and icon/
 // present while their assets are added; loaders skip files they do not own.
 //
-//go:embed all:font all:icon lang/*.json icons.svg
+//go:embed all:font all:icon lang/*.json
 var assets embed.FS
 
 // Resource owns the embedded assets loaded by New. It is safe to share across
