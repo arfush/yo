@@ -1,43 +1,96 @@
+// Package shell draws the undecorated application window: the border, header,
+// footer band and window controls. It owns where the active screen is drawn.
+//
+// Must not import: core/*, root, ui/navigator, ui/screen.
+//
+// Invariants: a screen, site holder and appearance holder are never nil; New
+// and SetScreen panic on a nil screen. The shell syncs the palette from the site
+// holder before painting. A screen is painted only inside the content rectangle
+// and its footer only inside the footer band. Site changes go through
+// Holder.Update. Only the UI goroutine calls the shell.
 package shell
 
 import (
 	"image"
 	"log/slog"
 
-	"gioui.org/app"
-	"gioui.org/layout"
-	"gioui.org/op"
-	"gioui.org/op/clip"
-	"gioui.org/widget"
+	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/catalog"
 	"github.com/arfush/yo/stdx"
 	"github.com/arfush/yo/ui/appearance"
-	"github.com/arfush/yo/ui/kit"
 	"github.com/arfush/yo/ui/resource"
 )
 
-// Screen is the content contract of the window. The shell never imports a
-// concrete screen: the navigator installs it through SetScreen.
+// Window sizes. The designed size is also the smallest usable size: the chrome
+// and the screens are verified at exactly this width and height.
+const (
+	InitialWidth  = 840
+	InitialHeight = 550
+	MinimumWidth  = InitialWidth
+	MinimumHeight = InitialHeight
+)
+
+// Screen draws the content area between the header and the footer.
 type Screen interface {
-	Layout(layout.Context)
-	LayoutFooter(layout.Context)
+	Paint(p *qt.QPainter, content image.Rectangle, palette appearance.Palette)
 }
 
-// CursorPoller reports the real system cursor position. Gio stops delivering
-// pointer events over the non-client header and when the cursor leaves the
-// window, so the shell needs it to clear a stale control hover. Root supplies
-// the platform implementation.
-type CursorPoller interface {
-	HoverPollingSupported() bool
-	CursorInRect(image.Rectangle) bool
+// FooterScreen optionally draws the footer band. The shell paints the band
+// background first and then calls PaintFooter with the band rectangle.
+type FooterScreen interface {
+	PaintFooter(p *qt.QPainter, footer image.Rectangle, palette appearance.Palette)
 }
+
+// PointerAction identifies the kind of a forwarded pointer event.
+type PointerAction uint8
+
+// Pointer actions forwarded to a screen.
+const (
+	PointerMove PointerAction = iota
+	PointerDown
+	PointerUp
+	PointerLeave
+)
+
+// PointerEvent is one pointer event in widget coordinates.
+type PointerEvent struct {
+	Action PointerAction
+	Pos    image.Point
+}
+
+// WheelEvent is one wheel event in widget coordinates. Delta is positive when
+// the wheel scrolls up, away from the user.
+type WheelEvent struct {
+	Pos   image.Point
+	Delta int
+}
+
+// Interactive is an optional screen interface. Pointer and Wheel report whether
+// they changed the screen and need a repaint.
+type Interactive interface {
+	Pointer(event PointerEvent) bool
+	Wheel(event WheelEvent) bool
+	Cursor(pos image.Point) qt.CursorShape
+}
+
+// Region identifies the interactive part of the chrome that is hovered or
+// pressed. The zero value is the empty header/surface.
+type Region int
+
+// Interactive chrome regions.
+const (
+	RegionNone Region = iota
+	RegionSite
+	RegionMinimize
+	RegionMaximize
+	RegionClose
+	RegionFooter
+)
 
 // Options configures the shell chrome.
 type Options struct {
 	Screen     Screen
-	Window     *app.Window
-	Cursor     CursorPoller // nil disables cursor polling
 	Site       *stdx.Holder[catalog.Site]
 	Appearance *stdx.Holder[appearance.Appearance]
 	Resource   *resource.Resource
@@ -45,40 +98,33 @@ type Options struct {
 	Logger     *slog.Logger // nil discards logs
 }
 
-// Shell is the application window frame. Use New to construct it, SetScreen to
-// replace the content and Layout to draw a frame.
+// Shell is the application window frame drawn by one custom-painted QWidget.
 type Shell struct {
-	window     *app.Window
-	cursor     CursorPoller
+	widget     *qt.QWidget
 	site       *stdx.Holder[catalog.Site]
 	appearance *stdx.Holder[appearance.Appearance]
 	resource   *resource.Resource
 	version    string
 	logger     *slog.Logger
 	screen     Screen
-	maximized  bool
-	frozen     bool
-	content    op.CallOp
 
+	// siteState records the site whose palette was last written into the
+	// shared appearance, so external site changes are picked up once.
 	siteState catalog.Site
-	siteClick widget.Clickable
-	siteItems []widget.Clickable
-	menu      siteMenu
-	scrim     siteScrim
 
-	// siteDismissals counts consecutive user dismissals of the site menu
-	// without a switch. At siteMenuBasePaletteAfter the chrome falls back to
-	// the neutral yobase palette until the next selection.
-	siteDismissals int
+	menuOpen     bool
+	hover        Region
+	press        Region
+	menuRowHover int
+	pressMenuRow int
+	dismissals   int
+	cursor       qt.CursorShape
+	screenPress  bool
 
-	minimize widget.Clickable
-	maximize widget.Clickable
-	close    widget.Clickable
+	cursors map[qt.CursorShape]*qt.QCursor
 }
 
-// New returns a shell with the given chrome. A nil screen, site holder or
-// appearance holder is a programmer error and panics. A nil logger discards
-// shell logs.
+// New creates the frameless window. It must run after qt.NewQApplication.
 func New(opts Options) *Shell {
 	if opts.Screen == nil {
 		panic("shell: nil screen")
@@ -89,56 +135,127 @@ func New(opts Options) *Shell {
 	if opts.Appearance == nil {
 		panic("shell: nil appearance holder")
 	}
+	if opts.Resource == nil {
+		panic("shell: nil resources")
+	}
+	if !knownSite(opts.Site.Value()) {
+		panic("shell: unknown site \"" + opts.Site.Value().String() + "\"")
+	}
 	logger := opts.Logger
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
 	}
-	return &Shell{
-		window:     opts.Window,
-		cursor:     opts.Cursor,
-		site:       opts.Site,
-		appearance: opts.Appearance,
-		resource:   opts.Resource,
-		version:    opts.Version,
-		logger:     logger,
-		screen:     opts.Screen,
-		siteItems:  make([]widget.Clickable, len(catalog.Sites())),
+
+	w := qt.NewQWidget2()
+	w.SetWindowFlags(qt.WindowType(qt.FramelessWindowHint))
+	w.SetAttribute(qt.WA_TranslucentBackground)
+	w.SetWindowTitle("yo")
+	w.SetMinimumSize2(MinimumWidth, MinimumHeight)
+	w.Resize(InitialWidth, InitialHeight)
+	w.SetMouseTracking(true)
+
+	s := &Shell{
+		widget:       w,
+		site:         opts.Site,
+		appearance:   opts.Appearance,
+		resource:     opts.Resource,
+		version:      opts.Version,
+		logger:       logger,
+		screen:       opts.Screen,
+		menuRowHover: -1,
+		pressMenuRow: -1,
+		cursor:       qt.LastCursor,
+		cursors:      make(map[qt.CursorShape]*qt.QCursor),
 	}
+	s.syncPalette()
+	s.setCursor(qt.ArrowCursor)
+
+	w.OnPaintEvent(func(super func(event *qt.QPaintEvent), event *qt.QPaintEvent) {
+		p := qt.NewQPainter2(w.QPaintDevice)
+		s.paint(p)
+		p.End()
+		p.Delete()
+	})
+	w.OnMousePressEvent(func(super func(event *qt.QMouseEvent), event *qt.QMouseEvent) {
+		s.onPress(event)
+	})
+	w.OnMouseReleaseEvent(func(super func(event *qt.QMouseEvent), event *qt.QMouseEvent) {
+		s.onRelease(event)
+	})
+	w.OnMouseMoveEvent(func(super func(event *qt.QMouseEvent), event *qt.QMouseEvent) {
+		s.onMove(event)
+	})
+	w.OnMouseDoubleClickEvent(func(super func(event *qt.QMouseEvent), event *qt.QMouseEvent) {
+		s.onDoubleClick(event)
+	})
+	w.OnWheelEvent(func(super func(event *qt.QWheelEvent), event *qt.QWheelEvent) {
+		s.onWheel(event)
+	})
+	w.OnLeaveEvent(func(super func(event *qt.QEvent), event *qt.QEvent) {
+		s.hover = RegionNone
+		s.menuRowHover = -1
+		if screen := s.interactive(); screen != nil && !s.screenPress {
+			screen.Pointer(PointerEvent{Action: PointerLeave})
+		}
+		s.setCursor(qt.ArrowCursor)
+		w.Update()
+	})
+	w.OnChangeEvent(func(super func(event *qt.QEvent), event *qt.QEvent) {
+		w.Update()
+	})
+	return s
+}
+
+// Widget returns the top-level widget, for snapshots and embedding.
+func (s *Shell) Widget() *qt.QWidget { return s.widget }
+
+// Show displays the window. The caller runs the Qt event loop.
+func (s *Shell) Show() { s.widget.Show() }
+
+// Close closes the window.
+func (s *Shell) Close() { s.widget.Close() }
+
+// Resize sets the logical window size.
+func (s *Shell) Resize(width, height int) {
+	s.widget.Resize(width, height)
+	s.widget.Update()
+}
+
+// SetScreen replaces the content painter. A nil screen is a programmer error
+// and panics.
+func (s *Shell) SetScreen(screen Screen) {
+	if screen == nil {
+		panic("shell: nil screen")
+	}
+	s.screen = screen
+	s.screenPress = false
+	s.menuOpen = false
+	s.widget.Update()
+}
+
+// SetTitle replaces the native window title.
+func (s *Shell) SetTitle(title string) {
+	s.widget.SetWindowTitle(title)
 }
 
 // palette returns the colors of the current appearance.
 func (s *Shell) palette() appearance.Palette { return s.appearance.Value().Palette() }
 
-// typography returns the text shaper and role scale of the current appearance.
-func (s *Shell) typography() appearance.Typography { return s.appearance.Value().Typography() }
-
-// locale returns the active language of the current appearance.
-func (s *Shell) locale() appearance.Locale { return s.appearance.Value().Locale() }
-
-// Freeze stops palette syncing from the site holder and disables the site
-// switcher. The composition root calls it after a recovered panic so the panic
-// screen stays on the neutral palette.
-func (s *Shell) Freeze() {
-	s.frozen = true
-	s.menu.close()
+// interactive returns the active screen as an Interactive, if it is one.
+func (s *Shell) interactive() Interactive {
+	if screen, ok := s.screen.(Interactive); ok {
+		return screen
+	}
+	return nil
 }
 
 // syncPalette copies the active site palette into the shared appearance. It runs
-// before layout, so a site change requested by the core is visible next frame.
+// before painting, so a site change requested by the core is visible next frame.
 func (s *Shell) syncPalette() {
-	if s.frozen {
-		return
-	}
 	site := s.site.Value()
 	if site == s.siteState {
 		return
 	}
-	s.applySitePalette(site)
-}
-
-// applySitePalette writes the site palette and icon into the shared appearance
-// and records the site they belong to.
-func (s *Shell) applySitePalette(site catalog.Site) {
 	s.updateAppearance(appearance.PaletteFor(site), appearance.AppIconFor(site))
 	s.siteState = site
 }
@@ -156,138 +273,362 @@ func (s *Shell) updateAppearance(palette appearance.Palette, icon resource.AppIc
 	})
 }
 
-// SetScreen replaces the content of the window. A nil screen is a programmer
-// error and panics. The navigator calls it when navigation changes the screen.
-func (s *Shell) SetScreen(content Screen) {
-	if content == nil {
-		panic("shell: nil screen")
+// switchSite applies a selection from the header switcher. The shell updates
+// the holder because it owns the writable site source; the palette follows on
+// the next paint. A selection always restores the site palette, even when the
+// neutral fallback is showing for the same site.
+func (s *Shell) switchSite(site catalog.Site) {
+	if !knownSite(site) {
+		panic("shell: unknown site \"" + site.String() + "\"")
 	}
-	s.screen = content
-	s.menu.close()
-}
-
-// SetTitle replaces the native window title. The navigator calls it with the
-// active screen title. The header itself shows the active site.
-func (s *Shell) SetTitle(title string) {
-	if s.window == nil {
+	s.menuOpen = false
+	s.menuRowHover = -1
+	s.dismissals = 0
+	previous := s.site.Value()
+	if previous == site {
+		s.updateAppearance(appearance.PaletteFor(site), appearance.AppIconFor(site))
+		s.siteState = site
 		return
 	}
-	s.window.Option(app.Title(title))
-}
-
-// SetConfig updates the window state used by the maximize glyph. The
-// composition root forwards app.ConfigEvent values here. Losing focus closes the
-// site menu, like a native dropdown.
-func (s *Shell) SetConfig(cfg app.Config) {
-	s.maximized = cfg.Mode != app.Windowed
-	if cfg.Focused || !s.menu.open {
-		return
-	}
-	s.dismissSiteMenu()
-	if s.window != nil {
-		s.window.Invalidate()
-	}
-}
-
-// Prepare records the active screen. It must run once per frame on the UI
-// goroutine before Layout, with the same context: the recorded content is
-// replayed by Layout.
-func (s *Shell) Prepare(gtx layout.Context) {
-	if s.screen == nil {
-		panic("shell: no screen installed")
-	}
+	s.site.Update(func(v *catalog.Site) { *v = site })
+	s.logger.Info("site switched", "site", site.String(), "previous", previous.String())
 	s.syncPalette()
-	g := s.newGeometry(gtx)
-	s.content = s.layoutScreen(gtx, g)
 }
 
-// Layout draws one frame of the shell from the content recorded by Prepare.
-func (s *Shell) Layout(gtx layout.Context) {
-	if s.screen == nil {
-		panic("shell: no screen installed")
+// dismissMenu closes the menu after a user action and counts the dismissal.
+func (s *Shell) dismissMenu() {
+	if !s.menuOpen {
+		return
 	}
-	g := s.newGeometry(gtx)
-	s.layoutFrame(gtx, g)
-	s.layoutHeader(gtx, g)
-	s.layoutFooter(gtx, g)
-	s.layoutContent(gtx, g, s.content)
-	s.layoutSiteMenu(gtx, g)
+	s.menuOpen = false
+	s.menuRowHover = -1
+	s.dismissals++
+	if s.dismissals == siteMenuBasePaletteAfter {
+		s.applyPalette(appearance.BasePalette())
+	}
 }
 
-// layoutFrame paints the window border, the rounded inner surface, the header
-// band and the footer band with its dividers.
-func (s *Shell) layoutFrame(gtx layout.Context, g geometry) {
-	palette := s.palette()
-	kit.FillRect(gtx, palette.Border, image.Rectangle{Max: g.size})
-	if g.inner.Empty() {
+// paint draws one complete frame.
+func (s *Shell) paint(p *qt.QPainter) {
+	p.SetRenderHints(qt.QPainter__Antialiasing | qt.QPainter__TextAntialiasing | qt.QPainter__SmoothPixmapTransform)
+	s.syncPalette()
+	l := s.computeLayout()
+	s.paintFrame(p, l)
+	s.paintHeader(p, l)
+	if content := l.contentRect(); !content.Empty() {
+		p.Save()
+		p.SetClipRect2(content.Min.X, content.Min.Y, content.Dx(), content.Dy())
+		s.screen.Paint(p, content, s.palette())
+		p.Restore()
+	}
+	if footer := l.footerRect(); !footer.Empty() {
+		if screen, ok := s.screen.(FooterScreen); ok {
+			p.Save()
+			p.SetClipRect2(footer.Min.X, footer.Min.Y, footer.Dx(), footer.Dy())
+			screen.PaintFooter(p, footer, s.palette())
+			p.Restore()
+		}
+	}
+	if s.menuOpen {
+		s.paintMenu(p, l)
+	}
+}
+
+// onPress routes a left-button press.
+func (s *Shell) onPress(e *qt.QMouseEvent) {
+	if e.Button() != qt.LeftButton {
+		return
+	}
+	pos := image.Pt(e.X(), e.Y())
+	l := s.computeLayout()
+	s.press = RegionNone
+	s.pressMenuRow = -1
+
+	if s.menuOpen {
+		menu, _, rows, _ := s.menuLayout(l)
+		if pos.In(menu) {
+			for i, row := range rows {
+				if pos.In(row) {
+					s.pressMenuRow = i
+					break
+				}
+			}
+			return
+		}
+		s.dismissMenu()
+		s.widget.Update()
 		return
 	}
 
-	clipStack := clip.RRect{
-		Rect: g.inner,
-		NW:   g.cornerRadius,
-		NE:   g.cornerRadius,
-		SE:   g.cornerRadius,
-		SW:   g.cornerRadius,
-	}.Push(gtx.Ops)
-	defer clipStack.Pop()
-
-	kit.FillRect(gtx, palette.Canvas, g.inner)
-	kit.FillRect(gtx, palette.Surface, rect(
-		g.inner.Min.X, g.inner.Min.Y, g.inner.Max.X, g.headerDivider,
-	))
-	kit.FillRect(gtx, palette.Divider, rect(
-		g.inner.Min.X, g.headerDivider, g.inner.Max.X, g.contentTop,
-	))
-	kit.FillRect(gtx, palette.Divider, rect(
-		g.inner.Min.X, g.footerDivider, g.inner.Max.X, g.footerTop,
-	))
-	kit.FillRect(gtx, palette.Surface, rect(
-		g.inner.Min.X, g.footerTop, g.inner.Max.X, g.footerBottom,
-	))
-	kit.FillRect(gtx, palette.Canvas, rect(
-		g.inner.Min.X, g.stripTop, g.inner.Max.X, g.inner.Max.Y,
-	))
-}
-
-// layoutScreen records the active screen in content-local coordinates. The
-// recorded call lets Layout draw the content without laying the screen out
-// again.
-func (s *Shell) layoutScreen(gtx layout.Context, g geometry) op.CallOp {
-	bounds := g.contentRect()
-	if bounds.Empty() {
-		return op.CallOp{}
+	if !l.maximized {
+		if edges, ok := s.edgeAt(l, pos); ok {
+			if handle := s.widget.WindowHandle(); handle != nil {
+				handle.StartSystemResize(edges)
+			}
+			return
+		}
 	}
-	macro := op.Record(gtx.Ops)
-	screenGtx := gtx
-	screenGtx.Constraints = layout.Exact(bounds.Size())
-	s.screen.Layout(screenGtx)
-	return macro.Stop()
-}
 
-// layoutContent draws the recorded screen in the clipped content rectangle.
-func (s *Shell) layoutContent(gtx layout.Context, g geometry, content op.CallOp) {
-	bounds := g.contentRect()
-	if bounds.Empty() {
+	if screen := s.interactive(); screen != nil && s.inScreen(l, pos) {
+		s.screenPress = true
+		s.press = RegionNone
+		screen.Pointer(PointerEvent{Action: PointerDown, Pos: pos})
+		s.widget.Update()
 		return
 	}
-	clipStack := clip.Rect(bounds).Push(gtx.Ops)
-	defer clipStack.Pop()
-	offset := op.Offset(bounds.Min).Push(gtx.Ops)
-	defer offset.Pop()
-	content.Add(gtx.Ops)
+
+	switch {
+	case pos.In(l.close):
+		s.press = RegionClose
+	case pos.In(l.maximize):
+		s.press = RegionMaximize
+	case pos.In(l.minimize):
+		s.press = RegionMinimize
+	case pos.In(l.trigger):
+		s.press = RegionSite
+	case pos.Y < l.headerDivider:
+		s.press = RegionNone
+		if handle := s.widget.WindowHandle(); handle != nil {
+			handle.StartSystemMove()
+		}
+	default:
+		s.press = RegionNone
+	}
 }
 
-// layoutFooter draws the footer band of the active screen.
-func (s *Shell) layoutFooter(gtx layout.Context, g geometry) {
-	bounds := g.footerRect()
-	if bounds.Empty() {
+// onRelease completes a press. Clicks count only when the release lands on the
+// same region.
+func (s *Shell) onRelease(e *qt.QMouseEvent) {
+	if e.Button() != qt.LeftButton {
 		return
 	}
-	offset := op.Offset(bounds.Min).Push(gtx.Ops)
-	defer offset.Pop()
-	gtx.Constraints = layout.Exact(bounds.Size())
-	clipStack := clip.Rect(image.Rectangle{Max: bounds.Size()}).Push(gtx.Ops)
-	defer clipStack.Pop()
-	s.screen.LayoutFooter(gtx)
+	pos := image.Pt(e.X(), e.Y())
+	l := s.computeLayout()
+
+	if s.menuOpen {
+		_, _, rows, sites := s.menuLayout(l)
+		if s.pressMenuRow >= 0 && s.pressMenuRow < len(rows) && pos.In(rows[s.pressMenuRow]) {
+			s.switchSite(sites[s.pressMenuRow])
+			s.widget.Update()
+		}
+		s.pressMenuRow = -1
+		return
+	}
+
+	if s.screenPress {
+		s.screenPress = false
+		if screen := s.interactive(); screen != nil {
+			screen.Pointer(PointerEvent{Action: PointerUp, Pos: pos})
+			s.widget.Update()
+		}
+		return
+	}
+
+	pressed := s.press
+	s.press = RegionNone
+	switch pressed {
+	case RegionSite:
+		if pos.In(l.trigger) {
+			if s.menuOpen {
+				s.dismissMenu()
+			} else {
+				s.menuOpen = true
+				s.pressMenuRow = -1
+			}
+			s.widget.Update()
+		}
+	case RegionMinimize:
+		if pos.In(l.minimize) {
+			s.widget.ShowMinimized()
+		}
+	case RegionMaximize:
+		if pos.In(l.maximize) {
+			s.toggleMaximize()
+		}
+	case RegionClose:
+		if pos.In(l.close) {
+			s.widget.Close()
+		}
+	}
+}
+
+// onMove updates the hovered region, the menu row highlight and the cursor.
+func (s *Shell) onMove(e *qt.QMouseEvent) {
+	pos := image.Pt(e.X(), e.Y())
+	l := s.computeLayout()
+	region := s.regionAt(l, pos)
+	row := -1
+	if s.menuOpen {
+		_, _, rows, _ := s.menuLayout(l)
+		for i, r := range rows {
+			if pos.In(r) {
+				row = i
+				break
+			}
+		}
+	}
+
+	screen := s.interactive()
+	if screen != nil && !s.menuOpen {
+		if s.screenPress || s.inScreen(l, pos) {
+			if screen.Pointer(PointerEvent{Action: PointerMove, Pos: pos}) {
+				s.widget.Update()
+			}
+		} else if screen.Pointer(PointerEvent{Action: PointerLeave}) {
+			s.widget.Update()
+		}
+	}
+
+	changed := region != s.hover || row != s.menuRowHover
+	s.hover = region
+	s.menuRowHover = row
+
+	switch {
+	case screen != nil && s.screenPress:
+		s.setCursor(screen.Cursor(pos))
+	case !l.maximized && row < 0 && region == RegionNone:
+		if edges, ok := s.edgeAt(l, pos); ok {
+			s.setCursor(edgeCursor(edges))
+		} else {
+			s.setCursor(qt.ArrowCursor)
+		}
+	case row >= 0:
+		s.setCursor(qt.PointingHandCursor)
+	case region == RegionSite || region == RegionMinimize || region == RegionMaximize || region == RegionClose:
+		s.setCursor(qt.PointingHandCursor)
+	case screen != nil && s.inScreen(l, pos):
+		s.setCursor(screen.Cursor(pos))
+	default:
+		s.setCursor(qt.ArrowCursor)
+	}
+	if changed {
+		s.widget.Update()
+	}
+}
+
+// onWheel forwards a wheel event to the screen under the pointer.
+func (s *Shell) onWheel(e *qt.QWheelEvent) {
+	screen := s.interactive()
+	if screen == nil || s.menuOpen {
+		return
+	}
+	point := e.Position()
+	pos := image.Pt(int(point.X()), int(point.Y()))
+	l := s.computeLayout()
+	if !s.inScreen(l, pos) {
+		return
+	}
+	delta := e.AngleDelta().Y() / 120
+	if e.HasPixelDelta() {
+		delta = e.PixelDelta().Y()
+	}
+	if delta == 0 {
+		return
+	}
+	if screen.Wheel(WheelEvent{Pos: pos, Delta: int(delta)}) {
+		s.widget.Update()
+	}
+	e.Accept()
+}
+
+// inScreen reports whether pos belongs to the content or footer band.
+func (s *Shell) inScreen(l layout, pos image.Point) bool {
+	return pos.In(l.contentRect()) || pos.In(l.footerRect())
+}
+
+// onDoubleClick toggles maximize on the empty part of the header.
+func (s *Shell) onDoubleClick(e *qt.QMouseEvent) {
+	if e.Button() != qt.LeftButton {
+		return
+	}
+	pos := image.Pt(e.X(), e.Y())
+	l := s.computeLayout()
+	if pos.Y >= l.headerDivider {
+		return
+	}
+	if pos.In(l.trigger) || pos.In(l.minimize) || pos.In(l.maximize) || pos.In(l.close) {
+		return
+	}
+	s.toggleMaximize()
+}
+
+// toggleMaximize swaps between the maximized and normal window states.
+func (s *Shell) toggleMaximize() {
+	if s.widget.IsMaximized() {
+		s.widget.ShowNormal()
+	} else {
+		s.widget.ShowMaximized()
+	}
+}
+
+// edgeAt reports the window edges under pos for a system resize.
+func (s *Shell) edgeAt(l layout, pos image.Point) (qt.Edge, bool) {
+	var edges qt.Edge
+	if pos.X < resizeInset {
+		edges |= qt.LeftEdge
+	} else if pos.X >= l.size.X-resizeInset {
+		edges |= qt.RightEdge
+	}
+	if pos.Y < resizeInset {
+		edges |= qt.TopEdge
+	} else if pos.Y >= l.size.Y-resizeInset {
+		edges |= qt.BottomEdge
+	}
+	return edges, edges != 0
+}
+
+// regionAt maps a point to the control under it.
+func (s *Shell) regionAt(l layout, pos image.Point) Region {
+	switch {
+	case pos.In(l.close):
+		return RegionClose
+	case pos.In(l.maximize):
+		return RegionMaximize
+	case pos.In(l.minimize):
+		return RegionMinimize
+	case pos.In(l.trigger):
+		return RegionSite
+	case pos.In(l.footerRect()):
+		return RegionFooter
+	}
+	return RegionNone
+}
+
+// edgeCursor returns the resize cursor for a set of window edges.
+func edgeCursor(edges qt.Edge) qt.CursorShape {
+	switch edges {
+	case qt.LeftEdge, qt.RightEdge:
+		return qt.SizeHorCursor
+	case qt.TopEdge, qt.BottomEdge:
+		return qt.SizeVerCursor
+	case qt.TopEdge | qt.LeftEdge, qt.BottomEdge | qt.RightEdge:
+		return qt.SizeFDiagCursor
+	case qt.TopEdge | qt.RightEdge, qt.BottomEdge | qt.LeftEdge:
+		return qt.SizeBDiagCursor
+	}
+	return qt.ArrowCursor
+}
+
+// setCursor changes the widget cursor only when the shape differs.
+func (s *Shell) setCursor(shape qt.CursorShape) {
+	if s.cursor == shape {
+		return
+	}
+	s.cursor = shape
+	cursor, ok := s.cursors[shape]
+	if !ok {
+		cursor = qt.NewQCursor2(shape)
+		s.cursors[shape] = cursor
+	}
+	s.widget.SetCursor(cursor)
+}
+
+// knownSite reports whether site is one of the catalog sites.
+func knownSite(site catalog.Site) bool {
+	for _, known := range catalog.Sites() {
+		if site == known {
+			return true
+		}
+	}
+	return false
 }

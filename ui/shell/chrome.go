@@ -3,18 +3,8 @@ package shell
 import (
 	"image"
 	"image/color"
-	"time"
 
-	"gioui.org/f32"
-	"gioui.org/io/pointer"
-	"gioui.org/io/semantic"
-	"gioui.org/io/system"
-	"gioui.org/layout"
-	"gioui.org/op"
-	"gioui.org/op/clip"
-	"gioui.org/op/paint"
-	"gioui.org/unit"
-	"gioui.org/widget"
+	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/catalog"
 	"github.com/arfush/yo/ui/appearance"
@@ -22,464 +12,288 @@ import (
 	"github.com/arfush/yo/ui/resource"
 )
 
-// Window sizes. The designed size is also the smallest usable size: the chrome
-// and the screens are verified at exactly this width and height.
+// Chrome geometry, in logical pixels.
 const (
-	InitialWidth  unit.Dp = 840
-	InitialHeight unit.Dp = 550
-	MinimumWidth          = InitialWidth
-	MinimumHeight         = InitialHeight
-)
-
-// Chrome geometry, in device-independent dp.
-const (
-	headerHeight      unit.Dp = 48
-	footerHeight      unit.Dp = 42
-	controlWidth      unit.Dp = 30
-	controlGap        unit.Dp = 12
-	controlIconSize   unit.Dp = 24
-	closeIconSize     unit.Dp = 24
-	controlsInset     unit.Dp = 12
-	logoInset         unit.Dp = 16
-	logoSize          unit.Dp = 25
-	labelGap          unit.Dp = 10
-	contentGap        unit.Dp = 14
-	versionGap        unit.Dp = 14
-	badgeHeight       unit.Dp = 20
-	badgePaddingX     unit.Dp = 7
-	markRadius        unit.Dp = 6
-	markInset         unit.Dp = 3
-	siteChevronSize   unit.Dp = 8
-	siteChevronGap    unit.Dp = 10
-	siteChevronStroke unit.Dp = 1.7
-	siteMenuOverhang  unit.Dp = 4
+	headerHeight      = 48
+	footerHeight      = 42
+	controlWidth      = 30
+	controlGap        = 12
+	controlIconSize   = 24
+	controlsInset     = 12
+	logoInset         = 16
+	logoSize          = 25
+	labelGap          = 10
+	contentGap        = 14
+	versionGap        = 14
+	badgeHeight       = 20
+	badgePaddingX     = 7
+	markRadius        = 6
+	markInset         = 3
+	siteChevronSize   = 8
+	siteChevronGap    = 10
+	siteChevronStroke = 1.7
+	siteMenuOverhang  = 4
+	resizeInset       = 6
 )
 
 // accentTintAlpha dims AccentMuted behind the brand mark.
 const accentTintAlpha uint8 = 0x40
 
-// hoverPollInterval is how often the chrome re-checks the real cursor position
-// while a window control paints its hover state. The header drag regions are
-// non-client, so moving a cursor from a control into them, or out of the
-// window, produces no Gio pointer event that would clear the hover.
-const hoverPollInterval = 40 * time.Millisecond
-
-// geometry holds every chrome measurement converted to pixels for the current
-// frame.
-type geometry struct {
+// layout holds every measurement of one frame.
+type layout struct {
 	size image.Point
 
-	border         int
-	inner          image.Rectangle
-	headerDivider  int
-	contentTop     int
-	contentBottom  int
-	footerDivider  int
-	footerTop      int
-	footerBottom   int
-	stripTop       int
-	cornerRadius   int
-	headerClickEnd int
-	headerCenterY  int
+	border        int
+	inner         image.Rectangle
+	headerDivider int
+	contentTop    int
+	footerDivider int
+	footerTop     int
+	footerBottom  int
+	corner        int
+	centerY       int
 
-	logo     image.Rectangle
-	titleX   int
-	controls controlGeometry
-}
-
-type controlGeometry struct {
-	minimize, maximize, close image.Rectangle
-}
-
-// windowControl groups one window-control hitbox with its icon and look.
-type windowControl struct {
-	bounds   image.Rectangle
-	click    *widget.Clickable
-	icon     *widget.Icon
-	action   system.Action
-	iconSize unit.Dp
-	normal   color.NRGBA
-	hover    color.NRGBA
-	label    resource.TextKey
-}
-
-// contentRect returns the drawable area between the header and the footer. It
-// is empty when the window is too small for the chrome.
-func (g geometry) contentRect() image.Rectangle {
-	if g.inner.Empty() || g.contentBottom <= g.contentTop {
-		return image.Rectangle{}
-	}
-	return image.Rect(g.inner.Min.X, g.contentTop, g.inner.Max.X, g.contentBottom)
-}
-
-// footerRect returns the band where the active screen draws its controls.
-func (g geometry) footerRect() image.Rectangle {
-	if g.inner.Empty() || g.footerBottom <= g.footerTop {
-		return image.Rectangle{}
-	}
-	return image.Rect(g.inner.Min.X, g.footerTop, g.inner.Max.X, g.footerBottom)
-}
-
-// newGeometry converts the chrome measurements for the current frame.
-func (s *Shell) newGeometry(gtx layout.Context) geometry {
-	size := gtx.Constraints.Max
-	line := max(1, gtx.Dp(appearance.Hairline))
-
-	g := geometry{size: size}
-	g.border = line
-	if size.X > 2*g.border && size.Y > 2*g.border {
-		g.inner = image.Rect(g.border, g.border, size.X-g.border, size.Y-g.border)
-	}
-
-	g.headerDivider = g.border + gtx.Dp(headerHeight-1)
-	g.contentTop = g.headerDivider + line
-	g.footerBottom = size.Y - g.border - line
-	g.footerTop = g.footerBottom - gtx.Dp(footerHeight)
-	g.footerDivider = g.footerTop - line
-	g.contentBottom = g.footerDivider
-	g.stripTop = g.footerBottom
-	g.headerClickEnd = g.headerDivider
-	if !s.maximized {
-		g.cornerRadius = gtx.Dp(appearance.RadiusS)
-	}
-	g.headerCenterY = (g.border + g.headerDivider) / 2
-
-	logo := gtx.Dp(logoSize)
-	logoTop := g.headerCenterY - logo/2
-	g.logo = rect(gtx.Dp(logoInset), logoTop, gtx.Dp(logoInset)+logo, logoTop+logo)
-	g.titleX = g.logo.Max.X + gtx.Dp(labelGap)
-
-	right := size.X - g.border - gtx.Dp(controlsInset)
-	width := gtx.Dp(controlWidth)
-	gap := gtx.Dp(controlGap)
-	g.controls.close = rect(right-width, 0, right, g.headerClickEnd)
-	g.controls.maximize = g.controls.close.Add(image.Pt(-(width + gap), 0))
-	g.controls.minimize = g.controls.maximize.Add(image.Pt(-(width + gap), 0))
-	return g
-}
-
-// brandLayout is the measured site block. It is built before the drag regions
-// so the site trigger can be excluded from them. The chevron and the version
-// badge sit at anchors reserved for the widest site name, so switching sites
-// never moves them.
-type brandLayout struct {
-	label     op.CallOp
-	labelSize image.Point
-	chevron   image.Rectangle
+	logo      image.Rectangle
+	titleX    int
+	minimize  image.Rectangle
+	maximize  image.Rectangle
+	close     image.Rectangle
 	trigger   image.Rectangle
+	chevron   image.Rectangle
 	versionX  int
+	maximized bool
 }
 
-// layoutHeader paints the draggable regions, the brand and the window controls.
-func (s *Shell) layoutHeader(gtx layout.Context, g geometry) {
-	if g.inner.Empty() {
-		return
+// contentRect returns the drawable area between the header and the footer.
+func (l layout) contentRect() image.Rectangle {
+	if l.inner.Empty() || l.headerDivider >= l.footerDivider {
+		return image.Rectangle{}
 	}
-	brand := s.brandLayout(gtx, g)
-	// Drag regions come first, so the trigger and the controls added later sit
-	// above them and receive pointer input.
-	s.layoutDragRegions(gtx, g, brand.trigger)
-	s.layoutBrand(gtx, g, brand)
-
-	palette := s.palette()
-	maximizeIcon := s.icon(resource.IconMaximize)
-	maximizeAction := system.ActionMaximize
-	maximizeLabel := resource.TextWindowMaximize
-	if s.maximized {
-		maximizeIcon = s.icon(resource.IconUnmaximize)
-		maximizeAction = system.ActionUnmaximize
-		maximizeLabel = resource.TextWindowUnmaximize
-	}
-	common := windowControl{
-		iconSize: controlIconSize,
-		normal:   palette.ControlIcon,
-		hover:    palette.ControlIconHover,
-	}
-	minimize := common
-	minimize.bounds = g.controls.minimize
-	minimize.click = &s.minimize
-	minimize.icon = s.icon(resource.IconMinimize)
-	minimize.action = system.ActionMinimize
-	minimize.label = resource.TextWindowMinimize
-	s.layoutControl(gtx, minimize)
-
-	maximize := common
-	maximize.bounds = g.controls.maximize
-	maximize.click = &s.maximize
-	maximize.icon = maximizeIcon
-	maximize.action = maximizeAction
-	maximize.label = maximizeLabel
-	s.layoutControl(gtx, maximize)
-
-	closeControl := common
-	closeControl.bounds = g.controls.close
-	closeControl.click = &s.close
-	closeControl.icon = s.icon(resource.IconClose)
-	closeControl.action = system.ActionClose
-	closeControl.iconSize = closeIconSize
-	closeControl.hover = palette.Danger
-	closeControl.label = resource.TextWindowClose
-	s.layoutControl(gtx, closeControl)
+	return image.Rect(l.inner.Min.X, l.contentTop, l.inner.Max.X, l.footerDivider)
 }
 
-// brandLayout measures the site block and records its label. The chevron is
-// anchored after the widest catalog name, not after the active one, so every
-// site keeps the same chevron and version position.
-func (s *Shell) brandLayout(gtx layout.Context, g geometry) brandLayout {
-	palette := s.palette()
-	typo := s.typography()
-	if typo.Shaper() == nil {
-		return brandLayout{}
+// footerRect returns the band where a screen would draw footer controls.
+func (l layout) footerRect() image.Rectangle {
+	if l.inner.Empty() || l.footerBottom <= l.footerTop {
+		return image.Rectangle{}
 	}
-	chevronSize := gtx.Dp(siteChevronSize)
-	chevronGap := gtx.Dp(siteChevronGap)
-	reserve := gtx.Dp(contentGap)
-	if s.siteSwitchable() {
-		reserve += chevronGap + chevronSize
-	}
-	maxWidth := max(1, g.controls.minimize.Min.X-g.titleX-reserve)
-	textGtx := gtx
-	textGtx.Constraints = layout.Constraints{Max: image.Pt(maxWidth, g.headerClickEnd)}
+	return image.Rect(l.inner.Min.X, l.footerTop, l.inner.Max.X, l.footerBottom)
+}
 
-	var b brandLayout
-	macro := op.Record(gtx.Ops)
-	dims := kit.Text(textGtx, typo, appearance.RoleLabel, s.site.Value().String(), palette.Text)
-	b.label = macro.Stop()
-	b.labelSize = dims.Size
-	if b.labelSize.X <= 0 {
-		return b
+// computeLayout measures the chrome for the current widget size.
+func (s *Shell) computeLayout() layout {
+	size := image.Pt(s.widget.Width(), s.widget.Height())
+	l := layout{size: size, border: 1}
+	if size.X > 2*l.border && size.Y > 2*l.border {
+		l.inner = image.Rect(l.border, l.border, size.X-l.border, size.Y-l.border)
+	}
+	l.headerDivider = l.border + headerHeight - 1
+	l.contentTop = l.headerDivider + 1
+	l.footerBottom = size.Y - l.border - 1
+	l.footerTop = l.footerBottom - footerHeight
+	l.footerDivider = l.footerTop - 1
+	l.centerY = (l.border + l.headerDivider) / 2
+	l.maximized = s.widget.IsMaximized()
+	if !l.maximized {
+		l.corner = int(appearance.RadiusS)
 	}
 
-	anchorWidth := b.labelSize.X
-	if s.siteSwitchable() {
-		for _, site := range catalog.Sites() {
-			if width := measureLabel(gtx, textGtx, typo, site.String(), palette.Text); width > anchorWidth {
-				anchorWidth = width
+	l.logo = image.Rect(logoInset, l.centerY-logoSize/2, logoInset+logoSize, l.centerY-logoSize/2+logoSize)
+	l.titleX = l.logo.Max.X + labelGap
+
+	right := size.X - l.border - controlsInset
+	l.close = image.Rect(right-controlWidth, 0, right, l.headerDivider)
+	l.maximize = l.close.Add(image.Pt(-(controlWidth + controlGap), 0))
+	l.minimize = l.maximize.Add(image.Pt(-(controlWidth + controlGap), 0))
+
+	site := s.site.Value()
+	app := s.appearance.Value()
+	width := func(value string) int {
+		return kit.MeasureText(app, appearance.RoleLabel, value).X
+	}
+	if len(catalog.Sites()) > 1 {
+		anchor := width(site.String())
+		for _, other := range catalog.Sites() {
+			if w := width(other.String()); w > anchor {
+				anchor = w
 			}
 		}
-	}
-	anchorWidth = min(anchorWidth, maxWidth)
-	b.versionX = g.titleX + anchorWidth + gtx.Dp(versionGap)
-	if s.siteSwitchable() {
-		left := g.titleX + anchorWidth + chevronGap
-		top := g.headerCenterY - chevronSize/2
-		b.chevron = rect(left, top, left+chevronSize, top+chevronSize)
-		right := b.chevron.Max.X + gtx.Dp(siteMenuOverhang)
-		b.trigger = rect(g.logo.Min.X, 0, right, g.headerClickEnd)
-		b.versionX = b.chevron.Max.X + gtx.Dp(versionGap)
+		maxWidth := max(1, l.minimize.Min.X-l.titleX-(contentGap+siteChevronGap+siteChevronSize))
+		anchor = min(anchor, maxWidth)
+		left := l.titleX + anchor + siteChevronGap
+		top := l.centerY - siteChevronSize/2
+		l.chevron = image.Rect(left, top, left+siteChevronSize, top+siteChevronSize)
+		l.trigger = image.Rect(l.logo.Min.X, 0, l.chevron.Max.X+siteMenuOverhang, l.headerDivider)
+		l.versionX = l.chevron.Max.X + versionGap
 	} else {
-		b.trigger = rect(g.logo.Min.X, 0, g.titleX+b.labelSize.X, g.headerClickEnd)
+		l.trigger = image.Rect(l.logo.Min.X, 0, l.titleX+width(site.String()), l.headerDivider)
+		l.versionX = l.titleX + width(site.String()) + versionGap
 	}
-	return b
+	return l
 }
 
-// measureLabel returns the width kit.Text would use for label at the site
-// name role without leaving the measurement in the frame.
-func measureLabel(gtx, textGtx layout.Context, typo appearance.Typography, label string, col color.NRGBA) int {
-	macro := op.Record(gtx.Ops)
-	dims := kit.Text(textGtx, typo, appearance.RoleLabel, label, col)
-	macro.Stop()
-	return dims.Size.X
-}
-
-// layoutBrand paints the site mark, the active site name, the switcher chevron
-// and the version.
-func (s *Shell) layoutBrand(gtx layout.Context, g geometry, b brandLayout) {
+// paintFrame draws the rounded border, the inner surface and the two bands.
+func (s *Shell) paintFrame(p *qt.QPainter, l layout) {
 	palette := s.palette()
-	s.layoutSiteMark(gtx, g.logo, palette)
-	if b.labelSize.X <= 0 {
+	kit.FillRounded(p, palette.Border, image.Rect(0, 0, l.size.X, l.size.Y), float64(l.corner))
+	if l.inner.Empty() {
 		return
 	}
-	if s.siteSwitchable() && !b.trigger.Empty() && s.layoutSiteTrigger(gtx, b.trigger) {
-		if s.menu.open {
-			s.dismissSiteMenu()
-		} else {
-			s.menu.toggle(b.trigger)
-		}
-		gtx.Execute(op.InvalidateCmd{})
-	}
+	p.Save()
+	clip := roundedPath(l.inner, float64(l.corner))
+	p.SetClipPath(clip)
+	kit.FillRect(p, palette.Canvas, l.inner)
+	kit.FillRect(p, palette.Surface, image.Rect(l.inner.Min.X, l.inner.Min.Y, l.inner.Max.X, l.headerDivider))
+	kit.FillRect(p, palette.Divider, image.Rect(l.inner.Min.X, l.headerDivider, l.inner.Max.X, l.contentTop))
+	kit.FillRect(p, palette.Divider, image.Rect(l.inner.Min.X, l.footerDivider, l.inner.Max.X, l.footerTop))
+	kit.FillRect(p, palette.Surface, image.Rect(l.inner.Min.X, l.footerTop, l.inner.Max.X, l.footerBottom))
+	kit.FillRect(p, palette.Canvas, image.Rect(l.inner.Min.X, l.footerBottom, l.inner.Max.X, l.inner.Max.Y))
+	p.Restore()
+	clip.Delete()
+}
 
-	stack := op.Offset(image.Pt(g.titleX, g.headerCenterY-b.labelSize.Y/2)).Push(gtx.Ops)
-	b.label.Add(gtx.Ops)
-	stack.Pop()
-
-	if !b.chevron.Empty() {
-		drawChevron(gtx, b.chevron, palette.ControlIcon, s.menu.open)
+// paintHeader draws the brand, the version and the window controls.
+func (s *Shell) paintHeader(p *qt.QPainter, l layout) {
+	palette := s.palette()
+	app := s.appearance.Value()
+	s.paintSiteMark(p, l.logo, palette)
+	drawTextLine(p, app, appearance.RoleLabel, s.site.Value().String(), palette.Text, l.titleX, l.centerY)
+	if !l.chevron.Empty() {
+		paintChevron(p, l.chevron, palette.ControlIcon, s.menuOpen)
 	}
 	if s.version != "" {
-		s.layoutVersion(gtx, g, b.versionX)
+		s.paintVersion(p, l, palette)
 	}
+
+	s.paintControl(p, l.minimize, resource.IconMinimize,
+		s.controlColor(palette.ControlIcon, palette.ControlIconHover, RegionMinimize))
+	s.paintControl(p, l.maximize, s.maximizeIcon(),
+		s.controlColor(palette.ControlIcon, palette.ControlIconHover, RegionMaximize))
+	s.paintControl(p, l.close, resource.IconClose,
+		s.controlColor(palette.ControlIcon, palette.Danger, RegionClose))
 }
 
-// layoutSiteMark paints the vector site tile: a dim rounded edge, the
-// alternative surface and the torii in the site accent.
-func (s *Shell) layoutSiteMark(gtx layout.Context, r image.Rectangle, palette appearance.Palette) {
+// maximizeIcon picks the restore glyph while the window is maximized.
+func (s *Shell) maximizeIcon() resource.IconKey {
+	if s.widget.IsMaximized() {
+		return resource.IconUnmaximize
+	}
+	return resource.IconMaximize
+}
+
+// controlColor returns the hover color of a window control.
+func (s *Shell) controlColor(normal, hover color.NRGBA, region Region) color.NRGBA {
+	if s.hover == region {
+		return hover
+	}
+	return normal
+}
+
+// paintControl draws one window-control glyph centered in its hitbox.
+func (s *Shell) paintControl(p *qt.QPainter, bounds image.Rectangle, key resource.IconKey, col color.NRGBA) {
+	if bounds.Empty() {
+		return
+	}
+	size := min(controlIconSize, min(bounds.Dx(), bounds.Dy()))
+	icon := image.Rect(0, 0, size, size).Add(image.Pt(
+		bounds.Min.X+(bounds.Dx()-size)/2,
+		bounds.Min.Y+(bounds.Dy()-size)/2,
+	))
+	kit.Icon(p, s.resource.Icon(key), icon, col)
+}
+
+// paintSiteMark draws the rounded site tile with the torii glyph.
+func (s *Shell) paintSiteMark(p *qt.QPainter, r image.Rectangle, palette appearance.Palette) {
 	if r.Empty() {
 		return
 	}
-	line := max(1, gtx.Dp(appearance.Hairline))
-	radius := gtx.Dp(markRadius)
-	kit.FillRounded(gtx, kit.WithAlpha(palette.AccentMuted, accentTintAlpha), r, radius)
+	line := max(1, int(appearance.Hairline))
+	radius := float64(markRadius)
+	tint := palette.AccentMuted
+	tint.A = accentTintAlpha
+	kit.FillRounded(p, tint, r, radius)
 	inner := r.Inset(line)
-	kit.FillRounded(gtx, palette.SurfaceAlt, inner, max(0, radius-line))
-	iconRect := inner.Inset(gtx.Dp(markInset))
-	kit.Icon(gtx, s.icon(resource.IconTorii), iconRect, palette.Accent)
+	kit.FillRounded(p, palette.SurfaceAlt, inner, max(0, radius-float64(line)))
+	kit.Icon(p, s.resource.Icon(resource.IconTorii), inner.Inset(markInset), palette.Accent)
 }
 
-// layoutVersion paints the version pill after the site block. Its fill is
-// tinted by the active palette. The shell never formats the version text.
-func (s *Shell) layoutVersion(gtx layout.Context, g geometry, left int) {
-	palette := s.palette()
-	typo := s.typography()
-	line := max(1, gtx.Dp(appearance.Hairline))
-	padding := gtx.Dp(badgePaddingX)
-	maxWidth := max(1, g.controls.minimize.Min.X-left-gtx.Dp(contentGap)-2*(padding+line))
-	textGtx := gtx
-	textGtx.Constraints = layout.Constraints{Max: image.Pt(maxWidth, g.headerClickEnd)}
-	macro := op.Record(gtx.Ops)
-	dims := kit.Text(textGtx, typo, appearance.RoleCaption, s.version, palette.Ink)
-	call := macro.Stop()
-	if dims.Size.X <= 0 {
+// paintVersion draws the accent version pill.
+func (s *Shell) paintVersion(p *qt.QPainter, l layout, palette appearance.Palette) {
+	app := s.appearance.Value()
+	size := kit.MeasureText(app, appearance.RoleCaption, s.version)
+	if size.X <= 0 {
 		return
 	}
-	height := gtx.Dp(badgeHeight)
-	radius := height / 2
-	pill := rect(left, g.headerCenterY-height/2,
-		left+dims.Size.X+2*(padding+line), g.headerCenterY+(height+1)/2)
-	if pill.Max.X > g.controls.minimize.Min.X-gtx.Dp(contentGap) {
-		return
-	}
-	kit.FillRounded(gtx, palette.Edge, pill, radius)
-	inner := pill.Inset(line)
-	kit.FillRounded(gtx, palette.Badge, inner, max(0, radius-line))
-	text := image.Pt(left+line+padding, g.headerCenterY-dims.Size.Y/2)
-	stack := op.Offset(text).Push(gtx.Ops)
-	call.Add(gtx.Ops)
-	stack.Pop()
-}
-
-// layoutControl registers one window-control hitbox, its accessibility label
-// and paints its icon.
-func (s *Shell) layoutControl(gtx layout.Context, c windowControl) {
-	if c.bounds.Empty() {
-		return
-	}
-	clicked := c.click.Clicked(gtx)
-	hovered := s.controlHovered(gtx, c)
-
-	stack := op.Offset(c.bounds.Min).Push(gtx.Ops)
-	defer stack.Pop()
-	controlGtx := gtx
-	controlGtx.Constraints = layout.Exact(c.bounds.Size())
-	clipStack := clip.Rect(image.Rectangle{Max: c.bounds.Size()}).Push(gtx.Ops)
-	defer clipStack.Pop()
-	label := s.locale().Text(c.label)
-	c.click.Layout(controlGtx, func(gtx layout.Context) layout.Dimensions {
-		pointer.CursorPointer.Add(gtx.Ops)
-		semantic.Button.Add(gtx.Ops)
-		semantic.DescriptionOp(label).Add(gtx.Ops)
-		col := c.normal
-		if hovered {
-			col = c.hover
-		}
-		size := min(gtx.Dp(c.iconSize), min(c.bounds.Dx(), c.bounds.Dy()))
-		iconRect := image.Rect(0, 0, size, size).Add(image.Pt(
-			(c.bounds.Dx()-size)/2,
-			(c.bounds.Dy()-size)/2,
-		))
-		kit.Icon(gtx, c.icon, iconRect, col)
-		return layout.Dimensions{Size: c.bounds.Size()}
-	})
-	if clicked && s.window != nil {
-		s.window.Perform(c.action)
-	}
-}
-
-// controlHovered reports whether a window control paints its hover state. Gio
-// only sees pointer events over client areas, so a cursor that moved into the
-// non-client header or left the window leaves Clickable.Hovered stuck. The
-// widget state is checked against the real cursor position, and while the
-// hover is active a repaint is scheduled to notice the cursor leaving.
-func (s *Shell) controlHovered(gtx layout.Context, c windowControl) bool {
-	if !c.click.Hovered() {
-		return false
-	}
-	if s.cursor == nil || !s.cursor.HoverPollingSupported() {
-		return true
-	}
-	if !s.cursor.CursorInRect(c.bounds) {
-		return false
-	}
-	gtx.Execute(op.InvalidateCmd{At: gtx.Now.Add(hoverPollInterval)})
-	return true
-}
-
-// layoutDragRegions installs system.ActionMove over every header area outside
-// the site trigger and the window controls, so dragging the empty surface moves
-// the window.
-func (s *Shell) layoutDragRegions(gtx layout.Context, g geometry, trigger image.Rectangle) {
-	minimize, maximize, close := g.controls.minimize, g.controls.maximize, g.controls.close
-	regions := make([]image.Rectangle, 0, 5)
-	if trigger.Empty() {
-		regions = append(regions, rect(g.inner.Min.X, 0, minimize.Min.X, g.headerClickEnd))
-	} else {
-		regions = append(regions,
-			rect(g.inner.Min.X, 0, trigger.Min.X, g.headerClickEnd),
-			rect(trigger.Max.X, 0, minimize.Min.X, g.headerClickEnd),
-		)
-	}
-	regions = append(regions,
-		rect(minimize.Max.X, 0, maximize.Min.X, g.headerClickEnd),
-		rect(maximize.Max.X, 0, close.Min.X, g.headerClickEnd),
-		rect(close.Max.X, 0, g.size.X, g.headerClickEnd),
+	line := max(1, int(appearance.Hairline))
+	pad := badgePaddingX
+	pill := image.Rect(
+		l.versionX,
+		l.centerY-badgeHeight/2,
+		l.versionX+size.X+2*(pad+line),
+		l.centerY+(badgeHeight+1)/2,
 	)
-	for _, region := range regions {
-		if region.Empty() {
-			continue
-		}
-		stack := clip.Rect(region).Push(gtx.Ops)
-		system.ActionInputOp(system.ActionMove).Add(gtx.Ops)
-		stack.Pop()
+	if pill.Max.X > l.minimize.Min.X-contentGap {
+		return
 	}
+	radius := float64(badgeHeight) / 2
+	kit.FillRounded(p, palette.Edge, pill, radius)
+	kit.FillRounded(p, palette.Badge, pill.Inset(line), max(0, radius-float64(line)))
+	drawTextLine(p, app, appearance.RoleCaption, s.version, palette.Ink, pill.Min.X+line+pad, l.centerY)
 }
 
-// icon returns the embedded icon or nil when the shell has no resources.
-func (s *Shell) icon(key resource.IconKey) *widget.Icon {
-	if s.resource == nil {
-		return nil
-	}
-	return s.resource.Icon(key)
-}
-
-// drawChevron paints the switcher arrow as a stroked vector, so the chrome does
-// not depend on an embedded chevron asset. It points down when closed and up
-// when open.
-func drawChevron(gtx layout.Context, r image.Rectangle, col color.NRGBA, open bool) {
+// paintChevron draws the switcher arrow, pointing down when closed and up when
+// open.
+func paintChevron(p *qt.QPainter, r image.Rectangle, col color.NRGBA, open bool) {
 	if r.Empty() {
 		return
 	}
-	x, y := float32(r.Min.X), float32(r.Min.Y)
-	w, h := float32(r.Dx()), float32(r.Dy())
-	var path clip.Path
-	path.Begin(gtx.Ops)
+	x, y := float64(r.Min.X), float64(r.Min.Y)
+	w, h := float64(r.Dx()), float64(r.Dy())
+	path := qt.NewQPainterPath()
 	if open {
-		path.MoveTo(f32.Pt(x+w*0.12, y+h*0.64))
-		path.LineTo(f32.Pt(x+w*0.5, y+h*0.3))
-		path.LineTo(f32.Pt(x+w*0.88, y+h*0.64))
+		path.MoveTo(qt.NewQPointF3(x+w*0.12, y+h*0.64))
+		path.LineTo(qt.NewQPointF3(x+w*0.5, y+h*0.3))
+		path.LineTo(qt.NewQPointF3(x+w*0.88, y+h*0.64))
 	} else {
-		path.MoveTo(f32.Pt(x+w*0.12, y+h*0.36))
-		path.LineTo(f32.Pt(x+w*0.5, y+h*0.7))
-		path.LineTo(f32.Pt(x+w*0.88, y+h*0.36))
+		path.MoveTo(qt.NewQPointF3(x+w*0.12, y+h*0.36))
+		path.LineTo(qt.NewQPointF3(x+w*0.5, y+h*0.7))
+		path.LineTo(qt.NewQPointF3(x+w*0.88, y+h*0.36))
 	}
-	width := max(1, float32(gtx.Metric.PxPerDp)*float32(siteChevronStroke))
-	stack := clip.Stroke{Path: path.End(), Width: width}.Op().Push(gtx.Ops)
-	paint.Fill(gtx.Ops, col)
-	stack.Pop()
+	pen := qt.NewQPen3(qcolor(col))
+	pen.SetWidthF(siteChevronStroke)
+	pen.SetCapStyle(qt.RoundCap)
+	pen.SetJoinStyle(qt.RoundJoin)
+	p.SetPenWithPen(pen)
+	p.SetBrushWithStyle(qt.NoBrush)
+	p.DrawPath(path)
+	pen.Delete()
+	path.Delete()
 }
 
-func rect(x0, y0, x1, y1 int) image.Rectangle {
-	if x1 <= x0 || y1 <= y0 {
-		return image.Rectangle{}
+// drawTextLine draws one vertically centered line and returns its width.
+func drawTextLine(p *qt.QPainter, app appearance.Appearance, role appearance.TextRole, value string, col color.NRGBA, x, centerY int) int {
+	if value == "" {
+		return 0
 	}
-	return image.Rect(x0, y0, x1, y1)
+	size := kit.MeasureText(app, role, value)
+	p.Save()
+	p.Translate2(float64(x), float64(centerY-size.Y/2))
+	kit.Text(p, app, role, value, col)
+	p.Restore()
+	return size.X
+}
+
+// roundedPath builds a rounded rectangle path.
+func roundedPath(r image.Rectangle, radius float64) *qt.QPainterPath {
+	path := qt.NewQPainterPath()
+	path.AddRoundedRect2(
+		float64(r.Min.X), float64(r.Min.Y), float64(r.Dx()), float64(r.Dy()),
+		radius, radius,
+	)
+	return path
+}
+
+// qcolor converts a palette token into a Qt color.
+func qcolor(c color.NRGBA) *qt.QColor {
+	return qt.NewQColor11(int(c.R), int(c.G), int(c.B), int(c.A))
 }
