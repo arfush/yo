@@ -12,6 +12,7 @@ package shell
 
 import (
 	"image"
+	"image/draw"
 	"log/slog"
 
 	qt "github.com/mappu/miqt/qt6"
@@ -276,6 +277,29 @@ func (s *Shell) updateAppearance(palette appearance.Palette, icon resource.AppIc
 		a.SetPalette(palette)
 		a.SetAppIcon(icon)
 	})
+	s.setAppIcon(icon)
+}
+
+// setAppIcon replaces the native window icon. The embedded PNG is full
+// resolution, so Windows can pick any size it needs for the title bar and the
+// taskbar.
+func (s *Shell) setAppIcon(key resource.AppIconKey) {
+	img := s.resource.AppIcon(key)
+	bounds := img.Bounds()
+	if bounds.Empty() {
+		return
+	}
+	nrgba := image.NewNRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
+	draw.Draw(nrgba, nrgba.Bounds(), img, bounds.Min, draw.Src)
+	source := qt.NewQImage6(&nrgba.Pix[0], bounds.Dx(), bounds.Dy(), int64(nrgba.Stride), qt.QImage__Format_RGBA8888)
+	owned := source.Copy()
+	pixmap := qt.QPixmap_FromImage(owned)
+	icon := qt.NewQIcon2(pixmap)
+	s.widget.SetWindowIcon(icon)
+	icon.Delete()
+	pixmap.Delete()
+	owned.Delete()
+	source.Delete()
 }
 
 // switchSite applies a selection from the header switcher. The shell updates
