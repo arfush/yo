@@ -16,13 +16,15 @@ type faceKey struct {
 }
 
 var (
+	facesOnce    sync.Once
 	facesMu      sync.Mutex
-	faceFamilies = map[*resource.Resource]string{}
-	faceCache    = map[faceKey]*qt.QFont{}
+	faceFamilies map[*resource.Resource]string
+	faceCache    map[faceKey]*qt.QFont
 )
 
 // face returns the Qt font for key at size logical pixels. The embedded faces
-// are registered with Qt once per resource.
+// are registered with Qt once per resource. The caches are built on first use
+// and then only grow; facesMu serializes their readers and writers.
 func face(res *resource.Resource, key resource.FontKey, size float32) *qt.QFont {
 	if res == nil {
 		panic("kit: nil resources")
@@ -30,6 +32,11 @@ func face(res *resource.Resource, key resource.FontKey, size float32) *qt.QFont 
 	if size <= 0 {
 		panic("kit: non-positive font size")
 	}
+
+	facesOnce.Do(func() {
+		faceFamilies = make(map[*resource.Resource]string)
+		faceCache = make(map[faceKey]*qt.QFont)
+	})
 
 	facesMu.Lock()
 	defer facesMu.Unlock()

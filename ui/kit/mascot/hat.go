@@ -3,6 +3,7 @@ package mascot
 import (
 	"image/color"
 	"math/rand/v2"
+	"sync"
 	"time"
 
 	qt "github.com/mappu/miqt/qt6"
@@ -30,34 +31,38 @@ const (
 	HatCypher     Hat = "cypher"
 )
 
-// allHats is the catalog RandomHat chooses from. HatNone is intentionally
-// excluded. It is a package-level mutable slice on purpose: the catalog is tiny
-// and static, so this is a deliberate exception to the no-package-vars rule.
-// Keep it in sync with the Hat* constants.
-var allHats = []Hat{
-	HatParty,
-	HatWitch,
-	HatCrown,
-	HatTop,
-	HatBeanie,
-	HatCap,
-	HatSanta,
-	HatGraduation,
-	HatUshanka,
-	HatFlowers,
-	HatCypher,
-}
+// hatCatalog is the outfit list RandomHat chooses from. HatNone is
+// intentionally excluded. sync.OnceValue builds it on first use and never
+// mutates it afterwards, so the catalog is effectively constant. Keep it in
+// sync with the Hat* constants.
+var hatCatalog = sync.OnceValue(func() []Hat {
+	return []Hat{
+		HatParty,
+		HatWitch,
+		HatCrown,
+		HatTop,
+		HatBeanie,
+		HatCap,
+		HatSanta,
+		HatGraduation,
+		HatUshanka,
+		HatFlowers,
+		HatCypher,
+	}
+})
 
 // Hats returns every outfit in presentation order. The caller owns the slice.
 func Hats() []Hat {
-	out := make([]Hat, len(allHats))
-	copy(out, allHats)
+	catalog := hatCatalog()
+	out := make([]Hat, len(catalog))
+	copy(out, catalog)
 	return out
 }
 
 // RandomHat returns a random outfit. It never returns HatNone.
 func RandomHat() Hat {
-	return allHats[rand.IntN(len(allHats))]
+	catalog := hatCatalog()
+	return catalog[rand.IntN(len(catalog))]
 }
 
 // SeasonalHat picks the holiday outfit for a date. Each window covers the

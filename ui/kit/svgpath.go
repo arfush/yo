@@ -13,13 +13,19 @@ import (
 const iconBox = 24
 
 var (
-	iconPathsMu sync.Mutex
-	iconPaths   = map[resource.Path]*qt.QPainterPath{}
+	iconPathsOnce sync.Once
+	iconPathsMu   sync.Mutex
+	iconPaths     map[resource.Path]*qt.QPainterPath
 )
 
-// iconPath parses and caches one path. The supported commands cover every
-// glyph in the icon sprite: M, L, H, V, C and Z, absolute and relative.
+// iconPath parses and caches one path. The cache is built once on first use
+// and then only grows; iconPathsMu serializes its readers and writers. The
+// supported commands cover every glyph in the icon sprite: M, L, H, V, C and Z,
+// absolute and relative.
 func iconPath(d resource.Path) *qt.QPainterPath {
+	iconPathsOnce.Do(func() {
+		iconPaths = make(map[resource.Path]*qt.QPainterPath)
+	})
 	iconPathsMu.Lock()
 	defer iconPathsMu.Unlock()
 	if path, ok := iconPaths[d]; ok {
