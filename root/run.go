@@ -5,14 +5,14 @@ import (
 	"os/signal"
 	"runtime"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/version"
 )
 
 // Run starts the application and blocks until the window is closed.
 func Run() {
-	qt.NewQApplication([]string{os.Args[0]})
+	qt6.NewQApplication([]string{os.Args[0]})
 	r := &root{}
 	r.initLog()
 	defer r.stop()
@@ -35,12 +35,12 @@ func Run() {
 		select {
 		case <-interrupt:
 			r.logger.Info("interrupt received")
-			qt.QCoreApplication_Quit()
+			qt6.QCoreApplication_Quit()
 		case <-done:
 		}
 	}()
 
 	r.shell.Show()
-	qt.QApplication_Exec()
+	qt6.QApplication_Exec()
 	r.logger.Info("window closed")
 }

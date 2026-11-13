@@ -6,7 +6,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6"
 )
 
 func TestParsePathAcceptsSpriteCommands(t *testing.T) {
@@ -37,7 +37,7 @@ func TestParsePathAcceptsSpriteCommands(t *testing.T) {
 			if path.IsEmpty() {
 				t.Fatalf("parsePath(%q) is empty", tt.d)
 			}
-			if got := path.FillRule(); got != qt.WindingFill {
+			if got := path.FillRule(); got != qt6.WindingFill {
 				t.Fatalf("parsePath(%q).FillRule() = %v; want WindingFill", tt.d, got)
 			}
 		})

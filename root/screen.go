@@ -1,7 +1,7 @@
 package root
 
 import (
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/ui/navigator"
 	"github.com/arfush/yo/ui/screen"
@@ -22,7 +22,7 @@ func (r *root) newStartupScreen() navigator.Screen {
 // startStubAnimation drives the placeholder mascot until screens own their own
 // invalidation. Temporary, like the stub itself.
 func (r *root) startStubAnimation() {
-	timer := qt.NewQTimer2(r.shell.Widget().QObject)
+	timer := qt6.NewQTimer2(r.shell.Widget().QObject)
 	timer.SetInterval(stubFrameInterval)
 	timer.OnTimeout(func() { r.shell.Widget().Update() })
 	timer.Start2()

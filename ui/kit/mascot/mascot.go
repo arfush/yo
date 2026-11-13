@@ -4,7 +4,7 @@ import (
 	"image"
 	"time"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/ui/appearance"
 )
@@ -46,7 +46,7 @@ func New(opts Options) Mascot {
 
 // Paint draws the mascot centered in rect at the given instant. An empty rect
 // draws nothing.
-func (m Mascot) Paint(p *qt.QPainter, rect image.Rectangle, now time.Time) {
+func (m Mascot) Paint(p *qt6.QPainter, rect image.Rectangle, now time.Time) {
 	if rect.Empty() {
 		return
 	}

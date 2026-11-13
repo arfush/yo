@@ -15,7 +15,7 @@ import (
 	"image/draw"
 	"log/slog"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/catalog"
 	"github.com/arfush/yo/stdx"
@@ -34,13 +34,13 @@ const (
 
 // Screen draws the content area between the header and the footer.
 type Screen interface {
-	Paint(p *qt.QPainter, content image.Rectangle, palette appearance.Palette)
+	Paint(p *qt6.QPainter, content image.Rectangle, palette appearance.Palette)
 }
 
 // FooterScreen optionally draws the footer band. The shell paints the band
 // background first and then calls PaintFooter with the band rectangle.
 type FooterScreen interface {
-	PaintFooter(p *qt.QPainter, footer image.Rectangle, palette appearance.Palette)
+	PaintFooter(p *qt6.QPainter, footer image.Rectangle, palette appearance.Palette)
 }
 
 // PointerAction identifies the kind of a forwarded pointer event.
@@ -72,7 +72,7 @@ type WheelEvent struct {
 type Interactive interface {
 	Pointer(event PointerEvent) bool
 	Wheel(event WheelEvent) bool
-	Cursor(pos image.Point) qt.CursorShape
+	Cursor(pos image.Point) qt6.CursorShape
 }
 
 // Region identifies the interactive part of the chrome that is hovered or
@@ -101,7 +101,7 @@ type Options struct {
 
 // Shell is the application window frame drawn by one custom-painted QWidget.
 type Shell struct {
-	widget     *qt.QWidget
+	widget     *qt6.QWidget
 	site       *stdx.Holder[catalog.Site]
 	appearance *stdx.Holder[appearance.Appearance]
 	resource   *resource.Resource
@@ -119,13 +119,13 @@ type Shell struct {
 	menuRowHover int
 	pressMenuRow int
 	dismissals   int
-	cursor       qt.CursorShape
+	cursor       qt6.CursorShape
 	screenPress  bool
 
-	cursors map[qt.CursorShape]*qt.QCursor
+	cursors map[qt6.CursorShape]*qt6.QCursor
 }
 
-// New creates the frameless window. It must run after qt.NewQApplication.
+// New creates the frameless window. It must run after qt6.NewQApplication.
 func New(opts Options) *Shell {
 	if opts.Screen == nil {
 		panic("shell: nil screen")
@@ -147,9 +147,9 @@ func New(opts Options) *Shell {
 		logger = slog.New(slog.DiscardHandler)
 	}
 
-	w := qt.NewQWidget2()
-	w.SetWindowFlags(qt.WindowType(qt.FramelessWindowHint))
-	w.SetAttribute(qt.WA_TranslucentBackground)
+	w := qt6.NewQWidget2()
+	w.SetWindowFlags(qt6.WindowType(qt6.FramelessWindowHint))
+	w.SetAttribute(qt6.WA_TranslucentBackground)
 	w.SetWindowTitle("yo")
 	w.SetMinimumSize2(MinimumWidth, MinimumHeight)
 	w.Resize(InitialWidth, InitialHeight)
@@ -165,11 +165,11 @@ func New(opts Options) *Shell {
 		screen:       opts.Screen,
 		menuRowHover: -1,
 		pressMenuRow: -1,
-		cursor:       qt.LastCursor,
-		cursors:      make(map[qt.CursorShape]*qt.QCursor),
+		cursor:       qt6.LastCursor,
+		cursors:      make(map[qt6.CursorShape]*qt6.QCursor),
 	}
 	s.syncPalette()
-	s.setCursor(qt.ArrowCursor)
+	s.setCursor(qt6.ArrowCursor)
 	s.bindEvents()
 	return s
 }
@@ -177,43 +177,43 @@ func New(opts Options) *Shell {
 // bindEvents connects the native widget events to the shell.
 func (s *Shell) bindEvents() {
 	w := s.widget
-	w.OnPaintEvent(func(super func(event *qt.QPaintEvent), event *qt.QPaintEvent) {
-		p := qt.NewQPainter2(w.QPaintDevice)
+	w.OnPaintEvent(func(super func(event *qt6.QPaintEvent), event *qt6.QPaintEvent) {
+		p := qt6.NewQPainter2(w.QPaintDevice)
 		s.paint(p)
 		p.End()
 		p.Delete()
 	})
-	w.OnMousePressEvent(func(super func(event *qt.QMouseEvent), event *qt.QMouseEvent) {
+	w.OnMousePressEvent(func(super func(event *qt6.QMouseEvent), event *qt6.QMouseEvent) {
 		s.onPress(event)
 	})
-	w.OnMouseReleaseEvent(func(super func(event *qt.QMouseEvent), event *qt.QMouseEvent) {
+	w.OnMouseReleaseEvent(func(super func(event *qt6.QMouseEvent), event *qt6.QMouseEvent) {
 		s.onRelease(event)
 	})
-	w.OnMouseMoveEvent(func(super func(event *qt.QMouseEvent), event *qt.QMouseEvent) {
+	w.OnMouseMoveEvent(func(super func(event *qt6.QMouseEvent), event *qt6.QMouseEvent) {
 		s.onMove(event)
 	})
-	w.OnMouseDoubleClickEvent(func(super func(event *qt.QMouseEvent), event *qt.QMouseEvent) {
+	w.OnMouseDoubleClickEvent(func(super func(event *qt6.QMouseEvent), event *qt6.QMouseEvent) {
 		s.onDoubleClick(event)
 	})
-	w.OnWheelEvent(func(super func(event *qt.QWheelEvent), event *qt.QWheelEvent) {
+	w.OnWheelEvent(func(super func(event *qt6.QWheelEvent), event *qt6.QWheelEvent) {
 		s.onWheel(event)
 	})
-	w.OnLeaveEvent(func(super func(event *qt.QEvent), event *qt.QEvent) {
+	w.OnLeaveEvent(func(super func(event *qt6.QEvent), event *qt6.QEvent) {
 		s.hover = RegionNone
 		s.menuRowHover = -1
 		if screen := s.interactive(); screen != nil && !s.screenPress {
 			screen.Pointer(PointerEvent{Action: PointerLeave})
 		}
-		s.setCursor(qt.ArrowCursor)
+		s.setCursor(qt6.ArrowCursor)
 		w.Update()
 	})
-	w.OnChangeEvent(func(super func(event *qt.QEvent), event *qt.QEvent) {
+	w.OnChangeEvent(func(super func(event *qt6.QEvent), event *qt6.QEvent) {
 		w.Update()
 	})
 }
 
 // Widget returns the top-level widget, for snapshots and embedding.
-func (s *Shell) Widget() *qt.QWidget { return s.widget }
+func (s *Shell) Widget() *qt6.QWidget { return s.widget }
 
 // Show displays the window. The caller runs the Qt event loop.
 func (s *Shell) Show() { s.widget.Show() }
@@ -298,10 +298,10 @@ func (s *Shell) setAppIcon(key resource.AppIconKey) {
 	// QImage.Copy and QPixmap_FromImage register Go finalizers that delete the
 	// native objects again from a non-GUI goroutine. Convert without them and
 	// release both objects here, on the UI goroutine.
-	source := qt.NewQImage6(&nrgba.Pix[0], w, h, int64(nrgba.Stride), qt.QImage__Format_RGBA8888)
-	pixmap := qt.NewQPixmap2(w, h)
+	source := qt6.NewQImage6(&nrgba.Pix[0], w, h, int64(nrgba.Stride), qt6.QImage__Format_RGBA8888)
+	pixmap := qt6.NewQPixmap2(w, h)
 	pixmap.ConvertFromImage(source)
-	icon := qt.NewQIcon2(pixmap)
+	icon := qt6.NewQIcon2(pixmap)
 	s.widget.SetWindowIcon(icon)
 	icon.Delete()
 	pixmap.Delete()
@@ -344,8 +344,8 @@ func (s *Shell) dismissMenu() {
 }
 
 // paint draws one complete frame.
-func (s *Shell) paint(p *qt.QPainter) {
-	p.SetRenderHints(qt.QPainter__Antialiasing | qt.QPainter__TextAntialiasing | qt.QPainter__SmoothPixmapTransform)
+func (s *Shell) paint(p *qt6.QPainter) {
+	p.SetRenderHints(qt6.QPainter__Antialiasing | qt6.QPainter__TextAntialiasing | qt6.QPainter__SmoothPixmapTransform)
 	s.syncPalette()
 	l := s.computeLayout()
 	s.paintFrame(p, l)

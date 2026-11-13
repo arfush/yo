@@ -4,7 +4,7 @@ import (
 	"image"
 	"testing"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/ui/appearance"
 	"github.com/arfush/yo/ui/navigator"
@@ -18,7 +18,7 @@ type fakeScreen struct {
 	closed int
 }
 
-func (f *fakeScreen) Paint(*qt.QPainter, image.Rectangle, appearance.Palette) {}
+func (f *fakeScreen) Paint(*qt6.QPainter, image.Rectangle, appearance.Palette) {}
 
 func (f *fakeScreen) OnShown() { f.shown++ }
 

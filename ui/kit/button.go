@@ -4,7 +4,7 @@ import (
 	"image"
 	"math"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/ui/appearance"
 )
@@ -16,7 +16,7 @@ const buttonIconSize float32 = 24
 // ButtonOptions is the constructor input of Button.
 type ButtonOptions struct {
 	Width, Height float32
-	Icon          *qt.QPainterPath
+	Icon          *qt6.QPainterPath
 	Text          string
 	Accent        bool
 	OnClick       func()
@@ -27,7 +27,7 @@ type ButtonOptions struct {
 type Button struct {
 	width   float32
 	height  float32
-	icon    *qt.QPainterPath
+	icon    *qt6.QPainterPath
 	text    string
 	accent  bool
 	onClick func()
@@ -75,7 +75,7 @@ func (b *Button) Click() {
 
 // Paint draws the button at the painter origin. The accent variant uses the
 // site accent; the plain one uses the neutral button tokens.
-func (b *Button) Paint(p *qt.QPainter, app appearance.Appearance) {
+func (b *Button) Paint(p *qt6.QPainter, app appearance.Appearance) {
 	if b == nil {
 		panic("kit: nil button")
 	}

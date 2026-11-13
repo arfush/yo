@@ -6,7 +6,7 @@ import (
 	"io/fs"
 	"sync"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6"
 )
 
 // assets is the embedded resource tree. The placeholders keep font/ and icon/
@@ -19,7 +19,7 @@ var assets embed.FS
 // the UI goroutine but must not be copied.
 type Resource struct {
 	fonts    map[FontKey][]byte
-	icons    map[IconKey]*qt.QPainterPath
+	icons    map[IconKey]*qt6.QPainterPath
 	appIcons map[AppIconKey]appIcon
 	lexicons map[string]lexicon
 
@@ -46,7 +46,7 @@ func New() *Resource {
 func newResource(fsys fs.FS) *Resource {
 	r := &Resource{
 		fonts:    make(map[FontKey][]byte),
-		icons:    make(map[IconKey]*qt.QPainterPath),
+		icons:    make(map[IconKey]*qt6.QPainterPath),
 		appIcons: make(map[AppIconKey]appIcon),
 		lexicons: make(map[string]lexicon),
 		next:     make(map[variantCursor]uint64),

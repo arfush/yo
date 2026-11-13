@@ -4,7 +4,7 @@ import (
 	"image"
 	"math"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/ui/appearance"
 )
@@ -69,7 +69,7 @@ func (p *ProgressBar) Size() image.Point {
 
 // Paint draws the track, the accent fill and the centered text at the painter
 // origin.
-func (p *ProgressBar) Paint(q *qt.QPainter, app appearance.Appearance) {
+func (p *ProgressBar) Paint(q *qt6.QPainter, app appearance.Appearance) {
 	if p == nil {
 		panic("kit: nil progress bar")
 	}

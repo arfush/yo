@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/ui/appearance"
 )
@@ -33,10 +33,10 @@ func testPalette() appearance.MascotPalette {
 }
 
 // testPainter returns a painter over an offscreen image and cleans it up.
-func testPainter(t *testing.T) *qt.QPainter {
+func testPainter(t *testing.T) *qt6.QPainter {
 	t.Helper()
-	img := qt.NewQImage3(168, 168, qt.QImage__Format_ARGB32_Premultiplied)
-	p := qt.NewQPainter2(img.QPaintDevice)
+	img := qt6.NewQImage3(168, 168, qt6.QImage__Format_ARGB32_Premultiplied)
+	p := qt6.NewQPainter2(img.QPaintDevice)
 	t.Cleanup(func() {
 		p.End()
 		p.Delete()

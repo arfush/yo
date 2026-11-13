@@ -4,7 +4,7 @@ import (
 	"image"
 	"image/color"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/catalog"
 	"github.com/arfush/yo/ui/appearance"
@@ -133,7 +133,7 @@ func (s *Shell) computeLayout() layout {
 }
 
 // paintFrame draws the rounded border, the inner surface and the two bands.
-func (s *Shell) paintFrame(p *qt.QPainter, l layout) {
+func (s *Shell) paintFrame(p *qt6.QPainter, l layout) {
 	palette := s.palette()
 	kit.FillRounded(p, palette.Border, image.Rect(0, 0, l.size.X, l.size.Y), float64(l.corner))
 	if l.inner.Empty() {
@@ -153,7 +153,7 @@ func (s *Shell) paintFrame(p *qt.QPainter, l layout) {
 }
 
 // paintHeader draws the brand, the version and the window controls.
-func (s *Shell) paintHeader(p *qt.QPainter, l layout) {
+func (s *Shell) paintHeader(p *qt6.QPainter, l layout) {
 	palette := s.palette()
 	app := s.appearance.Value()
 	s.paintSiteMark(p, l.logo, palette)
@@ -190,7 +190,7 @@ func (s *Shell) controlColor(normal, hover color.NRGBA, region Region) color.NRG
 }
 
 // paintControl draws one window-control glyph centered in its hitbox.
-func (s *Shell) paintControl(p *qt.QPainter, bounds image.Rectangle, key resource.IconKey, col color.NRGBA) {
+func (s *Shell) paintControl(p *qt6.QPainter, bounds image.Rectangle, key resource.IconKey, col color.NRGBA) {
 	if bounds.Empty() {
 		return
 	}
@@ -203,7 +203,7 @@ func (s *Shell) paintControl(p *qt.QPainter, bounds image.Rectangle, key resourc
 }
 
 // paintSiteMark draws the rounded site tile with the torii glyph.
-func (s *Shell) paintSiteMark(p *qt.QPainter, r image.Rectangle, palette appearance.Palette) {
+func (s *Shell) paintSiteMark(p *qt6.QPainter, r image.Rectangle, palette appearance.Palette) {
 	if r.Empty() {
 		return
 	}
@@ -218,7 +218,7 @@ func (s *Shell) paintSiteMark(p *qt.QPainter, r image.Rectangle, palette appeara
 }
 
 // paintVersion draws the accent version pill.
-func (s *Shell) paintVersion(p *qt.QPainter, l layout, palette appearance.Palette) {
+func (s *Shell) paintVersion(p *qt6.QPainter, l layout, palette appearance.Palette) {
 	app := s.appearance.Value()
 	size := kit.MeasureText(app, appearance.RoleCaption, s.version)
 	if size.X <= 0 {
@@ -243,35 +243,35 @@ func (s *Shell) paintVersion(p *qt.QPainter, l layout, palette appearance.Palett
 
 // paintChevron draws the switcher arrow, pointing down when closed and up when
 // open.
-func paintChevron(p *qt.QPainter, r image.Rectangle, col color.NRGBA, open bool) {
+func paintChevron(p *qt6.QPainter, r image.Rectangle, col color.NRGBA, open bool) {
 	if r.Empty() {
 		return
 	}
 	x, y := float64(r.Min.X), float64(r.Min.Y)
 	w, h := float64(r.Dx()), float64(r.Dy())
-	path := qt.NewQPainterPath()
+	path := qt6.NewQPainterPath()
 	if open {
-		path.MoveTo(qt.NewQPointF3(x+w*0.12, y+h*0.64))
-		path.LineTo(qt.NewQPointF3(x+w*0.5, y+h*0.3))
-		path.LineTo(qt.NewQPointF3(x+w*0.88, y+h*0.64))
+		path.MoveTo(qt6.NewQPointF3(x+w*0.12, y+h*0.64))
+		path.LineTo(qt6.NewQPointF3(x+w*0.5, y+h*0.3))
+		path.LineTo(qt6.NewQPointF3(x+w*0.88, y+h*0.64))
 	} else {
-		path.MoveTo(qt.NewQPointF3(x+w*0.12, y+h*0.36))
-		path.LineTo(qt.NewQPointF3(x+w*0.5, y+h*0.7))
-		path.LineTo(qt.NewQPointF3(x+w*0.88, y+h*0.36))
+		path.MoveTo(qt6.NewQPointF3(x+w*0.12, y+h*0.36))
+		path.LineTo(qt6.NewQPointF3(x+w*0.5, y+h*0.7))
+		path.LineTo(qt6.NewQPointF3(x+w*0.88, y+h*0.36))
 	}
-	pen := qt.NewQPen3(qcolor(col))
+	pen := qt6.NewQPen3(qcolor(col))
 	pen.SetWidthF(siteChevronStroke)
-	pen.SetCapStyle(qt.RoundCap)
-	pen.SetJoinStyle(qt.RoundJoin)
+	pen.SetCapStyle(qt6.RoundCap)
+	pen.SetJoinStyle(qt6.RoundJoin)
 	p.SetPenWithPen(pen)
-	p.SetBrushWithStyle(qt.NoBrush)
+	p.SetBrushWithStyle(qt6.NoBrush)
 	p.DrawPath(path)
 	pen.Delete()
 	path.Delete()
 }
 
 // drawTextLine draws one vertically centered line and returns its width.
-func drawTextLine(p *qt.QPainter, app appearance.Appearance, role appearance.TextRole, value string, col color.NRGBA, x, centerY int) int {
+func drawTextLine(p *qt6.QPainter, app appearance.Appearance, role appearance.TextRole, value string, col color.NRGBA, x, centerY int) int {
 	if value == "" {
 		return 0
 	}
@@ -284,8 +284,8 @@ func drawTextLine(p *qt.QPainter, app appearance.Appearance, role appearance.Tex
 }
 
 // roundedPath builds a rounded rectangle path.
-func roundedPath(r image.Rectangle, radius float64) *qt.QPainterPath {
-	path := qt.NewQPainterPath()
+func roundedPath(r image.Rectangle, radius float64) *qt6.QPainterPath {
+	path := qt6.NewQPainterPath()
 	path.AddRoundedRect2(
 		float64(r.Min.X), float64(r.Min.Y), float64(r.Dx()), float64(r.Dy()),
 		radius, radius,
@@ -294,6 +294,6 @@ func roundedPath(r image.Rectangle, radius float64) *qt.QPainterPath {
 }
 
 // qcolor converts a palette token into a Qt color.
-func qcolor(c color.NRGBA) *qt.QColor {
-	return qt.NewQColor11(int(c.R), int(c.G), int(c.B), int(c.A))
+func qcolor(c color.NRGBA) *qt6.QColor {
+	return qt6.NewQColor11(int(c.R), int(c.G), int(c.B), int(c.A))
 }

@@ -5,7 +5,7 @@ import (
 	"io/fs"
 	"strings"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6"
 )
 
 // IconKey is an icon selector: its value is the SVG file name in icon/
@@ -65,7 +65,7 @@ const (
 // not mutate or delete it, and must draw it only on the UI goroutine. A
 // missing icon panics: the embedded catalog is part of the build, not runtime
 // data.
-func (r *Resource) IconPath(key IconKey) *qt.QPainterPath {
+func (r *Resource) IconPath(key IconKey) *qt6.QPainterPath {
 	path, ok := r.icons[key]
 	if !ok || path == nil {
 		panic("resource: icon \"" + string(key) + "\" is not embedded")

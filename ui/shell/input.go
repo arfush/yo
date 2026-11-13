@@ -3,12 +3,12 @@ package shell
 import (
 	"image"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6"
 )
 
 // onPress routes a left-button press.
-func (s *Shell) onPress(e *qt.QMouseEvent) {
-	if e.Button() != qt.LeftButton {
+func (s *Shell) onPress(e *qt6.QMouseEvent) {
+	if e.Button() != qt6.LeftButton {
 		return
 	}
 	pos := image.Pt(e.X(), e.Y())
@@ -70,8 +70,8 @@ func (s *Shell) onPress(e *qt.QMouseEvent) {
 
 // onRelease completes a press. Clicks count only when the release lands on the
 // same region.
-func (s *Shell) onRelease(e *qt.QMouseEvent) {
-	if e.Button() != qt.LeftButton {
+func (s *Shell) onRelease(e *qt6.QMouseEvent) {
+	if e.Button() != qt6.LeftButton {
 		return
 	}
 	pos := image.Pt(e.X(), e.Y())
@@ -125,7 +125,7 @@ func (s *Shell) onRelease(e *qt.QMouseEvent) {
 }
 
 // onMove updates the hovered region, the menu row highlight and the cursor.
-func (s *Shell) onMove(e *qt.QMouseEvent) {
+func (s *Shell) onMove(e *qt6.QMouseEvent) {
 	pos := image.Pt(e.X(), e.Y())
 	l := s.computeLayout()
 	region := s.regionAt(l, pos)
@@ -162,16 +162,16 @@ func (s *Shell) onMove(e *qt.QMouseEvent) {
 		if edges, ok := s.edgeAt(l, pos); ok {
 			s.setCursor(edgeCursor(edges))
 		} else {
-			s.setCursor(qt.ArrowCursor)
+			s.setCursor(qt6.ArrowCursor)
 		}
 	case row >= 0:
-		s.setCursor(qt.PointingHandCursor)
+		s.setCursor(qt6.PointingHandCursor)
 	case region == RegionSite || region == RegionMinimize || region == RegionMaximize || region == RegionClose:
-		s.setCursor(qt.PointingHandCursor)
+		s.setCursor(qt6.PointingHandCursor)
 	case screen != nil && s.inScreen(l, pos):
 		s.setCursor(screen.Cursor(pos))
 	default:
-		s.setCursor(qt.ArrowCursor)
+		s.setCursor(qt6.ArrowCursor)
 	}
 	if changed {
 		s.widget.Update()
@@ -179,7 +179,7 @@ func (s *Shell) onMove(e *qt.QMouseEvent) {
 }
 
 // onWheel forwards a wheel event to the screen under the pointer.
-func (s *Shell) onWheel(e *qt.QWheelEvent) {
+func (s *Shell) onWheel(e *qt6.QWheelEvent) {
 	screen := s.interactive()
 	if screen == nil || s.menuOpen {
 		return
@@ -212,8 +212,8 @@ func (s *Shell) inScreen(l layout, pos image.Point) bool {
 // the double click replaces the second press, which Qt never delivers, so it
 // goes through the regular press path and the following release completes the
 // click. Otherwise a second quick click on a control or a screen would be lost.
-func (s *Shell) onDoubleClick(e *qt.QMouseEvent) {
-	if e.Button() != qt.LeftButton {
+func (s *Shell) onDoubleClick(e *qt6.QMouseEvent) {
+	if e.Button() != qt6.LeftButton {
 		return
 	}
 	pos := image.Pt(e.X(), e.Y())
@@ -238,17 +238,17 @@ func (s *Shell) toggleMaximize() {
 }
 
 // edgeAt reports the window edges under pos for a system resize.
-func (s *Shell) edgeAt(l layout, pos image.Point) (qt.Edge, bool) {
-	var edges qt.Edge
+func (s *Shell) edgeAt(l layout, pos image.Point) (qt6.Edge, bool) {
+	var edges qt6.Edge
 	if pos.X < resizeInset {
-		edges |= qt.LeftEdge
+		edges |= qt6.LeftEdge
 	} else if pos.X >= l.size.X-resizeInset {
-		edges |= qt.RightEdge
+		edges |= qt6.RightEdge
 	}
 	if pos.Y < resizeInset {
-		edges |= qt.TopEdge
+		edges |= qt6.TopEdge
 	} else if pos.Y >= l.size.Y-resizeInset {
-		edges |= qt.BottomEdge
+		edges |= qt6.BottomEdge
 	}
 	return edges, edges != 0
 }
@@ -271,29 +271,29 @@ func (s *Shell) regionAt(l layout, pos image.Point) Region {
 }
 
 // edgeCursor returns the resize cursor for a set of window edges.
-func edgeCursor(edges qt.Edge) qt.CursorShape {
+func edgeCursor(edges qt6.Edge) qt6.CursorShape {
 	switch edges {
-	case qt.LeftEdge, qt.RightEdge:
-		return qt.SizeHorCursor
-	case qt.TopEdge, qt.BottomEdge:
-		return qt.SizeVerCursor
-	case qt.TopEdge | qt.LeftEdge, qt.BottomEdge | qt.RightEdge:
-		return qt.SizeFDiagCursor
-	case qt.TopEdge | qt.RightEdge, qt.BottomEdge | qt.LeftEdge:
-		return qt.SizeBDiagCursor
+	case qt6.LeftEdge, qt6.RightEdge:
+		return qt6.SizeHorCursor
+	case qt6.TopEdge, qt6.BottomEdge:
+		return qt6.SizeVerCursor
+	case qt6.TopEdge | qt6.LeftEdge, qt6.BottomEdge | qt6.RightEdge:
+		return qt6.SizeFDiagCursor
+	case qt6.TopEdge | qt6.RightEdge, qt6.BottomEdge | qt6.LeftEdge:
+		return qt6.SizeBDiagCursor
 	}
-	return qt.ArrowCursor
+	return qt6.ArrowCursor
 }
 
 // setCursor changes the widget cursor only when the shape differs.
-func (s *Shell) setCursor(shape qt.CursorShape) {
+func (s *Shell) setCursor(shape qt6.CursorShape) {
 	if s.cursor == shape {
 		return
 	}
 	s.cursor = shape
 	cursor, ok := s.cursors[shape]
 	if !ok {
-		cursor = qt.NewQCursor2(shape)
+		cursor = qt6.NewQCursor2(shape)
 		s.cursors[shape] = cursor
 	}
 	s.widget.SetCursor(cursor)

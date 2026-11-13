@@ -6,7 +6,7 @@ import (
 	"math"
 	"time"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/ui/appearance"
 	"github.com/arfush/yo/ui/kit"
@@ -45,7 +45,7 @@ type scene struct {
 
 // paint draws the character with an optional horizontal jitter in design units.
 // Panic repaints clipped slices through it to build the glitch.
-func (s scene) paint(p *qt.QPainter, jitter float32) {
+func (s scene) paint(p *qt6.QPainter, jitter float32) {
 	c := s.style.colors
 	bob := float32(math.Sin(s.phase*2*math.Pi/s.style.period.Seconds())) * s.style.amplitude
 
@@ -114,39 +114,39 @@ func (g grid) point(x, y float32) image.Point {
 	return image.Pt(g.center.X+g.px(x), g.center.Y+g.px(y))
 }
 
-func fillEllipse(p *qt.QPainter, col color.NRGBA, r image.Rectangle) {
+func fillEllipse(p *qt6.QPainter, col color.NRGBA, r image.Rectangle) {
 	if r.Empty() {
 		return
 	}
-	brush := qt.NewQBrush3(qcolor(col))
+	brush := qt6.NewQBrush3(qcolor(col))
 	p.Save()
-	p.SetPenWithStyle(qt.NoPen)
+	p.SetPenWithStyle(qt6.NoPen)
 	p.SetBrush(brush)
 	p.DrawEllipse2(r.Min.X, r.Min.Y, r.Dx(), r.Dy())
 	p.Restore()
 	brush.Delete()
 }
 
-func fillCircle(p *qt.QPainter, col color.NRGBA, center image.Point, radius int) {
+func fillCircle(p *qt6.QPainter, col color.NRGBA, center image.Point, radius int) {
 	kit.FillRounded(p, col, image.Rect(
 		center.X-radius, center.Y-radius,
 		center.X+radius, center.Y+radius,
 	), float64(radius))
 }
 
-func fillGradient(p *qt.QPainter, r image.Rectangle, radius int, top, bottom color.NRGBA) {
+func fillGradient(p *qt6.QPainter, r image.Rectangle, radius int, top, bottom color.NRGBA) {
 	if r.Empty() {
 		return
 	}
 	path := roundedRectPath(r, float64(radius))
-	gradient := qt.NewQLinearGradient3(
+	gradient := qt6.NewQLinearGradient3(
 		float64(r.Min.X), float64(r.Min.Y),
 		float64(r.Max.X), float64(r.Max.Y),
 	)
 	topColor, bottomColor := qcolor(top), qcolor(bottom)
 	gradient.SetColorAt(0, topColor)
 	gradient.SetColorAt(1, bottomColor)
-	brush := qt.NewQBrush10(gradient.QGradient)
+	brush := qt6.NewQBrush10(gradient.QGradient)
 	p.FillPath(path, brush)
 
 	brush.Delete()
@@ -156,36 +156,36 @@ func fillGradient(p *qt.QPainter, r image.Rectangle, radius int, top, bottom col
 	path.Delete()
 }
 
-func fillPolygon(p *qt.QPainter, col color.NRGBA, points []point) {
+func fillPolygon(p *qt6.QPainter, col color.NRGBA, points []point) {
 	if len(points) < 3 {
 		return
 	}
-	path := qt.NewQPainterPath()
+	path := qt6.NewQPainterPath()
 	path.MoveTo2(float64(points[0].X), float64(points[0].Y))
 	for _, vertex := range points[1:] {
 		path.LineTo2(float64(vertex.X), float64(vertex.Y))
 	}
 	path.CloseSubpath()
-	brush := qt.NewQBrush3(qcolor(col))
+	brush := qt6.NewQBrush3(qcolor(col))
 	p.FillPath(path, brush)
 	brush.Delete()
 	path.Delete()
 }
 
-func strokeLine(p *qt.QPainter, from, to point, width float32, col color.NRGBA) {
-	path := qt.NewQPainterPath()
+func strokeLine(p *qt6.QPainter, from, to point, width float32, col color.NRGBA) {
+	path := qt6.NewQPainterPath()
 	path.MoveTo2(float64(from.X), float64(from.Y))
 	path.LineTo2(float64(to.X), float64(to.Y))
 	strokePath(p, path, width, col)
 	path.Delete()
 }
 
-func strokeArc(p *qt.QPainter, center point, radius, start, sweep, width float32, col color.NRGBA) {
+func strokeArc(p *qt6.QPainter, center point, radius, start, sweep, width float32, col color.NRGBA) {
 	if radius <= 0 || width <= 0 || sweep == 0 {
 		return
 	}
 	steps := max(2, int(math.Ceil(math.Abs(float64(sweep))/(2*math.Pi)*96)))
-	path := qt.NewQPainterPath()
+	path := qt6.NewQPainterPath()
 	first := arcPoint(center, radius, start)
 	path.MoveTo2(float64(first.X), float64(first.Y))
 	for step := 1; step <= steps; step++ {
@@ -196,7 +196,7 @@ func strokeArc(p *qt.QPainter, center point, radius, start, sweep, width float32
 	path.Delete()
 }
 
-func strokeCircle(p *qt.QPainter, center point, radius, width float32, col color.NRGBA) {
+func strokeCircle(p *qt6.QPainter, center point, radius, width float32, col color.NRGBA) {
 	strokeArc(p, center, radius, 0, 2*math.Pi, width, col)
 }
 
@@ -208,25 +208,25 @@ func arcPoint(center point, radius, angle float32) point {
 }
 
 // strokePath outlines path with a flat-capped, mitered pen.
-func strokePath(p *qt.QPainter, path *qt.QPainterPath, width float32, col color.NRGBA) {
+func strokePath(p *qt6.QPainter, path *qt6.QPainterPath, width float32, col color.NRGBA) {
 	if width <= 0 {
 		return
 	}
-	pen := qt.NewQPen3(qcolor(col))
+	pen := qt6.NewQPen3(qcolor(col))
 	pen.SetWidthF(float64(width))
-	pen.SetCapStyle(qt.FlatCap)
-	pen.SetJoinStyle(qt.MiterJoin)
+	pen.SetCapStyle(qt6.FlatCap)
+	pen.SetJoinStyle(qt6.MiterJoin)
 	p.Save()
 	p.SetPenWithPen(pen)
-	p.SetBrushWithStyle(qt.NoBrush)
+	p.SetBrushWithStyle(qt6.NoBrush)
 	p.DrawPath(path)
 	p.Restore()
 	pen.Delete()
 }
 
 // roundedRectPath builds a rounded rectangle path in device pixels.
-func roundedRectPath(r image.Rectangle, radius float64) *qt.QPainterPath {
-	path := qt.NewQPainterPath()
+func roundedRectPath(r image.Rectangle, radius float64) *qt6.QPainterPath {
+	path := qt6.NewQPainterPath()
 	path.AddRoundedRect2(
 		float64(r.Min.X), float64(r.Min.Y), float64(r.Dx()), float64(r.Dy()),
 		radius, radius,
@@ -235,12 +235,12 @@ func roundedRectPath(r image.Rectangle, radius float64) *qt.QPainterPath {
 }
 
 // qcolor converts a color into a Qt color.
-func qcolor(c color.NRGBA) *qt.QColor {
-	return qt.NewQColor11(int(c.R), int(c.G), int(c.B), int(c.A))
+func qcolor(c color.NRGBA) *qt6.QColor {
+	return qt6.NewQColor11(int(c.R), int(c.G), int(c.B), int(c.A))
 }
 
 // drawRing paints the Loading spinner: a faint full track plus a bright arc.
-func drawRing(p *qt.QPainter, g grid, phase float64, col color.NRGBA) {
+func drawRing(p *qt6.QPainter, g grid, phase float64, col color.NRGBA) {
 	center := g.pt(0, 0)
 	radius := 18.4 * g.scale
 	width := max(float32(1.6), float32(g.px(1.8)))
@@ -250,8 +250,8 @@ func drawRing(p *qt.QPainter, g grid, phase float64, col color.NRGBA) {
 	strokeArc(p, center, radius, float32(turn*2*math.Pi)-math.Pi/2, float32(1.5*math.Pi), width, col)
 }
 
-func drawTail(p *qt.QPainter, g grid, col color.NRGBA) {
-	path := qt.NewQPainterPath()
+func drawTail(p *qt6.QPainter, g grid, col color.NRGBA) {
+	path := qt6.NewQPainterPath()
 	from := g.pt(6, 12)
 	path.MoveTo2(float64(from.X), float64(from.Y))
 	control1, control2, end := g.pt(16.5, 13.5), g.pt(19, 5), g.pt(15, 0)
@@ -264,19 +264,19 @@ func drawTail(p *qt.QPainter, g grid, col color.NRGBA) {
 	path.Delete()
 }
 
-func drawArms(p *qt.QPainter, g grid, c appearance.MascotColors, left, right point) {
+func drawArms(p *qt6.QPainter, g grid, c appearance.MascotColors, left, right point) {
 	width := max(float32(1.5), float32(g.px(2.1)))
 	strokeLine(p, g.pt(-6.5, 7.5), left, width, c.HairShadow)
 	strokeLine(p, g.pt(6.5, 7.5), right, width, c.HairShadow)
 }
 
-func drawBody(p *qt.QPainter, g grid, c appearance.MascotColors) {
+func drawBody(p *qt6.QPainter, g grid, c appearance.MascotColors) {
 	body := g.rect(-8.5, 4.5, 8.5, 16.5)
 	fillGradient(p, body, g.px(5), c.Hair, c.Dress)
 	kit.FillRounded(p, c.DressLight, g.rect(-7.2, 12, 7.2, 12.9), float64(g.px(0.45)))
 }
 
-func drawHead(p *qt.QPainter, g grid, c appearance.MascotColors) {
+func drawHead(p *qt6.QPainter, g grid, c appearance.MascotColors) {
 	fillEllipse(p, c.Hair, g.rect(-12.2, -13.5, 12.2, 6.5))
 	fillPolygon(p, c.Hair, []point{
 		g.pt(-11.5, -8), g.pt(-14, -18.5), g.pt(-4, -12.5), g.pt(-10.8, -5.6),
@@ -303,7 +303,7 @@ func drawHead(p *qt.QPainter, g grid, c appearance.MascotColors) {
 	fillEllipse(p, kit.WithAlpha(c.HairLight, 0x9a), g.rect(-7.2, -8.1, -3.6, -6.1))
 }
 
-func drawFace(p *qt.QPainter, g grid, c appearance.MascotColors, pose moodPose, pal appearance.MascotPalette) {
+func drawFace(p *qt6.QPainter, g grid, c appearance.MascotColors, pose moodPose, pal appearance.MascotPalette) {
 	for _, side := range []float32{-1, 1} {
 		x := side * 3.5
 		if pose.panic {
@@ -336,7 +336,7 @@ func drawFace(p *qt.QPainter, g grid, c appearance.MascotColors, pose moodPose, 
 	}
 }
 
-func drawPaw(p *qt.QPainter, g grid, center point, paw, toes color.NRGBA) {
+func drawPaw(p *qt6.QPainter, g grid, center point, paw, toes color.NRGBA) {
 	radius := max(2, int(math.Round(float64(3*g.scale))))
 	base := image.Pt(int(math.Floor(float64(center.X))), int(math.Floor(float64(center.Y))))
 	fracX := center.X - float32(base.X)

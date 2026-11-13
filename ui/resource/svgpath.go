@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6"
 )
 
 // pathToken is one command letter or numeric operand from SVG path data. cmd
@@ -20,7 +20,7 @@ type pathToken struct {
 // M/m, L/l, H/h, V/v, C/c and Z/z; the icon sprite uses only M, L, C and Z.
 // Unsupported commands and malformed data are errors, so a broken icon fails
 // at startup instead of producing a partial glyph.
-func parsePath(d string) (*qt.QPainterPath, error) {
+func parsePath(d string) (*qt6.QPainterPath, error) {
 	tokens, err := tokenizePath(d)
 	if err != nil {
 		return nil, err
@@ -36,10 +36,10 @@ func parsePath(d string) (*qt.QPainterPath, error) {
 			tokens[0].cmd, tokens[0].pos)
 	}
 
-	path := qt.NewQPainterPath()
+	path := qt6.NewQPainterPath()
 	// SVG fills with the nonzero rule, which keeps overlapping subpaths solid.
 	// The default Qt rule is even-odd and punches holes where they overlap.
-	path.SetFillRule(qt.WindingFill)
+	path.SetFillRule(qt6.WindingFill)
 
 	var cx, cy, sx, sy float64
 	var cmd byte
@@ -57,7 +57,7 @@ func parsePath(d string) (*qt.QPainterPath, error) {
 		i++
 		return v, nil
 	}
-	fail := func(err error) (*qt.QPainterPath, error) {
+	fail := func(err error) (*qt6.QPainterPath, error) {
 		path.Delete()
 		return nil, err
 	}

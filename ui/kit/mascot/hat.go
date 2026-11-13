@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/ui/appearance"
 	"github.com/arfush/yo/ui/kit"
@@ -140,7 +140,7 @@ type wardrobe struct {
 }
 
 // draw paints the selected outfit above the face.
-func (h Hat) draw(p *qt.QPainter, w wardrobe) {
+func (h Hat) draw(p *qt6.QPainter, w wardrobe) {
 	switch h {
 	case HatNone:
 	case HatParty:
@@ -170,7 +170,7 @@ func (h Hat) draw(p *qt.QPainter, w wardrobe) {
 	}
 }
 
-func drawPartyHat(p *qt.QPainter, w wardrobe) {
+func drawPartyHat(p *qt6.QPainter, w wardrobe) {
 	g, h := w.g, w.hats
 	fillPolygon(p, h.Pink, []point{
 		g.pt(-5.8, -12.4), g.pt(5.8, -12.4), g.pt(0.6, -21.2),
@@ -179,7 +179,7 @@ func drawPartyHat(p *qt.QPainter, w wardrobe) {
 	fillCircle(p, h.White, g.point(0.8, -21.8), max(1, g.px(1.2)))
 }
 
-func drawWitchHat(p *qt.QPainter, w wardrobe) {
+func drawWitchHat(p *qt6.QPainter, w wardrobe) {
 	g, h := w.g, w.hats
 	fillEllipse(p, h.Dark, g.rect(-10.5, -14.2, 10.5, -11.3))
 	fillPolygon(p, h.Dark, []point{
@@ -190,7 +190,7 @@ func drawWitchHat(p *qt.QPainter, w wardrobe) {
 	kit.FillRounded(p, h.Gold, g.rect(-1, -15.5, 1, -14.2), float64(g.px(0.4)))
 }
 
-func drawCrownHat(p *qt.QPainter, w wardrobe) {
+func drawCrownHat(p *qt6.QPainter, w wardrobe) {
 	g, h := w.g, w.hats
 	fillPolygon(p, h.Gold, []point{
 		g.pt(-6.8, -12.6), g.pt(-4.8, -16.8), g.pt(-2.4, -13.6),
@@ -202,28 +202,28 @@ func drawCrownHat(p *qt.QPainter, w wardrobe) {
 	fillCircle(p, h.Pink, g.point(4.8, -17.2), max(1, g.px(0.55)))
 }
 
-func drawTopHat(p *qt.QPainter, w wardrobe) {
+func drawTopHat(p *qt6.QPainter, w wardrobe) {
 	g, h := w.g, w.hats
 	fillEllipse(p, h.Dark, g.rect(-9.4, -13.6, 9.4, -11.3))
 	kit.FillRounded(p, h.Dark, g.rect(-5.8, -20.4, 5.8, -12), float64(g.px(0.7)))
 	kit.FillRounded(p, h.Red, g.rect(-5.8, -14.6, 5.8, -13), float64(g.px(0.2)))
 }
 
-func drawBeanieHat(p *qt.QPainter, w wardrobe) {
+func drawBeanieHat(p *qt6.QPainter, w wardrobe) {
 	g, h := w.g, w.hats
 	fillEllipse(p, h.Teal, g.rect(-7.8, -16.8, 7.8, -11))
 	kit.FillRounded(p, h.White, g.rect(-8, -13.6, 8, -11.5), float64(g.px(0.7)))
 	fillCircle(p, h.White, g.point(0, -17.6), max(1, g.px(1.5)))
 }
 
-func drawCapHat(p *qt.QPainter, w wardrobe) {
+func drawCapHat(p *qt6.QPainter, w wardrobe) {
 	g, h := w.g, w.hats
 	kit.FillRounded(p, h.Sky, g.rect(4, -13.6, 12.4, -12.2), float64(g.px(0.7)))
 	fillEllipse(p, h.Sky, g.rect(-7.6, -16.2, 7.6, -11.2))
 	fillCircle(p, h.White, g.point(0, -15.9), max(1, g.px(0.55)))
 }
 
-func drawSantaHat(p *qt.QPainter, w wardrobe) {
+func drawSantaHat(p *qt6.QPainter, w wardrobe) {
 	g, h := w.g, w.hats
 	fillPolygon(p, h.Red, []point{
 		g.pt(-6.8, -12.5), g.pt(6.8, -12.5), g.pt(1.6, -21.6),
@@ -232,7 +232,7 @@ func drawSantaHat(p *qt.QPainter, w wardrobe) {
 	fillCircle(p, h.White, g.point(1.8, -21.9), max(1, g.px(1.4)))
 }
 
-func drawGraduationHat(p *qt.QPainter, w wardrobe) {
+func drawGraduationHat(p *qt6.QPainter, w wardrobe) {
 	g, h := w.g, w.hats
 	kit.FillRounded(p, h.Dark, g.rect(-5.4, -13.8, 5.4, -11.8), float64(g.px(0.6)))
 	fillPolygon(p, h.Dark, []point{
@@ -242,7 +242,7 @@ func drawGraduationHat(p *qt.QPainter, w wardrobe) {
 	fillCircle(p, h.Gold, g.point(7.6, -10), max(1, g.px(0.6)))
 }
 
-func drawUshankaHat(p *qt.QPainter, w wardrobe) {
+func drawUshankaHat(p *qt6.QPainter, w wardrobe) {
 	g, h := w.g, w.hats
 	kit.FillRounded(p, h.Brown, g.rect(-8.7, -13.8, -5.2, -8.2), float64(g.px(1.4)))
 	kit.FillRounded(p, h.Brown, g.rect(5.2, -13.8, 8.7, -8.2), float64(g.px(1.4)))
@@ -250,7 +250,7 @@ func drawUshankaHat(p *qt.QPainter, w wardrobe) {
 	kit.FillRounded(p, h.Tan, g.rect(-7.8, -13.6, 7.8, -11.6), float64(g.px(0.8)))
 }
 
-func drawFlowersHat(p *qt.QPainter, w wardrobe) {
+func drawFlowersHat(p *qt6.QPainter, w wardrobe) {
 	g, h := w.g, w.hats
 	kit.FillRounded(p, h.Green, g.rect(-8.2, -12.8, 8.2, -11.6), float64(g.px(0.4)))
 	for index, x := range []float32{-6.2, -3.1, 0, 3.1, 6.2} {
@@ -264,7 +264,7 @@ func drawFlowersHat(p *qt.QPainter, w wardrobe) {
 }
 
 // drawCypherHat paints the white fedora with the copper eye emblem.
-func drawCypherHat(p *qt.QPainter, w wardrobe) {
+func drawCypherHat(p *qt6.QPainter, w wardrobe) {
 	g, h := w.g, w.hats
 
 	// Wide brim with a warm underside and a copper front edge.

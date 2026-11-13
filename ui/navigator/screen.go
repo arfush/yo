@@ -3,7 +3,7 @@ package navigator
 import (
 	"image"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/ui/appearance"
 	"github.com/arfush/yo/ui/shell"
@@ -29,7 +29,7 @@ type ScreenBase struct {
 func (b ScreenBase) Title() string { return b.ScreenTitle }
 
 // PaintFooter draws nothing.
-func (ScreenBase) PaintFooter(*qt.QPainter, image.Rectangle, appearance.Palette) {}
+func (ScreenBase) PaintFooter(*qt6.QPainter, image.Rectangle, appearance.Palette) {}
 
 // OnShown is a no-op.
 func (ScreenBase) OnShown() {}

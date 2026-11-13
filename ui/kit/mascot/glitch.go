@@ -5,7 +5,7 @@ import (
 	"math"
 	"time"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/ui/appearance"
 	"github.com/arfush/yo/ui/kit"
@@ -28,10 +28,10 @@ type glitchScene struct {
 	phase  float64
 	px     func(float32) int
 	colors appearance.MascotGlitch
-	paint  func(*qt.QPainter, float32)
+	paint  func(*qt6.QPainter, float32)
 }
 
-func (g glitchScene) draw(p *qt.QPainter) {
+func (g glitchScene) draw(p *qt6.QPainter) {
 	if math.Mod(g.phase, glitchCycle.Seconds()) > glitchBurst.Seconds() {
 		return
 	}

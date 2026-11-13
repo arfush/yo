@@ -4,7 +4,7 @@ import (
 	"image"
 	"math"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/ui/appearance"
 )
@@ -21,11 +21,11 @@ const (
 // DialogOptions is the constructor input of Dialog.
 type DialogOptions struct {
 	Width, Height float32
-	Icon          *qt.QPainterPath
+	Icon          *qt6.QPainterPath
 	Title         string
 	Description   string
 	ShowClose     bool
-	CloseIcon     *qt.QPainterPath
+	CloseIcon     *qt6.QPainterPath
 	OnClose       func()
 	Button        ButtonOptions
 }
@@ -36,11 +36,11 @@ type DialogOptions struct {
 type Dialog struct {
 	width       float32
 	height      float32
-	icon        *qt.QPainterPath
+	icon        *qt6.QPainterPath
 	title       string
 	description string
 	showClose   bool
-	closeIcon   *qt.QPainterPath
+	closeIcon   *qt6.QPainterPath
 	onClose     func()
 	button      Button
 }
@@ -101,7 +101,7 @@ func (d *Dialog) Close() {
 }
 
 // Paint draws the panel and its content at the painter origin.
-func (d *Dialog) Paint(p *qt.QPainter, app appearance.Appearance) {
+func (d *Dialog) Paint(p *qt6.QPainter, app appearance.Appearance) {
 	if d == nil {
 		panic("kit: nil dialog")
 	}
@@ -130,7 +130,7 @@ func (d *Dialog) Paint(p *qt.QPainter, app appearance.Appearance) {
 }
 
 // paintHeader paints the icon tile and the optional close control.
-func (d *Dialog) paintHeader(p *qt.QPainter, app appearance.Appearance, content image.Rectangle) {
+func (d *Dialog) paintHeader(p *qt6.QPainter, app appearance.Appearance, content image.Rectangle) {
 	palette := app.Palette()
 	tile := int(dialogTileSize)
 	tileRect := image.Rect(content.Min.X, content.Min.Y, content.Min.X+tile, content.Min.Y+tile)
@@ -151,7 +151,7 @@ func (d *Dialog) paintHeader(p *qt.QPainter, app appearance.Appearance, content 
 }
 
 // paintText draws the title and the description above the button.
-func (d *Dialog) paintText(p *qt.QPainter, app appearance.Appearance, content image.Rectangle) {
+func (d *Dialog) paintText(p *qt6.QPainter, app appearance.Appearance, content image.Rectangle) {
 	palette := app.Palette()
 	top := content.Min.Y + int(dialogTileSize) + int(appearance.SpaceXL)
 	buttonTop := content.Max.Y - d.button.Size().Y
@@ -178,7 +178,7 @@ func (d *Dialog) paintText(p *qt.QPainter, app appearance.Appearance, content im
 }
 
 // paintButton pins the button to the bottom of the content area.
-func (d *Dialog) paintButton(p *qt.QPainter, app appearance.Appearance, content image.Rectangle) {
+func (d *Dialog) paintButton(p *qt6.QPainter, app appearance.Appearance, content image.Rectangle) {
 	top := content.Max.Y - d.button.Size().Y
 	if top < content.Min.Y {
 		top = content.Min.Y

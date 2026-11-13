@@ -4,7 +4,7 @@ import (
 	"image"
 	"time"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/ui/appearance"
 	"github.com/arfush/yo/ui/kit/mascot"
@@ -46,7 +46,7 @@ func NewStub() *Stub {
 }
 
 // Paint draws the mascot centered in the content area.
-func (s *Stub) Paint(p *qt.QPainter, content image.Rectangle, palette appearance.Palette) {
+func (s *Stub) Paint(p *qt6.QPainter, content image.Rectangle, palette appearance.Palette) {
 	if content.Empty() {
 		return
 	}

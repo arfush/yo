@@ -3,7 +3,7 @@ package shell
 import (
 	"image"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/catalog"
 	"github.com/arfush/yo/ui/appearance"
@@ -78,7 +78,7 @@ func (s *Shell) menuLayout(l layout) (image.Rectangle, image.Rectangle, []image.
 }
 
 // paintMenu draws the anchored site switcher above the content.
-func (s *Shell) paintMenu(p *qt.QPainter, l layout) {
+func (s *Shell) paintMenu(p *qt6.QPainter, l layout) {
 	menu, _, rows, sites := s.menuLayout(l)
 	if menu.Empty() || len(rows) == 0 {
 		return

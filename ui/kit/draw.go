@@ -4,7 +4,7 @@ import (
 	"image"
 	"image/color"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/ui/resource"
 )
@@ -17,7 +17,7 @@ func WithAlpha(col color.NRGBA, alpha uint8) color.NRGBA {
 }
 
 // FillRect paints col over the axis-aligned rectangle r.
-func FillRect(p *qt.QPainter, col color.NRGBA, r image.Rectangle) {
+func FillRect(p *qt6.QPainter, col color.NRGBA, r image.Rectangle) {
 	if r.Empty() {
 		return
 	}
@@ -28,7 +28,7 @@ func FillRect(p *qt.QPainter, col color.NRGBA, r image.Rectangle) {
 
 // FillRounded paints col over r with uniformly rounded corners. The radius is
 // used as given: callers keep it within half the shorter side.
-func FillRounded(p *qt.QPainter, col color.NRGBA, r image.Rectangle, radius float64) {
+func FillRounded(p *qt6.QPainter, col color.NRGBA, r image.Rectangle, radius float64) {
 	if r.Empty() {
 		return
 	}
@@ -37,7 +37,7 @@ func FillRounded(p *qt.QPainter, col color.NRGBA, r image.Rectangle, radius floa
 		return
 	}
 	path := roundedPath(r, radius)
-	brush := qt.NewQBrush3(qcolor(col))
+	brush := qt6.NewQBrush3(qcolor(col))
 	p.FillPath(path, brush)
 	brush.Delete()
 	path.Delete()
@@ -46,7 +46,7 @@ func FillRounded(p *qt.QPainter, col color.NRGBA, r image.Rectangle, radius floa
 // Icon fills path in the square at r.Min with the shorter side of r as the
 // size. The path is expected in resource.IconBox coordinates and stays owned
 // by resource. A nil path or an empty rectangle draws nothing.
-func Icon(p *qt.QPainter, path *qt.QPainterPath, r image.Rectangle, col color.NRGBA) {
+func Icon(p *qt6.QPainter, path *qt6.QPainterPath, r image.Rectangle, col color.NRGBA) {
 	if path == nil || r.Empty() {
 		return
 	}
@@ -61,8 +61,8 @@ func Icon(p *qt.QPainter, path *qt.QPainterPath, r image.Rectangle, col color.NR
 	if scale != 1 {
 		p.Scale(scale, scale)
 	}
-	brush := qt.NewQBrush3(qcolor(col))
-	p.SetPenWithStyle(qt.NoPen)
+	brush := qt6.NewQBrush3(qcolor(col))
+	p.SetPenWithStyle(qt6.NoPen)
 	p.SetBrush(brush)
 	p.DrawPath(path)
 	brush.Delete()
@@ -70,8 +70,8 @@ func Icon(p *qt.QPainter, path *qt.QPainterPath, r image.Rectangle, col color.NR
 }
 
 // roundedPath builds a rounded rectangle path.
-func roundedPath(r image.Rectangle, radius float64) *qt.QPainterPath {
-	path := qt.NewQPainterPath()
+func roundedPath(r image.Rectangle, radius float64) *qt6.QPainterPath {
+	path := qt6.NewQPainterPath()
 	path.AddRoundedRect2(
 		float64(r.Min.X), float64(r.Min.Y), float64(r.Dx()), float64(r.Dy()),
 		radius, radius,
@@ -80,6 +80,6 @@ func roundedPath(r image.Rectangle, radius float64) *qt.QPainterPath {
 }
 
 // qcolor converts a palette token into a Qt color.
-func qcolor(c color.NRGBA) *qt.QColor {
-	return qt.NewQColor11(int(c.R), int(c.G), int(c.B), int(c.A))
+func qcolor(c color.NRGBA) *qt6.QColor {
+	return qt6.NewQColor11(int(c.R), int(c.G), int(c.B), int(c.A))
 }
