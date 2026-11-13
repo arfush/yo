@@ -43,24 +43,24 @@ func FillRounded(p *qt.QPainter, col color.NRGBA, r image.Rectangle, radius floa
 	path.Delete()
 }
 
-// Icon fills icon in the square at r.Min with the shorter side of r as the
-// size. An empty path or an empty rectangle draws nothing.
-func Icon(p *qt.QPainter, icon resource.Path, r image.Rectangle, col color.NRGBA) {
-	if icon == "" || r.Empty() {
+// Icon fills path in the square at r.Min with the shorter side of r as the
+// size. The path is expected in resource.IconBox coordinates and stays owned
+// by resource. A nil path or an empty rectangle draws nothing.
+func Icon(p *qt.QPainter, path *qt.QPainterPath, r image.Rectangle, col color.NRGBA) {
+	if path == nil || r.Empty() {
 		return
 	}
 	size := min(r.Dx(), r.Dy())
 	if size <= 0 {
 		return
 	}
-	scale := float64(size) / iconBox
+	scale := float64(size) / resource.IconBox
 
 	p.Save()
 	p.Translate2(float64(r.Min.X), float64(r.Min.Y))
 	if scale != 1 {
 		p.Scale(scale, scale)
 	}
-	path := iconPath(icon)
 	brush := qt.NewQBrush3(qcolor(col))
 	p.SetPenWithStyle(qt.NoPen)
 	p.SetBrush(brush)

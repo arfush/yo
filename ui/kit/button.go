@@ -7,7 +7,6 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/ui/appearance"
-	"github.com/arfush/yo/ui/resource"
 )
 
 // buttonIconSize is the icon size inside a button, in logical pixels. It equals
@@ -17,7 +16,7 @@ const buttonIconSize float32 = 24
 // ButtonOptions is the constructor input of Button.
 type ButtonOptions struct {
 	Width, Height float32
-	Icon          resource.Path
+	Icon          *qt.QPainterPath
 	Text          string
 	Accent        bool
 	OnClick       func()
@@ -28,17 +27,17 @@ type ButtonOptions struct {
 type Button struct {
 	width   float32
 	height  float32
-	icon    resource.Path
+	icon    *qt.QPainterPath
 	text    string
 	accent  bool
 	onClick func()
 }
 
-// NewButton validates opts and builds a button. An empty icon or a non-positive
+// NewButton validates opts and builds a button. A nil icon or a non-positive
 // size is a programmer error and panics.
 func NewButton(opts ButtonOptions) Button {
-	if opts.Icon == "" {
-		panic("kit: empty button icon")
+	if opts.Icon == nil {
+		panic("kit: nil button icon")
 	}
 	if opts.Width <= 0 || opts.Height <= 0 {
 		panic("kit: non-positive button size")

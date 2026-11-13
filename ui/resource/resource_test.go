@@ -100,7 +100,7 @@ func TestMissingFontPanics(t *testing.T) {
 func TestMissingIconPanics(t *testing.T) {
 	t.Parallel()
 
-	assertPanics(t, func() { New().Icon("missing") })
+	assertPanics(t, func() { New().IconPath("missing") })
 }
 
 func TestMissingAppIconPanics(t *testing.T) {

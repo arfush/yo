@@ -199,7 +199,7 @@ func (s *Shell) paintControl(p *qt.QPainter, bounds image.Rectangle, key resourc
 		bounds.Min.X+(bounds.Dx()-size)/2,
 		bounds.Min.Y+(bounds.Dy()-size)/2,
 	))
-	kit.Icon(p, s.resource.Icon(key), icon, col)
+	kit.Icon(p, s.resource.IconPath(key), icon, col)
 }
 
 // paintSiteMark draws the rounded site tile with the torii glyph.
@@ -214,7 +214,7 @@ func (s *Shell) paintSiteMark(p *qt.QPainter, r image.Rectangle, palette appeara
 	kit.FillRounded(p, tint, r, radius)
 	inner := r.Inset(line)
 	kit.FillRounded(p, palette.SurfaceAlt, inner, max(0, radius-float64(line)))
-	kit.Icon(p, s.resource.Icon(resource.IconTorii), inner.Inset(markInset), palette.Accent)
+	kit.Icon(p, s.resource.IconPath(resource.IconTorii), inner.Inset(markInset), palette.Accent)
 }
 
 // paintVersion draws the accent version pill.

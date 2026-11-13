@@ -5,5 +5,6 @@
 //
 // Invariants: helpers draw into the caller's QPainter and never mutate
 // application state. Widgets draw at the painter origin and expose their size,
-// so callers own placement and hit-testing.
+// so callers own placement and hit-testing. Icon paths come from ui/resource,
+// stay owned by it, and are only tinted while drawing.
 package kit

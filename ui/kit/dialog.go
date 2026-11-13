@@ -7,7 +7,6 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/ui/appearance"
-	"github.com/arfush/yo/ui/resource"
 )
 
 // Dialog geometry, in logical pixels.
@@ -22,11 +21,11 @@ const (
 // DialogOptions is the constructor input of Dialog.
 type DialogOptions struct {
 	Width, Height float32
-	Icon          resource.Path
+	Icon          *qt.QPainterPath
 	Title         string
 	Description   string
 	ShowClose     bool
-	CloseIcon     resource.Path
+	CloseIcon     *qt.QPainterPath
 	OnClose       func()
 	Button        ButtonOptions
 }
@@ -37,27 +36,27 @@ type DialogOptions struct {
 type Dialog struct {
 	width       float32
 	height      float32
-	icon        resource.Path
+	icon        *qt.QPainterPath
 	title       string
 	description string
 	showClose   bool
-	closeIcon   resource.Path
+	closeIcon   *qt.QPainterPath
 	onClose     func()
 	button      Button
 }
 
-// NewDialog validates opts and builds a dialog. An empty icon, an empty close
-// icon while ShowClose is set, a non-positive size or an invalid button is a
+// NewDialog validates opts and builds a dialog. A nil icon, a nil close icon
+// while ShowClose is set, a non-positive size or an invalid button is a
 // programmer error and panics.
 func NewDialog(opts DialogOptions) Dialog {
-	if opts.Icon == "" {
-		panic("kit: empty dialog icon")
+	if opts.Icon == nil {
+		panic("kit: nil dialog icon")
 	}
 	if opts.Width <= 0 || opts.Height <= 0 {
 		panic("kit: non-positive dialog size")
 	}
-	if opts.ShowClose && opts.CloseIcon == "" {
-		panic("kit: empty dialog close icon")
+	if opts.ShowClose && opts.CloseIcon == nil {
+		panic("kit: nil dialog close icon")
 	}
 	return Dialog{
 		width:       opts.Width,
