@@ -25,7 +25,8 @@ func New(opts Options) Appearance {
 	}
 }
 
-// Appearance is one complete look. The zero value is invalid.
+// Appearance is one complete look. The zero value is invalid. The shell
+// replaces parts of it in place, so every method uses a pointer receiver.
 type Appearance struct {
 	resource   *resource.Resource
 	palette    Palette
@@ -35,19 +36,19 @@ type Appearance struct {
 }
 
 // Resource returns the embedded assets the appearance was built from.
-func (a Appearance) Resource() *resource.Resource { return a.resource }
+func (a *Appearance) Resource() *resource.Resource { return a.resource }
 
 // Palette returns the semantic colors of the application.
-func (a Appearance) Palette() Palette { return a.palette }
+func (a *Appearance) Palette() Palette { return a.palette }
 
 // AppIcon returns the application icon that matches the active palette.
-func (a Appearance) AppIcon() resource.AppIconKey { return a.appIcon }
+func (a *Appearance) AppIcon() resource.AppIconKey { return a.appIcon }
 
 // Typography returns the font keys and the role scale.
-func (a Appearance) Typography() Typography { return a.typography }
+func (a *Appearance) Typography() Typography { return a.typography }
 
 // Locale returns the active language, strings and formatting.
-func (a Appearance) Locale() Locale { return a.locale }
+func (a *Appearance) Locale() Locale { return a.locale }
 
 // SetPalette replaces the active color set in place. The shell calls it inside
 // stdx.Holder.Update when the active site changes. A zero palette is a

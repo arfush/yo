@@ -119,10 +119,11 @@ func TestSetAppIcon(t *testing.T) {
 func TestTypographyRoles(t *testing.T) {
 	t.Parallel()
 
-	typo := appearance.New(appearance.Options{
+	app := appearance.New(appearance.Options{
 		Resource: resource.New(),
 		Language: "en",
-	}).Typography()
+	})
+	typo := app.Typography()
 
 	tests := []struct {
 		name string
@@ -201,10 +202,11 @@ func TestSetLanguagePanics(t *testing.T) {
 func TestUnknownTextRolePanics(t *testing.T) {
 	t.Parallel()
 
-	typo := appearance.New(appearance.Options{
+	app := appearance.New(appearance.Options{
 		Resource: resource.New(),
 		Language: "ru",
-	}).Typography()
+	})
+	typo := app.Typography()
 	for _, role := range []appearance.TextRole{appearance.RoleCaption + 1, 255} {
 		assertPanics(t, func() { typo.Font(role) })
 		assertPanics(t, func() { typo.TextSize(role) })

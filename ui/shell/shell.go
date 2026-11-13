@@ -245,7 +245,10 @@ func (s *Shell) SetTitle(title string) {
 }
 
 // palette returns the colors of the current appearance.
-func (s *Shell) palette() appearance.Palette { return s.appearance.Value().Palette() }
+func (s *Shell) palette() appearance.Palette {
+	app := s.appearance.Value()
+	return app.Palette()
+}
 
 // interactive returns the active screen as an Interactive, if it is one.
 func (s *Shell) interactive() Interactive {
