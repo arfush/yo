@@ -64,5 +64,5 @@ func (s *Stub) Paint(p *qt.QPainter, content image.Rectangle, palette appearance
 		Mood:      stubMood(int(periods)),
 		MoodSince: s.since.Add(periods * stubMoodPeriod),
 		Hat:       mascot.HatNone,
-	}).Draw(p, rect, now)
+	}).Paint(p, rect, now)
 }

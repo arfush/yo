@@ -63,23 +63,18 @@ func TestNewRejectsUnknownMood(t *testing.T) {
 	assertPanics(t, func() { New(Options{Palette: testPalette(), Mood: Mood(99)}) })
 }
 
-func TestZeroMascotDrawPanics(t *testing.T) {
+func TestZeroMascotPaintPanics(t *testing.T) {
 	p := testPainter(t)
 	assertPanics(t, func() {
-		(Mascot{}).Draw(p, image.Rect(0, 0, 42, 42), time.Unix(1, 0))
+		(Mascot{}).Paint(p, image.Rect(0, 0, 42, 42), time.Unix(1, 0))
 	})
 }
 
 func TestZeroMascotEmptyRectIsIgnored(t *testing.T) {
-	(Mascot{}).Draw(testPainter(t), image.Rectangle{}, time.Unix(1, 0))
+	(Mascot{}).Paint(testPainter(t), image.Rectangle{}, time.Unix(1, 0))
 }
 
-func TestSetMoodRejectsUnknownMood(t *testing.T) {
-	m := New(Options{Palette: testPalette()})
-	assertPanics(t, func() { m.SetMood(Mood(200), time.Time{}) })
-}
-
-func TestDrawEveryMoodAndSlot(t *testing.T) {
+func TestPaintEveryMoodAndSlot(t *testing.T) {
 	pal := testPalette()
 	now := time.Unix(1000, 0)
 	rects := []image.Rectangle{
@@ -93,7 +88,7 @@ func TestDrawEveryMoodAndSlot(t *testing.T) {
 			m := New(Options{Palette: pal, Mood: mood, MoodSince: since})
 			p := testPainter(t)
 			for _, rect := range rects {
-				m.Draw(p, rect, now)
+				m.Paint(p, rect, now)
 			}
 		}
 	}
@@ -104,5 +99,5 @@ func TestPanicGlitchDrawsDuringBurst(t *testing.T) {
 	// displaced slices.
 	now := time.Unix(0, int64(100*time.Millisecond))
 	New(Options{Palette: testPalette(), Mood: Panic}).
-		Draw(testPainter(t), image.Rect(0, 0, 168, 168), now)
+		Paint(testPainter(t), image.Rect(0, 0, 168, 168), now)
 }

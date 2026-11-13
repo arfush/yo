@@ -80,32 +80,32 @@ func TestNewRejectsUnknownHat(t *testing.T) {
 	})
 }
 
-func TestDrawEveryHatAndMood(t *testing.T) {
+func TestPaintEveryHatAndMood(t *testing.T) {
 	pal := testPalette()
 	now := time.Unix(1000, 0)
 	p := testPainter(t)
 	for _, hat := range append([]Hat{HatNone}, Hats()...) {
 		for _, mood := range []Mood{Normal, Alert, Loading, Panic} {
 			m := New(Options{Palette: pal, Hat: hat, Mood: mood})
-			m.Draw(p, image.Rect(0, 0, 168, 168), now)
+			m.Paint(p, image.Rect(0, 0, 168, 168), now)
 			m = New(Options{
 				Palette:   pal,
 				Hat:       hat,
 				Mood:      mood,
 				MoodSince: now.Add(-500 * time.Millisecond),
 			})
-			m.Draw(p, image.Rect(0, 0, 168, 168), now)
+			m.Paint(p, image.Rect(0, 0, 168, 168), now)
 		}
 	}
 }
 
-func TestDrawCypherSmallSlot(t *testing.T) {
+func TestPaintCypherSmallSlot(t *testing.T) {
 	m := New(Options{Palette: testPalette(), Hat: HatCypher})
 	p := testPainter(t)
 	for _, rect := range []image.Rectangle{
 		image.Rect(0, 0, 1, 1),
 		image.Rect(10, 10, 34, 20),
 	} {
-		m.Draw(p, rect, time.Unix(2, 0))
+		m.Paint(p, rect, time.Unix(2, 0))
 	}
 }

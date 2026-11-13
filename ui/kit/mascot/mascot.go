@@ -20,7 +20,7 @@ type Options struct {
 }
 
 // Mascot is a drawable mascot value. Build it with New. The zero value is
-// invalid and Draw panics on it.
+// invalid and Paint panics on it.
 type Mascot struct {
 	palette appearance.MascotPalette
 	mood    Mood
@@ -44,20 +44,9 @@ func New(opts Options) Mascot {
 	}
 }
 
-// SetMood switches the mood and resets its start time. A zero since means the
-// mood is already settled, so Alert skips its intro and draws the final pose.
-func (m *Mascot) SetMood(mood Mood, since time.Time) {
-	if m == nil {
-		panic("mascot: nil mascot")
-	}
-	mood.validate()
-	m.mood = mood
-	m.since = since
-}
-
-// Draw paints the mascot centered in rect at the given instant. An empty rect
+// Paint draws the mascot centered in rect at the given instant. An empty rect
 // draws nothing.
-func (m Mascot) Draw(p *qt.QPainter, rect image.Rectangle, now time.Time) {
+func (m Mascot) Paint(p *qt.QPainter, rect image.Rectangle, now time.Time) {
 	if rect.Empty() {
 		return
 	}
