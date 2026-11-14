@@ -7,7 +7,7 @@ import (
 	"github.com/mappu/miqt/qt6"
 
 	"github.com/arfush/yo/ui/appearance"
-	"github.com/arfush/yo/ui/kit/mascot"
+	"github.com/arfush/yo/ui/kit"
 	"github.com/arfush/yo/ui/navigator"
 )
 
@@ -19,16 +19,16 @@ const (
 
 // stubMood returns the mood of one five-second slot. The cycle is Normal,
 // Alert, Loading, Panic.
-func stubMood(slot int) mascot.Mood {
+func stubMood(slot int) kit.MascotMood {
 	switch slot % 4 {
 	case 1:
-		return mascot.Alert
+		return kit.MascotAlert
 	case 2:
-		return mascot.Loading
+		return kit.MascotLoading
 	case 3:
-		return mascot.Panic
+		return kit.MascotPanic
 	default:
-		return mascot.Normal
+		return kit.MascotNormal
 	}
 }
 
@@ -59,10 +59,10 @@ func (s *Stub) Paint(p *qt6.QPainter, content image.Rectangle, palette appearanc
 		content.Min.X+(content.Dx()-slot)/2,
 		content.Min.Y+(content.Dy()-slot)/2,
 	))
-	mascot.New(mascot.Options{
+	kit.NewMascot(kit.MascotOptions{
 		Palette:   palette.Mascot,
 		Mood:      stubMood(int(periods)),
 		MoodSince: s.since.Add(periods * stubMoodPeriod),
-		Hat:       mascot.HatNone,
+		Hat:       kit.HatNone,
 	}).Paint(p, rect, now)
 }

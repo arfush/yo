@@ -1,4 +1,4 @@
-package mascot
+package kit
 
 import (
 	"image"
@@ -7,37 +7,37 @@ import (
 )
 
 func TestHatsCatalog(t *testing.T) {
-	hats := Hats()
+	hats := MascotHats()
 	if len(hats) == 0 {
-		t.Fatal("Hats() is empty")
+		t.Fatal("MascotHats() is empty")
 	}
-	seen := make(map[Hat]bool, len(hats))
+	seen := make(map[MascotHat]bool, len(hats))
 	for _, hat := range hats {
 		if hat == HatNone {
-			t.Fatal("Hats() contains HatNone")
+			t.Fatal("MascotHats() contains HatNone")
 		}
 		if seen[hat] {
-			t.Fatalf("Hats() contains %q twice", hat)
+			t.Fatalf("MascotHats() contains %q twice", hat)
 		}
 		seen[hat] = true
 	}
 
 	first := hats[0]
-	hats[0] = Hat("changed")
-	if Hats()[0] != first {
-		t.Fatal("Hats() did not return a copy")
+	hats[0] = MascotHat("changed")
+	if MascotHats()[0] != first {
+		t.Fatal("MascotHats() did not return a copy")
 	}
 }
 
 func TestRandomHatReturnsKnownHat(t *testing.T) {
-	known := make(map[Hat]bool)
-	for _, hat := range Hats() {
+	known := make(map[MascotHat]bool)
+	for _, hat := range MascotHats() {
 		known[hat] = true
 	}
 	for i := 0; i < len(known)*8; i++ {
-		hat := RandomHat()
+		hat := RandomMascotHat()
 		if hat == HatNone || !known[hat] {
-			t.Fatalf("RandomHat() = %q; want a known outfit", hat)
+			t.Fatalf("RandomMascotHat() = %q; want a known outfit", hat)
 		}
 	}
 }
@@ -46,7 +46,7 @@ func TestSeasonalHatHolidayWindows(t *testing.T) {
 	tests := []struct {
 		name string
 		date time.Time
-		want Hat
+		want MascotHat
 	}{
 		{"christmas eve", time.Date(2026, time.December, 17, 12, 0, 0, 0, time.Local), HatNone},
 		{"holidays start", time.Date(2026, time.December, 18, 0, 0, 0, 0, time.Local), HatSanta},
@@ -67,8 +67,8 @@ func TestSeasonalHatHolidayWindows(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := SeasonalHat(test.date); got != test.want {
-				t.Fatalf("SeasonalHat(%s) = %q, want %q", test.date.Format("2006-01-02"), got, test.want)
+			if got := SeasonalMascotHat(test.date); got != test.want {
+				t.Fatalf("SeasonalMascotHat(%s) = %q, want %q", test.date.Format("2006-01-02"), got, test.want)
 			}
 		})
 	}
@@ -76,7 +76,7 @@ func TestSeasonalHatHolidayWindows(t *testing.T) {
 
 func TestNewRejectsUnknownHat(t *testing.T) {
 	assertPanics(t, func() {
-		New(Options{Palette: testPalette(), Hat: Hat("unknown")})
+		NewMascot(MascotOptions{Palette: testPalette(), Hat: MascotHat("unknown")})
 	})
 }
 
@@ -84,11 +84,11 @@ func TestPaintEveryHatAndMood(t *testing.T) {
 	pal := testPalette()
 	now := time.Unix(1000, 0)
 	p := testPainter(t)
-	for _, hat := range append([]Hat{HatNone}, Hats()...) {
-		for _, mood := range []Mood{Normal, Alert, Loading, Panic} {
-			m := New(Options{Palette: pal, Hat: hat, Mood: mood})
+	for _, hat := range append([]MascotHat{HatNone}, MascotHats()...) {
+		for _, mood := range []MascotMood{MascotNormal, MascotAlert, MascotLoading, MascotPanic} {
+			m := NewMascot(MascotOptions{Palette: pal, Hat: hat, Mood: mood})
 			m.Paint(p, image.Rect(0, 0, 168, 168), now)
-			m = New(Options{
+			m = NewMascot(MascotOptions{
 				Palette:   pal,
 				Hat:       hat,
 				Mood:      mood,
@@ -100,7 +100,7 @@ func TestPaintEveryHatAndMood(t *testing.T) {
 }
 
 func TestPaintCypherSmallSlot(t *testing.T) {
-	m := New(Options{Palette: testPalette(), Hat: HatCypher})
+	m := NewMascot(MascotOptions{Palette: testPalette(), Hat: HatCypher})
 	p := testPainter(t)
 	for _, rect := range []image.Rectangle{
 		image.Rect(0, 0, 1, 1),

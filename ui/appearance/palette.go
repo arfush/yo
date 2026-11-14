@@ -83,7 +83,7 @@ type ProviderColors struct {
 	Background color.NRGBA
 }
 
-// MascotPalette is the complete color set the future ui/kit/mascot needs.
+// MascotPalette is the complete color set the mascot in ui/kit needs.
 type MascotPalette struct {
 	Normal       MascotColors
 	Alert        MascotColors

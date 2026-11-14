@@ -1,4 +1,4 @@
-package mascot
+package kit
 
 import (
 	"image"
@@ -56,11 +56,11 @@ func assertPanics(t *testing.T, fn func()) {
 }
 
 func TestNewRejectsZeroPalette(t *testing.T) {
-	assertPanics(t, func() { New(Options{}) })
+	assertPanics(t, func() { NewMascot(MascotOptions{}) })
 }
 
 func TestNewRejectsUnknownMood(t *testing.T) {
-	assertPanics(t, func() { New(Options{Palette: testPalette(), Mood: Mood(99)}) })
+	assertPanics(t, func() { NewMascot(MascotOptions{Palette: testPalette(), Mood: MascotMood(99)}) })
 }
 
 func TestZeroMascotPaintPanics(t *testing.T) {
@@ -83,9 +83,9 @@ func TestPaintEveryMoodAndSlot(t *testing.T) {
 		image.Rect(-8, -8, 8, 8),
 		image.Rect(0, 0, 1, 1),
 	}
-	for _, mood := range []Mood{Normal, Alert, Loading, Panic} {
+	for _, mood := range []MascotMood{MascotNormal, MascotAlert, MascotLoading, MascotPanic} {
 		for _, since := range []time.Time{{}, now.Add(-500 * time.Millisecond)} {
-			m := New(Options{Palette: pal, Mood: mood, MoodSince: since})
+			m := NewMascot(MascotOptions{Palette: pal, Mood: mood, MoodSince: since})
 			p := testPainter(t)
 			for _, rect := range rects {
 				m.Paint(p, rect, now)
@@ -98,6 +98,6 @@ func TestPanicGlitchDrawsDuringBurst(t *testing.T) {
 	// 100 ms into a cycle is inside the burst, so the glitch path repaints
 	// displaced slices.
 	now := time.Unix(0, int64(100*time.Millisecond))
-	New(Options{Palette: testPalette(), Mood: Panic}).
+	NewMascot(MascotOptions{Palette: testPalette(), Mood: MascotPanic}).
 		Paint(testPainter(t), image.Rect(0, 0, 168, 168), now)
 }
