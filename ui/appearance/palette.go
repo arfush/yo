@@ -171,7 +171,7 @@ func PaletteFor(site catalog.Site) Palette {
 	p.OnAccent = a.onAccent
 	p.Focus = a.accent
 	p.ControlIconHover = mix(a.accent, p.Text, 0.55)
-	p.Mascot.Normal = mascotColors(p.Accent, p.Ink, p.Text, p.Canvas)
+	setMascotMoods(&p)
 	return p
 }
 
@@ -273,13 +273,7 @@ func newPalette() Palette {
 		},
 	}
 	p.ControlIconHover = mix(p.Accent, p.Text, 0.55)
-	p.Mascot.Normal = mascotColors(p.Accent, p.Ink, p.Text, p.Canvas)
-	p.Mascot.Alert = mascotColors(
-		p.Danger,
-		mix(p.Danger, p.White, 0.5),
-		mix(p.White, p.Danger, 0.12),
-		p.Canvas,
-	)
+	setMascotMoods(&p)
 	return p
 }
 
@@ -296,6 +290,38 @@ func mascotColors(accent, ink, face, canvas color.NRGBA) MascotColors {
 		Dress:      accent,
 		DressLight: ink,
 	}
+}
+
+// setMascotMoods derives the normal and alert mascot colors from the palette.
+// The alert mood follows the normal one, so every site keeps its own reds.
+func setMascotMoods(p *Palette) {
+	p.Mascot.Normal = mascotColors(p.Accent, p.Ink, p.Text, p.Canvas)
+	p.Mascot.Alert = alertColors(p.Mascot.Normal)
+}
+
+// alertColors derives the alert mood from the normal one. Saturation and value
+// stay as they are; only the hue becomes red.
+func alertColors(normal MascotColors) MascotColors {
+	return MascotColors{
+		Hair:       redHue(normal.Hair),
+		HairShadow: redHue(normal.HairShadow),
+		HairLight:  redHue(normal.HairLight),
+		Face:       redHue(normal.Face),
+		EarInner:   redHue(normal.EarInner),
+		Paw:        redHue(normal.Paw),
+		Blush:      redHue(normal.Blush),
+		Dress:      redHue(normal.Dress),
+		DressLight: redHue(normal.DressLight),
+	}
+}
+
+// redHue keeps the HSV saturation and value of c and sets its hue to red.
+// At hue zero the green and blue channels equal the former minimum while the
+// red channel equals the former maximum, so gray colors stay gray.
+func redHue(c color.NRGBA) color.NRGBA {
+	hi := max(c.R, c.G, c.B)
+	lo := min(c.R, c.G, c.B)
+	return color.NRGBA{R: hi, G: lo, B: lo, A: c.A}
 }
 
 // mix linearly interpolates between a and b without leaving the uint8 range.

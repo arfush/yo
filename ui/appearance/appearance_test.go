@@ -1,6 +1,7 @@
 package appearance_test
 
 import (
+	"image/color"
 	"testing"
 
 	"github.com/arfush/yo/catalog"
@@ -67,6 +68,36 @@ func TestPaletteFor(t *testing.T) {
 		seen = append(seen, p)
 	}
 	assertPanics(t, func() { appearance.PaletteFor(catalog.Site("unknown")) })
+}
+
+func TestMascotAlertIsRed(t *testing.T) {
+	t.Parallel()
+
+	seen := make(map[color.NRGBA]bool, len(catalog.Sites()))
+	for _, site := range catalog.Sites() {
+		p := appearance.PaletteFor(site)
+		for _, pair := range []struct {
+			name   string
+			normal color.NRGBA
+			alert  color.NRGBA
+		}{
+			{"hair", p.Mascot.Normal.Hair, p.Mascot.Alert.Hair},
+			{"dress", p.Mascot.Normal.Dress, p.Mascot.Alert.Dress},
+			{"face", p.Mascot.Normal.Face, p.Mascot.Alert.Face},
+		} {
+			if pair.alert.R < pair.alert.G || pair.alert.R < pair.alert.B {
+				t.Fatalf("PaletteFor(%q) alert %s = %v; want red dominant",
+					site, pair.name, pair.alert)
+			}
+			if pair.alert == pair.normal {
+				t.Fatalf("PaletteFor(%q) alert %s did not change", site, pair.name)
+			}
+		}
+		if seen[p.Mascot.Alert.Hair] {
+			t.Fatalf("PaletteFor(%q) reuses an alert hair color", site)
+		}
+		seen[p.Mascot.Alert.Hair] = true
+	}
 }
 
 func TestSetPalette(t *testing.T) {
