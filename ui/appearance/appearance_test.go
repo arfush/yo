@@ -103,6 +103,9 @@ func TestMascotAlertIsRed(t *testing.T) {
 	if got := saturation(base.Mascot.Alert.Hair); got < 0.5 {
 		t.Fatalf("base alert hair saturation = %.2f; want at least 0.5", got)
 	}
+	if got := value(base.Mascot.Alert.Hair); got < 0.75 {
+		t.Fatalf("base alert hair value = %.2f; want at least 0.75", got)
+	}
 	if base.Mascot.Normal.Hair != base.Accent {
 		t.Fatalf("base normal hair = %v; want the accent %v",
 			base.Mascot.Normal.Hair, base.Accent)
@@ -117,6 +120,11 @@ func saturation(c color.NRGBA) float32 {
 		return 0
 	}
 	return float32(hi-lo) / float32(hi)
+}
+
+// value returns the HSV value of c in the 0..1 range.
+func value(c color.NRGBA) float32 {
+	return float32(max(c.R, c.G, c.B)) / 255
 }
 
 func TestSetPalette(t *testing.T) {

@@ -301,17 +301,18 @@ func setMascotMoods(p *Palette) {
 
 // alertColors derives the alert mood from the normal one. Saturation and value
 // stay as they are and only the hue becomes red, except hair and dress, which
-// get a saturation floor because the neutral base accent is almost grey.
+// get saturation and value floors because the neutral base accent is almost
+// grey and dark. The hair shadow keeps its own brightness to stay dark.
 func alertColors(normal MascotColors) MascotColors {
 	return MascotColors{
-		Hair:       alertRed(normal.Hair),
-		HairShadow: alertRed(normal.HairShadow),
+		Hair:       alertRed(normal.Hair, alertValue),
+		HairShadow: alertRed(normal.HairShadow, 0),
 		HairLight:  redHue(normal.HairLight),
 		Face:       redHue(normal.Face),
 		EarInner:   redHue(normal.EarInner),
 		Paw:        redHue(normal.Paw),
 		Blush:      redHue(normal.Blush),
-		Dress:      alertRed(normal.Dress),
+		Dress:      alertRed(normal.Dress, alertValue),
 		DressLight: redHue(normal.DressLight),
 	}
 }
@@ -326,17 +327,23 @@ func redHue(c color.NRGBA) color.NRGBA {
 	return color.NRGBA{R: hi, G: lo, B: lo, A: c.A}
 }
 
-// alertSaturation is the minimum saturation of the alert hair and dress. The
-// neutral base accent is almost grey, so a hue shift alone would leave its
-// alert looking dusty instead of red.
-const alertSaturation float32 = 0.6
+// Alert presets for the accent-derived fields. The neutral base accent is
+// almost grey and dark, so the alert lifts both saturation and value to read
+// as a bright red instead of a dusty one.
+const (
+	alertSaturation float32 = 0.7
+	alertValue      uint8   = 0xcc // 80% brightness
+)
 
-// alertRed sets the hue of c to red and lifts its saturation to
-// alertSaturation, keeping value and alpha. Only accent-derived fields use it:
-// the face and paws stay light so the alert face keeps its contrast.
-func alertRed(c color.NRGBA) color.NRGBA {
+// alertRed sets the hue of c to red, lifts its saturation to alertSaturation
+// and its value to at least minValue, keeping alpha. A zero minValue keeps the
+// original brightness, which the hair shadow needs to stay dark.
+func alertRed(c color.NRGBA, minValue uint8) color.NRGBA {
 	hi := max(c.R, c.G, c.B)
 	lo := min(c.R, c.G, c.B)
+	if hi < minValue {
+		hi = minValue
+	}
 	if floor := uint8(float32(hi) * (1 - alertSaturation)); lo > floor {
 		lo = floor
 	}
