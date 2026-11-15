@@ -300,27 +300,46 @@ func setMascotMoods(p *Palette) {
 }
 
 // alertColors derives the alert mood from the normal one. Saturation and value
-// stay as they are; only the hue becomes red.
+// stay as they are and only the hue becomes red, except hair and dress, which
+// get a saturation floor because the neutral base accent is almost grey.
 func alertColors(normal MascotColors) MascotColors {
 	return MascotColors{
-		Hair:       redHue(normal.Hair),
-		HairShadow: redHue(normal.HairShadow),
+		Hair:       alertRed(normal.Hair),
+		HairShadow: alertRed(normal.HairShadow),
 		HairLight:  redHue(normal.HairLight),
 		Face:       redHue(normal.Face),
 		EarInner:   redHue(normal.EarInner),
 		Paw:        redHue(normal.Paw),
 		Blush:      redHue(normal.Blush),
-		Dress:      redHue(normal.Dress),
+		Dress:      alertRed(normal.Dress),
 		DressLight: redHue(normal.DressLight),
 	}
 }
 
 // redHue keeps the HSV saturation and value of c and sets its hue to red.
 // At hue zero the green and blue channels equal the former minimum while the
-// red channel equals the former maximum, so gray colors stay gray.
+// red channel equals the former maximum, so gray colors stay gray. Accent
+// fields use alertRed instead, which lifts the saturation.
 func redHue(c color.NRGBA) color.NRGBA {
 	hi := max(c.R, c.G, c.B)
 	lo := min(c.R, c.G, c.B)
+	return color.NRGBA{R: hi, G: lo, B: lo, A: c.A}
+}
+
+// alertSaturation is the minimum saturation of the alert hair and dress. The
+// neutral base accent is almost grey, so a hue shift alone would leave its
+// alert looking dusty instead of red.
+const alertSaturation float32 = 0.6
+
+// alertRed sets the hue of c to red and lifts its saturation to
+// alertSaturation, keeping value and alpha. Only accent-derived fields use it:
+// the face and paws stay light so the alert face keeps its contrast.
+func alertRed(c color.NRGBA) color.NRGBA {
+	hi := max(c.R, c.G, c.B)
+	lo := min(c.R, c.G, c.B)
+	if floor := uint8(float32(hi) * (1 - alertSaturation)); lo > floor {
+		lo = floor
+	}
 	return color.NRGBA{R: hi, G: lo, B: lo, A: c.A}
 }
 
